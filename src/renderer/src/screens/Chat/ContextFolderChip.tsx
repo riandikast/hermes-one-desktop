@@ -1,15 +1,15 @@
-import { memo, useState, useEffect, useRef } from "react";
-import { FolderOpen, FolderTree, X, Check } from "lucide-react";
+import { memo, useState, useEffect, useRef, Fragment } from "react";
+import { FolderOpen, FolderTree, X, Check, Plus } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 
 interface ContextFolderChipProps {
-  /** Working folder bound to this conversation (issue #27), or null. */
-  contextFolder: string | null;
+  /** Working folders bound to this conversation (issue #27). */
+  contextFolders: string[];
   /** Hidden in remote/SSH mode, where the picker browses the wrong machine. */
   show: boolean;
   worktreeVisible: boolean;
   onPickFolder: () => void;
-  onClearFolder: () => void;
+  onRemoveFolder: (path: string) => void;
   onToggleWorktree: () => void;
   onSelectRecentFolder?: (path: string) => void;
 }
@@ -26,11 +26,11 @@ function folderName(p: string): string {
  * dropdown popup showing recent project folders and an "Open folder..." option.
  */
 export const ContextFolderChip = memo(function ContextFolderChip({
-  contextFolder,
+  contextFolders,
   show,
   worktreeVisible,
   onPickFolder,
-  onClearFolder,
+  onRemoveFolder,
   onToggleWorktree,
   onSelectRecentFolder,
 }: ContextFolderChipProps): React.JSX.Element | null {
@@ -89,7 +89,7 @@ export const ContextFolderChip = memo(function ContextFolderChip({
           <div className="chat-ctxfolder-dropdown-empty">No recent folders</div>
         ) : (
           recentFolders.map((path) => {
-            const isSelected = path === contextFolder;
+            const isSelected = contextFolders.includes(path);
             return (
               <button
                 key={path}
@@ -131,7 +131,7 @@ export const ContextFolderChip = memo(function ContextFolderChip({
     </div>
   );
 
-  if (!contextFolder) {
+  if (contextFolders.length === 0) {
     return (
       <div className="chat-ctxfolder-picker" ref={containerRef}>
         <button
@@ -150,22 +150,34 @@ export const ContextFolderChip = memo(function ContextFolderChip({
 
   return (
     <div className="chat-ctxfolder-group" ref={containerRef}>
-      <button
-        className="chat-meta-chip chat-meta-chip--active"
-        onClick={() => setIsOpen((v) => !v)}
-        title={t("chat.contextFolderActive", { path: contextFolder })}
-        type="button"
-      >
-        <FolderOpen size={13} />
-        <span className="chat-ctxfolder-name">{folderName(contextFolder)}</span>
-      </button>
+      {contextFolders.map((folder) => (
+        <Fragment key={folder}>
+          <button
+            className="chat-meta-chip chat-meta-chip--active"
+            onClick={() => setIsOpen((v) => !v)}
+            title={t("chat.contextFolderActive", { path: folder })}
+            type="button"
+          >
+            <FolderOpen size={13} />
+            <span className="chat-ctxfolder-name">{folderName(folder)}</span>
+          </button>
+          <button
+            className="chat-meta-chip-icon"
+            onClick={() => onRemoveFolder(folder)}
+            title={t("chat.removeContextFolder")}
+            type="button"
+          >
+            <X size={11} />
+          </button>
+        </Fragment>
+      ))}
       <button
         className="chat-meta-chip-icon"
-        onClick={onClearFolder}
-        title={t("chat.removeContextFolder")}
+        onClick={() => setIsOpen((v) => !v)}
+        title={t("chat.addContextFolder")}
         type="button"
       >
-        <X size={11} />
+        <Plus size={13} />
       </button>
       <button
         className={`chat-meta-chip-icon${

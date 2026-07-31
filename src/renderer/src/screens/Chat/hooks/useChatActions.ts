@@ -52,8 +52,8 @@ interface UseChatActionsArgs {
    *  (e.g. `/settings appearance`). */
   onOpenSettings?: (section?: string) => void;
   activeTurnRef: React.MutableRefObject<ActiveTurn | null>;
-  /** Working folder bound to this conversation (issue #27), or null. */
-  contextFolder: string | null;
+  /** Working folders bound to this conversation (issue #27), or empty. */
+  contextFolders: string[];
   /** Session-local model override — selected via the chat picker without
    *  persisting to config.yaml (issue #688). Carries the full identity so a
    *  cross-provider switch routes to the right backend, not just the model. */
@@ -120,7 +120,7 @@ export function useChatActions({
   slashCatalog,
   onOpenSettings,
   activeTurnRef,
-  contextFolder,
+  contextFolders,
   sessionModel,
   sendViaDashboard,
   execSlashViaDashboard,
@@ -172,7 +172,7 @@ export function useChatActions({
             content: m.content,
           })),
           attachments,
-          contextFolder ?? undefined,
+          contextFolders.length > 0 ? contextFolders : undefined,
           runId,
           sessionModelRef.current || undefined,
         );
@@ -180,7 +180,7 @@ export function useChatActions({
         // onChatError IPC already surfaces this to the user
       }
     },
-    [runId, profile, hermesSessionId, contextFolder, sendViaDashboard],
+    [runId, profile, hermesSessionId, contextFolders, sendViaDashboard],
   );
 
   // Shared "side question" flow (the 💭 quick-ask button and a typed `/btw`).

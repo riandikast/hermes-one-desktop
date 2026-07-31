@@ -187,7 +187,7 @@ function Chat({
   // Working folder bound to this conversation (issue #27). Per-conversation;
   // persisted per session so a re-opened conversation restores its folder, and
   // reset on new chat below.
-  const [contextFolder, setContextFolder] = useState<string | null>(null);
+  const [contextFolders, setContextFolders] = useState<string[]>([]);
   // Gate folder persistence until the stored value for a resumed session has
   // been loaded — otherwise the initial null would overwrite the saved folder
   // before the load resolves. A brand-new chat (no initialSessionId) has
@@ -200,9 +200,10 @@ function Chat({
     let cancelled = false;
     void (async () => {
       try {
-        const folder =
+        const folders =
           await window.hermesAPI.getSessionContextFolder(initialSessionId);
-        if (!cancelled && folder) setContextFolder(folder);
+        if (!cancelled && folders && folders.length > 0)
+          setContextFolders(folders);
       } catch {
         /* best-effort — a missing folder just leaves the session unlinked */
       } finally {
@@ -220,7 +221,7 @@ function Chat({
   useEffect(() => {
     if (!hermesSessionId || !contextFolderLoadedRef.current) return;
     void window.hermesAPI
-      .setSessionContextFolder(hermesSessionId, contextFolder)
+      .setSessionContextFolder(hermesSessionId, contextFolders)
       .then(() => {
         window.dispatchEvent(
           new CustomEvent("hermes-session-context-folder-changed", {
@@ -231,8 +232,8 @@ function Chat({
       .catch(() => {
         /* best-effort sidebar refresh signal */
       });
-  }, [hermesSessionId, contextFolder]);
-  // Whether the worktree panel is visible (only applies when contextFolder is set)
+  }, [hermesSessionId, contextFolders]);
+  // Whether the worktree panel is visible (only applies when folders are set)
   // Default false so the panel doesn't open automatically and interfere with scrolling
   const [worktreeVisible, setWorktreeVisible] = useState<boolean>(false);
   const [folderPickerOpen, setFolderPickerOpen] = useState<boolean>(false);
@@ -570,7 +571,7 @@ function Chat({
     }
     setMessages([]);
     setHermesSessionId(null);
-    setContextFolder(null);
+    setContextFolders([]);
     // Clearing the conversation reverts to the global default model — the
     // session-scoped pick belongs to the conversation being cleared (#688).
     setSessionModelOverride(undefined);
@@ -604,7 +605,7 @@ function Chat({
 
   const dashboardTransport = useDashboardChatTransport({
     activeTurnRef,
-    contextFolder,
+    contextFolder: contextFolders[0] ?? null,
     connectionMode,
     enabled: dashboardChatEnabled,
     fallbackOnUnavailable: chatTransportPreference === "auto",
@@ -717,7 +718,7 @@ function Chat({
     slashCatalog,
     onOpenSettings: onOpenDiagnose,
     activeTurnRef,
-    contextFolder,
+    contextFolders,
     sessionModel: sessionModelOverride,
     sendViaDashboard: dashboardTransport.enabled
       ? dashboardTransport.sendMessage
@@ -801,12 +802,17 @@ function Chat({
       setFolderPickerOpen(true);
       return;
     }
-    const path = await window.hermesAPI.selectFolder();
-    if (path) setContextFolder(path);
+    const picked = await window.hermesAPI.selectFolder({ multiple: true });
+    if (!picked) return;
+    const added = Array.isArray(picked) ? picked : [picked];
+    setContextFolders((prev) => {
+      const seen = new Set(prev);
+      return [...prev, ...added.filter((p) => !seen.has(p))];
+    });
   }, [remoteMode]);
 
-  const handleClearFolder = useCallback(() => {
-    setContextFolder(null);
+  const handleRemoveFolder = useCallback((path: string) => {
+    setContextFolders((prev) => prev.filter((p) => p !== path));
   }, []);
 
   // Stable toolbar callbacks so the memoized ModelPicker / ContextFolderChip
@@ -833,7 +839,9 @@ function Chat({
   );
 
   const handleSelectRecentFolder = useCallback((path: string) => {
-    setContextFolder(path);
+    setContextFolders((prev) =>
+      prev.includes(path) ? prev : [...prev, path],
+    );
   }, []);
 
   const handleToggleWorktree = useCallback(() => {
@@ -1021,8 +1029,8 @@ function Chat({
           <div ref={bottomRef} />
         </div>
 
-        {contextFolder && worktreeVisible && (
-          <WorktreePanel folderPath={contextFolder} />
+        {contextFolders.length > 0 && worktreeVisible && (
+          <WorktreePanel folderPaths={contextFolders} />
         )}
 
         {webPreviewVisible && (
@@ -1095,11 +1103,11 @@ function Chat({
                 </div>
               </div>
               <ContextFolderChip
-                contextFolder={contextFolder}
+                contextFolders={contextFolders}
                 show
                 worktreeVisible={worktreeVisible}
                 onPickFolder={handlePickFolder}
-                onClearFolder={handleClearFolder}
+                onRemoveFolder={handleRemoveFolder}
                 onToggleWorktree={handleToggleWorktree}
                 onSelectRecentFolder={handleSelectRecentFolder}
               />
@@ -1140,11 +1148,13 @@ function Chat({
         </div>
       )}
       <RemoteFolderPicker
-        initialPath={contextFolder}
+        initialPath={contextFolders[0] ?? null}
         open={folderPickerOpen}
         onCancel={() => setFolderPickerOpen(false)}
         onSelect={(path) => {
-          setContextFolder(path);
+          setContextFolders((prev) =>
+            prev.includes(path) ? prev : [...prev, path],
+          );
           setFolderPickerOpen(false);
         }}
       />

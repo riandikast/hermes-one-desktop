@@ -590,16 +590,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         return;
       }
       try {
-        let folder = sessionId
+        let folders = sessionId
           ? await window.hermesAPI.getSessionContextFolder(sessionId)
           : null;
-        if (!folder) {
+        if (!folders || folders.length === 0) {
           // New session (no sessionId yet): fall back to the most recent
           // context folder so @ works out of the box.
           const recent = await window.hermesAPI.listRecentSessionContextFolders(1);
-          folder = recent[0] ?? null;
+          folders = recent.length > 0 ? recent : null;
         }
-        if (!folder) {
+        if (!folders || folders.length === 0) {
           // No context folder chosen yet — show a hint instead of a dead menu.
           setMentionEntries([
             {
@@ -611,23 +611,32 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           return;
         }
         type MentionFile = { name: string; isDirectory: boolean; path: string };
-        const result = await window.hermesAPI.listFilesRecursive(folder);
-        let list: MentionFile[] | null = result;
-        if (list === null || list.length === 0) {
-          // ssh/remote mode (or an empty walk) — fall back to top-level only.
-          const top = await window.hermesAPI.readDirectory(folder);
-          const root = folder.replace(/[\\/]+$/, "");
-          list = (top ?? []).map((e) => ({
-            name: e.name,
-            isDirectory: e.isDirectory,
-            path: `${root}/${e.name}`,
-          }));
+        const seen = new Set<string>();
+        const entries: MentionFile[] = [];
+        for (const folder of folders) {
+          const result = await window.hermesAPI.listFilesRecursive(folder);
+          let list: MentionFile[] | null = result;
+          if (list === null || list.length === 0) {
+            // ssh/remote mode (or an empty walk) — fall back to top-level only.
+            const top = await window.hermesAPI.readDirectory(folder);
+            const root = folder.replace(/[\\/]+$/, "");
+            list = (top ?? []).map((e) => ({
+              name: e.name,
+              isDirectory: e.isDirectory,
+              path: `${root}/${e.name}`,
+            }));
+          }
+          for (const e of list) {
+            if (!e.path || seen.has(e.path)) continue;
+            seen.add(e.path);
+            entries.push(e);
+          }
         }
-        if (list.length === 0) {
+        if (entries.length === 0) {
           setMentionEntries([]);
           return;
         }
-        setMentionEntries(list);
+        setMentionEntries(entries);
       } catch {
         setMentionEntries([]);
       }
