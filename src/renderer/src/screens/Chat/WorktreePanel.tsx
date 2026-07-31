@@ -13,7 +13,7 @@ import {
 import { getIconForFile, getSVGStringFromFileType } from "@wesbos/code-icons";
 import { FileViewer } from "./FileViewer";
 import { useI18n } from "../../components/useI18n";
-import { rankMentions, type MentionEntry } from "./mention";
+import { searchFiles, type FileSearchEntry } from "./fileSearch";
 
 interface FileEntry {
   name: string;
@@ -383,7 +383,7 @@ export const WorktreePanel = memo(function WorktreePanel({
 
   // --- Search across all roots (flat ranked list, top 50) ---
   const [query, setQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<MentionEntry[] | null>(
+  const [searchResults, setSearchResults] = useState<FileSearchEntry[] | null>(
     null);
   const [searching, setSearching] = useState(false);
 
@@ -402,18 +402,18 @@ export const WorktreePanel = memo(function WorktreePanel({
       let cancelled = false;
       const runSearch = async (): Promise<void> => {
         const seen = new Set<string>();
-        const all: MentionEntry[] = [];
+        const all: FileSearchEntry[] = [];
         for (const folder of folderPaths) {
           const list = await window.hermesAPI.listFilesRecursive(folder);
           if (cancelled || !list) continue;
           for (const e of list) {
             if (!e.path || seen.has(e.path)) continue;
             seen.add(e.path);
-            all.push({ name: e.name, isDirectory: e.isDirectory, path: e.path });
+            all.push(e);
           }
         }
         if (cancelled) return;
-        const ranked = rankMentions(trimmed, all, false).slice(0, 50);
+        const ranked = searchFiles(all, trimmed, "all").slice(0, 50);
         setSearchResults(ranked);
         setSearching(false);
       };

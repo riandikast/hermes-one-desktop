@@ -34,6 +34,21 @@ describe('tokenizeSearch', () => {
 })
 
 describe('searchFiles', () => {
+  it('keeps an exact match ahead of truncation noise', () => {
+    const generated = Array.from({ length: 60 }, (_, index) => ({
+      name: `MainActivity${index}.kt`,
+      isDirectory: false,
+      path: `build/generated/MainActivity${index}.kt`,
+    }))
+    const result = searchFiles([
+      ...generated,
+      { name: 'MainActivity.kt', isDirectory: false, path: 'app/src/MainActivity.kt' },
+    ], 'MainActivity.kt', 'files')
+
+    expect(result.slice(0, 50).map((entry) => entry.path)).toContain('app/src/MainActivity.kt')
+    expect(result[0]?.path).toBe('app/src/MainActivity.kt')
+  })
+
   it('ranks exact filename with extension before path and weaker basename matches', () => {
     const result = searchFiles(entries, 'README.md', 'files')
     expect(result.map((entry) => entry.path)).toEqual(['README.md', 'docs/README.md'])

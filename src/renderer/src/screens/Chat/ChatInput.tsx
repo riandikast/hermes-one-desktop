@@ -29,7 +29,6 @@ import {
 import { AttachmentChip } from "../../components/AttachmentChip";
 import {
   findMention,
-  rankMentions,
   truncatePath,
   basename,
   parseTags,
@@ -42,6 +41,7 @@ import {
   MENTION_END,
   type MentionEntry,
 } from "./mention";
+import { searchFiles } from "./fileSearch";
 import { ContextGauge, type ContextUsage } from "./ContextGauge";
 import type { Attachment } from "../../../../shared/attachments";
 
@@ -716,10 +716,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     // Ranked, token-filtered view of the mention entries. Shared by the menu
     // list and keyboard navigation so Enter inserts the highlighted row.
-    const rankedMentions = rankMentions(
-      mentionQuery,
+    const rankedMentions = searchFiles(
       mentionEntries,
-      mentionFolderOnly,
+      mentionQuery,
+      mentionFolderOnly ? "folders" : "files",
     );
 
     function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>): void {
