@@ -3,10 +3,13 @@ import {
   MENTION_END,
   MENTION_SEP,
   MENTION_START,
+  displayText,
+  displayToRawPos,
   expandTags,
   findMention,
   parseTags,
   rankMentions,
+  rawToDisplayPos,
   scoreFuzzy,
   truncatePath,
 } from "./mention";
@@ -209,5 +212,51 @@ describe("rankMentions", () => {
   it("rejects entries with no fuzzy match", () => {
     const entries = [EN("aaa.ts"), EN("bbb.ts")];
     expect(rankMentions("zzz", entries, false)).toEqual([]);
+  });
+});
+
+describe("displayText / displayToRawPos / rawToDisplayPos", () => {
+  const tag = (name: string, path: string): string =>
+    MENTION_START + name + MENTION_SEP + path + MENTION_END;
+
+  it("collapses tag inner text to the invisible sentinel trio", () => {
+    const raw = `see ${tag("main.js", "/a/b/main.js")} now`;
+    const d = displayText(raw);
+    expect(d).toBe(`see ${MENTION_START}${MENTION_SEP}${MENTION_END} now`);
+    expect(d.length).toBeLessThan(raw.length);
+  });
+
+  it("round-trips caret positions before, inside, and after a tag", () => {
+    const raw = `a ${tag("x.ts", "/p/x.ts")} z`;
+    const d = displayText(raw);
+    const tagStartD = d.indexOf(MENTION_START);
+    expect(displayToRawPos(raw, 2)).toBe(2);
+    expect(displayToRawPos(raw, tagStartD)).toBe(2);
+    expect(displayToRawPos(raw, tagStartD + 3)).toBe(2 + tag("x.ts", "/p/x.ts").length);
+    expect(displayToRawPos(raw, d.length)).toBe(raw.length);
+  });
+
+  it("round-trips raw offsets to display offsets", () => {
+    const raw = `a ${tag("x.ts", "/p/x.ts")} z`;
+    const d = displayText(raw);
+    expect(rawToDisplayPos(raw, 0)).toBe(0);
+    expect(rawToDisplayPos(raw, 2)).toBe(2);
+    expect(rawToDisplayPos(raw, 2 + tag("x.ts", "/p/x.ts").length)).toBe(
+      d.indexOf(MENTION_END) + 1,
+    );
+    expect(rawToDisplayPos(raw, raw.length)).toBe(d.length);
+  });
+
+  it("handles multiple tags", () => {
+    const raw = `${tag("a.ts", "/x/a.ts")} ${tag("b.ts", "/y/b.ts")}`;
+    const d = displayText(raw);
+    expect((d.match(/[\uE000]/g) ?? []).length).toBe(2);
+    expect(displayToRawPos(raw, d.length)).toBe(raw.length);
+    expect(rawToDisplayPos(raw, raw.length)).toBe(d.length);
+  });
+
+  it("leaves plain text untouched", () => {
+    expect(displayText("hello @world")).toBe("hello @world");
+    expect(displayToRawPos("hello", 3)).toBe(3);
   });
 });

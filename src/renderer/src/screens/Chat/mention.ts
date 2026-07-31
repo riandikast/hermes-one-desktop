@@ -89,6 +89,50 @@ export function expandTags(text: string): string {
 }
 
 /**
+ * Display form of the raw input: each tag's inner text is replaced by the
+ * invisible sentinel trio, so the textarea shows no tag text (badges render
+ * in a chip row above). Sentinels are zero-width PUA chars.
+ */
+export function displayText(raw: string): string {
+  return raw.replace(MENTION_RE, MENTION_START + MENTION_SEP + MENTION_END);
+}
+
+/**
+ * Map a caret/selection offset in DISPLAY space to the corresponding offset
+ * in RAW space. Offsets inside a tag (the 3 sentinel chars) map to the tag's
+ * raw start; offsets at/after the tag end map to the tag's raw end.
+ */
+export function displayToRawPos(raw: string, displayPos: number): number {
+  let d = 0;
+  let r = 0;
+  for (const tag of parseTags(raw)) {
+    const outsideLen = tag.start - r;
+    if (displayPos <= d + outsideLen) return r + (displayPos - d);
+    d += outsideLen;
+    if (displayPos < d + 3) return tag.start;
+    d += 3;
+    r = tag.end;
+  }
+  return r + (displayPos - d);
+}
+
+/**
+ * Map a RAW offset to DISPLAY space (for setSelectionRange after inserts).
+ */
+export function rawToDisplayPos(raw: string, rawPos: number): number {
+  let d = 0;
+  let lastEnd = 0;
+  for (const tag of parseTags(raw)) {
+    if (rawPos <= tag.start) break;
+    d += tag.start - lastEnd;
+    if (rawPos < tag.end) return d;
+    d += 3;
+    lastEnd = tag.end;
+  }
+  return d + (rawPos - lastEnd);
+}
+
+/**
  * Locate an active mention at `caret` in `text`.
  * Trigger rule: a `@` preceded by start-of-string or whitespace, followed
  * (up to the caret) by non-whitespace, non-`@` chars.
