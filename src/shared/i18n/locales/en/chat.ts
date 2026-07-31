@@ -156,6 +156,7 @@ export default {
     searching: "Searching",
     noResults: "No matching files",
     revealInExplorer: "Open in File Explorer",
+    tag: "Tag",
     fileTruncated: "truncated",
     fileTruncatedWarning: "File is too large — showing first 100KB only",
   },

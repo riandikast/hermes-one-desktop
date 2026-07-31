@@ -31,6 +31,7 @@ import {
   findMention,
   rankMentions,
   truncatePath,
+  basename,
   parseTags,
   expandTags,
   displayText,
@@ -51,6 +52,8 @@ export interface ChatInputHandle {
   focus(): void;
   /** Add files from external sources (drop overlay).  Returns errors. */
   addFiles(files: File[] | FileList): Promise<AttachmentError[]>;
+  /** Insert a file/folder mention tag (e.g. from the worktree panel). */
+  insertMentionTag(entry: MentionEntry): void;
 }
 
 export interface ChatInputReadiness {
@@ -102,8 +105,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
   ): React.JSX.Element {
     const { t } = useI18n();
     const [input, setInput] = useState("");
-    // What the textarea actually shows: mention tags collapse to their
-    // invisible sentinel trio; badges render in the chip row above.
+    // What the textarea actually shows: mention tags collapse to a single
+    // zero-width space (invisible in every font); badges render in the chip
+    // row above.
     const displayValue = useMemo(() => displayText(input), [input]);
     const [mentionOpen, setMentionOpen] = useState(false);
     const [mentionEntries, setMentionEntries] = useState<MentionEntry[]>([]);
@@ -264,6 +268,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         },
         addFiles(files: File[] | FileList): Promise<AttachmentError[]> {
           return ingestFiles(files);
+        },
+        insertMentionTag(entry: MentionEntry): void {
+          insertMentionTagRef.current(entry);
         },
       }),
       [ingestFiles],
@@ -667,6 +674,46 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       });
     }
 
+    // Insert a mention tag without an active @-token (worktree panel "Tag"
+    // action): splice at the current caret, or append when the caret is at
+    // the end. Unlike insertMention this does not depend on mentionStartRef.
+    function insertMentionTag(entry: MentionEntry): void {
+      if (!entry.path) return;
+      setInput((prev) => {
+        const el = inputRef.current;
+        const caret = displayToRawPos(prev, el?.selectionStart ?? prev.length);
+        const tag =
+          MENTION_START + entry.name + MENTION_SEP + entry.path + MENTION_END;
+        const next =
+          prev.slice(0, caret) + tag + " " + prev.slice(caret);
+        requestAnimationFrame(() => {
+          if (el) {
+            el.focus();
+            const pos = rawToDisplayPos(next, caret + tag.length + 1);
+            el.setSelectionRange(pos, pos);
+          }
+        });
+        return next;
+      });
+      setMentionOpen(false);
+      setMentionEntries([]);
+      mentionDismissedRef.current = false;
+    }
+
+    // The worktree panel dispatches "hermes-insert-mention" (CustomEvent)
+    // when its "Tag" context-menu action fires. Ref-indirection keeps the
+    // single-registration listener in sync with the latest closure.
+    const insertMentionTagRef = useRef(insertMentionTag);
+    insertMentionTagRef.current = insertMentionTag;
+    useEffect(() => {
+      const handler = (e: Event): void => {
+        const detail = (e as CustomEvent<MentionEntry>).detail;
+        if (detail?.path) insertMentionTagRef.current(detail);
+      };
+      window.addEventListener("hermes-insert-mention", handler);
+      return () => window.removeEventListener("hermes-insert-mention", handler);
+    }, []);
+
     // Ranked, token-filtered view of the mention entries. Shared by the menu
     // list and keyboard navigation so Enter inserts the highlighted row.
     const rankedMentions = rankMentions(
@@ -919,7 +966,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                 >
                   <div className="mention-menu-list">
                     {rankedMentions
-                      .slice(0, 12)
+                      .slice(0, 25)
                       .map((en, i) => (
                         <div
                           key={en.path}
@@ -941,9 +988,16 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                               <FileText size={14} />
                             )}
                           </span>
-                          <span className="mention-menu-name">
-                          {truncatePath(en.name)}
-                        </span>
+                          <span className="mention-menu-text">
+                            <span className="mention-menu-name">
+                              {basename(en.name)}
+                            </span>
+                            {en.path && (
+                              <span className="mention-menu-path">
+                                {truncatePath(en.name)}
+                              </span>
+                            )}
+                          </span>
                         </div>
                       ))}
                   </div>

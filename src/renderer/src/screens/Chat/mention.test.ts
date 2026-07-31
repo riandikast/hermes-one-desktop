@@ -190,6 +190,56 @@ describe("rankMentions", () => {
     expect(out.map((e) => e.name)).toEqual(["main.ts", "deep/nested/dir/main.ts"]);
   });
 
+  it("exact name + extension wins case-insensitively", () => {
+    const entries = [
+      EN("app/src/MainActivity.kt"),
+      EN("src/main/MainActivity2.kt"),
+      EN("tools/activity.kt"),
+    ];
+    const out = rankMentions("MAINACTIVITY.KT", entries, false);
+    expect(out[0].name).toBe("app/src/MainActivity.kt");
+  });
+
+  it("exact basename with extension outranks prefix lookalikes", () => {
+    const entries = [
+      EN("app/src/main/MainActivity.kt.bak"),
+      EN("app/src/MainActivity.kt"),
+      EN("app/src/MainActivity.ktx"),
+      EN("tests/MainActivityTest.kt"),
+    ];
+    const out = rankMentions("MainActivity.kt", entries, false);
+    expect(out[0].name).toBe("app/src/MainActivity.kt");
+  });
+
+  it("basename substring outranks plain subsequence (camelCase middle)", () => {
+    const entries = [
+      EN("src/renderer/GlRenderer.ts"),
+      EN("src/g_loader_rerender.ts"),
+      EN("src/main/gl/render/engine.ts"),
+    ];
+    const out = rankMentions("GlRenderer", entries, false);
+    expect(out[0].name).toBe("src/renderer/GlRenderer.ts");
+  });
+
+  it("exact full path outranks fuzzy basename matches", () => {
+    const entries = [
+      EN("app/src/main.ts"),
+      EN("app/src/MainActivity.kt"),
+      EN("src/main.ts"),
+    ];
+    const out = rankMentions("app/src/MainActivity.kt", entries, false);
+    expect(out[0].name).toBe("app/src/MainActivity.kt");
+  });
+
+  it("matches queries typed with Windows backslashes", () => {
+    const entries = [
+      EN("app/src/main/ipc/register.ts"),
+      EN("src/register.ts"),
+    ];
+    const out = rankMentions("app\\src\\main\\ipc\\register.ts", entries, false);
+    expect(out[0].name).toBe("app/src/main/ipc/register.ts");
+  });
+
   it("folder token filters to directories only", () => {
     const entries = [EN("src", true), EN("src/main.ts"), EN("src/lib", true), EN("README.md")];
     const out = rankMentions("", entries, true);
@@ -219,20 +269,20 @@ describe("displayText / displayToRawPos / rawToDisplayPos", () => {
   const tag = (name: string, path: string): string =>
     MENTION_START + name + MENTION_SEP + path + MENTION_END;
 
-  it("collapses tag inner text to the invisible sentinel trio", () => {
+  it("collapses tag inner text to a single zero-width space (no PUA leak)", () => {
     const raw = `see ${tag("main.js", "/a/b/main.js")} now`;
     const d = displayText(raw);
-    expect(d).toBe(`see ${MENTION_START}${MENTION_SEP}${MENTION_END} now`);
+    expect(d).toBe("see \u200B now");
+    expect(d).not.toMatch(/[\uE000\uE001\uE002]/);
     expect(d.length).toBeLessThan(raw.length);
   });
 
   it("round-trips caret positions before, inside, and after a tag", () => {
     const raw = `a ${tag("x.ts", "/p/x.ts")} z`;
-    const d = displayText(raw);
-    const tagStartD = d.indexOf(MENTION_START);
+    const d = displayText(raw); // "a \u200B z"
     expect(displayToRawPos(raw, 2)).toBe(2);
-    expect(displayToRawPos(raw, tagStartD)).toBe(2);
-    expect(displayToRawPos(raw, tagStartD + 3)).toBe(2 + tag("x.ts", "/p/x.ts").length);
+    expect(displayToRawPos(raw, 3)).toBe(2 + tag("x.ts", "/p/x.ts").length);
+    expect(displayToRawPos(raw, 4)).toBe(2 + tag("x.ts", "/p/x.ts").length + 1);
     expect(displayToRawPos(raw, d.length)).toBe(raw.length);
   });
 
@@ -241,16 +291,14 @@ describe("displayText / displayToRawPos / rawToDisplayPos", () => {
     const d = displayText(raw);
     expect(rawToDisplayPos(raw, 0)).toBe(0);
     expect(rawToDisplayPos(raw, 2)).toBe(2);
-    expect(rawToDisplayPos(raw, 2 + tag("x.ts", "/p/x.ts").length)).toBe(
-      d.indexOf(MENTION_END) + 1,
-    );
+    expect(rawToDisplayPos(raw, 2 + tag("x.ts", "/p/x.ts").length)).toBe(3);
     expect(rawToDisplayPos(raw, raw.length)).toBe(d.length);
   });
 
   it("handles multiple tags", () => {
     const raw = `${tag("a.ts", "/x/a.ts")} ${tag("b.ts", "/y/b.ts")}`;
     const d = displayText(raw);
-    expect((d.match(/[\uE000]/g) ?? []).length).toBe(2);
+    expect(d.match(/\u200B/g)).toHaveLength(2);
     expect(displayToRawPos(raw, d.length)).toBe(raw.length);
     expect(rawToDisplayPos(raw, raw.length)).toBe(d.length);
   });

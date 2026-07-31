@@ -17142,7 +17142,21 @@ body:has(.shell-vibrant),
 .mention-menu-icon {
   flex-shrink: 0;
 }
+.mention-menu-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
 .mention-menu-name {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mention-menu-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  opacity: 0.6;
 }

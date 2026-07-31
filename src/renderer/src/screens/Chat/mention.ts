@@ -89,18 +89,23 @@ export function expandTags(text: string): string {
 }
 
 /**
- * Display form of the raw input: each tag's inner text is replaced by the
- * invisible sentinel trio, so the textarea shows no tag text (badges render
- * in a chip row above). Sentinels are zero-width PUA chars.
+ * Display form of the raw input: each tag collapses to a single zero-width
+ * space, so the textarea shows no tag text at all (badges render in a chip
+ * row above). The ZWSP is invisible in every font — unlike the PUA sentinel
+ * trio it replaces, which leaked as tofu boxes in some UI fonts — and it
+ * still occupies one character position, so backspace/selection can delete
+ * a tag directly in the textarea.
  */
+export const TAG_DISPLAY_CHAR = "\u200B";
+
 export function displayText(raw: string): string {
-  return raw.replace(MENTION_RE, MENTION_START + MENTION_SEP + MENTION_END);
+  return raw.replace(MENTION_RE, TAG_DISPLAY_CHAR);
 }
 
 /**
  * Map a caret/selection offset in DISPLAY space to the corresponding offset
- * in RAW space. Offsets inside a tag (the 3 sentinel chars) map to the tag's
- * raw start; offsets at/after the tag end map to the tag's raw end.
+ * in RAW space. Offsets inside a tag (its single ZWSP) map to the tag's raw
+ * start; offsets at/after the tag end map to the tag's raw end.
  */
 export function displayToRawPos(raw: string, displayPos: number): number {
   let d = 0;
@@ -109,8 +114,8 @@ export function displayToRawPos(raw: string, displayPos: number): number {
     const outsideLen = tag.start - r;
     if (displayPos <= d + outsideLen) return r + (displayPos - d);
     d += outsideLen;
-    if (displayPos < d + 3) return tag.start;
-    d += 3;
+    if (displayPos < d + TAG_DISPLAY_CHAR.length) return tag.start;
+    d += TAG_DISPLAY_CHAR.length;
     r = tag.end;
   }
   return r + (displayPos - d);
@@ -126,7 +131,7 @@ export function rawToDisplayPos(raw: string, rawPos: number): number {
     if (rawPos <= tag.start) break;
     d += tag.start - lastEnd;
     if (rawPos < tag.end) return d;
-    d += 3;
+    d += TAG_DISPLAY_CHAR.length;
     lastEnd = tag.end;
   }
   return d + (rawPos - lastEnd);
@@ -169,17 +174,27 @@ export function basename(name: string): string {
 }
 
 // Rank bonuses (lower is better). Exact basename matches must always win,
-// then basename prefixes, then basename subsequences, then full-path matches.
+// then exact full-path matches, basename prefixes, basename substrings,
+// basename subsequences, then full-path matches.
 const EXACT_NAME_BONUS = -1000;
+const EXACT_PATH_BONUS = -950;
 const BASENAME_PREFIX_BONUS = -200;
+const BASENAME_SUBSTRING_BONUS = -100;
 const BASENAME_FUZZY_BONUS = -50;
+
+/** Case-fold and normalize Windows backslashes so `app\src\x.ts` finds
+ * `app/src/x.ts` entries. */
+function normalize(s: string): string {
+  return s.toLowerCase().replace(/\\/g, "/");
+}
 
 /**
  * Filter + rank mention entries for the dropdown.
  * - `@` (folderOnly=false) lists files only; `@/` (folderOnly=true) lists
  *   directories only. Hint rows (empty `path`) always pass through.
- * - Exact basename match ranks first; basename-prefix next; basename
- *   subsequence next; plain full-path subsequence last.
+ * - Exact basename match (case-insensitive, extension included) ranks first;
+ *   exact full-path next; basename-prefix next; basename substring next;
+ *   basename subsequence next; plain full-path subsequence last.
  * - Path length breaks near-ties (shorter path = closer to root wins).
  * - Empty query keeps walk order (all entries of the matching kind).
  */
@@ -188,7 +203,7 @@ export function rankMentions(
   entries: MentionEntry[],
   folderOnly: boolean,
 ): MentionEntry[] {
-  const q = query.toLowerCase();
+  const q = normalize(query);
   const scored: { en: MentionEntry; score: number }[] = [];
   for (const en of entries) {
     if (en.path === "") {
@@ -200,16 +215,21 @@ export function rankMentions(
     if (q.length === 0) {
       score = 0;
     } else {
-      const base = basename(en.name).toLowerCase();
-      const baseFuzzy = scoreFuzzy(query, base);
+      const name = normalize(en.name);
+      const base = basename(name);
+      const baseFuzzy = scoreFuzzy(q, base);
       if (base === q) {
         score = EXACT_NAME_BONUS;
+      } else if (name === q) {
+        score = EXACT_PATH_BONUS;
       } else if (base.startsWith(q)) {
         score = (baseFuzzy ?? 0) + BASENAME_PREFIX_BONUS;
+      } else if (base.includes(q)) {
+        score = (baseFuzzy ?? 0) + BASENAME_SUBSTRING_BONUS;
       } else if (baseFuzzy !== null) {
         score = baseFuzzy + BASENAME_FUZZY_BONUS;
       } else {
-        score = scoreFuzzy(query, en.name);
+        score = scoreFuzzy(q, name);
       }
       if (score === null) continue;
       if (q.length > 0) score += en.name.length / 1000;

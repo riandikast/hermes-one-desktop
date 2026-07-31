@@ -8,6 +8,7 @@ import {
   FileText,
   ExternalLink,
   Terminal,
+  Tag,
 } from "lucide-react";
 import { getIconForFile, getSVGStringFromFileType } from "@wesbos/code-icons";
 import { FileViewer } from "./FileViewer";
@@ -310,14 +311,19 @@ function RootSection({
 /** Parent directory of a tree path (paths are "/"-joined even on Windows). */
 function parentDir(path: string): string {
   const idx = path.lastIndexOf("/");
-  return idx > 0 ? path.slice(0, idx) : path;
+  if (idx <= 0) return path;
+  const dir = path.slice(0, idx);
+  // Drive-root edge: "C:/file.txt" → "C:" is invalid — keep the slash.
+  return dir.endsWith(":") ? `${dir}/` : dir;
 }
 
 interface ContextMenuState {
-  /** Directory to act on. */
+  /** Directory to act on (parent dir for file rows). */
   path: string;
   x: number;
   y: number;
+  /** Original row — the Tag action tags the file/folder itself. */
+  entry: { name: string; isDirectory: boolean; path: string };
 }
 
 export const WorktreePanel = memo(function WorktreePanel({
@@ -418,12 +424,25 @@ export const WorktreePanel = memo(function WorktreePanel({
     };
   }, [query, folderPaths]);
 
-  // Dismiss the context menu on outside click / Escape
+  // Dismiss the context menu on outside click / Escape. Clicks INSIDE the
+  // menu must not dismiss it: `mousedown` fires before the button's `click`,
+  // so an unguarded document listener would unmount the menu and the button
+  // action would never run.
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!contextMenu) return;
-    const dismiss = (): void => setContextMenu(null);
+    const dismiss = (e: Event): void => {
+      if (
+        contextMenuRef.current &&
+        e.target instanceof Node &&
+        contextMenuRef.current.contains(e.target)
+      ) {
+        return;
+      }
+      setContextMenu(null);
+    };
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") dismiss();
+      if (e.key === "Escape") setContextMenu(null);
     };
     document.addEventListener("mousedown", dismiss);
     document.addEventListener("keydown", onKey);
@@ -446,6 +465,11 @@ export const WorktreePanel = memo(function WorktreePanel({
         path: target,
         x: Math.min(left, Math.max(0, width - 200)),
         y: top,
+        entry: {
+          name: path.slice(path.lastIndexOf("/") + 1),
+          isDirectory,
+          path,
+        },
       });
     },
     [width],
@@ -460,6 +484,13 @@ export const WorktreePanel = memo(function WorktreePanel({
 
   const handleRevealInExplorer = (path: string): void => {
     void window.hermesAPI.revealInExplorer(path);
+    setContextMenu(null);
+  };
+
+  const handleTagInChat = (entry: ContextMenuState["entry"]): void => {
+    window.dispatchEvent(
+      new CustomEvent("hermes-insert-mention", { detail: entry }),
+    );
     setContextMenu(null);
   };
 
@@ -561,6 +592,7 @@ export const WorktreePanel = memo(function WorktreePanel({
       </div>
       {contextMenu && (
         <div
+          ref={contextMenuRef}
           className="worktree-context-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onContextMenu={(e) => e.preventDefault()}
@@ -580,6 +612,14 @@ export const WorktreePanel = memo(function WorktreePanel({
           >
             <Terminal size={14} />
             <span>{t("chat.worktree.openTerminal")}</span>
+          </button>
+          <button
+            type="button"
+            className="worktree-context-menu-item"
+            onClick={() => handleTagInChat(contextMenu.entry)}
+          >
+            <Tag size={14} />
+            <span>{t("chat.worktree.tag")}</span>
           </button>
         </div>
       )}
