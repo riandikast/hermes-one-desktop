@@ -100,10 +100,10 @@ async function defaultWindowsPackageInstallLocationsAsync(
   const promise = queryWindowsPackageInstallLocations(
     packageName,
     systemRoot,
-  ).then((locations) => {
-    if (locations.length === 0) windowsPackageLocationCache.delete(cacheKey);
-    return locations;
-  });
+  );
+  // Cache failures too — an absent package is the common case on machines
+  // with only a static shell, and re-probing Get-AppxPackage on every launch
+  // costs seconds. The entry is only dropped when the cache itself is cleared.
   windowsPackageLocationCache.set(cacheKey, promise);
   return promise;
 }
@@ -135,7 +135,7 @@ async function queryWindowsPackageInstallLocations(
       ],
       {
         encoding: "utf8",
-        timeout: 3000,
+        timeout: 1500,
         windowsHide: true,
       },
     )) as { stdout: string };
@@ -448,50 +448,78 @@ async function resolveWindowsTerminalAsync(
     cwd: dirPath,
   });
 
-  const packagePwsh = await findTrustedWindowsPackageExecutableAsync(
-    "Microsoft.PowerShell",
-    "Microsoft.PowerShell_",
-    "pwsh.exe",
-    programFiles,
-    systemRoot,
-    exists,
-    listDirs,
-    getPackageInstallLocations,
-  );
-  const pwshCandidates = [
+  // Static checks first — these are pure filesystem stats and cost nothing.
+  const pwshStatic = [
     win32.join(programFiles, "PowerShell", "7", "pwsh.exe"),
     win32.join(programFilesX86, "PowerShell", "7", "pwsh.exe"),
-    packagePwsh,
-  ];
-  const pwsh = pwshCandidates.find((candidate): candidate is string =>
-    Boolean(candidate && exists(candidate)),
-  );
-  if (pwsh) {
-    return startCommand(pwsh, ["-NoExit", "-NoLogo"]);
+  ].find((candidate) => exists(candidate));
+  if (pwshStatic) {
+    return startCommand(pwshStatic, ["-NoExit", "-NoLogo"]);
   }
 
-  const windowsTerminal =
-    (await findTrustedWindowsPackageExecutableAsync(
-      "Microsoft.WindowsTerminal",
-      "Microsoft.WindowsTerminal_",
-      "WindowsTerminal.exe",
-      programFiles,
-      systemRoot,
-      exists,
-      listDirs,
-      getPackageInstallLocations,
-    )) ||
-    (await findTrustedWindowsPackageExecutableAsync(
-      "Microsoft.WindowsTerminalPreview",
-      "Microsoft.WindowsTerminalPreview_",
-      "WindowsTerminal.exe",
-      programFiles,
-      systemRoot,
-      exists,
-      listDirs,
-      getPackageInstallLocations,
-    ));
-  if (windowsTerminal && exists(windowsTerminal)) {
+  const windowsTerminalStatic = findWindowsAppsExecutable(
+    programFiles,
+    "Microsoft.WindowsTerminal_",
+    "WindowsTerminal.exe",
+    exists,
+    listDirs,
+  );
+  const windowsTerminalPreviewStatic = findWindowsAppsExecutable(
+    programFiles,
+    "Microsoft.WindowsTerminalPreview_",
+    "WindowsTerminal.exe",
+    exists,
+    listDirs,
+  );
+  if (windowsTerminalStatic) {
+    return startCommand(windowsTerminalStatic, ["-d", dirPath]);
+  }
+  if (windowsTerminalPreviewStatic) {
+    return startCommand(windowsTerminalPreviewStatic, ["-d", dirPath]);
+  }
+
+  // Package probes are the slow path (Get-AppxPackage, up to 1.5s each when
+  // the package is missing). Run all three concurrently so the worst case is
+  // one probe timeout instead of three sequential ones. Results are cached
+  // by `defaultWindowsPackageInstallLocationsAsync` — including failures.
+  const [packagePwsh, windowsTerminalPackage, windowsTerminalPreviewPackage] =
+    await Promise.all([
+      findTrustedWindowsPackageExecutableAsync(
+        "Microsoft.PowerShell",
+        "Microsoft.PowerShell_",
+        "pwsh.exe",
+        programFiles,
+        systemRoot,
+        exists,
+        listDirs,
+        getPackageInstallLocations,
+      ),
+      findTrustedWindowsPackageExecutableAsync(
+        "Microsoft.WindowsTerminal",
+        "Microsoft.WindowsTerminal_",
+        "WindowsTerminal.exe",
+        programFiles,
+        systemRoot,
+        exists,
+        listDirs,
+        getPackageInstallLocations,
+      ),
+      findTrustedWindowsPackageExecutableAsync(
+        "Microsoft.WindowsTerminalPreview",
+        "Microsoft.WindowsTerminalPreview_",
+        "WindowsTerminal.exe",
+        programFiles,
+        systemRoot,
+        exists,
+        listDirs,
+        getPackageInstallLocations,
+      ),
+    ]);
+  if (packagePwsh) {
+    return startCommand(packagePwsh, ["-NoExit", "-NoLogo"]);
+  }
+  const windowsTerminal = windowsTerminalPackage || windowsTerminalPreviewPackage;
+  if (windowsTerminal) {
     return startCommand(windowsTerminal, ["-d", dirPath]);
   }
 
@@ -507,6 +535,26 @@ async function resolveWindowsTerminalAsync(
   }
 
   return null;
+}
+
+/**
+ * Warm the Windows package-install-location cache at startup so the first
+ * "Open terminal here" is served without Get-AppxPackage latency. Pure
+ * fire-and-forget: the probes are cached by
+ * `defaultWindowsPackageInstallLocationsAsync` and shared with any later
+ * resolution. Safe to call repeatedly and on any platform.
+ */
+export function warmTerminalResolver(): void {
+  if (process.platform !== "win32") return;
+  const systemDrive = windowsSystemDrive(process.env);
+  const systemRoot = win32.join(systemDrive, "Windows");
+  for (const packageName of [
+    "Microsoft.PowerShell",
+    "Microsoft.WindowsTerminal",
+    "Microsoft.WindowsTerminalPreview",
+  ]) {
+    void defaultWindowsPackageInstallLocationsAsync(packageName, systemRoot);
+  }
 }
 
 export function resolveTerminalCommand(

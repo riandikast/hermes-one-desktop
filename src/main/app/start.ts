@@ -18,6 +18,7 @@ import {
 import { registerIpcHandlers } from "../ipc/register";
 import { setGatewayPromptParent } from "../gatewayPrompt";
 import { showChatContextMenu } from "./context-menu";
+import { warmTerminalResolver } from "../terminal-launcher";
 import { buildMenu } from "./menu";
 import { setupUpdater } from "./updater";
 
@@ -51,6 +52,10 @@ export function startMainProcess(): void {
 
   app.whenReady().then(() => {
     electronApp.setAppUserModelId("com.hermes.desktop");
+
+    // Start the Windows terminal probes early so the first "Open terminal
+    // here" never waits on Get-AppxPackage (cached, failure results included).
+    warmTerminalResolver();
 
     app.on("browser-window-created", (_, window) => {
       optimizer.watchWindowShortcuts(window);
