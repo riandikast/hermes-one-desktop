@@ -33,7 +33,7 @@ export interface CachedSession {
   source: string;
   messageCount: number;
   model: string;
-  contextFolder: string | null;
+  contextFolders: string[];
 }
 
 interface CacheData {
@@ -82,8 +82,13 @@ function readCache(): CacheData {
       sessions: Array.isArray(parsed.sessions)
         ? parsed.sessions.map((s) => ({
             ...s,
-            contextFolder:
-              typeof s.contextFolder === "string" ? s.contextFolder : null,
+            contextFolders: Array.isArray(s.contextFolders)
+              ? s.contextFolders.filter(
+                  (f): f is string => typeof f === "string",
+                )
+              : typeof s.contextFolder === "string" && s.contextFolder
+                ? [s.contextFolder]
+                : [],
           }))
         : [],
     };
@@ -112,7 +117,7 @@ function attachContextFolders(sessions: CachedSession[]): CachedSession[] {
   const folders = getSessionContextFolders(sessions.map((s) => s.id));
   return sessions.map((session) => ({
     ...session,
-    contextFolder: folders.get(session.id) ?? null,
+    contextFolders: folders.get(session.id) ?? [],
   }));
 }
 
@@ -188,7 +193,7 @@ export function syncSessionCache(): CachedSession[] {
         model: row.model || "",
         // Filled in below by the single batched `attachContextFolders` pass
         // over the merged set, so we don't query the store once per new row.
-        contextFolder: null,
+        contextFolders: [],
       });
     }
 

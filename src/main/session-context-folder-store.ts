@@ -12,6 +12,8 @@ import { getDbConnection } from "./db";
  * table in the active profile's state.db, keyed by `session_id`.
  */
 const TABLE = "desktop_session_context_folders";
+/** Multi-root table: one row per linked folder per session, position-ordered. */
+const TABLE_ROOTS = "desktop_session_context_folder_roots";
 
 function ensureTable(db: Database.Database): void {
   db.exec(`
@@ -23,6 +25,18 @@ function ensureTable(db: Database.Database): void {
   `);
 }
 
+function ensureRootsTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ${TABLE_ROOTS} (
+      session_id TEXT NOT NULL,
+      folder_path TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      updated_at REAL NOT NULL DEFAULT (strftime('%s', 'now')),
+      PRIMARY KEY (session_id, folder_path)
+    );
+  `);
+}
+
 function tableExists(db: Database.Database): boolean {
   const row = db
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = ?")
@@ -30,34 +44,54 @@ function tableExists(db: Database.Database): boolean {
   return !!row;
 }
 
+function rootsTableExists(db: Database.Database): boolean {
+  const row = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = ?")
+    .get(TABLE_ROOTS) as { name: string } | undefined;
+  return !!row;
+}
+
 /**
- * Persist (or clear) the folder linked to a session. A null/empty folder
- * removes the row so an unlinked session doesn't restore a stale path.
+ * Persist (or clear) the folders linked to a session. An empty array removes
+ * the rows so an unlinked session doesn't restore stale paths.
  */
-export function setSessionContextFolder(
+export function setSessionContextFolders(
   sessionId: string,
-  folder: string | null,
+  folders: string[],
 ): void {
   if (!sessionId) return;
   const db = getDbConnection(false);
   if (!db) return;
   ensureTable(db);
+  ensureRootsTable(db);
 
-  if (!folder) {
+  const clean = (folders ?? [])
+    .map((f) => f.trim())
+    .filter((f) => f.length > 0);
+  db.prepare(`DELETE FROM ${TABLE_ROOTS} WHERE session_id = ?`).run(sessionId);
+  clean.forEach((folder, i) => {
+    db.prepare(
+      `INSERT INTO ${TABLE_ROOTS} (session_id, folder_path, position, updated_at)
+       VALUES (?, ?, ?, strftime('%s', 'now'))
+       ON CONFLICT(session_id, folder_path) DO UPDATE SET
+         position = excluded.position,
+         updated_at = excluded.updated_at`,
+    ).run(sessionId, folder, i);
+  });
+  if (clean.length === 0) {
     db.prepare(`DELETE FROM ${TABLE} WHERE session_id = ?`).run(sessionId);
-    return;
   }
-
-  db.prepare(
-    `INSERT INTO ${TABLE} (session_id, folder_path, updated_at)
-     VALUES (?, ?, strftime('%s', 'now'))
-     ON CONFLICT(session_id) DO UPDATE SET
-       folder_path = excluded.folder_path,
-       updated_at = excluded.updated_at`,
-  ).run(sessionId, folder);
 }
 
-/** Read the folder linked to a session, or null when none is stored. */
+/** Legacy single-folder setter; kept for one-shot migration use. */
+export function setSessionContextFolder(
+  sessionId: string,
+  folder: string | null,
+): void {
+  setSessionContextFolders(sessionId, folder ? [folder] : []);
+}
+
+/** Read the legacy single folder linked to a session, or null. */
 export function getSessionContextFolder(sessionId: string): string | null {
   if (!sessionId) return null;
   const db = getDbConnection(true);
@@ -69,19 +103,48 @@ export function getSessionContextFolder(sessionId: string): string | null {
 }
 
 /**
+ * Read the folders linked to a session, in selection order. Sessions that
+ * only have a legacy single-folder row are lazily migrated to the roots
+ * table on first read.
+ */
+export function getSessionContextFoldersForSession(
+  sessionId: string,
+): string[] {
+  if (!sessionId) return [];
+  const db = getDbConnection(true);
+  if (!db || !tableExists(db)) return [];
+  ensureRootsTable(db);
+  const rows = db
+    .prepare(
+      `SELECT folder_path FROM ${TABLE_ROOTS} WHERE session_id = ? ORDER BY position ASC`,
+    )
+    .all(sessionId) as Array<{ folder_path: string }>;
+  const roots = rows.map((r) => r.folder_path);
+  if (roots.length === 0) {
+    const legacy = getSessionContextFolder(sessionId);
+    if (legacy) {
+      setSessionContextFolders(sessionId, [legacy]);
+      return [legacy];
+    }
+  }
+  return roots;
+}
+
+/**
  * Batch-read the folders linked to many sessions in a single pass: one
- * `tableExists` check and one chunked `IN (...)` query instead of two queries
- * per session. Used by the session cache so attaching folders to a full page
- * of rows stays a couple of queries rather than O(N). Sessions with no linked
- * folder are simply absent from the returned map.
+ * table-existence check and one chunked `IN (...)` query instead of two
+ * queries per session. Used by the session cache so attaching folders to a
+ * full page of rows stays a couple of queries rather than O(N). Sessions
+ * with no linked folders are simply absent from the returned map.
  */
 export function getSessionContextFolders(
   sessionIds: string[],
-): Map<string, string> {
-  const result = new Map<string, string>();
+): Map<string, string[]> {
+  const result = new Map<string, string[]>();
   if (sessionIds.length === 0) return result;
   const db = getDbConnection(true);
   if (!db || !tableExists(db)) return result;
+  ensureRootsTable(db);
 
   // Chunk well under SQLITE_MAX_VARIABLE_NUMBER for portability, matching the
   // batching used elsewhere in the session cache.
@@ -91,18 +154,30 @@ export function getSessionContextFolders(
     const placeholders = chunk.map(() => "?").join(", ");
     const rows = db
       .prepare(
-        `SELECT session_id, folder_path FROM ${TABLE} WHERE session_id IN (${placeholders})`,
+        `SELECT session_id, folder_path FROM ${TABLE_ROOTS} WHERE session_id IN (${placeholders}) ORDER BY session_id, position ASC`,
       )
       .all(...chunk) as Array<{ session_id: string; folder_path: string }>;
     for (const r of rows) {
-      if (r.folder_path) result.set(r.session_id, r.folder_path);
+      const list = result.get(r.session_id) ?? [];
+      if (r.folder_path) list.push(r.folder_path);
+      result.set(r.session_id, list);
+    }
+  }
+  // Lazy-migrate sessions that only have a legacy single-folder row.
+  for (const sessionId of sessionIds) {
+    if (!result.has(sessionId)) {
+      const legacy = getSessionContextFolder(sessionId);
+      if (legacy) {
+        setSessionContextFolders(sessionId, [legacy]);
+        result.set(sessionId, [legacy]);
+      }
     }
   }
   return result;
 }
 
 /**
- * Drop a session's linked-folder row. Called from `deleteSessionRows` so it
+ * Drop a session's linked-folder rows. Called from `deleteSessionRows` so it
  * runs inside the same delete transaction as the other per-session cleanup.
  */
 export function deleteSessionContextFolderForSession(
@@ -112,9 +187,15 @@ export function deleteSessionContextFolderForSession(
   if (tableExists(db)) {
     db.prepare(`DELETE FROM ${TABLE} WHERE session_id = ?`).run(sessionId);
   }
+  if (rootsTableExists(db)) {
+    db.prepare(`DELETE FROM ${TABLE_ROOTS} WHERE session_id = ?`).run(sessionId);
+  }
 }
 
-/** Get recent distinct context folder paths ordered by most recently updated. */
+/**
+ * Get recent distinct context folder paths ordered by most recently updated.
+ * Covers both the roots table and legacy single-folder rows.
+ */
 export function getRecentSessionContextFolders(limit = 20): string[] {
   const db = getDbConnection(true);
   if (!db || !tableExists(db)) return [];
@@ -122,10 +203,29 @@ export function getRecentSessionContextFolders(limit = 20): string[] {
   // recent use. A `DISTINCT folder_path ... ORDER BY updated_at` collapses the
   // duplicates but then orders by an arbitrary one of each path's rows, so a
   // folder reused recently could sort as if it were old.
-  const rows = db
+  const rootsRows = rootsTableExists(db)
+    ? (db
+        .prepare(
+          `SELECT folder_path, MAX(updated_at) AS latest FROM ${TABLE_ROOTS}
+           WHERE folder_path IS NOT NULL AND folder_path != ''
+           GROUP BY folder_path`,
+        )
+        .all() as Array<{ folder_path: string; latest: number }>)
+    : [];
+  const legacyRows = (db
     .prepare(
-      `SELECT folder_path FROM ${TABLE} WHERE folder_path IS NOT NULL AND folder_path != '' GROUP BY folder_path ORDER BY MAX(updated_at) DESC LIMIT ?`,
+      `SELECT folder_path, updated_at AS latest FROM ${TABLE}
+       WHERE folder_path IS NOT NULL AND folder_path != ''
+       GROUP BY folder_path`,
     )
-    .all(limit) as Array<{ folder_path: string }>;
-  return rows.map((r) => r.folder_path);
+    .all() as Array<{ folder_path: string; latest: number }>);
+  const merged = new Map<string, number>();
+  for (const r of [...rootsRows, ...legacyRows]) {
+    const prev = merged.get(r.folder_path);
+    if (prev === undefined || r.latest > prev) merged.set(r.folder_path, r.latest);
+  }
+  return [...merged.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([path]) => path);
 }
