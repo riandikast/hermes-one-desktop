@@ -1511,6 +1511,22 @@ const hermesAPI = {
     dirPath: string,
   ): Promise<{ name: string; isDirectory: boolean }[] | null> =>
     ipcRenderer.invoke("read-directory", dirPath),
+
+  watchContextFolder: (folder: string): Promise<void> =>
+    ipcRenderer.invoke("watch-context-folder", folder),
+
+  onContextFolderChanged: (callback: () => void): (() => void) => {
+    const listener = (): void => callback();
+    ipcRenderer.on("context-folder-changed", listener);
+    return () => {
+      ipcRenderer.removeListener("context-folder-changed", listener);
+    };
+  },
+
+  listFilesRecursive: (
+    folder: string,
+  ): Promise<{ name: string; isDirectory: boolean; path: string }[] | null> =>
+    ipcRenderer.invoke("list-files-recursive", folder),
   readFile: (
     filePath: string,
     maxBytes?: number,

@@ -12,6 +12,8 @@ import {
 import { extname } from "path";
 import { randomUUID } from "crypto";
 import { readdir, readFile, stat } from "fs/promises";
+import { watch } from "fs";
+import type { FSWatcher } from "fs";
 import { getActiveProfileNameSync } from "../utils";
 import type { Attachment } from "../../shared/attachments";
 import type { SessionModelOverride } from "../../shared/model-override";
@@ -2788,6 +2790,89 @@ export function registerIpcHandlers(context: IpcContext): void {
       : await dialog.showOpenDialog({ properties: ["openDirectory"] });
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
+  });
+
+  // --- Live watcher for the worktree/context folder (drives live explorer updates) ---
+  // ponytail: recursive fs.watch is fine on Windows/macOS/Linux (Node >= 20);
+  // if a platform throws (e.g. network drives), the watcher degrades to null
+  // and the panel just keeps the manual reopen behavior.
+  const folderWatchers = new Map<
+    number,
+    { watcher: FSWatcher | null; timer: NodeJS.Timeout | null }
+  >();
+  ipcMain.handle("watch-context-folder", (event, folder: string) => {
+    const id = event.sender.id;
+    folderWatchers.get(id)?.watcher?.close();
+    const rec = { watcher: null as FSWatcher | null, timer: null as NodeJS.Timeout | null };
+    folderWatchers.set(id, rec);
+    try {
+      rec.watcher = watch(folder, { recursive: true }, () => {
+        if (rec.timer) clearTimeout(rec.timer);
+        rec.timer = setTimeout(() => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send("context-folder-changed");
+          }
+        }, 400);
+      });
+    } catch {
+      rec.watcher = null;
+    }
+    event.sender.once("destroyed", () => {
+      rec.watcher?.close();
+      if (rec.timer) clearTimeout(rec.timer);
+      folderWatchers.delete(id);
+    });
+  });
+
+  // Recursive file listing for the @-mention picker. Returns relative
+  // `name`s (folder/file.ext) with absolute `path`s. Skips heavy/build dirs
+  // and caps the walk so huge repos don't freeze the picker.
+  const MENTION_EXCLUDED_DIRS = new Set([
+    "node_modules",
+    ".git",
+    ".hg",
+    ".svn",
+    "dist",
+    "build",
+    "out",
+    ".cache",
+    ".next",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "target",
+  ]);
+  const MENTION_MAX_ENTRIES = 10000;
+  ipcMain.handle("list-files-recursive", async (_event, root: string) => {
+    const conn = getConnectionConfig();
+    if (conn.mode === "ssh" || conn.mode === "remote") return null;
+    const out: { name: string; isDirectory: boolean; path: string }[] = [];
+    const walk = async (dir: string, rel: string): Promise<boolean> => {
+      if (out.length >= MENTION_MAX_ENTRIES) return false;
+      let entries: import("fs").Dirent[];
+      try {
+        entries = await readdir(dir, { withFileTypes: true });
+      } catch {
+        return true;
+      }
+      entries.sort((a, b) => a.name.localeCompare(b.name));
+      for (const e of entries) {
+        if (out.length >= MENTION_MAX_ENTRIES) return false;
+        const name = rel ? `${rel}/${e.name}` : e.name;
+        const full = `${root}/${name}`;
+        if (e.isDirectory()) {
+          if (MENTION_EXCLUDED_DIRS.has(e.name)) continue;
+          out.push({ name, isDirectory: true, path: full });
+          const ok = await walk(full, name);
+          if (!ok) return false;
+        } else {
+          out.push({ name, isDirectory: false, path: full });
+        }
+      }
+      return true;
+    };
+    await walk(root, "");
+    return out;
   });
 
   // Read directory contents for worktree panel

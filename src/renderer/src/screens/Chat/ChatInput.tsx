@@ -8,7 +8,7 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { Square as Stop, Search, Paperclip, Mic, ArrowUp } from "lucide-react";
+import { Square as Stop, Search, Paperclip, Mic, ArrowUp, FileText, FolderOpen } from "lucide-react";
 import { isImeComposing } from "./keyboard";
 import { useI18n } from "../../components/useI18n";
 import { SLASH_COMMANDS, type SlashCommand } from "./slashCommands";
@@ -27,6 +27,17 @@ import {
   type AttachmentError,
 } from "./attachmentUtils";
 import { AttachmentChip } from "../../components/AttachmentChip";
+import {
+  findMention,
+  rankMentions,
+  truncatePath,
+  parseTags,
+  expandTags,
+  MENTION_START,
+  MENTION_SEP,
+  MENTION_END,
+  type MentionEntry,
+} from "./mention";
 import { ContextGauge, type ContextUsage } from "./ContextGauge";
 import type { Attachment } from "../../../../shared/attachments";
 
@@ -88,6 +99,17 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
   ): React.JSX.Element {
     const { t } = useI18n();
     const [input, setInput] = useState("");
+    const [mentionOpen, setMentionOpen] = useState(false);
+    const [mentionEntries, setMentionEntries] = useState<MentionEntry[]>([]);
+    const [mentionQuery, setMentionQuery] = useState("");
+    const [mentionSelected, setMentionSelected] = useState(0);
+    const [mentionFolderOnly, setMentionFolderOnly] = useState(false);
+    const mentionStartRef = useRef(0);
+    // Once the user explicitly closes the menu (Escape / overlay click), it
+    // stays closed for the current @-token: typing more chars (`@gmail.com`)
+    // must not resurrect it. Resets when a new token starts or the token
+    // disappears.
+    const mentionDismissedRef = useRef(false);
     const [slashMenuOpen, setSlashMenuOpen] = useState(false);
     const [slashFilter, setSlashFilter] = useState("");
     const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
@@ -358,20 +380,22 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     }
 
     function handleSend(): void {
-      const text = input.trim();
+      const raw = input.trim();
+      const text = expandTags(raw);
       const hasPayload = text.length > 0 || attachments.length > 0;
       if (!hasPayload) return;
       setSlashMenuOpen(false);
       const sendAttachments = attachments;
-      clearAfterSend(text);
+      clearAfterSend(raw);
       onSubmit(text, sendAttachments);
     }
 
     function handleQuickAsk(): void {
-      const text = input.trim();
+      const raw = input.trim();
+      const text = expandTags(raw);
       if (!text) return;
       const sendAttachments = attachments;
-      clearAfterSend(text);
+      clearAfterSend(raw);
       onQuickAsk(text, sendAttachments);
     }
 
@@ -387,11 +411,35 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       inputRef.current?.focus();
     }
 
+    function updateMentionFor(value: string, caret: number): void {
+      const m = findMention(value, caret);
+      if (m) {
+        if (mentionStartRef.current !== m.start) {
+          // New @-token — a previous explicit dismiss no longer applies.
+          mentionDismissedRef.current = false;
+        }
+        if (mentionDismissedRef.current) return;
+        const opening = !mentionOpen;
+        mentionStartRef.current = m.start;
+        setMentionQuery(m.query);
+        setMentionFolderOnly(m.folderOnly);
+        setMentionSelected(0);
+        setMentionOpen(true);
+        if (opening || mentionEntries.length === 0) {
+          void loadMentionEntries();
+        }
+      } else {
+        setMentionOpen(false);
+        mentionDismissedRef.current = false;
+      }
+    }
+
     function handleInputChange(
       e: React.ChangeEvent<HTMLTextAreaElement>,
     ): void {
       const value = e.target.value;
       setInput(value);
+      updateMentionFor(value, e.target.selectionStart ?? value.length);
       // Height is handled by the useLayoutEffect on `input` above.
 
       if (value.startsWith("/") && !value.includes(" ")) {
@@ -437,6 +485,50 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         }
       }
 
+      // Backspace deletes a whole mention tag at once (no char-by-char)
+      if (e.key === "Backspace") {
+        const caret = inputRef.current?.selectionStart ?? input.length;
+        const tag = parseTags(input).find(
+          (tg) => caret > tg.start && caret <= tg.end,
+        );
+        if (tag) {
+          e.preventDefault();
+          const next = input.slice(0, tag.start) + input.slice(tag.end);
+          setInput(next);
+          updateMentionFor(next, tag.start);
+          requestAnimationFrame(() => {
+            const el = inputRef.current;
+            if (el) el.setSelectionRange(tag.start, tag.start);
+          });
+          return;
+        }
+      }
+
+      // Mention menu keyboard navigation
+      if (mentionOpen && rankedMentions.length > 0) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setMentionSelected((i) => (i + 1) % rankedMentions.length);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setMentionSelected((i) => (i - 1 + rankedMentions.length) % rankedMentions.length);
+          return;
+        }
+        if (e.key === "Enter" || e.key === "Tab") {
+          e.preventDefault();
+          insertMention(rankedMentions[mentionSelected]);
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setMentionOpen(false);
+          mentionDismissedRef.current = true;
+          return;
+        }
+      }
+
       // History navigation: ArrowUp/Down when not in a multiline draft (or already navigating)
       if (!slashMenuOpen && (history.isNavigating() || !input.includes("\n"))) {
         if (e.key === "ArrowUp" && history.size() > 0) {
@@ -458,6 +550,85 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         handleSend();
       }
     }
+
+    async function loadMentionEntries(): Promise<void> {
+      if (remoteMode) {
+        setMentionEntries([]);
+        return;
+      }
+      try {
+        let folder = sessionId
+          ? await window.hermesAPI.getSessionContextFolder(sessionId)
+          : null;
+        if (!folder) {
+          // New session (no sessionId yet): fall back to the most recent
+          // context folder so @ works out of the box.
+          const recent = await window.hermesAPI.listRecentSessionContextFolders(1);
+          folder = recent[0] ?? null;
+        }
+        if (!folder) {
+          // No context folder chosen yet — show a hint instead of a dead menu.
+          setMentionEntries([
+            {
+              name: "No folder selected — pick one with the folder button",
+              isDirectory: false,
+              path: "",
+            },
+          ]);
+          return;
+        }
+        type MentionFile = { name: string; isDirectory: boolean; path: string };
+        const result = await window.hermesAPI.listFilesRecursive(folder);
+        let list: MentionFile[] | null = result;
+        if (list === null || list.length === 0) {
+          // ssh/remote mode (or an empty walk) — fall back to top-level only.
+          const top = await window.hermesAPI.readDirectory(folder);
+          const root = folder.replace(/[\\/]+$/, "");
+          list = (top ?? []).map((e) => ({
+            name: e.name,
+            isDirectory: e.isDirectory,
+            path: `${root}/${e.name}`,
+          }));
+        }
+        if (list.length === 0) {
+          setMentionEntries([]);
+          return;
+        }
+        setMentionEntries(list);
+      } catch {
+        setMentionEntries([]);
+      }
+    }
+
+    function insertMention(entry: MentionEntry): void {
+      if (!entry.path) return; // hint rows are not insertable
+      const el = inputRef.current;
+      const caret = el?.selectionStart ?? input.length;
+      const tag =
+        MENTION_START + entry.name + MENTION_SEP + entry.path + MENTION_END;
+      const next =
+        input.slice(0, mentionStartRef.current) + tag + " " + input.slice(caret);
+      setInput(next);
+      setMentionOpen(false);
+      setMentionEntries([]);
+      mentionDismissedRef.current = false;
+      updateMentionFor(next, mentionStartRef.current + tag.length);
+      requestAnimationFrame(() => {
+        if (el) {
+          el.focus();
+          const pos = mentionStartRef.current + tag.length + 1;
+          el.setSelectionRange(pos, pos);
+        }
+      });
+    }
+
+    // Ranked, token-filtered view of the mention entries. Shared by the menu
+    // list and keyboard navigation so Enter inserts the highlighted row.
+    const rankedMentions = rankMentions(
+      mentionQuery,
+      mentionEntries,
+      mentionFolderOnly,
+    );
 
     function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>): void {
       const { files, hasText } = filesFromClipboard(e);
@@ -656,9 +827,56 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             multiple
             style={{ display: "none" }}
             onChange={handleFileInputChange}
-          />
-          <textarea
-            ref={inputRef}
+            />
+            {mentionOpen && rankedMentions.length > 0 && (
+              <div
+                className="mention-menu-overlay"
+                onMouseDown={() => {
+                  setMentionOpen(false);
+                  mentionDismissedRef.current = true;
+                }}
+              >
+                <div
+                  className="mention-menu"
+                  role="dialog"
+                  aria-label="Mention files"
+                  onMouseDown={(event) => event.stopPropagation()}
+                >
+                  <div className="mention-menu-list">
+                    {rankedMentions
+                      .slice(0, 12)
+                      .map((en, i) => (
+                        <div
+                          key={en.path}
+                          className={
+                            "mention-menu-item" +
+                            (i === mentionSelected ? " mention-menu-item-selected" : "")
+                          }
+                          title={en.path}
+                          onMouseEnter={() => setMentionSelected(i)}
+                          onMouseDown={(event) => {
+                            event.stopPropagation();
+                            insertMention(en);
+                          }}
+                        >
+                          <span className="mention-menu-icon">
+                            {en.isDirectory ? (
+                              <FolderOpen size={14} />
+                            ) : (
+                              <FileText size={14} />
+                            )}
+                          </span>
+                          <span className="mention-menu-name">
+                          {truncatePath(en.name)}
+                        </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </div>
+            )}
+            <textarea
+              ref={inputRef}
             className="chat-input"
             placeholder={t("chat.typeMessage")}
             value={input}

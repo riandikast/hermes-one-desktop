@@ -638,6 +638,11 @@ interface HermesAPI {
     error: DesktopSessionLocalError,
   ) => Promise<boolean>;
   getSessionContextFolder: (sessionId: string) => Promise<string | null>;
+  watchContextFolder: (folder: string) => Promise<void>;
+  onContextFolderChanged: (callback: () => void) => () => void;
+  listFilesRecursive: (
+    folder: string,
+  ) => Promise<{ name: string; isDirectory: boolean; path: string }[] | null>;
   setSessionContextFolder: (
     sessionId: string,
     folder: string | null,

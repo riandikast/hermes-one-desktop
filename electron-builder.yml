@@ -3,6 +3,7 @@ productName: Hermes One
 directories:
   buildResources: build
 files:
+  - "!dist{,2}/**"
   - "!**/.vscode/*"
   - "!src/*"
   - "!electron.vite.config.{js,ts,mjs,cjs}"

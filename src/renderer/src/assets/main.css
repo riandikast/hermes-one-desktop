@@ -16964,3 +16964,50 @@ body:has(.shell-vibrant),
     0 24px 60px -16px rgba(0, 0, 0, 0.6),
     0 8px 24px -12px rgba(0, 0, 0, 0.45);
 }
+
+/* @-mention file picker */
+.mention-menu-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+}
+.mention-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 12px;
+  width: 680px;
+  max-width: calc(100vw - 40px);
+  max-height: 260px;
+  overflow-y: auto;
+  background: #1e1e2e;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  padding: 6px;
+}
+.mention-menu-list {
+  display: flex;
+  flex-direction: column;
+}
+.mention-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mention-menu-item-selected {
+  background: rgba(255, 255, 255, 0.09);
+}
+.mention-menu-icon {
+  flex-shrink: 0;
+}
+.mention-menu-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, memo } from "react";
+import { useState, useEffect, useCallback, useRef, memo } from "react";
 import {
   Folder,
   ChevronRight,
@@ -28,6 +28,8 @@ interface TreeItemProps {
   parentPath: string;
   depth: number;
   onFileClick?: (filePath: string) => void;
+  /** Bumped by the root panel whenever the watched folder changes on disk. */
+  refreshVersion: number;
 }
 
 function FileIcon({ filename }: { filename: string }): React.JSX.Element {
@@ -51,6 +53,7 @@ function TreeItem({
   parentPath,
   depth,
   onFileClick,
+  refreshVersion,
 }: TreeItemProps): React.JSX.Element {
   const { t } = useI18n();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -59,8 +62,11 @@ function TreeItem({
 
   const fullPath = `${parentPath}/${entry.name}`;
 
+  const [childrenVersion, setChildrenVersion] = useState(0);
+
   const loadChildren = useCallback(async () => {
-    if (!entry.isDirectory || children !== null) return;
+    if (!entry.isDirectory) return;
+    if (children !== null && childrenVersion === refreshVersion) return;
     setIsLoading(true);
     const result = await window.hermesAPI.readDirectory(fullPath);
     if (result) {
@@ -73,8 +79,16 @@ function TreeItem({
       });
       setChildren(sorted);
     }
+    setChildrenVersion(refreshVersion);
     setIsLoading(false);
-  }, [entry.isDirectory, fullPath, children]);
+  }, [entry.isDirectory, fullPath, children, childrenVersion, refreshVersion]);
+
+  // Live refresh: refetch already-loaded children when the folder changed
+  useEffect(() => {
+    if (children !== null && childrenVersion !== refreshVersion) {
+      void loadChildren();
+    }
+  }, [refreshVersion, children, childrenVersion, loadChildren]);
 
   const handleClick = (): void => {
     if (entry.isDirectory) {
@@ -140,6 +154,7 @@ function TreeItem({
                 parentPath={fullPath}
                 depth={depth + 1}
                 onFileClick={onFileClick}
+                refreshVersion={refreshVersion}
               />
             ))
           )}
@@ -194,9 +209,12 @@ export const WorktreePanel = memo(function WorktreePanel({
     document.addEventListener("pointerup", onUp);
   };
 
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const hasLoadedRef = useRef(false);
+
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
+    if (!hasLoadedRef.current) setIsLoading(true);
     setError(null);
     setTerminalError(null);
 
@@ -215,6 +233,7 @@ export const WorktreePanel = memo(function WorktreePanel({
         });
         setEntries(sorted);
       }
+      hasLoadedRef.current = true;
       setIsLoading(false);
     };
 
@@ -222,6 +241,14 @@ export const WorktreePanel = memo(function WorktreePanel({
     return () => {
       cancelled = true;
     };
+  }, [folderPath, refreshVersion]);
+
+  // Live-update: watch the folder in the main process, re-scan on changes
+  useEffect(() => {
+    void window.hermesAPI.watchContextFolder(folderPath);
+    return window.hermesAPI.onContextFolderChanged(() => {
+      setRefreshVersion((v) => v + 1);
+    });
   }, [folderPath]);
 
   // Get the folder name from the path
@@ -278,6 +305,7 @@ export const WorktreePanel = memo(function WorktreePanel({
               parentPath={folderPath}
               depth={0}
               onFileClick={setSelectedFile}
+              refreshVersion={refreshVersion}
             />
           ))
         )}
