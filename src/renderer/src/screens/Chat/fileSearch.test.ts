@@ -13,11 +13,23 @@ const entries: FileSearchEntry[] = [
   { name: 'generated.ts', isDirectory: false, path: 'src/generated/generated.ts' },
   { name: 'Chat', isDirectory: true, path: 'src/Chat' },
   { name: 'Chat.ts', isDirectory: false, path: 'src/Chat.ts' },
+  { name: 'generated.ts', isDirectory: false, path: 'src/generated.ts' },
+  { name: 'needle.ts', isDirectory: false, path: 'a/needle.ts' },
+  { name: 'needle.ts', isDirectory: false, path: 'a/deep/needle.ts' },
+  { name: 'CASE.ts', isDirectory: false, path: 'z/CASE.ts' },
+  { name: 'case.ts', isDirectory: false, path: 'a/case.ts' },
+  { name: 'target', isDirectory: true, path: 'src/target' },
+  { name: 'target.ts', isDirectory: false, path: 'src/target/target.ts' },
+  { name: 'target.ts', isDirectory: false, path: 'src/target.ts' },
 ]
 
 describe('tokenizeSearch', () => {
   it('normalizes separators and splits camelCase', () => {
     expect(tokenizeSearch('src\\ChatInput_file.ts')).toEqual(['src', 'chat', 'input', 'file', 'ts'])
+  })
+
+  it('matches slash and backslash separators equivalently', () => {
+    expect(searchFiles(entries, 'src\\Chat.ts', 'files')[0]?.path).toBe('src/Chat.ts')
   })
 })
 
@@ -52,6 +64,31 @@ describe('searchFiles', () => {
       'src/renderer/src/screens/Chat/ChatInput.tsx',
       'src/renderer/src/screens/Chat/chat-input.test.tsx',
     ])
+  })
+
+  it('uses depth before path length within a ranking tier', () => {
+    expect(searchFiles(entries, 'needle.ts', 'files').slice(0, 2).map((entry) => entry.path)).toEqual([
+      'a/needle.ts',
+      'a/deep/needle.ts',
+    ])
+  })
+
+  it('uses original path as a case-only tie breaker', () => {
+    expect(searchFiles(entries, 'case.ts', 'files').slice(0, 2).map((entry) => entry.path)).toEqual([
+      'a/case.ts',
+      'z/CASE.ts',
+    ])
+  })
+
+  it('does not exclude filenames that equal excluded directory names', () => {
+    expect(searchFiles(entries, 'target.ts', 'files').map((entry) => entry.path)).toContain('src/target.ts')
+  })
+
+  it('ranks path-token fuzzy matches after basename matches', () => {
+    const result = searchFiles(entries, 'renderer screen', 'files')
+    const rendererMatch = result.findIndex((entry) => entry.path === 'src/renderer/src/screens/Chat/ChatInput.tsx')
+    expect(rendererMatch).toBeGreaterThanOrEqual(0)
+    expect(result.every((entry) => entry.path.includes('renderer'))).toBe(true)
   })
 
   it('filters files and folders', () => {
