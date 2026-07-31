@@ -33,8 +33,8 @@ import {
   persistSessionLocalError,
 } from "../session-continuation-store";
 import {
-  getSessionContextFolder,
-  setSessionContextFolder,
+  getSessionContextFoldersForSession,
+  setSessionContextFolders,
   getRecentSessionContextFolders,
 } from "../session-context-folder-store";
 import {
@@ -2016,16 +2016,24 @@ export function registerIpcHandlers(context: IpcContext): void {
     },
   );
 
-  // Per-session linked working folder (issue #27): a desktop-only binding
-  // persisted in the local state.db so a re-opened session restores its folder.
+  // Per-session linked working folders (issue #27): a desktop-only binding
+  // persisted in the local state.db so a re-opened session restores its
+  // folders. A session can link multiple roots; entries are deduped and
+  // trimmed here so the store only ever sees clean data.
   ipcMain.handle("get-session-context-folder", (_event, sessionId: string) => {
-    return getSessionContextFolder(sessionId);
+    return getSessionContextFoldersForSession(sessionId);
   });
 
   ipcMain.handle(
     "set-session-context-folder",
-    (_event, sessionId: string, folder: string | null) => {
-      setSessionContextFolder(sessionId, folder);
+    (_event, sessionId: string, folders: string[] | string | null) => {
+      if (Array.isArray(folders)) {
+        setSessionContextFolders(sessionId, folders);
+      } else if (typeof folders === "string") {
+        setSessionContextFolders(sessionId, [folders]);
+      } else {
+        setSessionContextFolders(sessionId, []);
+      }
       return true;
     },
   );
@@ -2039,11 +2047,14 @@ export function registerIpcHandlers(context: IpcContext): void {
         const cached = listCachedSessions(100);
         const seen = new Set(folders);
         for (const s of cached) {
-          if (s.contextFolder && !seen.has(s.contextFolder)) {
-            seen.add(s.contextFolder);
-            folders.push(s.contextFolder);
-            if (folders.length >= lim) break;
+          for (const folder of s.contextFolders) {
+            if (!seen.has(folder)) {
+              seen.add(folder);
+              folders.push(folder);
+              if (folders.length >= lim) break;
+            }
           }
+          if (folders.length >= lim) break;
         }
       }
       return folders;
@@ -2783,13 +2794,32 @@ export function registerIpcHandlers(context: IpcContext): void {
     (_event, input: CreateTaskInput, profile?: string) =>
       kanbanCreateTask(input, profile),
   );
-  ipcMain.handle("select-folder", async (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    const result = win
-      ? await dialog.showOpenDialog(win, { properties: ["openDirectory"] })
-      : await dialog.showOpenDialog({ properties: ["openDirectory"] });
-    if (result.canceled || result.filePaths.length === 0) return null;
-    return result.filePaths[0];
+  ipcMain.handle(
+    "select-folder",
+    async (
+      event,
+      options?: { multiple?: boolean; includeFiles?: boolean },
+    ) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const properties: Array<"openDirectory" | "openFile" | "multiSelections"> =
+        [];
+      if (options?.includeFiles) properties.push("openFile");
+      else properties.push("openDirectory");
+      if (options?.multiple) properties.push("multiSelections");
+      const result = win
+        ? await dialog.showOpenDialog(win, { properties })
+        : await dialog.showOpenDialog({ properties });
+      if (result.canceled || result.filePaths.length === 0) return null;
+      return options?.multiple ? result.filePaths : result.filePaths[0];
+    },
+  );
+
+  ipcMain.handle("reveal-in-explorer", async (_event, folderPath: string) => {
+    if (typeof folderPath !== "string" || folderPath.length === 0) {
+      return false;
+    }
+    const err = await shell.openPath(folderPath);
+    return err === ""; // empty string means success
   });
 
   // --- Live watcher for the worktree/context folder (drives live explorer updates) ---

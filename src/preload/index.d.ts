@@ -439,7 +439,7 @@ interface HermesAPI {
     resumeSessionId?: string,
     history?: Array<{ role: string; content: string }>,
     attachments?: Attachment[],
-    contextFolder?: string,
+    contextFolders?: string[],
     runId?: string,
     modelOverride?: SessionModelOverride,
   ) => Promise<{ response: string; sessionId?: string }>;
@@ -809,7 +809,7 @@ interface HermesAPI {
       source: string;
       messageCount: number;
       model: string;
-      contextFolder: string | null;
+      contextFolders: string[];
     }>
   >;
   syncSessionCache: () => Promise<
@@ -820,7 +820,7 @@ interface HermesAPI {
       source: string;
       messageCount: number;
       model: string;
-      contextFolder: string | null;
+      contextFolders: string[];
     }>
   >;
   updateSessionTitle: (sessionId: string, title: string) => Promise<void>;
@@ -1089,7 +1089,10 @@ interface HermesAPI {
     input: KanbanCreateTaskInput,
     profile?: string,
   ) => Promise<{ success: boolean; data?: { id: string }; error?: string }>;
-  selectFolder: () => Promise<string | null>;
+  selectFolder: (
+    options?: { multiple?: boolean; includeFiles?: boolean },
+  ) => Promise<string | string[] | null>;
+  revealInExplorer: (folderPath: string) => Promise<boolean>;
   readDirectory: (
     dirPath: string,
   ) => Promise<{ name: string; isDirectory: boolean }[] | null>;

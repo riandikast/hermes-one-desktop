@@ -512,7 +512,7 @@ const hermesAPI = {
     resumeSessionId?: string,
     history?: Array<{ role: string; content: string }>,
     attachments?: Attachment[],
-    contextFolder?: string,
+    contextFolders?: string[],
     runId?: string,
     modelOverride?: SessionModelOverride,
   ): Promise<{ response: string; sessionId?: string }> =>
@@ -523,7 +523,7 @@ const hermesAPI = {
       resumeSessionId,
       history,
       attachments,
-      contextFolder,
+      contextFolders,
       runId,
       modelOverride,
     ),
@@ -1093,7 +1093,7 @@ const hermesAPI = {
       source: string;
       messageCount: number;
       model: string;
-      contextFolder: string | null;
+      contextFolders: string[];
     }>
   > => ipcRenderer.invoke("list-cached-sessions", limit, offset),
 
@@ -1105,7 +1105,7 @@ const hermesAPI = {
       source: string;
       messageCount: number;
       model: string;
-      contextFolder: string | null;
+      contextFolders: string[];
     }>
   > => ipcRenderer.invoke("sync-session-cache"),
 
@@ -1505,8 +1505,12 @@ const hermesAPI = {
     },
     profile?: string,
   ) => ipcRenderer.invoke("kanban-create-task", input, profile),
-  selectFolder: (): Promise<string | null> =>
-    ipcRenderer.invoke("select-folder"),
+  selectFolder: (
+    options?: { multiple?: boolean; includeFiles?: boolean },
+  ): Promise<string | string[] | null> =>
+    ipcRenderer.invoke("select-folder", options),
+  revealInExplorer: (folderPath: string): Promise<boolean> =>
+    ipcRenderer.invoke("reveal-in-explorer", folderPath),
   readDirectory: (
     dirPath: string,
   ): Promise<{ name: string; isDirectory: boolean }[] | null> =>
