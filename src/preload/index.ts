@@ -868,14 +868,14 @@ const hermesAPI = {
   ): Promise<boolean> =>
     ipcRenderer.invoke("record-session-local-error", sessionId, error),
 
-  getSessionContextFolder: (sessionId: string): Promise<string | null> =>
+  getSessionContextFolder: (sessionId: string): Promise<string[]> =>
     ipcRenderer.invoke("get-session-context-folder", sessionId),
 
   setSessionContextFolder: (
     sessionId: string,
-    folder: string | null,
+    folders: string[] | string | null,
   ): Promise<boolean> =>
-    ipcRenderer.invoke("set-session-context-folder", sessionId, folder),
+    ipcRenderer.invoke("set-session-context-folder", sessionId, folders),
 
   listRecentSessionContextFolders: (limit?: number): Promise<string[]> =>
     ipcRenderer.invoke("list-recent-session-context-folders", limit),

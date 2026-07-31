@@ -637,7 +637,7 @@ interface HermesAPI {
     sessionId: string,
     error: DesktopSessionLocalError,
   ) => Promise<boolean>;
-  getSessionContextFolder: (sessionId: string) => Promise<string | null>;
+  getSessionContextFolder: (sessionId: string) => Promise<string[]>;
   watchContextFolder: (folder: string) => Promise<void>;
   onContextFolderChanged: (callback: () => void) => () => void;
   listFilesRecursive: (
@@ -645,7 +645,7 @@ interface HermesAPI {
   ) => Promise<{ name: string; isDirectory: boolean; path: string }[] | null>;
   setSessionContextFolder: (
     sessionId: string,
-    folder: string | null,
+    folders: string[] | string | null,
   ) => Promise<boolean>;
   listRecentSessionContextFolders: (limit?: number) => Promise<string[]>;
   getSessionModelOverride: (
@@ -1089,9 +1089,11 @@ interface HermesAPI {
     input: KanbanCreateTaskInput,
     profile?: string,
   ) => Promise<{ success: boolean; data?: { id: string }; error?: string }>;
-  selectFolder: (
-    options?: { multiple?: boolean; includeFiles?: boolean },
-  ) => Promise<string | string[] | null>;
+  selectFolder(): Promise<string | null>;
+  selectFolder(options: {
+    multiple?: boolean;
+    includeFiles?: boolean;
+  }): Promise<string | string[] | null>;
   revealInExplorer: (folderPath: string) => Promise<boolean>;
   readDirectory: (
     dirPath: string,

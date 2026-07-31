@@ -77,19 +77,26 @@ function readCache(): CacheData {
   try {
     if (!existsSync(file)) return { sessions: [], lastSync: 0 };
     const parsed = JSON.parse(readFileSync(file, "utf-8")) as CacheData;
+    type LegacySession = CachedSession & {
+      contextFolder?: string | null;
+    };
     return {
       lastSync: typeof parsed.lastSync === "number" ? parsed.lastSync : 0,
       sessions: Array.isArray(parsed.sessions)
-        ? parsed.sessions.map((s) => ({
-            ...s,
-            contextFolders: Array.isArray(s.contextFolders)
-              ? s.contextFolders.filter(
-                  (f): f is string => typeof f === "string",
-                )
-              : typeof s.contextFolder === "string" && s.contextFolder
-                ? [s.contextFolder]
-                : [],
-          }))
+        ? parsed.sessions.map((s) => {
+            const legacy = s as LegacySession;
+            return {
+              ...s,
+              contextFolders: Array.isArray(s.contextFolders)
+                ? s.contextFolders.filter(
+                    (f): f is string => typeof f === "string",
+                  )
+                : typeof legacy.contextFolder === "string" &&
+                    legacy.contextFolder
+                  ? [legacy.contextFolder]
+                  : [],
+            };
+          })
         : [],
     };
   } catch {
