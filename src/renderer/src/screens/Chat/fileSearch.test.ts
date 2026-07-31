@@ -91,6 +91,12 @@ describe('searchFiles', () => {
     expect(result.every((entry) => entry.path.includes('renderer'))).toBe(true)
   })
 
+  it('requires every query token for the basename token tier', () => {
+    expect(searchFiles(entries, 'chat missing', 'files').map((entry) => entry.path)).not.toContain(
+      'src/renderer/src/screens/Chat/ChatInput.tsx',
+    )
+  })
+
   it('filters files and folders', () => {
     expect(searchFiles(entries, 'chat', 'files').every((entry) => !entry.isDirectory)).toBe(true)
     expect(searchFiles(entries, 'chat', 'folders').map((entry) => entry.path)).toEqual(['src/Chat'])

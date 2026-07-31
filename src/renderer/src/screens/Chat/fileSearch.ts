@@ -67,7 +67,7 @@ function rank(entry: FileSearchEntry, query: string, queryTokens: string[]): [nu
 
   if (nameLower === query.toLowerCase()) tier = 0
   else if (normalizedPath(entry.path) === normalizedQuery) tier = 1
-  else if (queryTokens.length && queryTokens.some((token) => nameTokens.some((nameToken) => nameToken === token || nameToken.startsWith(token)))) tier = 2
+  else if (queryTokens.length && queryTokens.every((token) => nameTokens.some((nameToken) => nameToken === token || nameToken.startsWith(token)))) tier = 2
   else if (queryTokens.length && nameLower.includes(query.toLowerCase())) tier = 3
   else if (queryTokens.length && (fuzzy = fuzzyScore(entryPathTokens, queryTokens)) >= 0) tier = 4
 
