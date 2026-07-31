@@ -142,6 +142,7 @@ export default {
   queuedCancel: "Remove from queue",
   copyMessage: "Copy message",
   worktree: {
+    title: "Files",
     loading: "Loading",
     empty: "Folder is empty",
     emptyFolder: "Empty folder",
@@ -151,6 +152,10 @@ export default {
     openInEditor: "Open in default editor",
     openTerminal: "Open terminal here",
     openTerminalFailed: "Could not open a terminal for this folder.",
+    searchPlaceholder: "Search files across folders…",
+    searching: "Searching",
+    noResults: "No matching files",
+    revealInExplorer: "Open in File Explorer",
     fileTruncated: "truncated",
     fileTruncatedWarning: "File is too large — showing first 100KB only",
   },

@@ -4,10 +4,15 @@ import {
   ChevronRight,
   ChevronDown,
   SquareTerminal,
+  FolderSearch,
+  FileText,
+  ExternalLink,
+  Terminal,
 } from "lucide-react";
 import { getIconForFile, getSVGStringFromFileType } from "@wesbos/code-icons";
 import { FileViewer } from "./FileViewer";
 import { useI18n } from "../../components/useI18n";
+import { rankMentions, type MentionEntry } from "./mention";
 
 interface FileEntry {
   name: string;
@@ -15,7 +20,8 @@ interface FileEntry {
 }
 
 interface WorktreePanelProps {
-  folderPath: string;
+  /** All working folders bound to this conversation (issue #27). */
+  folderPaths: string[];
 }
 
 const MIN_PANEL_WIDTH = 220;
@@ -28,6 +34,12 @@ interface TreeItemProps {
   parentPath: string;
   depth: number;
   onFileClick?: (filePath: string) => void;
+  onRowContextMenu?: (
+    path: string,
+    isDirectory: boolean,
+    x: number,
+    y: number,
+  ) => void;
   /** Bumped by the root panel whenever the watched folder changes on disk. */
   refreshVersion: number;
 }
@@ -53,6 +65,7 @@ function TreeItem({
   parentPath,
   depth,
   onFileClick,
+  onRowContextMenu,
   refreshVersion,
 }: TreeItemProps): React.JSX.Element {
   const { t } = useI18n();
@@ -101,6 +114,11 @@ function TreeItem({
     }
   };
 
+  const handleContextMenu = (e: React.MouseEvent): void => {
+    e.preventDefault();
+    onRowContextMenu?.(fullPath, entry.isDirectory, e.clientX, e.clientY);
+  };
+
   const paddingLeft = 8 + depth * 12;
 
   return (
@@ -108,6 +126,7 @@ function TreeItem({
       <div
         className={`worktree-row ${!entry.isDirectory ? "worktree-row-file" : ""}`}
         onClick={handleClick}
+        onContextMenu={handleContextMenu}
         style={{ paddingLeft }}
         title={fullPath}
       >
@@ -154,6 +173,7 @@ function TreeItem({
                 parentPath={fullPath}
                 depth={depth + 1}
                 onFileClick={onFileClick}
+                onRowContextMenu={onRowContextMenu}
                 refreshVersion={refreshVersion}
               />
             ))
@@ -164,15 +184,149 @@ function TreeItem({
   );
 }
 
-export const WorktreePanel = memo(function WorktreePanel({
+interface RootSectionProps {
+  folderPath: string;
+  onFileClick: (filePath: string) => void;
+  onRowContextMenu: (
+    path: string,
+    isDirectory: boolean,
+    x: number,
+    y: number,
+  ) => void;
+  onOpenTerminal: (path: string) => Promise<void>;
+  refreshVersion: number;
+}
+
+/** One collapsible root in the multi-root sidebar. */
+function RootSection({
   folderPath,
-}: WorktreePanelProps): React.JSX.Element {
+  onFileClick,
+  onRowContextMenu,
+  onOpenTerminal,
+  refreshVersion,
+}: RootSectionProps): React.JSX.Element {
   const { t } = useI18n();
+  const [isExpanded, setIsExpanded] = useState(true);
   const [entries, setEntries] = useState<FileEntry[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    setError(null);
+
+    const loadRoot = async (): Promise<void> => {
+      const result = await window.hermesAPI.readDirectory(folderPath);
+      if (cancelled) return;
+      if (result === null) {
+        setError(t("chat.worktree.errorLoading"));
+      } else {
+        // Sort: directories first, then files, both alphabetically
+        const sorted = result.sort((a, b) => {
+          if (a.isDirectory === b.isDirectory) {
+            return a.name.localeCompare(b.name);
+          }
+          return a.isDirectory ? -1 : 1;
+        });
+        setEntries(sorted);
+      }
+      setIsLoading(false);
+    };
+
+    void loadRoot();
+    return () => {
+      cancelled = true;
+    };
+  }, [folderPath, refreshVersion, t]);
+
+  const folderName =
+    folderPath.split(/[\\/]/).filter(Boolean).pop() || folderPath;
+
+  const handleContextMenu = (e: React.MouseEvent): void => {
+    e.preventDefault();
+    onRowContextMenu(folderPath, true, e.clientX, e.clientY);
+  };
+
+  return (
+    <div className="worktree-root">
+      <div
+        className="worktree-root-header"
+        onClick={() => setIsExpanded((v) => !v)}
+        onContextMenu={handleContextMenu}
+        title={folderPath}
+      >
+        <span className="worktree-chevron">
+          {isExpanded ? (
+            <ChevronDown size={14} />
+          ) : (
+            <ChevronRight size={14} />
+          )}
+        </span>
+        <Folder size={14} className="worktree-icon worktree-folder-icon" />
+        <span className="worktree-root-name">{folderName}</span>
+        <button
+          type="button"
+          className="btn-ghost worktree-header-action"
+          onClick={(e) => {
+            e.stopPropagation();
+            void onOpenTerminal(folderPath);
+          }}
+          aria-label={t("chat.worktree.openTerminal")}
+          title={t("chat.worktree.openTerminal")}
+        >
+          <SquareTerminal size={16} />
+        </button>
+      </div>
+      {isExpanded && (
+        <div className="worktree-children">
+          {isLoading ? (
+            <div className="worktree-loading">
+              {t("chat.worktree.loading")}...
+            </div>
+          ) : error ? (
+            <div className="worktree-error">{error}</div>
+          ) : entries === null || entries.length === 0 ? (
+            <div className="worktree-empty">{t("chat.worktree.empty")}</div>
+          ) : (
+            entries.map((entry) => (
+              <TreeItem
+                key={`${folderPath}/${entry.name}`}
+                entry={entry}
+                parentPath={folderPath}
+                depth={0}
+                onFileClick={onFileClick}
+                onRowContextMenu={onRowContextMenu}
+                refreshVersion={refreshVersion}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Parent directory of a tree path (paths are "/"-joined even on Windows). */
+function parentDir(path: string): string {
+  const idx = path.lastIndexOf("/");
+  return idx > 0 ? path.slice(0, idx) : path;
+}
+
+interface ContextMenuState {
+  /** Directory to act on. */
+  path: string;
+  x: number;
+  y: number;
+}
+
+export const WorktreePanel = memo(function WorktreePanel({
+  folderPaths,
+}: WorktreePanelProps): React.JSX.Element {
+  const { t } = useI18n();
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [terminalError, setTerminalError] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [width, setWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem(WIDTH_STORAGE_KEY));
     return Number.isFinite(saved) && saved >= MIN_PANEL_WIDTH ? saved : 240;
@@ -210,56 +364,107 @@ export const WorktreePanel = memo(function WorktreePanel({
   };
 
   const [refreshVersion, setRefreshVersion] = useState(0);
-  const hasLoadedRef = useRef(false);
 
+  // Live-update: watch every root in the main process, re-scan on changes
   useEffect(() => {
-    let cancelled = false;
-    if (!hasLoadedRef.current) setIsLoading(true);
-    setError(null);
-    setTerminalError(null);
-
-    const loadRoot = async (): Promise<void> => {
-      const result = await window.hermesAPI.readDirectory(folderPath);
-      if (cancelled) return;
-      if (result === null) {
-        setError(t("chat.worktree.errorLoading"));
-      } else {
-        // Sort: directories first, then files, both alphabetically
-        const sorted = result.sort((a, b) => {
-          if (a.isDirectory === b.isDirectory) {
-            return a.name.localeCompare(b.name);
-          }
-          return a.isDirectory ? -1 : 1;
-        });
-        setEntries(sorted);
-      }
-      hasLoadedRef.current = true;
-      setIsLoading(false);
-    };
-
-    void loadRoot();
-    return () => {
-      cancelled = true;
-    };
-  }, [folderPath, refreshVersion]);
-
-  // Live-update: watch the folder in the main process, re-scan on changes
-  useEffect(() => {
-    void window.hermesAPI.watchContextFolder(folderPath);
+    for (const folder of folderPaths) {
+      void window.hermesAPI.watchContextFolder(folder);
+    }
     return window.hermesAPI.onContextFolderChanged(() => {
       setRefreshVersion((v) => v + 1);
     });
-  }, [folderPath]);
+  }, [folderPaths]);
 
-  // Get the folder name from the path
-  const folderName =
-    folderPath.split(/[\\/]/).filter(Boolean).pop() || folderPath;
+  // --- Search across all roots (flat ranked list, top 50) ---
+  const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<MentionEntry[] | null>(
+    null);
+  const [searching, setSearching] = useState(false);
 
-  const handleOpenTerminal = async (): Promise<void> => {
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const trimmed = query.trim();
+    if (trimmed.length === 0) {
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    debounceRef.current = setTimeout(() => {
+      let cancelled = false;
+      const runSearch = async (): Promise<void> => {
+        const seen = new Set<string>();
+        const all: MentionEntry[] = [];
+        for (const folder of folderPaths) {
+          const list = await window.hermesAPI.listFilesRecursive(folder);
+          if (cancelled || !list) continue;
+          for (const e of list) {
+            if (!e.path || seen.has(e.path)) continue;
+            seen.add(e.path);
+            all.push({ name: e.name, isDirectory: e.isDirectory, path: e.path });
+          }
+        }
+        if (cancelled) return;
+        const ranked = rankMentions(trimmed, all, false).slice(0, 50);
+        setSearchResults(ranked);
+        setSearching(false);
+      };
+      void runSearch();
+    }, 250);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query, folderPaths]);
+
+  // Dismiss the context menu on outside click / Escape
+  useEffect(() => {
+    if (!contextMenu) return;
+    const dismiss = (): void => setContextMenu(null);
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") dismiss();
+    };
+    document.addEventListener("mousedown", dismiss);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", dismiss);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [contextMenu]);
+
+  const handleRowContextMenu = useCallback(
+    (path: string, isDirectory: boolean, clientX: number, clientY: number) => {
+      // For files, the explorer/terminal targets are the parent directory.
+      const target = isDirectory ? path : parentDir(path);
+      const bounds = document
+        .querySelector(".worktree-panel")
+        ?.getBoundingClientRect();
+      const left = bounds ? clientX - bounds.left : clientX;
+      const top = bounds ? clientY - bounds.top : clientY;
+      setContextMenu({
+        path: target,
+        x: Math.min(left, Math.max(0, width - 200)),
+        y: top,
+      });
+    },
+    [width],
+  );
+
+  const handleOpenTerminal = async (path: string): Promise<void> => {
     setTerminalError(null);
-    const opened = await window.hermesAPI.openTerminal(folderPath);
+    const opened = await window.hermesAPI.openTerminal(path);
     if (!opened) setTerminalError(t("chat.worktree.openTerminalFailed"));
+    setContextMenu(null);
   };
+
+  const handleRevealInExplorer = (path: string): void => {
+    void window.hermesAPI.revealInExplorer(path);
+    setContextMenu(null);
+  };
+
+  const searchPending = searching || query.trim().length > 0;
+  const showingSearch = searchResults !== null || searchPending;
 
   return (
     <div className="worktree-panel" style={{ width }}>
@@ -271,45 +476,113 @@ export const WorktreePanel = memo(function WorktreePanel({
         title="Drag to resize"
       />
       <div className="worktree-header">
-        <Folder size={16} className="worktree-header-icon" />
-        <span className="worktree-header-title" title={folderPath}>
-          {folderName}
+        <FolderSearch size={16} className="worktree-header-icon" />
+        <span className="worktree-header-title">
+          {t("chat.worktree.title")}
         </span>
-        <button
-          type="button"
-          className="btn-ghost worktree-header-action"
-          onClick={() => void handleOpenTerminal()}
-          aria-label={t("chat.worktree.openTerminal")}
-          title={t("chat.worktree.openTerminal")}
-        >
-          <SquareTerminal size={20} />
-        </button>
+      </div>
+      <div className="worktree-search">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("chat.worktree.searchPlaceholder")}
+          className="worktree-search-input"
+        />
       </div>
       {terminalError && (
         <div className="worktree-terminal-error">{terminalError}</div>
       )}
       <div className="worktree-content">
-        {isLoading ? (
-          <div className="worktree-loading">
-            {t("chat.worktree.loading")}...
-          </div>
-        ) : error ? (
-          <div className="worktree-error">{error}</div>
-        ) : entries === null || entries.length === 0 ? (
+        {showingSearch ? (
+          searchResults === null ? (
+            <div className="worktree-loading">
+              {t("chat.worktree.searching")}...
+            </div>
+          ) : searchResults.length === 0 ? (
+            <div className="worktree-empty">
+              {t("chat.worktree.noResults")}
+            </div>
+          ) : (
+            searchResults.map((entry) => (
+              <div
+                key={entry.path}
+                className="worktree-row worktree-row-file worktree-search-result"
+                onClick={() => {
+                  if (!entry.isDirectory) setSelectedFile(entry.path);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  handleRowContextMenu(
+                    entry.path,
+                    entry.isDirectory,
+                    e.clientX,
+                    e.clientY,
+                  );
+                }}
+                title={entry.path}
+              >
+                <span className="worktree-chevron-placeholder" />
+                {entry.isDirectory ? (
+                  <Folder
+                    size={14}
+                    className="worktree-icon worktree-folder-icon"
+                  />
+                ) : (
+                  <FileText
+                    size={14}
+                    className="worktree-icon worktree-file-icon"
+                  />
+                )}
+                <span className="worktree-name">
+                  {entry.name}
+                  <span className="worktree-search-path">
+                    {" "}
+                    — {truncateSearchPath(entry.path)}
+                  </span>
+                </span>
+              </div>
+            ))
+          )
+        ) : folderPaths.length === 0 ? (
           <div className="worktree-empty">{t("chat.worktree.empty")}</div>
         ) : (
-          entries.map((entry) => (
-            <TreeItem
-              key={`${folderPath}/${entry.name}`}
-              entry={entry}
-              parentPath={folderPath}
-              depth={0}
+          folderPaths.map((folder) => (
+            <RootSection
+              key={folder}
+              folderPath={folder}
               onFileClick={setSelectedFile}
+              onRowContextMenu={handleRowContextMenu}
+              onOpenTerminal={handleOpenTerminal}
               refreshVersion={refreshVersion}
             />
           ))
         )}
       </div>
+      {contextMenu && (
+        <div
+          className="worktree-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <button
+            type="button"
+            className="worktree-context-menu-item"
+            onClick={() => handleRevealInExplorer(contextMenu.path)}
+          >
+            <ExternalLink size={14} />
+            <span>{t("chat.worktree.revealInExplorer")}</span>
+          </button>
+          <button
+            type="button"
+            className="worktree-context-menu-item"
+            onClick={() => void handleOpenTerminal(contextMenu.path)}
+          >
+            <Terminal size={14} />
+            <span>{t("chat.worktree.openTerminal")}</span>
+          </button>
+        </div>
+      )}
       {selectedFile && (
         <FileViewer
           filePath={selectedFile}
@@ -319,3 +592,9 @@ export const WorktreePanel = memo(function WorktreePanel({
     </div>
   );
 });
+
+function truncateSearchPath(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  if (parts.length <= 2) return path;
+  return `…/${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+}
