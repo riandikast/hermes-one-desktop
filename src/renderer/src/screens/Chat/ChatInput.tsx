@@ -8,7 +8,7 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { Square as Stop, Search, Paperclip, Mic, ArrowUp, FileText, FolderOpen } from "lucide-react";
+import { Square as Stop, Search, Paperclip, Mic, ArrowUp, FileText, FolderOpen, X } from "lucide-react";
 import { isImeComposing } from "./keyboard";
 import { useI18n } from "../../components/useI18n";
 import { SLASH_COMMANDS, type SlashCommand } from "./slashCommands";
@@ -33,6 +33,9 @@ import {
   truncatePath,
   parseTags,
   expandTags,
+  displayText,
+  displayToRawPos,
+  rawToDisplayPos,
   MENTION_START,
   MENTION_SEP,
   MENTION_END,
@@ -99,6 +102,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
   ): React.JSX.Element {
     const { t } = useI18n();
     const [input, setInput] = useState("");
+    // What the textarea actually shows: mention tags collapse to their
+    // invisible sentinel trio; badges render in the chip row above.
+    const displayValue = useMemo(() => displayText(input), [input]);
     const [mentionOpen, setMentionOpen] = useState(false);
     const [mentionEntries, setMentionEntries] = useState<MentionEntry[]>([]);
     const [mentionQuery, setMentionQuery] = useState("");
@@ -437,15 +443,36 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     function handleInputChange(
       e: React.ChangeEvent<HTMLTextAreaElement>,
     ): void {
-      const value = e.target.value;
-      setInput(value);
-      updateMentionFor(value, e.target.selectionStart ?? value.length);
+      // The textarea edits the DISPLAY text (tags are atomic sentinels).
+      // Recover the edited span by diffing old display vs new value, then
+      // splice the change into the RAW input, which still holds the full
+      // tag text.
+      const oldDisplay = displayValue;
+      const newValue = e.target.value;
+      let p = 0;
+      const maxP = Math.min(oldDisplay.length, newValue.length);
+      while (p < maxP && oldDisplay[p] === newValue[p]) p++;
+      let s = 0;
+      const maxS = Math.min(oldDisplay.length, newValue.length) - p;
+      while (
+        s < maxS &&
+        oldDisplay[oldDisplay.length - 1 - s] ===
+          newValue[newValue.length - 1 - s]
+      ) {
+        s++;
+      }
+      const rStart = displayToRawPos(input, p);
+      const rEnd = displayToRawPos(input, oldDisplay.length - s);
+      const inserted = newValue.slice(p, newValue.length - s);
+      const next = input.slice(0, rStart) + inserted + input.slice(rEnd);
+      setInput(next);
+      updateMentionFor(next, rStart + inserted.length);
       // Height is handled by the useLayoutEffect on `input` above.
 
-      if (value.startsWith("/") && !value.includes(" ")) {
+      if (newValue.startsWith("/") && !newValue.includes(" ")) {
         // No space yet, so the whole value is the command query.
         setSlashMenuOpen(true);
-        setSlashFilter(value);
+        setSlashFilter(newValue);
         setSlashSelectedIndex(0);
         setSlashMenuScrollTop(0);
         if (slashMenuListRef.current) slashMenuListRef.current.scrollTop = 0;
@@ -487,7 +514,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
       // Backspace deletes a whole mention tag at once (no char-by-char)
       if (e.key === "Backspace") {
-        const caret = inputRef.current?.selectionStart ?? input.length;
+        const caret = displayToRawPos(
+          input,
+          inputRef.current?.selectionStart ?? input.length,
+        );
         const tag = parseTags(input).find(
           (tg) => caret > tg.start && caret <= tg.end,
         );
@@ -498,7 +528,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           updateMentionFor(next, tag.start);
           requestAnimationFrame(() => {
             const el = inputRef.current;
-            if (el) el.setSelectionRange(tag.start, tag.start);
+            if (el) {
+              const pos = rawToDisplayPos(next, tag.start);
+              el.setSelectionRange(pos, pos);
+            }
           });
           return;
         }
@@ -603,7 +636,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     function insertMention(entry: MentionEntry): void {
       if (!entry.path) return; // hint rows are not insertable
       const el = inputRef.current;
-      const caret = el?.selectionStart ?? input.length;
+      const caret = displayToRawPos(
+        input,
+        el?.selectionStart ?? input.length,
+      );
       const tag =
         MENTION_START + entry.name + MENTION_SEP + entry.path + MENTION_END;
       const next =
@@ -616,7 +652,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       requestAnimationFrame(() => {
         if (el) {
           el.focus();
-          const pos = mentionStartRef.current + tag.length + 1;
+          const pos = rawToDisplayPos(next, mentionStartRef.current + tag.length + 1);
           el.setSelectionRange(pos, pos);
         }
       });
@@ -828,6 +864,36 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             style={{ display: "none" }}
             onChange={handleFileInputChange}
             />
+            {parseTags(input).length > 0 && (
+              <div className="chat-mention-tag-row">
+                {parseTags(input).map((tag) => (
+                  <div
+                    key={`${tag.path}@${tag.start}`}
+                    className="chat-mention-tag"
+                    title={tag.path}
+                  >
+                    <FileText size={12} className="chat-mention-tag-icon" />
+                    <span className="chat-mention-tag-name">
+                      {truncatePath(tag.name, 16, 40)}
+                    </span>
+                    <button
+                      type="button"
+                      className="chat-mention-tag-remove"
+                      onClick={() => {
+                        const next =
+                          input.slice(0, tag.start) + input.slice(tag.end);
+                        setInput(next);
+                        setMentionOpen(false);
+                      }}
+                      aria-label="Remove file"
+                      title="Remove"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             {mentionOpen && rankedMentions.length > 0 && (
               <div
                 className="mention-menu-overlay"
@@ -879,7 +945,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               ref={inputRef}
             className="chat-input"
             placeholder={t("chat.typeMessage")}
-            value={input}
+            value={displayValue}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             onCompositionStart={() => {

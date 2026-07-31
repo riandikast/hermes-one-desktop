@@ -5899,7 +5899,7 @@ body:has(.shell-vibrant),
   margin-bottom: 4px;
 }
 
-.chat-attachment-strip {
+ .chat-attachment-strip {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -5909,6 +5909,57 @@ body:has(.shell-vibrant),
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+}
+
+/* Mention tag badges — one chip per @-mentioned file/folder, shown above
+ * the textarea while the tag itself renders as invisible sentinels inside
+ * it. The full path is the title tooltip on hover. */
+.chat-mention-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 4px 4px;
+}
+
+.chat-mention-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 280px;
+  padding: 2px 7px;
+  background: var(--bg-tertiary, var(--bg-secondary));
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.chat-mention-tag-icon {
+  flex: 0 0 auto;
+  opacity: 0.8;
+}
+
+.chat-mention-tag-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-mention-tag-remove {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  border: none;
+  background: none;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+.chat-mention-tag-remove:hover {
+  opacity: 1;
 }
 
 .chat-attachment-error {
