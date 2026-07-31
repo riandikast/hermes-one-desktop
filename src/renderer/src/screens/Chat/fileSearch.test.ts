@@ -38,13 +38,14 @@ describe('searchFiles', () => {
     const generated = Array.from({ length: 60 }, (_, index) => ({
       name: `MainActivity${index}.kt`,
       isDirectory: false,
-      path: `build/generated/MainActivity${index}.kt`,
+      path: `app/src/variants${index}/MainActivity${index}.kt`,
     }))
     const result = searchFiles([
       ...generated,
       { name: 'MainActivity.kt', isDirectory: false, path: 'app/src/MainActivity.kt' },
     ], 'MainActivity.kt', 'files')
 
+    expect(result).toHaveLength(61)
     expect(result.slice(0, 50).map((entry) => entry.path)).toContain('app/src/MainActivity.kt')
     expect(result[0]?.path).toBe('app/src/MainActivity.kt')
   })
