@@ -1171,9 +1171,10 @@ export function buildUserContent(
  * whitespace) so callers can skip injection. Exported for unit testing.
  */
 export function contextFolderSystemMessage(
-  contextFolder?: string,
+  contextFolder?: string | string[],
 ): { role: "system"; content: string } | null {
-  const folder = contextFolder?.trim();
+  const folderRaw = Array.isArray(contextFolder) ? contextFolder[0] : contextFolder;
+  const folder = typeof folderRaw === "string" ? folderRaw.trim() : "";
   if (!folder) return null;
   return {
     role: "system",

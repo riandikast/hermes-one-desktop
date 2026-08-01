@@ -13,6 +13,7 @@ interface ContextFolderChipProps {
   onPickFolder: () => void;
   onRemoveFolder: (path: string) => void;
   onRemoveKnowledgeBundle?: (bundleName: string) => void;
+  onToggleKnowledgeBundle?: (bundleName: string) => void;
   onToggleWorktree: () => void;
   onSelectRecentFolder?: (path: string) => void;
 }
@@ -36,13 +37,32 @@ export const ContextFolderChip = memo(function ContextFolderChip({
   onPickFolder,
   onRemoveFolder,
   onRemoveKnowledgeBundle,
+  onToggleKnowledgeBundle,
   onToggleWorktree,
   onSelectRecentFolder,
 }: ContextFolderChipProps): React.JSX.Element | null {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
+  const [isKnowledgeOpen, setIsKnowledgeOpen] = useState(false);
   const [recentFolders, setRecentFolders] = useState<string[]>([]);
+  const [availableBundles, setAvailableBundles] = useState<Array<{ name: string; path: string }>>([]);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isKnowledgeOpen) return;
+    let cancelled = false;
+    void window.hermesAPI
+      .listKnowledgeBundles()
+      .then((list) => {
+        if (!cancelled && Array.isArray(list)) setAvailableBundles(list);
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isKnowledgeOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -61,19 +81,21 @@ export const ContextFolderChip = memo(function ContextFolderChip({
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen && !isKnowledgeOpen) return;
     function handleClickOutside(e: MouseEvent): void {
       if (
         containerRef.current &&
         !containerRef.current.contains(e.target as Node)
       ) {
         setIsOpen(false);
+        setIsKnowledgeOpen(false);
       }
     }
     function handleKeyDown(e: KeyboardEvent): void {
       if (e.key === "Escape") {
         e.stopPropagation();
         setIsOpen(false);
+        setIsKnowledgeOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -82,9 +104,71 @@ export const ContextFolderChip = memo(function ContextFolderChip({
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [isOpen]);
+  }, [isOpen, isKnowledgeOpen]);
 
   if (!show) return null;
+
+  const handleImportKnowledgeFolder = async () => {
+    try {
+      const folderPath = await window.hermesAPI.selectFolder();
+      if (!folderPath) return;
+      const parts = folderPath.split(/[\\/]/).filter(Boolean);
+      const folderName = parts.at(-1) || "imported-knowledge";
+      const bundle = await window.hermesAPI.importKnowledgeFolder(folderPath, folderName);
+      if (bundle?.name) {
+        onToggleKnowledgeBundle?.(bundle.name);
+      }
+      setIsKnowledgeOpen(false);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const renderKnowledgeDropdown = (): React.JSX.Element => (
+    <div className="chat-ctxfolder-dropdown">
+      <div className="chat-ctxfolder-dropdown-header">Global Knowledge Bundles</div>
+      <div className="chat-ctxfolder-dropdown-list">
+        {availableBundles.length === 0 ? (
+          <div className="chat-ctxfolder-dropdown-empty">No knowledge bundles</div>
+        ) : (
+          availableBundles.map((bundle) => {
+            const isAttached = attachedKnowledgeBundles.includes(bundle.name);
+            return (
+              <button
+                key={bundle.name}
+                type="button"
+                className={`chat-ctxfolder-dropdown-item${
+                  isAttached ? " chat-ctxfolder-dropdown-item--active" : ""
+                }`}
+                onClick={() => {
+                  onToggleKnowledgeBundle?.(bundle.name);
+                }}
+                title={bundle.path}
+              >
+                <span className="chat-ctxfolder-dropdown-item-name">
+                  {bundle.name}
+                </span>
+                {isAttached && (
+                  <Check
+                    size={14}
+                    className="chat-ctxfolder-dropdown-item-check"
+                  />
+                )}
+              </button>
+            );
+          })
+        )}
+      </div>
+      <div className="chat-ctxfolder-dropdown-divider" />
+      <button
+        type="button"
+        className="chat-ctxfolder-dropdown-item chat-ctxfolder-dropdown-item--open"
+        onClick={() => void handleImportKnowledgeFolder()}
+      >
+        <span>Import Knowledge Folder...</span>
+      </button>
+    </div>
+  );
 
   const renderDropdown = (): React.JSX.Element => (
     <div className="chat-ctxfolder-dropdown">
@@ -140,6 +224,20 @@ export const ContextFolderChip = memo(function ContextFolderChip({
     return (
       <div className="chat-ctxfolder-picker" ref={containerRef}>
         <button
+          className={`chat-meta-chip${attachedKnowledgeBundles.length > 0 ? " chat-meta-chip--active" : ""}`}
+          onClick={() => setIsKnowledgeOpen((v) => !v)}
+          title="Manage Attached Knowledge Bundles"
+          type="button"
+        >
+          <BookOpen size={13} />
+          <span>
+            {attachedKnowledgeBundles.length > 0
+              ? `Knowledge (${attachedKnowledgeBundles.length})`
+              : "Knowledge"}
+          </span>
+        </button>
+
+        <button
           className="chat-meta-chip"
           onClick={() => setIsOpen((v) => !v)}
           title={t("chat.setContextFolder")}
@@ -149,12 +247,27 @@ export const ContextFolderChip = memo(function ContextFolderChip({
           <span>{t("chat.contextFolderChip")}</span>
         </button>
         {isOpen && renderDropdown()}
+        {isKnowledgeOpen && renderKnowledgeDropdown()}
       </div>
     );
   }
 
   return (
     <div className="chat-ctxfolder-group" ref={containerRef}>
+      <button
+        className={`chat-meta-chip${attachedKnowledgeBundles.length > 0 ? " chat-meta-chip--active" : ""}`}
+        onClick={() => setIsKnowledgeOpen((v) => !v)}
+        title="Manage Attached Knowledge Bundles"
+        type="button"
+      >
+        <BookOpen size={13} />
+        <span>
+          {attachedKnowledgeBundles.length > 0
+            ? `Knowledge (${attachedKnowledgeBundles.length})`
+            : "Knowledge"}
+        </span>
+      </button>
+
       {attachedKnowledgeBundles.map((bundleName) => (
         <Fragment key={`kb-${bundleName}`}>
           <div
@@ -217,6 +330,7 @@ export const ContextFolderChip = memo(function ContextFolderChip({
         <FolderTree size={13} />
       </button>
       {isOpen && renderDropdown()}
+      {isKnowledgeOpen && renderKnowledgeDropdown()}
     </div>
   );
 });

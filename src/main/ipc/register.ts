@@ -1473,11 +1473,16 @@ export function registerIpcHandlers(context: IpcContext): void {
       resumeSessionId?: string,
       history?: Array<{ role: string; content: string }>,
       attachments?: Attachment[],
-      contextFolder?: string,
+      contextFolder?: string | string[],
       runId?: string,
       modelOverride?: SessionModelOverride,
       knowledgeBundles?: string[],
     ) => {
+      const primaryContextFolder = Array.isArray(contextFolder)
+        ? contextFolder[0]
+        : typeof contextFolder === "string"
+          ? contextFolder
+          : undefined;
       // Each conversation has a stable runId minted by the renderer. Fall back
       // to a generated id for legacy callers so the run is still tracked.
       const chatRunId = runId || `run-${randomUUID()}`;
@@ -1610,7 +1615,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         resumeSessionId,
         history,
         attachments,
-        contextFolder,
+        primaryContextFolder,
         modelOverride,
         knowledgeBundles && knowledgeBundles.length > 0
           ? await buildKnowledgeIndex(knowledgeBundles).catch(() => "")

@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { findMention } from "../Chat/mention";
 import {
   BookOpen,
   Folder,
@@ -47,6 +48,131 @@ export function KnowledgeScreen(): React.JSX.Element {
 
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const [expandedBundles, setExpandedBundles] = useState<Record<string, boolean>>({});
+
+  // @ mention autocomplete state
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionStart, setMentionStart] = useState(0);
+  const [mentionResults, setMentionResults] = useState<
+    Array<{ name: string; path: string; isDirectory: boolean }>
+  >([]);
+  const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
+
+  useEffect(() => {
+    if (!mentionOpen) return;
+    let cancelled = false;
+    const q = mentionQuery.trim();
+
+    void (async () => {
+      try {
+        let matches: Array<{ name: string; path: string; isDirectory: boolean }> = [];
+
+        if (window.hermesAPI.everythingSearch) {
+          try {
+            const ev = await window.hermesAPI.everythingSearch(q || "a");
+            if (ev && Array.isArray(ev)) {
+              matches = ev.map((item) => ({
+                name: item.name,
+                path: item.path,
+                isDirectory: item.isDirectory,
+              }));
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+
+        if (matches.length === 0) {
+          try {
+            const recent = await window.hermesAPI.listRecentSessionContextFolders(10);
+            if (recent && Array.isArray(recent)) {
+              matches = recent.map((p) => {
+                const parts = p.split(/[\\/]/).filter(Boolean);
+                return {
+                  name: parts.at(-1) || p,
+                  path: p,
+                  isDirectory: true,
+                };
+              });
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+
+        if (!cancelled) {
+          setMentionResults(matches.slice(0, 15));
+        }
+      } catch {
+        if (!cancelled) setMentionResults([]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mentionOpen, mentionQuery]);
+
+  const handleTextareaCaret = (
+    e: React.SyntheticEvent<HTMLTextAreaElement>,
+  ) => {
+    const target = e.currentTarget;
+    const caret = target.selectionStart;
+    const m = findMention(target.value, caret);
+    if (m) {
+      setMentionOpen(true);
+      setMentionStart(m.start);
+      setMentionQuery(m.query);
+      setMentionSelectedIndex(0);
+    } else {
+      setMentionOpen(false);
+    }
+  };
+
+  const insertFileMention = (entry: { name: string; path: string }) => {
+    const textarea = textareaRef.current;
+    const caret = textarea?.selectionStart ?? fileContent.length;
+    const before = fileContent.slice(0, mentionStart);
+    const after = fileContent.slice(caret);
+    const inserted = entry.path;
+    const next = before + inserted + " " + after;
+    setFileContent(next);
+    setMentionOpen(false);
+
+    setTimeout(() => {
+      if (textarea) {
+        const newPos = mentionStart + inserted.length + 1;
+        textarea.selectionStart = newPos;
+        textarea.selectionEnd = newPos;
+        textarea.focus();
+      }
+    }, 0);
+  };
+
+  const handleTextareaKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    if (!mentionOpen || mentionResults.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setMentionSelectedIndex((i) => (i + 1) % mentionResults.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setMentionSelectedIndex(
+        (i) => (i - 1 + mentionResults.length) % mentionResults.length,
+      );
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      const selected = mentionResults[mentionSelectedIndex];
+      if (selected) {
+        insertFileMention(selected);
+      }
+    } else if (e.key === "Escape") {
+      setMentionOpen(false);
+    }
+  };
 
   const reloadBundles = useCallback(async () => {
     try {
@@ -229,7 +355,7 @@ export function KnowledgeScreen(): React.JSX.Element {
           <div className="knowledge-sidebar-title">Global Knowledge Bundles</div>
           {bundles.length === 0 ? (
             <div className="knowledge-empty-state">
-              No knowledge bundles yet. Create one or import a folder to get started.
+              <Folder size={36} className="empty-icon" />
             </div>
           ) : (
             <div className="knowledge-bundle-list">
@@ -400,16 +526,54 @@ export function KnowledgeScreen(): React.JSX.Element {
                 </div>
               </div>
 
-              <div className="knowledge-editor-body">
+              <div className="knowledge-editor-body" style={{ position: "relative" }}>
                 {loading ? (
                   <div className="editor-loading">Loading content...</div>
                 ) : isEditing ? (
-                  <textarea
-                    className="knowledge-textarea"
-                    value={fileContent}
-                    onChange={(e) => setFileContent(e.target.value)}
-                    placeholder="Type knowledge notes, guidelines, or preferences..."
-                  />
+                  <>
+                    <textarea
+                      ref={textareaRef}
+                      className="knowledge-textarea"
+                      value={fileContent}
+                      onChange={(e) => {
+                        setFileContent(e.target.value);
+                        handleTextareaCaret(e);
+                      }}
+                      onKeyUp={handleTextareaCaret}
+                      onClick={handleTextareaCaret}
+                      onKeyDown={handleTextareaKeyDown}
+                      placeholder="Type knowledge notes, guidelines, or preferences (use @ to search file paths)..."
+                    />
+                    {mentionOpen && mentionResults.length > 0 && (
+                      <div className="knowledge-mention-dropdown">
+                        {mentionResults.map((item, idx) => (
+                          <div
+                            key={item.path}
+                            className={`knowledge-mention-item ${
+                              idx === mentionSelectedIndex ? "active" : ""
+                            }`}
+                            onClick={() => insertFileMention(item)}
+                            onMouseEnter={() => setMentionSelectedIndex(idx)}
+                          >
+                            {item.isDirectory ? (
+                              <Folder size={13} />
+                            ) : (
+                              <FileText size={13} />
+                            )}
+                            <span className="knowledge-mention-item-name">
+                              {item.name}
+                            </span>
+                            <span
+                              className="knowledge-mention-item-path"
+                              title={item.path}
+                            >
+                              {item.path}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="knowledge-markdown-preview">
                     <pre>{fileContent}</pre>

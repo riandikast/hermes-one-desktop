@@ -231,10 +231,12 @@ function Chat({
     }
   }, [hermesSessionId]);
 
-  const handleDetachKnowledgeBundle = useCallback(
+  const handleToggleKnowledgeBundle = useCallback(
     (bundleName: string) => {
       setAttachedKnowledgeBundles((prev) => {
-        const next = prev.filter((b) => b !== bundleName);
+        const next = prev.includes(bundleName)
+          ? prev.filter((b) => b !== bundleName)
+          : [...prev, bundleName];
         if (hermesSessionId) {
           try {
             localStorage.setItem(
@@ -1144,7 +1146,8 @@ function Chat({
                 worktreeVisible={worktreeVisible}
                 onPickFolder={handlePickFolder}
                 onRemoveFolder={handleRemoveFolder}
-                onRemoveKnowledgeBundle={handleDetachKnowledgeBundle}
+                onRemoveKnowledgeBundle={handleToggleKnowledgeBundle}
+                onToggleKnowledgeBundle={handleToggleKnowledgeBundle}
                 onToggleWorktree={handleToggleWorktree}
                 onSelectRecentFolder={handleSelectRecentFolder}
               />
