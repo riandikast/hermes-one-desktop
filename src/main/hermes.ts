@@ -1246,11 +1246,14 @@ function sendMessageViaApi(
   }
 
   const reasoningEffort = reasoningEffortForProfile(profile);
+  const isCustomEndpoint = Boolean(
+    mc.baseUrl || (mc.provider && mc.provider !== "nous" && mc.provider !== "auto"),
+  );
   const bodyObj: Record<string, unknown> = {
     model: mc.model || "hermes-agent",
     messages,
     stream: true,
-    ...(_resumeSessionId ? { session_id: _resumeSessionId } : {}),
+    ...(_resumeSessionId && !isCustomEndpoint ? { session_id: _resumeSessionId } : {}),
   };
   if (reasoningEffort) bodyObj.reasoning_effort = reasoningEffort;
   const body = JSON.stringify(bodyObj);
@@ -1320,11 +1323,8 @@ function sendMessageViaApi(
   function finish(error?: string): void {
     if (finished) return;
     finished = true;
-    console.log(
-      "[hermes] finish called:",
-      error ? `error=${error}` : "done",
-      "sessionId=",
-      sessionId,
+    appendChatLog(
+      `[chat] Stream finished. error=${error || "none"}, sessionId=${sessionId}`,
     );
     if (error) {
       cb.onError(error);
@@ -2937,14 +2937,35 @@ export async function sendMessage(
     );
   }
 
+  appendChatLog(
+    `[chat] Sending prompt for profile=${profile || "default"}, model=${eff.model || "default"}`,
+  );
+
   // Check API server availability when the cache is cold or known-bad. Once
   // the API is known healthy, keep the normal send path fast and let the API
   // transport error wrapper handle a stale cache caused by external lifecycle
   // events such as `hermes update` or Windows sleep/resume.
   if (apiServerAvailable === null || apiServerAvailable === false) {
+    const t0 = Date.now();
+    appendChatLog("[chat] Checking gateway API server ready status...");
     apiServerAvailable = await isApiServerReady(profile);
+    appendChatLog(
+      `[chat] API server check took ${Date.now() - t0}ms (ready=${apiServerAvailable})`,
+    );
     if (!apiServerAvailable) {
-      apiServerAvailable = await startGatewayWithRecovery(profile);
+      appendChatLog("[chat] Gateway not ready; attempting fast recovery...");
+      const tRec = Date.now();
+      apiServerAvailable = await startGatewayWithRecovery(
+        profile,
+        2000,
+        150,
+        3000,
+        5000,
+        1500,
+      );
+      appendChatLog(
+        `[chat] Fast recovery completed in ${Date.now() - tRec}ms (ready=${apiServerAvailable})`,
+      );
     }
   }
 
@@ -3003,6 +3024,18 @@ export function stopHealthPolling(): void {
   if (_healthCheckInterval) {
     clearInterval(_healthCheckInterval);
     _healthCheckInterval = null;
+  }
+}
+
+export function appendChatLog(message: string): void {
+  try {
+    const logDir = join(HERMES_HOME, "logs");
+    mkdirSync(logDir, { recursive: true });
+    const line = `[${new Date().toISOString()}] ${message}\n`;
+    appendFileSync(join(logDir, "agent.log"), line, "utf-8");
+    console.log(`[agent-log] ${message}`);
+  } catch {
+    /* ignore */
   }
 }
 
