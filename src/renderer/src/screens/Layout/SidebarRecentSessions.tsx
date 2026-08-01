@@ -23,6 +23,12 @@ import SidebarSessionMenu, {
   type SidebarMenuProject,
   type SidebarMenuTarget,
 } from "./SidebarSessionMenu";
+import {
+  getProjectAlias,
+  projectDisplayName,
+  setProjectAlias,
+  useProjectAliases,
+} from "./projectAliases";
 
 interface RecentSession {
   id: string;
@@ -108,11 +114,6 @@ function sameSessions(a: RecentSession[], b: RecentSession[]): boolean {
   return true;
 }
 
-function folderName(path: string): string {
-  const parts = path.split(/[\\/]/).filter(Boolean);
-  return parts.at(-1) || path;
-}
-
 function groupSessionsByWorkspace(sessions: RecentSession[]): {
   projectGroups: Array<{
     path: string;
@@ -138,7 +139,7 @@ function groupSessionsByWorkspace(sessions: RecentSession[]): {
   return {
     projectGroups: Array.from(projects.entries()).map(([path, list]) => ({
       path,
-      name: folderName(path),
+      name: projectDisplayName(path),
       sessions: list,
     })),
     chats,
@@ -208,6 +209,21 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   const [editingTitle, setEditingTitle] = useState("");
   const editingIdRef = useRef<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  // Project-heading context menu (right-click), anchored to the cursor.
+  const [projectMenu, setProjectMenu] = useState<{
+    path: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  // Inline project rename: the folder path being edited and its working alias.
+  const [editingProjectPath, setEditingProjectPath] = useState<string | null>(
+    null,
+  );
+  const [editingProjectAlias, setEditingProjectAlias] = useState("");
+  const projectRenameInputRef = useRef<HTMLInputElement>(null);
+  // Re-render whenever any project alias changes (see projectAliases.ts);
+  // the version string also feeds the memo deps below so names recompute.
+  const projectAliasesVersion = useProjectAliases();
   // Pending delete confirmation (small inline dialog in a portal-free overlay).
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -456,7 +472,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   const { projectGroups, chats } = useMemo(
     () =>
       groupSessionsByWorkspace(sessions.filter((s) => !pinnedIds.has(s.id))),
-    [sessions, pinnedIds],
+    [sessions, pinnedIds, projectAliasesVersion],
   );
 
   // Every distinct project folder currently in use, so "Move to project" lists
@@ -466,11 +482,11 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     for (const s of sessions) {
       const folder = s.contextFolder?.trim();
       if (folder && !byPath.has(folder)) {
-        byPath.set(folder, { path: folder, name: folderName(folder) });
+        byPath.set(folder, { path: folder, name: projectDisplayName(folder) });
       }
     }
     return Array.from(byPath.values());
-  }, [sessions]);
+  }, [sessions, projectAliasesVersion]);
 
   const togglePinned = (): void => {
     setPinnedOpen((prev) => {
@@ -532,6 +548,43 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     },
     [cancelRename],
   );
+
+  const startProjectRename = useCallback((path: string): void => {
+    setEditingProjectPath(path);
+    setEditingProjectAlias(getProjectAlias(path) ?? projectDisplayName(path));
+    setTimeout(() => {
+      projectRenameInputRef.current?.focus();
+      projectRenameInputRef.current?.select();
+    }, 0);
+  }, []);
+
+  const cancelProjectRename = useCallback((): void => {
+    setEditingProjectPath(null);
+    setEditingProjectAlias("");
+  }, []);
+
+  const confirmProjectRename = useCallback(
+    (path: string, value: string): void => {
+      const trimmed = value.trim();
+      const current = getProjectAlias(path) ?? projectDisplayName(path);
+      if (trimmed !== current) setProjectAlias(path, trimmed);
+      cancelProjectRename();
+    },
+    [cancelProjectRename],
+  );
+
+  // Dismiss the project context menu on outside mousedown while it is open.
+  useEffect(() => {
+    if (!projectMenu) return;
+    const onMouseDown = (e: MouseEvent): void => {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest(".sidebar-project-rename-menu")) {
+        setProjectMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [projectMenu]);
 
   const handleMoveToProject = useCallback(
     async (id: string, folder: string | null): Promise<void> => {
@@ -822,28 +875,68 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                   const visible = expanded && projectsOpen && projectOpen;
                   return (
                     <div className="sidebar-recent-project" key={group.path}>
-                      <button
-                        type="button"
-                        className="sidebar-recent-project-heading"
-                        title={group.path}
-                        onClick={() => toggleProjectFolder(group.path)}
-                        aria-expanded={projectOpen}
-                        tabIndex={expanded && projectsOpen ? 0 : -1}
-                      >
-                        <Folder size={13} />
-                        <span>{group.name}</span>
-                        {projectOpen ? (
-                          <ChevronDown
-                            className="sidebar-recent-disclosure-icon"
-                            size={12}
-                          />
-                        ) : (
-                          <ChevronRight
-                            className="sidebar-recent-disclosure-icon"
-                            size={12}
-                          />
-                        )}
-                      </button>
+                      {editingProjectPath === group.path ? (
+                        <input
+                          ref={projectRenameInputRef}
+                          className="sidebar-recent-project-rename"
+                          type="text"
+                          value={editingProjectAlias}
+                          onChange={(e) =>
+                            setEditingProjectAlias(e.target.value)
+                          }
+                          onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              confirmProjectRename(
+                                group.path,
+                                editingProjectAlias,
+                              );
+                            } else if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelProjectRename();
+                            }
+                          }}
+                          onBlur={() =>
+                            confirmProjectRename(
+                              group.path,
+                              editingProjectAlias,
+                            )
+                          }
+                          tabIndex={expanded && projectsOpen ? 0 : -1}
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          className="sidebar-recent-project-heading"
+                          title={group.path}
+                          onClick={() => toggleProjectFolder(group.path)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setProjectMenu({
+                              path: group.path,
+                              x: e.clientX,
+                              y: e.clientY,
+                            });
+                          }}
+                          aria-expanded={projectOpen}
+                          tabIndex={expanded && projectsOpen ? 0 : -1}
+                        >
+                          <Folder size={13} />
+                          <span>{group.name}</span>
+                          {projectOpen ? (
+                            <ChevronDown
+                              className="sidebar-recent-disclosure-icon"
+                              size={12}
+                            />
+                          ) : (
+                            <ChevronRight
+                              className="sidebar-recent-disclosure-icon"
+                              size={12}
+                            />
+                          )}
+                        </button>
+                      )}
                       <div
                         className={`sidebar-recent-collapse ${
                           projectOpen ? "expanded" : ""
@@ -909,6 +1002,28 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
           </div>
         )}
       </div>
+      {expanded &&
+        projectMenu &&
+        createPortal(
+          <div
+            className="sidebar-project-rename-menu"
+            style={{ left: projectMenu.x, top: projectMenu.y }}
+            role="menu"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                startProjectRename(projectMenu.path);
+                setProjectMenu(null);
+              }}
+            >
+              {t("navigation.renameProject")}
+            </button>
+          </div>,
+          document.body,
+        )}
       {expanded && menuTarget && (
         <SidebarSessionMenu
           target={menuTarget}

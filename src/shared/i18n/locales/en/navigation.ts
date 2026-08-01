@@ -24,6 +24,7 @@ export default {
   showRecentSessions: "Show recent sessions",
   hideRecentSessions: "Hide recent sessions",
   showMore: "Show more",
+  renameProject: "Rename project",
   sessionMenu: {
     options: "Options",
     pin: "Pin",
