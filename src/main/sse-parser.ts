@@ -19,6 +19,7 @@ export interface ParsedUsage {
 
 export interface SseCallbacks {
   onChunk: (text: string) => void;
+  onReasoningChunk?: (text: string) => void;
   onToolProgress?: (tool: string) => void;
   onToolEvent?: (event: ChatToolEvent) => void;
   onUsage?: (usage: ParsedUsage) => void;
@@ -110,6 +111,15 @@ export function processSseData(
       } else {
         state.hasContent = true;
         cb.onChunk(delta.content);
+      }
+    } else if (cb.onReasoningChunk) {
+      // Reasoning models send reasoning tokens separately from content.
+      // Forward them so the UI shows live thinking instead of a dead spinner.
+      const reasoning =
+        (delta?.reasoning as string | undefined) ||
+        (delta?.reasoning_content as string | undefined);
+      if (reasoning) {
+        cb.onReasoningChunk(reasoning);
       }
     }
   } catch {

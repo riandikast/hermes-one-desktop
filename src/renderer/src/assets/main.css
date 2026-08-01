@@ -2565,6 +2565,15 @@ body:has(.shell-vibrant),
   overflow: hidden;
 }
 
+.knowledge-body--empty .knowledge-sidebar {
+  display: none;
+}
+
+.knowledge-body--empty .knowledge-editor-pane {
+  flex: 1;
+  width: 100%;
+}
+
 .knowledge-sidebar {
   width: 320px;
   border-right: 1px solid var(--border-color);

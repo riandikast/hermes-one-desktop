@@ -664,7 +664,15 @@ export function applyDashboardStreamEvent(
         reasoningSegmentClosed: false,
       };
     case "thinking.delta":
-      return state;
+      return {
+        messages: appendReasoningDelta(
+          state.messages,
+          thinkingTextFromPayload(event.payload, "text", "delta", "reasoning"),
+          state.reasoningSegmentClosed,
+          now,
+        ),
+        reasoningSegmentClosed: false,
+      };
     case "reasoning.delta":
       return {
         messages: appendReasoningDelta(

@@ -423,7 +423,7 @@ export function KnowledgeScreen(): React.JSX.Element {
         </div>
       )}
 
-      <div className="knowledge-body">
+      <div className={bundles.length === 0 ? "knowledge-body knowledge-body--empty" : "knowledge-body"}>
         {/* Left Tree Pane */}
         <div className="knowledge-sidebar">
           <div className="knowledge-sidebar-title">Global Knowledge Bundles</div>
