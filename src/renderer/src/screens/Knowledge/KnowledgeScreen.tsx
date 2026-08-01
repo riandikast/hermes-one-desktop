@@ -14,7 +14,6 @@ import {
   ChevronRight,
   ChevronDown,
 } from "../../assets/icons";
-import { useI18n } from "../../components/useI18n";
 
 export interface KnowledgeFileItem {
   name: string;
@@ -30,7 +29,6 @@ export interface KnowledgeBundleItem {
 }
 
 export function KnowledgeScreen(): React.JSX.Element {
-  const { t } = useI18n();
   const [bundles, setBundles] = useState<KnowledgeBundleItem[]>([]);
   const [selectedFile, setSelectedFile] = useState<{
     bundleName: string;

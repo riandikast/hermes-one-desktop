@@ -90,6 +90,10 @@ interface UseDashboardChatTransportArgs {
   modelBaseUrl?: string;
   profile?: string;
   provider?: string;
+  /** Global knowledge bundle names attached to this session. Their content
+   *  index is prepended to each submitted prompt so the gateway-side agent
+   *  can reference/update those files with its file tools. */
+  knowledgeBundles?: string[];
   setHermesSessionId: (id: string) => void;
   setIsLoading: (loading: boolean) => void;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
@@ -902,6 +906,7 @@ export function useDashboardChatTransport({
   modelBaseUrl,
   profile,
   provider,
+  knowledgeBundles,
   setHermesSessionId,
   setIsLoading,
   setMessages,
@@ -931,6 +936,27 @@ export function useDashboardChatTransport({
     DesktopSessionContinuationItem[]
   >([]);
   const lastSyncedCwdRef = useRef<string | null>(null);
+  const knowledgeIndexRef = useRef<string>("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const bundles = knowledgeBundles ?? [];
+    if (!enabled || bundles.length === 0) {
+      knowledgeIndexRef.current = "";
+      return;
+    }
+    void window.hermesAPI
+      .getKnowledgeIndex(bundles)
+      .then((index) => {
+        if (!cancelled) knowledgeIndexRef.current = index;
+      })
+      .catch(() => {
+        knowledgeIndexRef.current = "";
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, knowledgeBundles]);
 
   useEffect(() => {
     // `messagesRef` is the synchronous source of truth for `handleGatewayEvent`:
@@ -1541,6 +1567,10 @@ export function useDashboardChatTransport({
           "Dashboard chat supports image attachments only in this build. Use Auto or Legacy for mixed file attachments.",
         );
       }
+      const knowledgeIndex = knowledgeIndexRef.current;
+      const promptText = knowledgeIndex
+        ? `${knowledgeIndex}\n\n${dashboardText}`
+        : dashboardText;
 
       let client: DashboardGatewayClient;
       try {
@@ -1611,7 +1641,7 @@ export function useDashboardChatTransport({
           );
         }
         const submitText = dashboardPromptTextWithAttachmentRefs(
-          dashboardText,
+          promptText,
           syncedAttachments.refs,
         );
         await submitDashboardPromptWithRecovery(client, {

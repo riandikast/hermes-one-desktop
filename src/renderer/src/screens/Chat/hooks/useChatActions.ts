@@ -54,6 +54,10 @@ interface UseChatActionsArgs {
   activeTurnRef: React.MutableRefObject<ActiveTurn | null>;
   /** Working folders bound to this conversation (issue #27), or empty. */
   contextFolders: string[];
+  /** Global knowledge bundle names attached to this session. Their content
+   *  index is injected into the system prompt so the agent can reference or
+   *  update those files with its file tools. */
+  knowledgeBundles?: string[];
   /** Session-local model override — selected via the chat picker without
    *  persisting to config.yaml (issue #688). Carries the full identity so a
    *  cross-provider switch routes to the right backend, not just the model. */
@@ -121,6 +125,7 @@ export function useChatActions({
   onOpenSettings,
   activeTurnRef,
   contextFolders,
+  knowledgeBundles,
   sessionModel,
   sendViaDashboard,
   execSlashViaDashboard,
@@ -175,12 +180,15 @@ export function useChatActions({
           contextFolders.length > 0 ? contextFolders : undefined,
           runId,
           sessionModelRef.current || undefined,
+          knowledgeBundles && knowledgeBundles.length > 0
+            ? knowledgeBundles
+            : undefined,
         );
       } catch {
         // onChatError IPC already surfaces this to the user
       }
     },
-    [runId, profile, hermesSessionId, contextFolders, sendViaDashboard],
+    [runId, profile, hermesSessionId, contextFolders, knowledgeBundles, sendViaDashboard],
   );
 
   // Shared "side question" flow (the 💭 quick-ask button and a typed `/btw`).

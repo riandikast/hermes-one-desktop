@@ -188,6 +188,7 @@ function Chat({
   // persisted per session so a re-opened conversation restores its folder, and
   // reset on new chat below.
   const [contextFolders, setContextFolders] = useState<string[]>([]);
+  const [attachedKnowledgeBundles, setAttachedKnowledgeBundles] = useState<string[]>([]);
   // Gate folder persistence until the stored value for a resumed session has
   // been loaded — otherwise the initial null would overwrite the saved folder
   // before the load resolves. A brand-new chat (no initialSessionId) has
@@ -215,9 +216,40 @@ function Chat({
     };
   }, [initialSessionId]);
 
-  // Persist the linked folder for this session whenever it changes, once a
-  // gateway session id exists. Gated on the load above so a resumed session's
-  // stored folder is never clobbered by the initial null.
+  // Load attached knowledge bundles for this session
+  useEffect(() => {
+    if (!hermesSessionId) {
+      setAttachedKnowledgeBundles([]);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(`hermes.session.knowledge.${hermesSessionId}`);
+      if (raw) setAttachedKnowledgeBundles(JSON.parse(raw));
+      else setAttachedKnowledgeBundles([]);
+    } catch {
+      setAttachedKnowledgeBundles([]);
+    }
+  }, [hermesSessionId]);
+
+  const handleDetachKnowledgeBundle = useCallback(
+    (bundleName: string) => {
+      setAttachedKnowledgeBundles((prev) => {
+        const next = prev.filter((b) => b !== bundleName);
+        if (hermesSessionId) {
+          try {
+            localStorage.setItem(
+              `hermes.session.knowledge.${hermesSessionId}`,
+              JSON.stringify(next),
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+        return next;
+      });
+    },
+    [hermesSessionId],
+  );
   useEffect(() => {
     if (!hermesSessionId || !contextFolderLoadedRef.current) return;
     void window.hermesAPI
@@ -610,6 +642,7 @@ function Chat({
     enabled: dashboardChatEnabled,
     fallbackOnUnavailable: chatTransportPreference === "auto",
     hermesSessionId,
+    knowledgeBundles: attachedKnowledgeBundles,
     messages,
     model: chatCurrentModel,
     modelBaseUrl: chatCurrentBaseUrl,
@@ -719,6 +752,7 @@ function Chat({
     onOpenSettings: onOpenDiagnose,
     activeTurnRef,
     contextFolders,
+    knowledgeBundles: attachedKnowledgeBundles,
     sessionModel: sessionModelOverride,
     sendViaDashboard: dashboardTransport.enabled
       ? dashboardTransport.sendMessage
@@ -1105,10 +1139,12 @@ function Chat({
               </div>
               <ContextFolderChip
                 contextFolders={contextFolders}
+                attachedKnowledgeBundles={attachedKnowledgeBundles}
                 show
                 worktreeVisible={worktreeVisible}
                 onPickFolder={handlePickFolder}
                 onRemoveFolder={handleRemoveFolder}
+                onRemoveKnowledgeBundle={handleDetachKnowledgeBundle}
                 onToggleWorktree={handleToggleWorktree}
                 onSelectRecentFolder={handleSelectRecentFolder}
               />

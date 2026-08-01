@@ -5,6 +5,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  buildKnowledgeIndex,
   createKnowledgeBundle,
   deleteKnowledgeBundle,
   deleteKnowledgeFile,
@@ -56,5 +57,52 @@ describe("knowledge store", () => {
 
     const bundles = await listKnowledgeBundles(tempDir);
     expect(bundles).toHaveLength(0);
+  });
+
+  it("builds a knowledge index with file hints", async () => {
+    await createKnowledgeBundle("ui-rules", tempDir);
+    await writeKnowledgeFile("ui-rules", "style.md", "# Style Guide\nColors!", tempDir);
+    await writeKnowledgeFile("ui-rules", "naming.md", "Naming conventions", tempDir);
+
+    const index = await buildKnowledgeIndex(["ui-rules"], tempDir);
+
+    expect(index).toContain("## ui-rules");
+    expect(index).toContain("- style.md — # Style Guide");
+    expect(index).toContain("- naming.md — Naming conventions");
+    expect(index).toContain("Read files with the file tools");
+  });
+
+  it("returns empty index for no bundles", async () => {
+    const index = await buildKnowledgeIndex([], tempDir);
+    expect(index).toBe("");
+  });
+
+  it("skips missing bundles and dedupes names", async () => {
+    await createKnowledgeBundle("present", tempDir);
+    await writeKnowledgeFile("present", "a.md", "Alpha", tempDir);
+
+    const index = await buildKnowledgeIndex(
+      ["missing", "present", "present"],
+      tempDir,
+    );
+
+    expect(index).toContain("## present");
+    expect(index).not.toContain("## missing");
+  });
+
+  it("truncates long first lines in hints", async () => {
+    await createKnowledgeBundle("long", tempDir);
+    await writeKnowledgeFile(
+      "long",
+      "b.md",
+      `${"x".repeat(300)}\nsecond line`,
+      tempDir,
+    );
+
+    const index = await buildKnowledgeIndex(["long"], tempDir);
+
+    expect(index).toContain("- b.md — ");
+    expect(index).not.toContain("second line");
+    expect(index.length).toBeLessThan(2000);
   });
 });

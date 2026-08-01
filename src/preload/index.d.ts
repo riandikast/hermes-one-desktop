@@ -442,7 +442,9 @@ interface HermesAPI {
     contextFolders?: string[],
     runId?: string,
     modelOverride?: SessionModelOverride,
+    knowledgeBundles?: string[],
   ) => Promise<{ response: string; sessionId?: string }>;
+  getKnowledgeIndex: (bundleNames: string[]) => Promise<string>;
   abortChat: (runId?: string) => Promise<void>;
   transcribeAudio: (
     audio: Uint8Array,

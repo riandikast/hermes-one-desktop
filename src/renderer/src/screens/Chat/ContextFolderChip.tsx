@@ -1,15 +1,18 @@
 import { memo, useState, useEffect, useRef, Fragment } from "react";
-import { FolderOpen, FolderTree, X, Check, Plus } from "lucide-react";
+import { FolderOpen, FolderTree, X, Check, Plus, BookOpen } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 
 interface ContextFolderChipProps {
   /** Working folders bound to this conversation (issue #27). */
   contextFolders: string[];
+  /** Knowledge bundles attached to this session. */
+  attachedKnowledgeBundles?: string[];
   /** Hidden in remote/SSH mode, where the picker browses the wrong machine. */
   show: boolean;
   worktreeVisible: boolean;
   onPickFolder: () => void;
   onRemoveFolder: (path: string) => void;
+  onRemoveKnowledgeBundle?: (bundleName: string) => void;
   onToggleWorktree: () => void;
   onSelectRecentFolder?: (path: string) => void;
 }
@@ -27,10 +30,12 @@ function folderName(p: string): string {
  */
 export const ContextFolderChip = memo(function ContextFolderChip({
   contextFolders,
+  attachedKnowledgeBundles = [],
   show,
   worktreeVisible,
   onPickFolder,
   onRemoveFolder,
+  onRemoveKnowledgeBundle,
   onToggleWorktree,
   onSelectRecentFolder,
 }: ContextFolderChipProps): React.JSX.Element | null {
@@ -150,6 +155,26 @@ export const ContextFolderChip = memo(function ContextFolderChip({
 
   return (
     <div className="chat-ctxfolder-group" ref={containerRef}>
+      {attachedKnowledgeBundles.map((bundleName) => (
+        <Fragment key={`kb-${bundleName}`}>
+          <div
+            className="chat-meta-chip chat-meta-chip--active"
+            title={`Attached Knowledge: ${bundleName}`}
+          >
+            <BookOpen size={13} />
+            <span className="chat-ctxfolder-name">{bundleName}</span>
+          </div>
+          <button
+            className="chat-meta-chip-icon"
+            onClick={() => onRemoveKnowledgeBundle?.(bundleName)}
+            title="Detach Knowledge Bundle"
+            type="button"
+          >
+            <X size={11} />
+          </button>
+        </Fragment>
+      ))}
+
       {contextFolders.map((folder) => (
         <Fragment key={folder}>
           <button

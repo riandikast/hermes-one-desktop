@@ -515,6 +515,7 @@ const hermesAPI = {
     contextFolders?: string[],
     runId?: string,
     modelOverride?: SessionModelOverride,
+    knowledgeBundles?: string[],
   ): Promise<{ response: string; sessionId?: string }> =>
     ipcRenderer.invoke(
       "send-message",
@@ -526,7 +527,11 @@ const hermesAPI = {
       contextFolders,
       runId,
       modelOverride,
+      knowledgeBundles,
     ),
+
+  getKnowledgeIndex: (bundleNames: string[]): Promise<string> =>
+    ipcRenderer.invoke("get-knowledge-index", bundleNames),
 
   abortChat: (runId?: string): Promise<void> =>
     ipcRenderer.invoke("abort-chat", runId),

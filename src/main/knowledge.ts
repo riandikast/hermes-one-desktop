@@ -160,3 +160,71 @@ export async function importKnowledgeFolder(
   const found = bundles.find((b) => b.name === safeName);
   return found || { name: safeName, path: destDir, files: [] };
 }
+
+/** Cap for the assembled index (chars) — keeps the injected system message
+ *  near the plan's ~300-500 token budget. */
+const KNOWLEDGE_INDEX_MAX_CHARS = 2000;
+/** Per-file hint length: first line of the file, truncated. */
+const KNOWLEDGE_INDEX_HINT_CHARS = 90;
+
+/**
+ * Build a lightweight text index of the given knowledge bundles for system
+ * prompt injection. Lists each bundle's files with a one-line content hint
+ * (first line, truncated) so the model knows what each file covers and can
+ * read/update the full file with its file tools when relevant. Returns "" when
+ * no bundles are named (callers can skip injection entirely).
+ */
+export async function buildKnowledgeIndex(
+  bundleNames: string[],
+  homeOverride?: string,
+): Promise<string> {
+  const names = [...new Set((bundleNames || []).map((n) => n.trim()).filter(Boolean))];
+  if (names.length === 0) return "";
+
+  const root = await ensureKnowledgeDir(homeOverride);
+  const sections: string[] = [];
+  let budget = KNOWLEDGE_INDEX_MAX_CHARS;
+
+  for (const name of names) {
+    if (budget <= 0) break;
+    const bundlePath = join(root, name);
+    let entries: string[] = [];
+    try {
+      entries = (await readdir(bundlePath, { withFileTypes: true }))
+        .filter((e) => e.isFile())
+        .map((e) => e.name);
+    } catch {
+      continue; // bundle missing/unreadable — skip it
+    }
+    if (entries.length === 0) continue;
+
+    const lines: string[] = [];
+    for (const fileName of entries.slice(0, 12)) {
+      if (budget <= 0) break;
+      let hint = "";
+      try {
+        const content = await readFile(join(bundlePath, fileName), "utf8");
+        const firstLine = content.split(/\r?\n/)[0] || "";
+        hint = firstLine.trim().slice(0, KNOWLEDGE_INDEX_HINT_CHARS);
+      } catch {
+        /* hint optional */
+      }
+      const line = hint
+        ? `- ${fileName} — ${hint}`
+        : `- ${fileName}`;
+      lines.push(line);
+      budget -= line.length;
+    }
+    if (lines.length === 0) continue;
+
+    const section = `## ${name}\n${lines.join("\n")}`;
+    sections.push(section);
+  }
+
+  if (sections.length === 0) return "";
+
+  return [
+    "The user attached the following knowledge bundles. Read files with the file tools when relevant to the request; do not dump their contents into the conversation unless asked.",
+    ...sections,
+  ].join("\n\n");
+}

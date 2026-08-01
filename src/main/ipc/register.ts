@@ -57,6 +57,7 @@ import {
   writeKnowledgeFile,
   deleteKnowledgeFile,
   importKnowledgeFolder,
+  buildKnowledgeIndex,
 } from "../knowledge";
 import {
   getGpuStatus,
@@ -1475,6 +1476,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       contextFolder?: string,
       runId?: string,
       modelOverride?: SessionModelOverride,
+      knowledgeBundles?: string[],
     ) => {
       // Each conversation has a stable runId minted by the renderer. Fall back
       // to a generated id for legacy callers so the run is still tracked.
@@ -1610,6 +1612,9 @@ export function registerIpcHandlers(context: IpcContext): void {
         attachments,
         contextFolder,
         modelOverride,
+        knowledgeBundles && knowledgeBundles.length > 0
+          ? await buildKnowledgeIndex(knowledgeBundles).catch(() => "")
+          : "",
       );
 
       activeRuns.set(chatRunId, handle.abort);
@@ -2964,6 +2969,14 @@ export function registerIpcHandlers(context: IpcContext): void {
     "import-knowledge-folder",
     async (_event, sourceFolderPath: string, bundleName: string) => {
       return importKnowledgeFolder(sourceFolderPath, bundleName);
+    },
+  );
+
+  ipcMain.handle(
+    "get-knowledge-index",
+    async (_event, bundleNames: string[]) => {
+      if (!Array.isArray(bundleNames) || bundleNames.length === 0) return "";
+      return buildKnowledgeIndex(bundleNames).catch(() => "");
     },
   );
 

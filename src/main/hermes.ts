@@ -1210,6 +1210,7 @@ function sendMessageViaApi(
   attachments?: Attachment[],
   contextFolder?: string,
   override?: SessionModelOverride,
+  knowledgeIndex?: string,
 ): ChatHandle {
   const mc = effectiveModelConfig(profile, override);
   const controller = new AbortController();
@@ -1236,6 +1237,12 @@ function sendMessageViaApi(
   // roles, so reloaded sessions stay clean too.
   const ctxSystem = contextFolderSystemMessage(contextFolder);
   if (ctxSystem) messages.unshift(ctxSystem);
+  if (knowledgeIndex && knowledgeIndex.trim()) {
+    messages.unshift({
+      role: "system",
+      content: knowledgeIndex,
+    });
+  }
 
   const reasoningEffort = reasoningEffortForProfile(profile);
   const bodyObj: Record<string, unknown> = {
@@ -1621,6 +1628,7 @@ function sendMessageViaRuns(
   attachments?: Attachment[],
   contextFolder?: string,
   override?: SessionModelOverride,
+  knowledgeIndex?: string,
 ): ChatHandle {
   const mc = effectiveModelConfig(profile, override);
   const controller = new AbortController();
@@ -1639,6 +1647,11 @@ function sendMessageViaRuns(
   if (reasoningEffort) bodyObj.reasoning_effort = reasoningEffort;
   if (sessionId) bodyObj.session_id = sessionId;
   if (ctxSystem) bodyObj.instructions = ctxSystem.content;
+  if (knowledgeIndex && knowledgeIndex.trim()) {
+    bodyObj.instructions = [ctxSystem?.content, knowledgeIndex]
+      .filter((part) => part && part.trim())
+      .join("\n\n");
+  }
   const bodyBuf = Buffer.from(JSON.stringify(bodyObj), "utf-8");
   const headers = getJsonApiHeaders(profile, bodyBuf);
   if (sessionId) {
@@ -2642,6 +2655,7 @@ async function sendMessageViaNonGatewayApi(
   attachments?: Attachment[],
   contextFolder?: string,
   override?: SessionModelOverride,
+  knowledgeIndex?: string,
 ): Promise<ChatHandle> {
   const approvalCommand = /^\/(?:approve|deny)\b/i.test(message.trim());
   if (!attachments?.length && !approvalCommand) {
@@ -2656,6 +2670,7 @@ async function sendMessageViaNonGatewayApi(
         attachments,
         contextFolder,
         override,
+        knowledgeIndex,
       );
     }
   }
@@ -2669,6 +2684,7 @@ async function sendMessageViaNonGatewayApi(
     attachments,
     contextFolder,
     override,
+    knowledgeIndex,
   );
 }
 
@@ -2681,6 +2697,7 @@ async function sendMessageViaBestApi(
   attachments?: Attachment[],
   contextFolder?: string,
   override?: SessionModelOverride,
+  knowledgeIndex?: string,
 ): Promise<ChatHandle> {
   const approvalCommand = /^\/(?:approve|deny)\b/i.test(message.trim());
   // Skip the TUI gateway when a session-scoped model override is active — the
@@ -2719,6 +2736,7 @@ async function sendMessageViaBestApi(
     attachments,
     contextFolder,
     override,
+    knowledgeIndex,
   );
 }
 
@@ -2731,6 +2749,7 @@ async function sendMessageViaBestApiWithLocalRecovery(
   attachments?: Attachment[],
   contextFolder?: string,
   override?: SessionModelOverride,
+  knowledgeIndex?: string,
 ): Promise<ChatHandle> {
   let aborted = false;
   let retrying = false;
@@ -2865,6 +2884,7 @@ async function sendMessageViaBestApiWithLocalRecovery(
     attachments,
     contextFolder,
     override,
+    knowledgeIndex,
   );
 
   return handle;
@@ -2879,6 +2899,7 @@ export async function sendMessage(
   attachments?: Attachment[],
   contextFolder?: string,
   override?: SessionModelOverride,
+  knowledgeIndex?: string,
 ): Promise<ChatHandle> {
   ensureInitialized();
 
@@ -2894,6 +2915,7 @@ export async function sendMessage(
       attachments,
       contextFolder,
       override,
+      knowledgeIndex,
     );
   }
 
@@ -2935,6 +2957,7 @@ export async function sendMessage(
       attachments,
       contextFolder,
       override,
+      knowledgeIndex,
     );
   }
 
