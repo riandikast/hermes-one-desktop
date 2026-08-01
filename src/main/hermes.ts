@@ -1504,8 +1504,11 @@ function sendMessageViaApi(
         res.on("end", () => {
           try {
             const err = JSON.parse(errBody);
-            finish(err.error?.message || `API error ${res.statusCode}`);
+            const msg = err.error?.message || err.message || `API error ${res.statusCode}`;
+            appendChatLog(`[chat-error] HTTP ${res.statusCode}: ${msg}`);
+            finish(msg);
           } catch {
+            appendChatLog(`[chat-error] HTTP ${res.statusCode}: ${errBody.slice(0, 200)}`);
             finish(
               `API server returned ${res.statusCode}: ${errBody.slice(0, 200)}`,
             );
@@ -3029,7 +3032,8 @@ export function stopHealthPolling(): void {
 
 export function appendChatLog(message: string): void {
   try {
-    const logDir = join(HERMES_HOME, "logs");
+    const baseHome = process.env.HERMES_HOME || HERMES_HOME;
+    const logDir = join(baseHome, "logs");
     mkdirSync(logDir, { recursive: true });
     const line = `[${new Date().toISOString()}] ${message}\n`;
     appendFileSync(join(logDir, "agent.log"), line, "utf-8");

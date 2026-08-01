@@ -54,7 +54,25 @@ export function KnowledgeScreen(): React.JSX.Element {
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionStart, setMentionStart] = useState(0);
-  const [mentionCustomFolders, setMentionCustomFolders] = useState<string[]>([]);
+  const [mentionCustomFolders, setMentionCustomFolders] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem("hermes.knowledge.custom_folders");
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "hermes.knowledge.custom_folders",
+        JSON.stringify(mentionCustomFolders),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [mentionCustomFolders]);
   const [disabledBundles, setDisabledBundles] = useState<Record<string, boolean>>({});
   const [showMentionSourcesPopover, setShowMentionSourcesPopover] = useState(false);
   const [mentionResults, setMentionResults] = useState<

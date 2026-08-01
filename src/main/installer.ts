@@ -1505,9 +1505,10 @@ export function readLogs(
   logFile = "agent.log",
   lines = 200,
 ): { content: string; path: string } {
-  const logsDir = join(HERMES_HOME, "logs");
-  // Sanitize: only allow known log file names
-  const allowed = ["agent.log", "errors.log", "gateway.log"];
+  const baseHome = process.env.HERMES_HOME || HERMES_HOME;
+  const logsDir = join(baseHome, "logs");
+  // Sanitize: allow known log file names
+  const allowed = ["agent.log", "errors.log", "gateway.log", "config-fixes.log"];
   const file = allowed.includes(logFile) ? logFile : "agent.log";
   const fullPath = join(logsDir, file);
 

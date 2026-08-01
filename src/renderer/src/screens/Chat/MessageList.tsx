@@ -75,17 +75,19 @@ export const MessageList = memo(function MessageList({
   agentAvatar,
 }: MessageListProps): React.JSX.Element {
   // Bubbles with empty content are still hidden (live-stream placeholders).
-  // History rows pass through unconditionally.
+  // History rows pass through unconditionally. Agent bubbles streaming live are kept.
   const visibleMessages = useMemo(
     () =>
       messages.filter((m) => {
         if (!isBubble(m)) return true;
-        return !!m.error || ((m.content as string) || "").trim().length > 0;
+        if (!!m.error || m.pending) return true;
+        if (m.role === "agent" && isLoading && m === messages[messages.length - 1]) return true;
+        return ((m.content as string) || "").trim().length > 0;
       }),
-    [messages],
+    [messages, isLoading],
   );
 
-  const lastBubble = [...messages].reverse().find(isBubble);
+  const lastBubble = [...visibleMessages].reverse().find(isBubble);
   const lastMessageIsAgent = !!lastBubble && lastBubble.role === "agent";
 
   // Render plan: bubble/reasoning rows pass through one-to-one, but a
