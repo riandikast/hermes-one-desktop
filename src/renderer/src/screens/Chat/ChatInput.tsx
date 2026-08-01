@@ -545,20 +545,20 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       }
 
       // Mention menu keyboard navigation
-      if (mentionOpen && rankedMentions.length > 0) {
+      if (mentionOpen && visibleRankedMentions.length > 0) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
-          setMentionSelected((i) => (i + 1) % rankedMentions.length);
+          setMentionSelected((i) => (i + 1) % visibleRankedMentions.length);
           return;
         }
         if (e.key === "ArrowUp") {
           e.preventDefault();
-          setMentionSelected((i) => (i - 1 + rankedMentions.length) % rankedMentions.length);
+          setMentionSelected((i) => (i - 1 + visibleRankedMentions.length) % visibleRankedMentions.length);
           return;
         }
         if (e.key === "Enter" || e.key === "Tab") {
           e.preventDefault();
-          insertMention(rankedMentions[mentionSelected]);
+          insertMention(visibleRankedMentions[mentionSelected]);
           return;
         }
         if (e.key === "Escape") {
@@ -721,6 +721,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       mentionQuery,
       mentionFolderOnly ? "folders" : "files",
     );
+    const visibleRankedMentions = rankedMentions.slice(0, 25);
+    useEffect(() => {
+      setMentionSelected((index) =>
+        visibleRankedMentions.length === 0
+          ? 0
+          : Math.min(index, visibleRankedMentions.length - 1),
+      );
+    }, [visibleRankedMentions.length]);
 
     function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>): void {
       const { files, hasText } = filesFromClipboard(e);
@@ -950,7 +958,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                 ))}
               </div>
             )}
-            {mentionOpen && rankedMentions.length > 0 && (
+            {mentionOpen && visibleRankedMentions.length > 0 && (
               <div
                 className="mention-menu-overlay"
                 onMouseDown={() => {
@@ -965,9 +973,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                   onMouseDown={(event) => event.stopPropagation()}
                 >
                   <div className="mention-menu-list">
-                    {rankedMentions
-                      .slice(0, 25)
-                      .map((en, i) => (
+                    {visibleRankedMentions.map((en, i) => (
                         <div
                           key={en.path}
                           className={

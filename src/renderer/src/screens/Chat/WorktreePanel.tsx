@@ -391,6 +391,7 @@ export const WorktreePanel = memo(function WorktreePanel({
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    let cancelled = false;
     const trimmed = query.trim();
     if (trimmed.length === 0) {
       setSearchResults(null);
@@ -399,7 +400,6 @@ export const WorktreePanel = memo(function WorktreePanel({
     }
     setSearching(true);
     debounceRef.current = setTimeout(() => {
-      let cancelled = false;
       const runSearch = async (): Promise<void> => {
         const seen = new Set<string>();
         const all: FileSearchEntry[] = [];
@@ -414,12 +414,14 @@ export const WorktreePanel = memo(function WorktreePanel({
         }
         if (cancelled) return;
         const ranked = searchFiles(all, trimmed, "all").slice(0, 50);
+        if (cancelled) return;
         setSearchResults(ranked);
         setSearching(false);
       };
       void runSearch();
     }, 250);
     return () => {
+      cancelled = true;
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [query, folderPaths]);
