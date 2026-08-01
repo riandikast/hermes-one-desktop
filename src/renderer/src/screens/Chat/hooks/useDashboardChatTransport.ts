@@ -1576,20 +1576,18 @@ export function useDashboardChatTransport({
       try {
         client = await ensureClient();
       } catch (err) {
-        // Dashboard was reachable but the chat WS wouldn't connect: do NOT fall
-        // back to the /v1 path — over the dashboard tunnel /v1 doesn't exist and
-        // 405s. Surface the error so the user retries on the same transport.
+        const message = err instanceof Error ? err.message : String(err);
+        // On 429 rate limit or 400 bad request or dashboard error, do NOT double-send via fallback
         if (
+          /429|resource|exhausted|quota|400|unsupported/i.test(message) ||
           (err as { dashboardWasReachable?: boolean })?.dashboardWasReachable
         ) {
-          const message = err instanceof Error ? err.message : String(err);
           return failActiveTurn(message);
         }
         if (fallbackOnUnavailable) {
           console.warn("Falling back to legacy chat transport.", err);
           return false;
         }
-        const message = err instanceof Error ? err.message : String(err);
         return failActiveTurn(message);
       }
 

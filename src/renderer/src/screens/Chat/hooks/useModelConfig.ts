@@ -120,6 +120,8 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
     [savedModels, ollamaCloudDiscovery.models, ollamaCloudDiscovery.status],
   );
 
+  const isSessionScopedRef = useRef(false);
+
   const reload = useCallback(async (): Promise<void> => {
     const seq = ++loadSeqRef.current;
     const [mc, savedModels] = await Promise.all([
@@ -127,9 +129,11 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
       window.hermesAPI.listModels(),
     ]);
     if (seq !== loadSeqRef.current) return;
-    setCurrentModel(mc.model);
-    setCurrentProvider(mc.provider);
-    setCurrentBaseUrl(mc.baseUrl);
+    if (!isSessionScopedRef.current) {
+      setCurrentModel(mc.model);
+      setCurrentProvider(mc.provider);
+      setCurrentBaseUrl(mc.baseUrl);
+    }
     setSavedModels(savedModels);
   }, [profile]);
 
@@ -164,6 +168,7 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
       { persist = true }: { persist?: boolean } = {},
     ): Promise<void> => {
       const effectiveBaseUrl = effectiveOverrideBaseUrl(provider, baseUrl);
+      isSessionScopedRef.current = !persist;
       setCurrentModel(model);
       setCurrentProvider(provider);
       setCurrentBaseUrl(effectiveBaseUrl);
