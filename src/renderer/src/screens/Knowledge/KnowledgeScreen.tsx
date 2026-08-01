@@ -112,16 +112,16 @@ export function KnowledgeScreen(): React.JSX.Element {
           }
         }
 
-        // 2. Add files from custom picked folders
+        // 2. Add files from custom picked folders (recursive)
         for (const folder of mentionCustomFolders) {
           try {
-            const entries = await window.hermesAPI.readDirectory(folder);
+            const entries = await window.hermesAPI.listFilesRecursive(folder);
             if (entries && Array.isArray(entries)) {
               for (const en of entries) {
-                if (!q || en.name.toLowerCase().includes(q)) {
+                if (!q || en.name.toLowerCase().includes(q) || en.path.toLowerCase().includes(q)) {
                   matches.push({
                     name: en.name,
-                    path: `${folder}/${en.name}`,
+                    path: en.path,
                     isDirectory: en.isDirectory,
                   });
                 }
@@ -132,10 +132,10 @@ export function KnowledgeScreen(): React.JSX.Element {
           }
         }
 
-        // 3. Add Everything Search results
-        if (window.hermesAPI.everythingSearch) {
+        // 3. Query Voidtools Everything (mirror ChatInput behavior)
+        if (window.hermesAPI.everythingSearch && q.length >= 2) {
           try {
-            const ev = await window.hermesAPI.everythingSearch(q || "a");
+            const ev = await window.hermesAPI.everythingSearch(q);
             if (ev && Array.isArray(ev)) {
               const seen = new Set(matches.map((m) => m.path));
               for (const item of ev) {
@@ -150,7 +150,7 @@ export function KnowledgeScreen(): React.JSX.Element {
               }
             }
           } catch {
-            /* ignore */
+            /* Everything search unavailable or failed */
           }
         }
 
@@ -736,10 +736,7 @@ export function KnowledgeScreen(): React.JSX.Element {
               </div>
             </div>
           ) : (
-            <div className="knowledge-no-selection">
-              <BookOpen size={36} />
-              <p>Select a file from the knowledge bundles on the left to edit or view.</p>
-            </div>
+            <div className="knowledge-no-selection" />
           )}
         </div>
       </div>
