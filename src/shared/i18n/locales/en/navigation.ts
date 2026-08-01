@@ -16,6 +16,7 @@ export default {
   memory: "Memory",
   tools: "Capabilities",
   schedules: "Schedules",
+  knowledge: "Knowledge",
   kanban: "Kanban",
   gateway: "Gateway",
   settings: "Settings",

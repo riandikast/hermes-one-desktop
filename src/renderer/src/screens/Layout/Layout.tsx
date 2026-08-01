@@ -31,6 +31,7 @@ import Office from "../Office/Office";
 import Providers from "../Providers/Providers";
 import Schedules from "../Schedules/Schedules";
 import Kanban from "../Kanban/Kanban";
+import KnowledgeScreen from "../Knowledge/KnowledgeScreen";
 import RemoteNotice from "../../components/RemoteNotice";
 import VerifyWarningBanner from "../../components/VerifyWarningBanner";
 import { useSettingsModal } from "../../components/settings/SettingsModalContext";
@@ -43,6 +44,7 @@ import {
   Building,
   KeyRound,
   Timer,
+  BookOpen,
   Kanban as KanbanIcon,
   Download,
   PanelLeftClose,
@@ -62,6 +64,7 @@ type View =
   | "memory"
   | "tools"
   | "schedules"
+  | "knowledge"
   | "kanban"
   | "gateway";
 
@@ -74,6 +77,7 @@ const PINNED_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   // "skills" lives under the Discover tab (installed + community), so it's no
   // longer a top-level nav item.
   { view: "schedules", icon: Timer, labelKey: "navigation.schedules" },
+  { view: "knowledge", icon: BookOpen, labelKey: "navigation.knowledge" },
 ];
 
 const FOOTER_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
@@ -983,6 +987,12 @@ function Layout({
           {visitedViews.has("schedules") && (
             <div style={paneStyle("schedules")}>
               <Schedules profile={activeProfile} />
+            </div>
+          )}
+
+          {visitedViews.has("knowledge") && (
+            <div style={paneStyle("knowledge")}>
+              <KnowledgeScreen />
             </div>
           )}
 
