@@ -1053,6 +1053,7 @@ function Chat({
           hasSession={!!hermesSessionId}
           sessionId={hermesSessionId}
           remoteMode={remoteMode}
+          contextFolders={contextFolders}
           profile={profile}
           contextUsage={contextUsage}
           readiness={readiness}

@@ -69,6 +69,8 @@ interface ChatInputProps {
   hasSession: boolean;
   sessionId?: string | null;
   remoteMode?: boolean;
+  /** Active workspace folders for multi-project mention searching. */
+  contextFolders?: string[];
   /** Active profile — used to resolve the provider for voice transcription. */
   profile?: string;
   /** Context-window occupancy for the gauge; null until the first response. */
@@ -92,6 +94,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       hasSession,
       sessionId,
       remoteMode,
+      contextFolders,
       profile,
       contextUsage,
       readiness,
@@ -113,7 +116,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const [mentionEntries, setMentionEntries] = useState<MentionEntry[]>([]);
     const [mentionQuery, setMentionQuery] = useState("");
     const [mentionSelected, setMentionSelected] = useState(0);
-    const [mentionFolderOnly, setMentionFolderOnly] = useState(false);
     const mentionStartRef = useRef(0);
     // Once the user explicitly closes the menu (Escape / overlay click), it
     // stays closed for the current @-token: typing more chars (`@gmail.com`)
@@ -435,7 +437,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         const opening = !mentionOpen;
         mentionStartRef.current = m.start;
         setMentionQuery(m.query);
-        setMentionFolderOnly(m.folderOnly);
         setMentionSelected(0);
         setMentionOpen(true);
         if (opening || mentionEntries.length === 0) {
@@ -597,13 +598,13 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         return;
       }
       try {
-        let folders = sessionId
-          ? await window.hermesAPI.getSessionContextFolder(sessionId)
-          : null;
+        let folders = (contextFolders && contextFolders.length > 0)
+          ? contextFolders
+          : (sessionId ? await window.hermesAPI.getSessionContextFolder(sessionId) : null);
         if (!folders || folders.length === 0) {
           // New session (no sessionId yet): fall back to the most recent
           // context folder so @ works out of the box.
-          const recent = await window.hermesAPI.listRecentSessionContextFolders(1);
+          const recent = await window.hermesAPI.listRecentSessionContextFolders(5);
           folders = recent.length > 0 ? recent : null;
         }
         if (!folders || folders.length === 0) {
@@ -722,9 +723,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       return searchFiles(
         mentionEntries,
         mentionQuery,
-        mentionFolderOnly ? "folders" : "files",
+        "all",
       );
-    }, [mentionEntries, mentionQuery, mentionFolderOnly, mentionOpen]);
+    }, [mentionEntries, mentionQuery, mentionOpen]);
 
     // Query Voidtools Everything when mention menu is active and query is >= 2 chars
     useEffect(() => {
