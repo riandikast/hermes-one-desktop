@@ -48,6 +48,7 @@ import {
   mediaFileExists,
 } from "../media";
 import { openTerminalInDirectory } from "../terminal-launcher";
+import { queryEverything } from "../everything-search";
 import {
   getGpuStatus,
   reenableGpuAndRelaunch,
@@ -2904,6 +2905,14 @@ export function registerIpcHandlers(context: IpcContext): void {
     await walk(root, "");
     return out;
   });
+
+  ipcMain.handle(
+    "everything-search",
+    async (_event, query: string, rootPath?: string) => {
+      if (process.platform !== "win32") return null;
+      return queryEverything(query, rootPath);
+    },
+  );
 
   // Read directory contents for worktree panel
   ipcMain.handle(

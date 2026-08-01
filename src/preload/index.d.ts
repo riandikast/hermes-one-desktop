@@ -1104,6 +1104,10 @@ interface HermesAPI {
   ) => Promise<{ content: string; truncated: boolean } | null>;
   openFileInEditor: (filePath: string) => Promise<boolean>;
   openTerminal: (dirPath: string) => Promise<boolean>;
+  everythingSearch: (
+    query: string,
+    rootPath?: string,
+  ) => Promise<{ name: string; isDirectory: boolean; path: string }[] | null>;
   readImageFile: (filePath: string) => Promise<string | null>;
   kanbanAssignTask: (
     taskId: string,

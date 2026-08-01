@@ -1540,6 +1540,11 @@ const hermesAPI = {
     ipcRenderer.invoke("open-file-in-editor", filePath),
   openTerminal: (dirPath: string): Promise<boolean> =>
     ipcRenderer.invoke("open-terminal", dirPath),
+  everythingSearch: (
+    query: string,
+    rootPath?: string,
+  ): Promise<{ name: string; isDirectory: boolean; path: string }[] | null> =>
+    ipcRenderer.invoke("everything-search", query, rootPath),
   readImageFile: (filePath: string): Promise<string | null> =>
     ipcRenderer.invoke("read-image-file", filePath),
   kanbanAssignTask: (
