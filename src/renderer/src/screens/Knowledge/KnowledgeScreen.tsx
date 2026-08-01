@@ -54,29 +54,82 @@ export function KnowledgeScreen(): React.JSX.Element {
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionStart, setMentionStart] = useState(0);
+  const [mentionCustomFolders, setMentionCustomFolders] = useState<string[]>([]);
   const [mentionResults, setMentionResults] = useState<
     Array<{ name: string; path: string; isDirectory: boolean }>
   >([]);
   const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
 
+  const handlePickMentionFolder = async () => {
+    try {
+      const folderPath = await window.hermesAPI.selectFolder();
+      if (!folderPath) return;
+      setMentionCustomFolders((prev) =>
+        prev.includes(folderPath) ? prev : [...prev, folderPath],
+      );
+    } catch {
+      /* ignore */
+    }
+  };
+
   useEffect(() => {
     if (!mentionOpen) return;
     let cancelled = false;
-    const q = mentionQuery.trim();
+    const q = mentionQuery.trim().toLowerCase();
 
     void (async () => {
       try {
         let matches: Array<{ name: string; path: string; isDirectory: boolean }> = [];
 
+        // 1. Add files from all knowledge bundles
+        for (const bundle of bundles) {
+          for (const file of bundle.files) {
+            if (!q || file.name.toLowerCase().includes(q) || file.path.toLowerCase().includes(q)) {
+              matches.push({
+                name: file.name,
+                path: file.path,
+                isDirectory: false,
+              });
+            }
+          }
+        }
+
+        // 2. Add files from custom picked folders
+        for (const folder of mentionCustomFolders) {
+          try {
+            const entries = await window.hermesAPI.readDirectory(folder);
+            if (entries && Array.isArray(entries)) {
+              for (const en of entries) {
+                if (!q || en.name.toLowerCase().includes(q)) {
+                  matches.push({
+                    name: en.name,
+                    path: `${folder}/${en.name}`,
+                    isDirectory: en.isDirectory,
+                  });
+                }
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+
+        // 3. Add Everything Search results
         if (window.hermesAPI.everythingSearch) {
           try {
             const ev = await window.hermesAPI.everythingSearch(q || "a");
             if (ev && Array.isArray(ev)) {
-              matches = ev.map((item) => ({
-                name: item.name,
-                path: item.path,
-                isDirectory: item.isDirectory,
-              }));
+              const seen = new Set(matches.map((m) => m.path));
+              for (const item of ev) {
+                if (!seen.has(item.path)) {
+                  matches.push({
+                    name: item.name,
+                    path: item.path,
+                    isDirectory: item.isDirectory,
+                  });
+                  seen.add(item.path);
+                }
+              }
             }
           } catch {
             /* ignore */
@@ -87,14 +140,17 @@ export function KnowledgeScreen(): React.JSX.Element {
           try {
             const recent = await window.hermesAPI.listRecentSessionContextFolders(10);
             if (recent && Array.isArray(recent)) {
-              matches = recent.map((p) => {
-                const parts = p.split(/[\\/]/).filter(Boolean);
-                return {
-                  name: parts.at(-1) || p,
-                  path: p,
-                  isDirectory: true,
-                };
-              });
+              const seen = new Set(matches.map((m) => m.path));
+              for (const p of recent) {
+                if (!seen.has(p)) {
+                  const parts = p.split(/[\\/]/).filter(Boolean);
+                  matches.push({
+                    name: parts.at(-1) || p,
+                    path: p,
+                    isDirectory: true,
+                  });
+                }
+              }
             }
           } catch {
             /* ignore */
@@ -102,7 +158,7 @@ export function KnowledgeScreen(): React.JSX.Element {
         }
 
         if (!cancelled) {
-          setMentionResults(matches.slice(0, 15));
+          setMentionResults(matches.slice(0, 20));
         }
       } catch {
         if (!cancelled) setMentionResults([]);
@@ -112,7 +168,7 @@ export function KnowledgeScreen(): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [mentionOpen, mentionQuery]);
+  }, [mentionOpen, mentionQuery, bundles, mentionCustomFolders]);
 
   const handleTextareaCaret = (
     e: React.SyntheticEvent<HTMLTextAreaElement>,
@@ -353,11 +409,7 @@ export function KnowledgeScreen(): React.JSX.Element {
         {/* Left Tree Pane */}
         <div className="knowledge-sidebar">
           <div className="knowledge-sidebar-title">Global Knowledge Bundles</div>
-          {bundles.length === 0 ? (
-            <div className="knowledge-empty-state">
-              <Folder size={36} className="empty-icon" />
-            </div>
-          ) : (
+          {bundles.length === 0 ? null : (
             <div className="knowledge-bundle-list">
               {bundles.map((bundle) => {
                 const isExpanded = expandedBundles[bundle.name] ?? true;
@@ -506,6 +558,19 @@ export function KnowledgeScreen(): React.JSX.Element {
                   </span>
                 </div>
                 <div className="toolbar-controls">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => void handlePickMentionFolder()}
+                    title="Pick folder to index files for @ mention"
+                  >
+                    <Folder size={13} />
+                    <span>
+                      {mentionCustomFolders.length > 0
+                        ? `@ Folders (${mentionCustomFolders.length})`
+                        : "@ Pick Folder"}
+                    </span>
+                  </button>
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"

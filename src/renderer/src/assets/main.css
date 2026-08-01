@@ -2629,8 +2629,33 @@ body:has(.shell-vibrant),
 .knowledge-file-list {
   display: flex;
   flex-direction: column;
-  padding-left: 20px;
+  padding-left: 28px;
   gap: 2px;
+}
+
+.knowledge-no-files {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.knowledge-add-file-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 8px 6px 28px;
+  padding: 4px;
+}
+
+.knowledge-add-file-bar input {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-input);
+  color: var(--text-primary);
 }
 
 .knowledge-file-item {
@@ -2675,12 +2700,43 @@ body:has(.shell-vibrant),
   flex-direction: column;
   background: var(--bg-main);
   overflow: hidden;
+  position: relative;
 }
 
 .knowledge-editor-container {
   display: flex;
   flex-direction: column;
   height: 100%;
+  width: 100%;
+}
+
+.knowledge-no-selection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  width: 100%;
+  height: 100%;
+  margin: auto;
+  padding: 32px 24px;
+  box-sizing: border-box;
+  color: var(--text-muted);
+  gap: 14px;
+}
+
+.knowledge-no-selection p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.knowledge-no-selection svg,
+.knowledge-no-selection .empty-icon {
+  margin: 0 auto;
+  display: block;
 }
 
 .knowledge-editor-toolbar {
