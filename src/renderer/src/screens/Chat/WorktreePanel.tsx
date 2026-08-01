@@ -411,6 +411,18 @@ export const WorktreePanel = memo(function WorktreePanel({
             seen.add(e.path);
             all.push(e);
           }
+          try {
+            const evResults = await window.hermesAPI.everythingSearch(trimmed, folder);
+            if (!cancelled && evResults && evResults.length > 0) {
+              for (const e of evResults) {
+                if (!e.path || seen.has(e.path)) continue;
+                seen.add(e.path);
+                all.push(e);
+              }
+            }
+          } catch {
+            /* Everything search unavailable */
+          }
         }
         if (cancelled) return;
         const ranked = searchFiles(all, trimmed, "all").slice(0, 50);

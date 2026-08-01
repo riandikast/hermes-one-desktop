@@ -671,6 +671,27 @@ export async function openTerminalInDirectory(
   const terminal = await resolveTerminalCommandAsync(dirPath);
   if (!terminal) return false;
 
+  if (process.platform === "win32") {
+    try {
+      const systemRoot = process.env.SystemRoot || "C:\\Windows";
+      const cmd = win32.join(systemRoot, "System32", "cmd.exe");
+      const child = spawn(
+        cmd,
+        ["/c", "start", "", terminal.command, ...terminal.args],
+        {
+          cwd: terminal.cwd,
+          detached: true,
+          stdio: "ignore",
+          windowsHide: false,
+        },
+      );
+      child.unref();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   return new Promise((resolve) => {
     let settled = false;
     const settle = (value: boolean): void => {

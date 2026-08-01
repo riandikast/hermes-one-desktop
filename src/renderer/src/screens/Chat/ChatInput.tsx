@@ -716,11 +716,49 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     // Ranked, token-filtered view of the mention entries. Shared by the menu
     // list and keyboard navigation so Enter inserts the highlighted row.
-    const rankedMentions = searchFiles(
-      mentionEntries,
-      mentionQuery,
-      mentionFolderOnly ? "folders" : "files",
-    );
+    // Memoized and gated on mentionOpen so normal typing never triggers search.
+    const rankedMentions = useMemo(() => {
+      if (!mentionOpen) return [];
+      return searchFiles(
+        mentionEntries,
+        mentionQuery,
+        mentionFolderOnly ? "folders" : "files",
+      );
+    }, [mentionEntries, mentionQuery, mentionFolderOnly, mentionOpen]);
+
+    // Query Voidtools Everything when mention menu is active and query is >= 2 chars
+    useEffect(() => {
+      if (!mentionOpen || !mentionQuery.trim() || mentionQuery.trim().length < 2) return;
+      const q = mentionQuery.trim();
+      let active = true;
+      const timer = setTimeout(() => {
+        void (async () => {
+          try {
+            const results = await window.hermesAPI.everythingSearch(q);
+            if (active && results && results.length > 0) {
+              setMentionEntries((prev) => {
+                const seen = new Set(prev.map((item) => item.path));
+                const added: MentionEntry[] = [];
+                for (const r of results) {
+                  if (r.path && !seen.has(r.path)) {
+                    seen.add(r.path);
+                    added.push({ name: r.name, isDirectory: r.isDirectory, path: r.path });
+                  }
+                }
+                return added.length > 0 ? [...added, ...prev] : prev;
+              });
+            }
+          } catch {
+            /* Everything search unavailable or failed */
+          }
+        })();
+      }, 150);
+      return () => {
+        active = false;
+        clearTimeout(timer);
+      };
+    }, [mentionOpen, mentionQuery]);
+
     const visibleRankedMentions = rankedMentions.slice(0, 25);
     useEffect(() => {
       setMentionSelected((index) =>
