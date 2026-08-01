@@ -55,6 +55,8 @@ export function KnowledgeScreen(): React.JSX.Element {
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionStart, setMentionStart] = useState(0);
   const [mentionCustomFolders, setMentionCustomFolders] = useState<string[]>([]);
+  const [disabledBundles, setDisabledBundles] = useState<Record<string, boolean>>({});
+  const [showMentionSourcesPopover, setShowMentionSourcesPopover] = useState(false);
   const [mentionResults, setMentionResults] = useState<
     Array<{ name: string; path: string; isDirectory: boolean }>
   >([]);
@@ -72,6 +74,17 @@ export function KnowledgeScreen(): React.JSX.Element {
     }
   };
 
+  const handleRemoveMentionFolder = (folderPath: string) => {
+    setMentionCustomFolders((prev) => prev.filter((f) => f !== folderPath));
+  };
+
+  const handleToggleMentionBundle = (bundleName: string) => {
+    setDisabledBundles((prev) => ({
+      ...prev,
+      [bundleName]: !prev[bundleName],
+    }));
+  };
+
   useEffect(() => {
     if (!mentionOpen) return;
     let cancelled = false;
@@ -81,10 +94,15 @@ export function KnowledgeScreen(): React.JSX.Element {
       try {
         let matches: Array<{ name: string; path: string; isDirectory: boolean }> = [];
 
-        // 1. Add files from all knowledge bundles
+        // 1. Add files from enabled knowledge bundles
         for (const bundle of bundles) {
+          if (disabledBundles[bundle.name]) continue;
           for (const file of bundle.files) {
-            if (!q || file.name.toLowerCase().includes(q) || file.path.toLowerCase().includes(q)) {
+            if (
+              !q ||
+              file.name.toLowerCase().includes(q) ||
+              file.path.toLowerCase().includes(q)
+            ) {
               matches.push({
                 name: file.name,
                 path: file.path,
@@ -168,7 +186,7 @@ export function KnowledgeScreen(): React.JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [mentionOpen, mentionQuery, bundles, mentionCustomFolders]);
+  }, [mentionOpen, mentionQuery, bundles, mentionCustomFolders, disabledBundles]);
 
   const handleTextareaCaret = (
     e: React.SyntheticEvent<HTMLTextAreaElement>,
@@ -557,20 +575,91 @@ export function KnowledgeScreen(): React.JSX.Element {
                     {selectedFile.path}
                   </span>
                 </div>
-                <div className="toolbar-controls">
+                <div className="toolbar-controls" style={{ position: "relative" }}>
                   <button
                     type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => void handlePickMentionFolder()}
-                    title="Pick folder to index files for @ mention"
+                    className={`btn btn-secondary btn-sm ${
+                      showMentionSourcesPopover ? "active" : ""
+                    }`}
+                    onClick={() => setShowMentionSourcesPopover((v) => !v)}
+                    title="Manage @ Mention File Sources"
                   >
                     <Folder size={13} />
-                    <span>
-                      {mentionCustomFolders.length > 0
-                        ? `@ Folders (${mentionCustomFolders.length})`
-                        : "@ Pick Folder"}
-                    </span>
+                    <span>@ Sources</span>
                   </button>
+
+                  {showMentionSourcesPopover && (
+                    <div className="knowledge-sources-popover">
+                      <div className="popover-header">
+                        <span>@ Mention Sources</span>
+                        <button
+                          type="button"
+                          className="btn-ghost btn-xs"
+                          onClick={() => setShowMentionSourcesPopover(false)}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="popover-section">
+                        <div className="popover-subtitle">
+                          Imported Knowledge Bundles
+                        </div>
+                        {bundles.length === 0 ? (
+                          <div className="popover-empty">No bundles imported</div>
+                        ) : (
+                          bundles.map((bundle) => {
+                            const isEnabled = !disabledBundles[bundle.name];
+                            return (
+                              <label key={bundle.name} className="popover-item">
+                                <input
+                                  type="checkbox"
+                                  checked={isEnabled}
+                                  onChange={() =>
+                                    handleToggleMentionBundle(bundle.name)
+                                  }
+                                />
+                                <span>{bundle.name}</span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                      <div className="popover-divider" />
+                      <div className="popover-section">
+                        <div className="popover-subtitle">
+                          Custom Picked Disk Folders
+                        </div>
+                        {mentionCustomFolders.length === 0 ? (
+                          <div className="popover-empty">No custom folders added</div>
+                        ) : (
+                          mentionCustomFolders.map((folderPath) => (
+                            <div key={folderPath} className="popover-item-folder">
+                              <span title={folderPath}>
+                                {folderPath.split(/[\\/]/).filter(Boolean).at(-1) || folderPath}
+                              </span>
+                              <button
+                                type="button"
+                                className="btn-ghost btn-xs danger"
+                                title="Remove Folder"
+                                onClick={() => handleRemoveMentionFolder(folderPath)}
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="popover-divider" />
+                      <button
+                        type="button"
+                        className="popover-add-btn"
+                        onClick={() => void handlePickMentionFolder()}
+                      >
+                        <Plus size={13} />
+                        <span>Add Folder from Disk...</span>
+                      </button>
+                    </div>
+                  )}
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"

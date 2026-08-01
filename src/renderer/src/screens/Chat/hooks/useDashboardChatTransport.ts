@@ -1054,7 +1054,7 @@ export function useDashboardChatTransport({
         event,
         {
           activeTurn: activeTurnRef.current,
-          renderAssistantDeltas: connectionMode === "local",
+          renderAssistantDeltas: true,
         },
       );
       reasoningSegmentClosedRef.current = next.reasoningSegmentClosed;

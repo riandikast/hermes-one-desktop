@@ -2698,6 +2698,8 @@ body:has(.shell-vibrant),
   flex: 1;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   background: var(--bg-main);
   overflow: hidden;
   position: relative;
@@ -2717,8 +2719,9 @@ body:has(.shell-vibrant),
   justify-content: center;
   text-align: center;
   width: 100%;
+  max-width: 460px;
   height: 100%;
-  margin: auto;
+  margin: 0 auto;
   padding: 32px 24px;
   box-sizing: border-box;
   color: var(--text-muted);
@@ -2833,6 +2836,90 @@ body:has(.shell-vibrant),
   gap: 2px;
 }
 
+.knowledge-sources-popover {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  width: 280px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  z-index: 200;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.knowledge-sources-popover .popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.knowledge-sources-popover .popover-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.knowledge-sources-popover .popover-subtitle {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.knowledge-sources-popover .popover-empty {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.knowledge-sources-popover .popover-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.knowledge-sources-popover .popover-item-folder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 2px 0;
+}
+
+.knowledge-sources-popover .popover-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 2px 0;
+}
+
+.knowledge-sources-popover .popover-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--color-primary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 0;
+  font-weight: 500;
+}
+
 .knowledge-mention-item {
   display: flex;
   align-items: center;
@@ -2863,22 +2950,6 @@ body:has(.shell-vibrant),
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 280px;
-}
-
-.knowledge-no-selection {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  margin: 0 auto;
-  padding: 32px;
-  box-sizing: border-box;
-  color: var(--text-muted);
-  gap: 12px;
-  text-align: center;
-  opacity: 0.7;
 }
 
 .knowledge-empty-state .empty-icon,
