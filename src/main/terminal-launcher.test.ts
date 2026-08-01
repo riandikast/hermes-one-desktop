@@ -42,7 +42,7 @@ describe("terminal launcher (win32)", () => {
     });
 
     expect(terminal).not.toBeNull();
-    expect(terminal!.command).toMatch(/WindowsTerminal\.exe$/);
+    expect(terminal!.command).toMatch(/(wt\.exe|WindowsTerminal\.exe)$/);
     expect(terminal!.args).toEqual(["-d", dirPath]);
     expect(terminal!.cwd).toBe(dirPath);
   });
@@ -62,7 +62,7 @@ describe("terminal launcher (win32)", () => {
     });
 
     expect(terminal).not.toBeNull();
-    expect(terminal!.command).toBe(WINDOWS_TERMINAL_EXE);
+    expect(terminal!.command).toMatch(/(wt\.exe|WindowsTerminal\.exe)$/);
     expect(terminal!.args).toEqual(["-d", dirPath]);
     expect(terminal!.cwd).toBe(dirPath);
   });

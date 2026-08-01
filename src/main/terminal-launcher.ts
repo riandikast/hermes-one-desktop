@@ -336,6 +336,18 @@ function linuxTerminalArgs(resolvedPath: string, dirPath: string): string[] {
   return [];
 }
 
+function resolveWtAlias(
+  env: NodeJS.ProcessEnv,
+  exists: (filePath: string) => boolean,
+): string | null {
+  const localAppData = env.LOCALAPPDATA;
+  if (localAppData) {
+    const wtAlias = win32.join(localAppData, "Microsoft", "WindowsApps", "wt.exe");
+    if (exists(wtAlias)) return wtAlias;
+  }
+  return null;
+}
+
 function resolveWindowsTerminal(
   dirPath: string,
   env: NodeJS.ProcessEnv,
@@ -380,7 +392,9 @@ function resolveWindowsTerminal(
     return startCommand(pwsh, ["-NoExit", "-NoLogo"]);
   }
 
+  const wtAlias = resolveWtAlias(env, exists);
   const windowsTerminal =
+    wtAlias ||
     findTrustedWindowsPackageExecutable(
       "Microsoft.WindowsTerminal",
       "Microsoft.WindowsTerminal_",
@@ -402,7 +416,11 @@ function resolveWindowsTerminal(
       getPackageInstallLocations,
     );
   if (windowsTerminal && exists(windowsTerminal)) {
-    return startCommand(windowsTerminal, ["-d", dirPath]);
+    // If resolved path is inside WindowsApps, use execution alias or wt.exe
+    const targetExe = windowsTerminal.includes("WindowsApps")
+      ? wtAlias || "wt.exe"
+      : windowsTerminal;
+    return startCommand(targetExe, ["-d", dirPath]);
   }
 
   const powershell = win32.join(
@@ -442,6 +460,11 @@ async function resolveWindowsTerminalAsync(
     cwd: dirPath,
   });
 
+  const wtAlias = resolveWtAlias(env, exists);
+  if (wtAlias) {
+    return startCommand(wtAlias, ["-d", dirPath]);
+  }
+
   // Static checks first — these are pure filesystem stats and cost nothing.
   const pwshStatic = [
     win32.join(programFiles, "PowerShell", "7", "pwsh.exe"),
@@ -466,10 +489,16 @@ async function resolveWindowsTerminalAsync(
     listDirs,
   );
   if (windowsTerminalStatic) {
-    return startCommand(windowsTerminalStatic, ["-d", dirPath]);
+    const targetExe = windowsTerminalStatic.includes("WindowsApps")
+      ? wtAlias || "wt.exe"
+      : windowsTerminalStatic;
+    return startCommand(targetExe, ["-d", dirPath]);
   }
   if (windowsTerminalPreviewStatic) {
-    return startCommand(windowsTerminalPreviewStatic, ["-d", dirPath]);
+    const targetExe = windowsTerminalPreviewStatic.includes("WindowsApps")
+      ? wtAlias || "wt.exe"
+      : windowsTerminalPreviewStatic;
+    return startCommand(targetExe, ["-d", dirPath]);
   }
 
   // Package probes are the slow path (Get-AppxPackage, up to 1.5s each when
@@ -514,7 +543,10 @@ async function resolveWindowsTerminalAsync(
   }
   const windowsTerminal = windowsTerminalPackage || windowsTerminalPreviewPackage;
   if (windowsTerminal) {
-    return startCommand(windowsTerminal, ["-d", dirPath]);
+    const targetExe = windowsTerminal.includes("WindowsApps")
+      ? wtAlias || "wt.exe"
+      : windowsTerminal;
+    return startCommand(targetExe, ["-d", dirPath]);
   }
 
   const powershell = win32.join(
