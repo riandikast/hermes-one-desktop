@@ -2878,31 +2878,30 @@ export function registerIpcHandlers(context: IpcContext): void {
     const conn = getConnectionConfig();
     if (conn.mode === "ssh" || conn.mode === "remote") return null;
     const out: { name: string; isDirectory: boolean; path: string }[] = [];
-    const walk = async (dir: string, rel: string): Promise<boolean> => {
-      if (out.length >= MENTION_MAX_ENTRIES) return false;
+    const queue: { dir: string; rel: string }[] = [{ dir: root, rel: "" }];
+
+    while (queue.length > 0 && out.length < MENTION_MAX_ENTRIES) {
+      const current = queue.shift()!;
       let entries: import("fs").Dirent[];
       try {
-        entries = await readdir(dir, { withFileTypes: true });
+        entries = await readdir(current.dir, { withFileTypes: true });
       } catch {
-        return true;
+        continue;
       }
       entries.sort((a, b) => a.name.localeCompare(b.name));
       for (const e of entries) {
-        if (out.length >= MENTION_MAX_ENTRIES) return false;
-        const name = rel ? `${rel}/${e.name}` : e.name;
+        if (out.length >= MENTION_MAX_ENTRIES) break;
+        const name = current.rel ? `${current.rel}/${e.name}` : e.name;
         const full = `${root}/${name}`;
         if (e.isDirectory()) {
           if (MENTION_EXCLUDED_DIRS.has(e.name)) continue;
           out.push({ name, isDirectory: true, path: full });
-          const ok = await walk(full, name);
-          if (!ok) return false;
+          queue.push({ dir: full, rel: name });
         } else {
           out.push({ name, isDirectory: false, path: full });
         }
       }
-      return true;
-    };
-    await walk(root, "");
+    }
     return out;
   });
 
