@@ -1,0 +1,162 @@
+import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "fs/promises";
+import { homedir } from "os";
+import { join } from "path";
+
+export interface KnowledgeFile {
+  name: string;
+  relativePath: string;
+  path: string;
+  size: number;
+}
+
+export interface KnowledgeBundle {
+  name: string;
+  path: string;
+  files: KnowledgeFile[];
+}
+
+export function getKnowledgeDir(homeOverride?: string): string {
+  const base = homeOverride || process.env.HERMES_HOME || join(homedir(), ".hermes");
+  return join(base, "knowledge");
+}
+
+export async function ensureKnowledgeDir(homeOverride?: string): Promise<string> {
+  const dir = getKnowledgeDir(homeOverride);
+  await mkdir(dir, { recursive: true });
+  return dir;
+}
+
+export async function listKnowledgeBundles(homeOverride?: string): Promise<KnowledgeBundle[]> {
+  const root = await ensureKnowledgeDir(homeOverride);
+  let entries;
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const bundles: KnowledgeBundle[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const bundleName = entry.name;
+    const bundlePath = join(root, bundleName);
+
+    const files: KnowledgeFile[] = [];
+    try {
+      const subEntries = await readdir(bundlePath, { withFileTypes: true });
+      for (const sub of subEntries) {
+        if (sub.isDirectory()) continue;
+        const filePath = join(bundlePath, sub.name);
+        const st = await stat(filePath);
+        files.push({
+          name: sub.name,
+          relativePath: `${bundleName}/${sub.name}`,
+          path: filePath,
+          size: st.size,
+        });
+      }
+    } catch {
+      /* ignore read errors on bundle */
+    }
+
+    bundles.push({
+      name: bundleName,
+      path: bundlePath,
+      files,
+    });
+  }
+
+  return bundles;
+}
+
+export async function createKnowledgeBundle(
+  bundleName: string,
+  homeOverride?: string,
+): Promise<KnowledgeBundle> {
+  const safeName = bundleName.trim().replace(/[^a-zA-Z0-9_\-\.]/g, "-");
+  if (!safeName) throw new Error("Invalid bundle name");
+  const root = await ensureKnowledgeDir(homeOverride);
+  const bundlePath = join(root, safeName);
+  await mkdir(bundlePath, { recursive: true });
+  return {
+    name: safeName,
+    path: bundlePath,
+    files: [],
+  };
+}
+
+export async function deleteKnowledgeBundle(
+  bundleName: string,
+  homeOverride?: string,
+): Promise<boolean> {
+  const root = await ensureKnowledgeDir(homeOverride);
+  const bundlePath = join(root, bundleName);
+  try {
+    await rm(bundlePath, { recursive: true, force: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function readKnowledgeFile(
+  bundleName: string,
+  fileName: string,
+  homeOverride?: string,
+): Promise<string | null> {
+  const root = await ensureKnowledgeDir(homeOverride);
+  const filePath = join(root, bundleName, fileName);
+  try {
+    return await readFile(filePath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+export async function writeKnowledgeFile(
+  bundleName: string,
+  fileName: string,
+  content: string,
+  homeOverride?: string,
+): Promise<boolean> {
+  const root = await ensureKnowledgeDir(homeOverride);
+  const bundleDir = join(root, bundleName);
+  await mkdir(bundleDir, { recursive: true });
+  const filePath = join(bundleDir, fileName);
+  try {
+    await writeFile(filePath, content, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteKnowledgeFile(
+  bundleName: string,
+  fileName: string,
+  homeOverride?: string,
+): Promise<boolean> {
+  const root = await ensureKnowledgeDir(homeOverride);
+  const filePath = join(root, bundleName, fileName);
+  try {
+    await rm(filePath, { force: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function importKnowledgeFolder(
+  sourceFolderPath: string,
+  bundleName: string,
+  homeOverride?: string,
+): Promise<KnowledgeBundle> {
+  const root = await ensureKnowledgeDir(homeOverride);
+  const safeName = bundleName.trim().replace(/[^a-zA-Z0-9_\-\.]/g, "-");
+  const destDir = join(root, safeName);
+  await mkdir(destDir, { recursive: true });
+  await cp(sourceFolderPath, destDir, { recursive: true });
+  const bundles = await listKnowledgeBundles(homeOverride);
+  const found = bundles.find((b) => b.name === safeName);
+  return found || { name: safeName, path: destDir, files: [] };
+}

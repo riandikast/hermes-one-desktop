@@ -50,6 +50,15 @@ import {
 import { openTerminalInDirectory } from "../terminal-launcher";
 import { queryEverything } from "../everything-search";
 import {
+  listKnowledgeBundles,
+  createKnowledgeBundle,
+  deleteKnowledgeBundle,
+  readKnowledgeFile,
+  writeKnowledgeFile,
+  deleteKnowledgeFile,
+  importKnowledgeFolder,
+} from "../knowledge";
+import {
   getGpuStatus,
   reenableGpuAndRelaunch,
   setGpuPreference,
@@ -2910,6 +2919,51 @@ export function registerIpcHandlers(context: IpcContext): void {
     async (_event, query: string, rootPath?: string) => {
       if (process.platform !== "win32") return null;
       return queryEverything(query, rootPath);
+    },
+  );
+
+  ipcMain.handle("list-knowledge-bundles", async () => {
+    return listKnowledgeBundles();
+  });
+
+  ipcMain.handle("create-knowledge-bundle", async (_event, name: string) => {
+    return createKnowledgeBundle(name);
+  });
+
+  ipcMain.handle("delete-knowledge-bundle", async (_event, name: string) => {
+    return deleteKnowledgeBundle(name);
+  });
+
+  ipcMain.handle(
+    "read-knowledge-file",
+    async (_event, bundleName: string, fileName: string) => {
+      return readKnowledgeFile(bundleName, fileName);
+    },
+  );
+
+  ipcMain.handle(
+    "write-knowledge-file",
+    async (
+      _event,
+      bundleName: string,
+      fileName: string,
+      content: string,
+    ) => {
+      return writeKnowledgeFile(bundleName, fileName, content);
+    },
+  );
+
+  ipcMain.handle(
+    "delete-knowledge-file",
+    async (_event, bundleName: string, fileName: string) => {
+      return deleteKnowledgeFile(bundleName, fileName);
+    },
+  );
+
+  ipcMain.handle(
+    "import-knowledge-folder",
+    async (_event, sourceFolderPath: string, bundleName: string) => {
+      return importKnowledgeFolder(sourceFolderPath, bundleName);
     },
   );
 

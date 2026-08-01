@@ -1108,6 +1108,26 @@ interface HermesAPI {
     query: string,
     rootPath?: string,
   ) => Promise<{ name: string; isDirectory: boolean; path: string }[] | null>;
+  listKnowledgeBundles: () => Promise<
+    {
+      name: string;
+      path: string;
+      files: { name: string; relativePath: string; path: string; size: number }[];
+    }[]
+  >;
+  createKnowledgeBundle: (name: string) => Promise<{ name: string; path: string }>;
+  deleteKnowledgeBundle: (name: string) => Promise<boolean>;
+  readKnowledgeFile: (bundleName: string, fileName: string) => Promise<string | null>;
+  writeKnowledgeFile: (
+    bundleName: string,
+    fileName: string,
+    content: string,
+  ) => Promise<boolean>;
+  deleteKnowledgeFile: (bundleName: string, fileName: string) => Promise<boolean>;
+  importKnowledgeFolder: (
+    sourceFolderPath: string,
+    bundleName: string,
+  ) => Promise<{ name: string; path: string }>;
   readImageFile: (filePath: string) => Promise<string | null>;
   kanbanAssignTask: (
     taskId: string,

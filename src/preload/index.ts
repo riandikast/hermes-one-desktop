@@ -1545,6 +1545,19 @@ const hermesAPI = {
     rootPath?: string,
   ): Promise<{ name: string; isDirectory: boolean; path: string }[] | null> =>
     ipcRenderer.invoke("everything-search", query, rootPath),
+  listKnowledgeBundles: () => ipcRenderer.invoke("list-knowledge-bundles"),
+  createKnowledgeBundle: (name: string) =>
+    ipcRenderer.invoke("create-knowledge-bundle", name),
+  deleteKnowledgeBundle: (name: string) =>
+    ipcRenderer.invoke("delete-knowledge-bundle", name),
+  readKnowledgeFile: (bundleName: string, fileName: string) =>
+    ipcRenderer.invoke("read-knowledge-file", bundleName, fileName),
+  writeKnowledgeFile: (bundleName: string, fileName: string, content: string) =>
+    ipcRenderer.invoke("write-knowledge-file", bundleName, fileName, content),
+  deleteKnowledgeFile: (bundleName: string, fileName: string) =>
+    ipcRenderer.invoke("delete-knowledge-file", bundleName, fileName),
+  importKnowledgeFolder: (sourceFolderPath: string, bundleName: string) =>
+    ipcRenderer.invoke("import-knowledge-folder", sourceFolderPath, bundleName),
   readImageFile: (filePath: string): Promise<string | null> =>
     ipcRenderer.invoke("read-image-file", filePath),
   kanbanAssignTask: (
