@@ -890,11 +890,7 @@ function getTuiGatewayClient(profile?: string): TuiGatewayClient {
 }
 
 function shouldUseTuiGatewayClient(): boolean {
-  return (
-    process.env.VITEST !== "true" &&
-    process.env.NODE_ENV !== "test" &&
-    process.env.npm_lifecycle_event !== "test"
-  );
+  return false;
 }
 
 function warmTuiGatewayClient(profile?: string): void {
