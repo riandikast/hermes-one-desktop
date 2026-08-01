@@ -84,6 +84,7 @@ function testConnection(
     remoteAuthMode: "auto",
     remoteChatTransport: "auto",
     sshChatTransport: "auto",
+    localChatTransport: "auto",
     ssh: {
       host: "",
       port: 22,

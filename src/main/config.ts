@@ -54,6 +54,7 @@ export interface ConnectionConfig {
   remoteAuthMode: RemoteAuthMode;
   remoteChatTransport: RemoteChatTransport;
   sshChatTransport: RemoteChatTransport;
+  localChatTransport: RemoteChatTransport;
   ssh: SshConnectionConfig;
 }
 
@@ -63,6 +64,7 @@ export interface PublicConnectionConfig {
   remoteAuthMode: RemoteAuthMode;
   remoteChatTransport: RemoteChatTransport;
   sshChatTransport: RemoteChatTransport;
+  localChatTransport: RemoteChatTransport;
   hasApiKey: boolean;
   // Length of the stored API key, exposed so the renderer can show a
   // mask that matches the real value's width. The secret itself never
@@ -114,6 +116,7 @@ export function getConnectionConfig(): ConnectionConfig {
     remoteAuthMode: normalizeRemoteAuthMode(data.remoteAuthMode),
     remoteChatTransport: normalizeRemoteChatTransport(data.remoteChatTransport),
     sshChatTransport: normalizeRemoteChatTransport(data.sshChatTransport),
+    localChatTransport: normalizeRemoteChatTransport(data.localChatTransport),
     ssh: {
       host: (ssh.host as string) || "",
       port: (ssh.port as number) || 22,
@@ -134,6 +137,7 @@ export function getPublicConnectionConfig(): PublicConnectionConfig {
     remoteAuthMode: config.remoteAuthMode,
     remoteChatTransport: config.remoteChatTransport,
     sshChatTransport: config.sshChatTransport,
+    localChatTransport: config.localChatTransport,
     hasApiKey: config.apiKey.length > 0,
     apiKeyLength: config.apiKey.length,
     ssh: config.ssh,
@@ -154,6 +158,7 @@ export function setConnectionConfig(config: ConnectionConfig): void {
     config.remoteChatTransport,
   );
   data.sshChatTransport = normalizeRemoteChatTransport(config.sshChatTransport);
+  data.localChatTransport = normalizeRemoteChatTransport(config.localChatTransport);
   if (config.mode === "ssh") {
     data.sshConfig = config.ssh;
   }

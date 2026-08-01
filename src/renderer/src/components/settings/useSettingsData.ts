@@ -76,6 +76,8 @@ export function useSettingsData(profile?: string) {
     useState<RemoteChatTransport>("auto");
   const [sshChatTransport, setSshChatTransport] =
     useState<RemoteChatTransport>("auto");
+  const [localChatTransport, setLocalChatTransport] =
+    useState<RemoteChatTransport>("auto");
   const [connTesting, setConnTesting] = useState(false);
   const [connStatus, setConnStatus] = useState<string | null>(null);
   const connLoaded = useRef(false);
@@ -171,6 +173,7 @@ export function useSettingsData(profile?: string) {
     setRemoteAuthMode(conn.remoteAuthMode ?? "auto");
     setRemoteChatTransport(conn.remoteChatTransport ?? "auto");
     setSshChatTransport(conn.sshChatTransport ?? "auto");
+    setLocalChatTransport(conn.localChatTransport ?? "auto");
     const mask = conn.hasApiKey ? makeApiKeyMask(conn.apiKeyLength) : "";
     setConnApiKeyMask(mask);
     setConnApiKey(mask);
@@ -418,19 +421,21 @@ export function useSettingsData(profile?: string) {
   }
 
   const refreshTransportProbe = useCallback(async (): Promise<void> => {
-    if (connMode === "local") {
-      setTransportProbe(null);
-      return;
-    }
     const preference =
-      connMode === "ssh" ? sshChatTransport : remoteChatTransport;
+      connMode === "ssh"
+        ? sshChatTransport
+        : connMode === "local"
+          ? localChatTransport
+          : remoteChatTransport;
     if (preference === "legacy") {
       setTransportProbe({
         label: "Active: Legacy",
         detail:
           connMode === "ssh"
             ? "Dashboard over SSH is disabled."
-            : "Dashboard WebSocket is disabled.",
+            : connMode === "local"
+              ? "Local dashboard WebSocket is disabled. Chat streams via direct HTTP /v1 API."
+              : "Dashboard WebSocket is disabled.",
         kind: "muted",
         loading: false,
       });
@@ -487,7 +492,7 @@ export function useSettingsData(profile?: string) {
         loading: false,
       });
     }
-  }, [connMode, profile, remoteChatTransport, sshChatTransport]);
+  }, [connMode, profile, remoteChatTransport, sshChatTransport, localChatTransport]);
 
   useEffect(() => {
     void refreshTransportProbe();
@@ -518,6 +523,7 @@ export function useSettingsData(profile?: string) {
     await window.hermesAPI.setConnectionChatTransports(
       remoteChatTransport,
       sshChatTransport,
+      localChatTransport,
     );
     await loadConfig();
     setConnStatus("Saved");
@@ -526,17 +532,20 @@ export function useSettingsData(profile?: string) {
   }
 
   async function handleChatTransportChange(
-    mode: "remote" | "ssh",
+    mode: "remote" | "ssh" | "local",
     transport: RemoteChatTransport,
   ): Promise<void> {
     const nextRemote = mode === "remote" ? transport : remoteChatTransport;
     const nextSsh = mode === "ssh" ? transport : sshChatTransport;
+    const nextLocal = mode === "local" ? transport : localChatTransport;
     if (mode === "remote") {
       setRemoteChatTransport(transport);
-    } else {
+    } else if (mode === "ssh") {
       setSshChatTransport(transport);
+    } else {
+      setLocalChatTransport(transport);
     }
-    await window.hermesAPI.setConnectionChatTransports(nextRemote, nextSsh);
+    await window.hermesAPI.setConnectionChatTransports(nextRemote, nextSsh, nextLocal);
     setConnStatus("Saved");
     setTimeout(() => setConnStatus(null), 2000);
     void refreshTransportProbe();
@@ -865,6 +874,7 @@ export function useSettingsData(profile?: string) {
     setConnStatus,
     remoteChatTransport,
     sshChatTransport,
+    localChatTransport,
     transportProbe,
     handleSaveConnection,
     handleChatTransportChange,

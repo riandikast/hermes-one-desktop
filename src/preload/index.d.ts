@@ -348,6 +348,7 @@ interface HermesAPI {
     remoteAuthMode: "auto" | "token" | "oauth";
     remoteChatTransport: "auto" | "dashboard" | "legacy";
     sshChatTransport: "auto" | "dashboard" | "legacy";
+    localChatTransport: "auto" | "dashboard" | "legacy";
     hasApiKey: boolean;
     apiKeyLength: number;
     ssh: {
@@ -368,6 +369,7 @@ interface HermesAPI {
   setConnectionChatTransports: (
     remoteChatTransport: "auto" | "dashboard" | "legacy",
     sshChatTransport: "auto" | "dashboard" | "legacy",
+    localChatTransport?: "auto" | "dashboard" | "legacy",
   ) => Promise<boolean>;
   onConnectionConfigChanged: (
     callback: (config: {
@@ -376,6 +378,7 @@ interface HermesAPI {
       remoteAuthMode: "auto" | "token" | "oauth";
       remoteChatTransport: "auto" | "dashboard" | "legacy";
       sshChatTransport: "auto" | "dashboard" | "legacy";
+      localChatTransport: "auto" | "dashboard" | "legacy";
       hasApiKey: boolean;
       apiKeyLength: number;
       ssh: {

@@ -1271,12 +1271,18 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(
     "set-connection-chat-transports",
-    (_event, remoteChatTransport: unknown, sshChatTransport: unknown) => {
+    (
+      _event,
+      remoteChatTransport: unknown,
+      sshChatTransport: unknown,
+      localChatTransport?: unknown,
+    ) => {
       const current = getConnectionConfig();
       setConnectionConfig({
         ...current,
         remoteChatTransport: normalizeRemoteChatTransport(remoteChatTransport),
         sshChatTransport: normalizeRemoteChatTransport(sshChatTransport),
+        localChatTransport: normalizeRemoteChatTransport(localChatTransport),
       });
       resetSshDashboardAvailability();
       notifyConnectionConfigChanged();

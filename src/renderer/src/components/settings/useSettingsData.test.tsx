@@ -15,6 +15,7 @@ function connectionConfig(): PublicConnectionConfig {
     remoteAuthMode: "auto" as const,
     remoteChatTransport: "dashboard" as const,
     sshChatTransport: "auto" as const,
+    localChatTransport: "auto" as const,
     hasApiKey: false,
     apiKeyLength: 0,
     ssh: {

@@ -314,7 +314,7 @@ function Chat({
           setRemoteMode(conn.mode !== "local");
           setChatTransportPreference(
             conn.mode === "local"
-              ? "auto"
+              ? (conn.localChatTransport ?? "auto")
               : conn.mode === "ssh"
                 ? (conn.sshChatTransport ?? "auto")
                 : remoteAuthMode === "oauth"

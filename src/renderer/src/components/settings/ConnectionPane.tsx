@@ -35,6 +35,7 @@ export default function ConnectionPane(): React.JSX.Element {
     setGeneratingKey,
     remoteChatTransport,
     sshChatTransport,
+    localChatTransport,
     transportProbe,
     sshHost,
     setSshHost,
@@ -149,6 +150,31 @@ export default function ConnectionPane(): React.JSX.Element {
             {connMode === "ssh"
               ? t("settings.remoteEnvSshDesc")
               : t("settings.remoteEnvDesc")}
+          </div>
+        </div>
+      )}
+
+      {connMode === "local" && (
+        <div className="settings-field">
+          <label className="settings-field-label">Chat transport</label>
+          <div className="settings-theme-options">
+            {CHAT_TRANSPORT_OPTIONS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={`settings-theme-option ${
+                  localChatTransport === option ? "active" : ""
+                }`}
+                onClick={() =>
+                  void handleChatTransportChange("local", option)
+                }
+              >
+                {option[0].toUpperCase() + option.slice(1)}
+              </button>
+            ))}
+          </div>
+          <div className="settings-field-hint">
+            Auto uses WebSocket dashboard. Legacy uses direct HTTP /v1 API (bypasses dashboard WS stalls for custom providers like 9router).
           </div>
         </div>
       )}

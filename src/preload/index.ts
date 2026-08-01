@@ -352,11 +352,13 @@ const hermesAPI = {
   setConnectionChatTransports: (
     remoteChatTransport: "auto" | "dashboard" | "legacy",
     sshChatTransport: "auto" | "dashboard" | "legacy",
+    localChatTransport?: "auto" | "dashboard" | "legacy",
   ): Promise<boolean> =>
     ipcRenderer.invoke(
       "set-connection-chat-transports",
       remoteChatTransport,
       sshChatTransport,
+      localChatTransport,
     ),
 
   onConnectionConfigChanged: (
