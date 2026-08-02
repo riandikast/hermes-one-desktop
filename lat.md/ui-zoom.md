@@ -6,12 +6,12 @@ The main process owns the zoom state so keyboard, menu, and wheel all hit one co
 
 ## Keyboard and menu
 
-`createWindow` in [[src/main/app/start.ts#createWindow]] intercepts the three chords via `webContents.on("before-input-event")` (`input.key` `"="`/`"+"`/`"-"`/`"0"`, `input.code` `NumpadAdd`/`NumpadSubtract`, requiring `control || meta`); `event.preventDefault()` also suppresses the menu accelerators for the same chords, so nothing double-fires. [[src/main/app/menu.ts#buildMenu]]'s View menu items (Zoom In/Out/Actual Size) are custom `click` handlers through the same controller instead of the old `role` zoom items, so menu clicks and keyboard stay in sync.
+`createWindow` in [[src/main/app/start.ts#createWindow]] intercepts Ctrl+=/-/0 via `before-input-event` (`control || meta`), and the View menu items (Zoom In/Out/Actual Size) in [[src/main/app/menu.ts#buildMenu]] route through the same controller — one code path for keyboard, menu, and wheel.
 
 ## Renderer: persistence and wheel
 
-[[src/renderer/src/hooks/useUiZoom.ts#useUiZoom]], mounted once at the root of [[src/renderer/src/App.tsx]], restores the persisted level (`localStorage["hermes.ui.zoomLevel"]`) via the `zoom-apply` IPC on mount, persists every `ui-zoom-changed` broadcast, and adds a capture-phase `wheel` listener (`{ passive: false }`) that zooms when `event.shiftKey` is held — deltas feed [[src/renderer/src/hooks/zoomWheel.ts#stepWheelDelta]], which accumulates to one step per 100 pixels so trackpads feel natural. Wheel/keyboard events inside the web-preview webview never reach the window listeners (separate webContents), so embedded pages are unaffected.
+[[src/renderer/src/hooks/useUiZoom.ts#useUiZoom]], mounted at the root of [[src/renderer/src/App.tsx]], restores the persisted level (`localStorage["hermes.ui.zoomLevel"]`) on mount, persists every `ui-zoom-changed` broadcast, and zooms on Shift+wheel via the accumulator in [[src/renderer/src/hooks/zoomWheel.ts#stepWheelDelta]] (one step per 100px, so trackpads feel natural).
 
 ## IPC surface
 
-Three channels, all registered in [[src/main/ipc/register.ts#registerIpcHandlers]]: `zoom-by` (renderer wheel gesture → delta) and `zoom-apply` (restore persisted level) are `handle` calls returning the applied level (or `null` when no window); `ui-zoom-changed` is a main→renderer broadcast carrying the new level. The renderer-facing bridge lives on `hermesAPI` in [[src/preload/index.ts]] (`zoomBy`/`zoomApply`/`onUiZoomChanged`), mirrored in `src/preload/index.d.ts`.
+Three channels registered in [[src/main/ipc/register.ts#registerIpcHandlers]]: `zoom-by` and `zoom-apply` (handle, returning the applied level or null), plus the main→renderer `ui-zoom-changed` broadcast. The bridge is exposed on `hermesAPI` in [[src/preload/index.ts]] and mirrored in `src/preload/index.d.ts`.
