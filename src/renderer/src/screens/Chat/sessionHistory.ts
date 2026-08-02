@@ -864,18 +864,6 @@ export function reconcileStreamedWithDb(
       }
     } else if (shouldKeepUnconsumed(sm)) {
       // Unconsumed streamed message — insert at current chronological slot.
-      // If sm is a user message, flush any pending DB rows from the preceding
-      // turn (assistant/tool/reasoning) before inserting sm, so sm never
-      // jumps above the assistant response of the earlier user turn.
-      if (!("kind" in sm) && (sm as ChatBubbleMessage).role === "user") {
-        while (
-          resultIdx < result.length &&
-          (result[resultIdx] as ChatBubbleMessage).role !== "user"
-        ) {
-          merged.push(result[resultIdx]);
-          resultIdx++;
-        }
-      }
       merged.push(sm);
     }
   }
