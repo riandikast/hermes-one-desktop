@@ -21,6 +21,7 @@ import { showChatContextMenu } from "./context-menu";
 import { warmTerminalResolver } from "../terminal-launcher";
 import { buildMenu } from "./menu";
 import { setupUpdater } from "./updater";
+import { zoomBy, zoomReset } from "../zoom";
 
 const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Hermes One";
 const OPEN_DEVTOOLS_ON_START =
@@ -262,6 +263,24 @@ function createWindow(): void {
   );
   mainWindow.webContents.on("context-menu", (_event, params) => {
     showChatContextMenu(mainWindow, params);
+  });
+
+  // Browser-style UI zoom: Ctrl+= / Ctrl+- / Ctrl+0. preventDefault also
+  // suppresses the menu accelerators for the same chords (no double-zoom).
+  const zoomTarget = mainWindow;
+  zoomTarget.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown") return;
+    if (!(input.control || input.meta)) return;
+    if (input.key === "+" || input.key === "=" || input.code === "NumpadAdd") {
+      event.preventDefault();
+      zoomBy(zoomTarget, 1);
+    } else if (input.key === "-" || input.code === "NumpadSubtract") {
+      event.preventDefault();
+      zoomBy(zoomTarget, -1);
+    } else if (input.key === "0") {
+      event.preventDefault();
+      zoomReset(zoomTarget);
+    }
   });
 
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
