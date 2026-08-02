@@ -74,6 +74,17 @@ function storePinned(ids: Set<string>): void {
   }
 }
 
+function targetPathCount(
+  path: string,
+  chats: RecentSession[],
+  pinned: RecentSession[],
+  groups: Array<{ path: string; name: string; sessions: RecentSession[] }>,
+): number {
+  if (path === "__chats__") return chats.length;
+  if (path === "__pinned__") return pinned.length;
+  return groups.find((g) => g.path === path)?.sessions.length ?? 0;
+}
+
 function readStoredOpen(key: string): boolean {
   try {
     return localStorage.getItem(key) !== "false";
@@ -255,20 +266,25 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     storePinned(pinnedIds);
   }, [pinnedIds]);
 
-  const normalizeRows = useCallback(
+  const normalizeRows = useCallback<
     (
       list: Array<{
         id: string;
         title: string;
         contextFolder?: string | null;
+        contextFolders?: string[];
       }>,
-      limit = RECENT_SESSIONS_PAGE_SIZE,
-    ): RecentSession[] =>
-      list.slice(0, limit).map(({ id, title, contextFolder }) => ({
-        id,
-        title,
-        contextFolder: contextFolder ?? null,
-      })),
+      limit?: number,
+    ) => RecentSession[]
+  >(
+    (list, limit = RECENT_SESSIONS_PAGE_SIZE) =>
+      list.slice(0, limit).map(({ id, title, contextFolder, contextFolders }) => {
+        const folder =
+          (Array.isArray(contextFolders) && contextFolders[0]) ||
+          contextFolder ||
+          null;
+        return { id, title, contextFolder: folder?.trim() || null };
+      }),
     [],
   );
 
@@ -923,54 +939,35 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
         )}
         {pinnedSessions.length > 0 && (
           <div className="sidebar-recent-section">
-            <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
-              <button
-                type="button"
-                className="sidebar-recent-section-toggle"
-                onClick={togglePinned}
-                aria-expanded={pinnedOpen}
-                tabIndex={expanded ? 0 : -1}
-              >
-                <span>{t("navigation.pinned")}</span>
-                {pinnedOpen ? (
-                  <ChevronDown
-                    className="sidebar-recent-disclosure-icon"
-                    size={13}
-                  />
-                ) : (
-                  <ChevronRight
-                    className="sidebar-recent-disclosure-icon"
-                    size={13}
-                  />
-                )}
-              </button>
-              {pinnedOpen && pinnedSessions.length > 0 && (
-                <div className="sidebar-recent-project-actions" style={{ opacity: 1 }}>
-                  <button
-                    type="button"
-                    className="sidebar-recent-mini-btn"
-                    title="Select all pinned"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      enterSelectionForProject(pinnedSessions.map((s) => s.id));
-                    }}
-                  >
-                    Select
-                  </button>
-                  <button
-                    type="button"
-                    className="sidebar-recent-mini-btn danger"
-                    title={`Delete all ${pinnedSessions.length} pinned chats`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      requestDeleteAllInProject("Pinned", pinnedSessions.map((s) => s.id));
-                    }}
-                  >
-                    Delete all ({pinnedSessions.length})
-                  </button>
-                </div>
+            <button
+              type="button"
+              className="sidebar-recent-section-toggle"
+              onClick={togglePinned}
+              aria-expanded={pinnedOpen}
+              tabIndex={expanded ? 0 : -1}
+              onContextMenu={(e) => {
+                if (pinnedSessions.length === 0) return;
+                e.preventDefault();
+                setProjectMenu({
+                  path: "__pinned__",
+                  x: e.clientX,
+                  y: e.clientY,
+                });
+              }}
+            >
+              <span>{t("navigation.pinned")}</span>
+              {pinnedOpen ? (
+                <ChevronDown
+                  className="sidebar-recent-disclosure-icon"
+                  size={13}
+                />
+              ) : (
+                <ChevronRight
+                  className="sidebar-recent-disclosure-icon"
+                  size={13}
+                />
               )}
-            </div>
+            </button>
             <div
               className={`sidebar-recent-collapse ${
                 pinnedOpen ? "expanded" : ""
@@ -1079,37 +1076,6 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                           )}
                         </button>
                       )}
-                      {projectOpen && group.sessions.length > 0 && (
-                        <div className="sidebar-recent-project-actions">
-                          <button
-                            type="button"
-                            className="sidebar-recent-mini-btn"
-                            title="Select all (delete mode)"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              enterSelectionForProject(
-                                group.sessions.map((s) => s.id),
-                              );
-                            }}
-                          >
-                            Select
-                          </button>
-                          <button
-                            type="button"
-                            className="sidebar-recent-mini-btn danger"
-                            title={`Delete all ${group.sessions.length} conversations in this project`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              requestDeleteAllInProject(
-                                group.name,
-                                group.sessions.map((s) => s.id),
-                              );
-                            }}
-                          >
-                            Delete all ({group.sessions.length})
-                          </button>
-                        </div>
-                      )}
                       <div
                         className={`sidebar-recent-collapse ${
                           projectOpen ? "expanded" : ""
@@ -1129,54 +1095,35 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
           </div>
         )}
         <div className="sidebar-recent-section">
-          <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
-            <button
-              type="button"
-              className="sidebar-recent-section-toggle"
-              onClick={toggleChats}
-              aria-expanded={chatsOpen}
-              tabIndex={expanded ? 0 : -1}
-            >
-              <span>{t("navigation.chats")}</span>
-              {chatsOpen ? (
-                <ChevronDown
-                  className="sidebar-recent-disclosure-icon"
-                  size={13}
-                />
-              ) : (
-                <ChevronRight
-                  className="sidebar-recent-disclosure-icon"
-                  size={13}
-                />
-              )}
-            </button>
-            {chatsOpen && chats.length > 0 && (
-              <div className="sidebar-recent-project-actions" style={{ opacity: 1 }}>
-                <button
-                  type="button"
-                  className="sidebar-recent-mini-btn"
-                  title="Select all chats"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    enterSelectionForProject(chats.map((s) => s.id));
-                  }}
-                >
-                  Select
-                </button>
-                <button
-                  type="button"
-                  className="sidebar-recent-mini-btn danger"
-                  title={`Delete all ${chats.length} chats`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    requestDeleteAllInProject("Chats", chats.map((s) => s.id));
-                  }}
-                >
-                  Delete all ({chats.length})
-                </button>
-              </div>
+          <button
+            type="button"
+            className="sidebar-recent-section-toggle"
+            onClick={toggleChats}
+            aria-expanded={chatsOpen}
+            tabIndex={expanded ? 0 : -1}
+            onContextMenu={(e) => {
+              if (chats.length === 0) return;
+              e.preventDefault();
+              setProjectMenu({
+                path: "__chats__",
+                x: e.clientX,
+                y: e.clientY,
+              });
+            }}
+          >
+            <span>{t("navigation.chats")}</span>
+            {chatsOpen ? (
+              <ChevronDown
+                className="sidebar-recent-disclosure-icon"
+                size={13}
+              />
+            ) : (
+              <ChevronRight
+                className="sidebar-recent-disclosure-icon"
+                size={13}
+              />
             )}
-          </div>
+          </button>
           <div
             className={`sidebar-recent-collapse ${chatsOpen ? "expanded" : ""}`}
           >
@@ -1212,15 +1159,61 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             role="menu"
             onClick={(e) => e.stopPropagation()}
           >
+            {projectMenu.path !== "__chats__" && projectMenu.path !== "__pinned__" && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  startProjectRename(projectMenu.path);
+                  setProjectMenu(null);
+                }}
+              >
+                {t("navigation.renameProject")}
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"
               onClick={() => {
-                startProjectRename(projectMenu.path);
+                const targetPath = projectMenu.path;
                 setProjectMenu(null);
+                const targetSessions =
+                  targetPath === "__chats__"
+                    ? chats
+                    : targetPath === "__pinned__"
+                      ? pinnedSessions
+                      : (projectGroups.find((g) => g.path === targetPath)?.sessions ?? []);
+                enterSelectionForProject(targetSessions.map((s) => s.id));
               }}
             >
-              {t("navigation.renameProject")}
+              Select all in section
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="danger"
+              style={{ color: "var(--color-danger)" }}
+              onClick={() => {
+                const targetPath = projectMenu.path;
+                setProjectMenu(null);
+                const targetSessions =
+                  targetPath === "__chats__"
+                    ? chats
+                    : targetPath === "__pinned__"
+                      ? pinnedSessions
+                      : (projectGroups.find((g) => g.path === targetPath)?.sessions ?? []);
+                const name =
+                  targetPath === "__chats__"
+                    ? "Chats"
+                    : targetPath === "__pinned__"
+                      ? "Pinned"
+                      : (projectGroups.find((g) => g.path === targetPath)?.name ?? "Project");
+                requestDeleteAllInProject(name, targetSessions.map((s) => s.id));
+              }}
+            >
+              Delete all ({
+                targetPathCount(projectMenu.path, chats, pinnedSessions, projectGroups)
+              })
             </button>
           </div>,
           document.body,
