@@ -5531,7 +5531,7 @@ body:has(.shell-vibrant),
    avatar). Pull them closer to the row above so the turn reads as one block
    rather than several spaced-out bubbles. */
 .chat-message--grouped {
-  margin-top: -8px;
+  margin-top: 4px;
 }
 
 .chat-avatar {

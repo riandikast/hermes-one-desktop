@@ -923,26 +923,54 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
         )}
         {pinnedSessions.length > 0 && (
           <div className="sidebar-recent-section">
-            <button
-              type="button"
-              className="sidebar-recent-section-toggle"
-              onClick={togglePinned}
-              aria-expanded={pinnedOpen}
-              tabIndex={expanded ? 0 : -1}
-            >
-              <span>{t("navigation.pinned")}</span>
-              {pinnedOpen ? (
-                <ChevronDown
-                  className="sidebar-recent-disclosure-icon"
-                  size={13}
-                />
-              ) : (
-                <ChevronRight
-                  className="sidebar-recent-disclosure-icon"
-                  size={13}
-                />
+            <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
+              <button
+                type="button"
+                className="sidebar-recent-section-toggle"
+                onClick={togglePinned}
+                aria-expanded={pinnedOpen}
+                tabIndex={expanded ? 0 : -1}
+              >
+                <span>{t("navigation.pinned")}</span>
+                {pinnedOpen ? (
+                  <ChevronDown
+                    className="sidebar-recent-disclosure-icon"
+                    size={13}
+                  />
+                ) : (
+                  <ChevronRight
+                    className="sidebar-recent-disclosure-icon"
+                    size={13}
+                  />
+                )}
+              </button>
+              {pinnedOpen && pinnedSessions.length > 0 && (
+                <div className="sidebar-recent-project-actions" style={{ opacity: 1 }}>
+                  <button
+                    type="button"
+                    className="sidebar-recent-mini-btn"
+                    title="Select all pinned"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      enterSelectionForProject(pinnedSessions.map((s) => s.id));
+                    }}
+                  >
+                    Select
+                  </button>
+                  <button
+                    type="button"
+                    className="sidebar-recent-mini-btn danger"
+                    title={`Delete all ${pinnedSessions.length} pinned chats`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      requestDeleteAllInProject("Pinned", pinnedSessions.map((s) => s.id));
+                    }}
+                  >
+                    Delete all ({pinnedSessions.length})
+                  </button>
+                </div>
               )}
-            </button>
+            </div>
             <div
               className={`sidebar-recent-collapse ${
                 pinnedOpen ? "expanded" : ""
@@ -1101,26 +1129,54 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
           </div>
         )}
         <div className="sidebar-recent-section">
-          <button
-            type="button"
-            className="sidebar-recent-section-toggle"
-            onClick={toggleChats}
-            aria-expanded={chatsOpen}
-            tabIndex={expanded ? 0 : -1}
-          >
-            <span>{t("navigation.chats")}</span>
-            {chatsOpen ? (
-              <ChevronDown
-                className="sidebar-recent-disclosure-icon"
-                size={13}
-              />
-            ) : (
-              <ChevronRight
-                className="sidebar-recent-disclosure-icon"
-                size={13}
-              />
+          <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
+            <button
+              type="button"
+              className="sidebar-recent-section-toggle"
+              onClick={toggleChats}
+              aria-expanded={chatsOpen}
+              tabIndex={expanded ? 0 : -1}
+            >
+              <span>{t("navigation.chats")}</span>
+              {chatsOpen ? (
+                <ChevronDown
+                  className="sidebar-recent-disclosure-icon"
+                  size={13}
+                />
+              ) : (
+                <ChevronRight
+                  className="sidebar-recent-disclosure-icon"
+                  size={13}
+                />
+              )}
+            </button>
+            {chatsOpen && chats.length > 0 && (
+              <div className="sidebar-recent-project-actions" style={{ opacity: 1 }}>
+                <button
+                  type="button"
+                  className="sidebar-recent-mini-btn"
+                  title="Select all chats"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    enterSelectionForProject(chats.map((s) => s.id));
+                  }}
+                >
+                  Select
+                </button>
+                <button
+                  type="button"
+                  className="sidebar-recent-mini-btn danger"
+                  title={`Delete all ${chats.length} chats`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    requestDeleteAllInProject("Chats", chats.map((s) => s.id));
+                  }}
+                >
+                  Delete all ({chats.length})
+                </button>
+              </div>
             )}
-          </button>
+          </div>
           <div
             className={`sidebar-recent-collapse ${chatsOpen ? "expanded" : ""}`}
           >
