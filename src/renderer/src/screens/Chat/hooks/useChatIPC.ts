@@ -99,9 +99,10 @@ export function useChatIPC({
         }
         const dbMessages = dbItemsToChatMessages(items);
         if (dbMessages.length === 0) return;
-        setMessages((prev) =>
-          reconcileAfterDbRefresh(prev, dbMessages, { activeTurn }),
-        );
+        setMessages((prev) => {
+          if (prev.length === 0) return dbMessages;
+          return reconcileAfterDbRefresh(prev, dbMessages, { activeTurn });
+        });
       } catch {
         // Mid-stream DB refresh is opportunistic; final refresh still runs.
       } finally {

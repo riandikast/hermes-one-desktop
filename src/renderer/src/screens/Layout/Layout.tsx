@@ -620,6 +620,7 @@ function Layout({
       const live = findRunBySession(runs, sessionId);
       if (live) {
         handleActivateRun(live.runId);
+        goTo("chat");
         return;
       }
       // Guard against a double-click resuming the same session twice: the live
