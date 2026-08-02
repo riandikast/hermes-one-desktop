@@ -113,6 +113,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     // row above.
     const displayValue = useMemo(() => displayText(input), [input]);
     const [mentionOpen, setMentionOpen] = useState(false);
+    const [confirmPending, setConfirmPending] = useState<string | null>(null);
     const [mentionEntries, setMentionEntries] = useState<MentionEntry[]>([]);
     const [mentionQuery, setMentionQuery] = useState("");
     const [mentionSelected, setMentionSelected] = useState(0);
@@ -399,7 +400,17 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       const text = expandTags(raw);
       const hasPayload = text.length > 0 || attachments.length > 0;
       if (!hasPayload) return;
+
+      // Double-Enter confirmation gate: the first Enter arms a pending send
+      // (showing a confirm chip); a second Enter dispatches it. Esc or editing
+      // the text cancels. Slash commands skip the gate (they are explicit).
+      if (!text.startsWith("/") && confirmPending !== text) {
+        setConfirmPending(text);
+        return;
+      }
+
       setSlashMenuOpen(false);
+      setConfirmPending(null);
       const sendAttachments = attachments;
       clearAfterSend(raw);
       onSubmit(text, sendAttachments);
@@ -474,6 +485,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       const inserted = newValue.slice(p, newValue.length - s);
       const next = input.slice(0, rStart) + inserted + input.slice(rEnd);
       setInput(next);
+      if (confirmPending !== null && expandTags(next).trim() !== confirmPending) {
+        setConfirmPending(null);
+      }
       updateMentionFor(next, rStart + inserted.length);
       // Height is handled by the useLayoutEffect on `input` above.
 
@@ -586,6 +600,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         }
       }
 
+      if (e.key === "Escape" && confirmPending !== null) {
+        e.preventDefault();
+        setConfirmPending(null);
+        return;
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
@@ -1066,6 +1085,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             rows={1}
             autoFocus
           />
+          {confirmPending !== null && (
+            <div className="chat-confirm-banner">
+              <span>Press Enter again to send, Esc to cancel</span>
+              <button type="button" className="btn-ghost btn-xs" onClick={() => setConfirmPending(null)}>Cancel</button>
+            </div>
+          )}
           <div className="chat-input-toolbar">
             <button
               className="chat-attach-btn"

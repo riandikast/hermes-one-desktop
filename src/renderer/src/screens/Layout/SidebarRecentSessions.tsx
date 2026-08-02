@@ -227,6 +227,13 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   // Pending delete confirmation (small inline dialog in a portal-free overlay).
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Multi-select bulk delete state.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [pendingBulkDelete, setPendingBulkDelete] = useState<
+    { title: string; ids: string[] } | null
+  >(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const lastRefreshRef = useRef(0);
   const sessionsRef = useRef<RecentSession[]>([]);
   const hasMoreRef = useRef(false);
@@ -652,6 +659,79 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     [onSessionDeleted, refresh],
   );
 
+  const confirmBulkDelete = useCallback(
+    async (ids: string[]): Promise<void> => {
+      setBulkDeleting(true);
+      const idSet = new Set(ids);
+      setSessions((prev) => prev.filter((s) => !idSet.has(s.id)));
+      setPinnedIds((prev) => {
+        let changed = false;
+        const next = new Set(prev);
+        for (const id of ids) {
+          if (next.has(id)) {
+            next.delete(id);
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+      try {
+        if (ids.length === 1) {
+          await window.hermesAPI.deleteSession(ids[0]);
+          onSessionDeleted?.(ids[0]);
+        } else {
+          await window.hermesAPI.deleteSessions(ids);
+          for (const id of ids) onSessionDeleted?.(id);
+        }
+      } catch (err) {
+        console.error("Failed to bulk delete sessions", ids, err);
+      } finally {
+        setBulkDeleting(false);
+        setPendingBulkDelete(null);
+        setSelectedIds(new Set());
+        setSelectMode(false);
+        void refresh(true);
+      }
+    },
+    [onSessionDeleted, refresh],
+  );
+
+  const handleToggleSelect = useCallback((id: string): void => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const enterSelectionForProject = useCallback((groupIds: string[]): void => {
+    setSelectedIds(new Set());
+    setSelectMode(true);
+    const next = new Set<string>();
+    for (const id of groupIds) next.add(id);
+    setSelectedIds(next);
+  }, []);
+
+  const requestDeleteAllInProject = useCallback(
+    (projectName: string, groupIds: string[]): void => {
+      setPendingBulkDelete({
+        title: `Delete all ${groupIds.length} conversation${groupIds.length === 1 ? "" : "s"} in "${projectName}"?`,
+        ids: groupIds,
+      });
+    },
+    [],
+  );
+
+  const requestDeleteSelected = useCallback((): void => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setPendingBulkDelete({
+      title: `Delete ${ids.length} selected conversation${ids.length === 1 ? "" : "s"}?`,
+      ids,
+    });
+  }, [selectedIds]);
+
   const openMenuForSession = useCallback(
     (s: RecentSession, x: number, y: number): void => {
       setMenuTarget({
@@ -752,11 +832,12 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
         className={`sidebar-recent-session ${project ? "project-child" : ""} ${
           active ? "active" : ""
         } ${menuOpen ? "menu-open" : ""}`}
-        onClick={() => onSelect(s.id)}
+        onClick={() => (selectMode ? handleToggleSelect(s.id) : onSelect(s.id))}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            onSelect(s.id);
+            if (selectMode) handleToggleSelect(s.id);
+            else onSelect(s.id);
           }
         }}
         onContextMenu={(e) => {
@@ -765,6 +846,16 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
         }}
         title={title}
       >
+        {selectMode && (
+          <input
+            type="checkbox"
+            className="sidebar-recent-session-select"
+            checked={selectedIds.has(s.id)}
+            onChange={() => handleToggleSelect(s.id)}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Select ${title}`}
+          />
+        )}
         {loading ? (
           <Loader
             className="sidebar-recent-session-dot sidebar-recent-session-dot--loading"
@@ -807,6 +898,29 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       aria-hidden={!expanded}
     >
       <div className="sidebar-recent-sessions">
+        {selectMode && (
+          <div className="sidebar-recent-selection-toolbar">
+            <span>{selectedIds.size} selected</span>
+            <button
+              type="button"
+              className="btn btn-danger btn-sm"
+              onClick={requestDeleteSelected}
+              disabled={selectedIds.size === 0}
+            >
+              Delete ({selectedIds.size})
+            </button>
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              onClick={() => {
+                setSelectMode(false);
+                setSelectedIds(new Set());
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
         {pinnedSessions.length > 0 && (
           <div className="sidebar-recent-section">
             <button
@@ -936,6 +1050,37 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                             />
                           )}
                         </button>
+                      )}
+                      {projectOpen && group.sessions.length > 0 && (
+                        <div className="sidebar-recent-project-actions">
+                          <button
+                            type="button"
+                            className="sidebar-recent-mini-btn"
+                            title="Select all (delete mode)"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              enterSelectionForProject(
+                                group.sessions.map((s) => s.id),
+                              );
+                            }}
+                          >
+                            Select
+                          </button>
+                          <button
+                            type="button"
+                            className="sidebar-recent-mini-btn danger"
+                            title={`Delete all ${group.sessions.length} conversations in this project`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              requestDeleteAllInProject(
+                                group.name,
+                                group.sessions.map((s) => s.id),
+                              );
+                            }}
+                          >
+                            Delete all ({group.sessions.length})
+                          </button>
+                        </div>
                       )}
                       <div
                         className={`sidebar-recent-collapse ${
@@ -1092,6 +1237,63 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                   disabled={deleting}
                 >
                   {deleting
+                    ? t("navigation.sessionMenu.deleting")
+                    : t("navigation.sessionMenu.deleteConfirmAction")}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+      {pendingBulkDelete &&
+        createPortal(
+          <div
+            className="sidebar-session-delete-overlay"
+            role="presentation"
+            onClick={() => {
+              if (!bulkDeleting) setPendingBulkDelete(null);
+            }}
+          >
+            <div
+              className="sidebar-session-delete-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="sidebar-bulk-delete-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sidebar-session-delete-header">
+                <h3 id="sidebar-bulk-delete-title">
+                  {pendingBulkDelete.title}
+                </h3>
+                <button
+                  type="button"
+                  className="btn-ghost sidebar-session-delete-close"
+                  onClick={() => setPendingBulkDelete(null)}
+                  disabled={bulkDeleting}
+                  aria-label={t("navigation.sessionMenu.deleteCancel")}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <p className="sidebar-session-delete-body">
+                {t("navigation.sessionMenu.deleteConfirm")}
+              </p>
+              <div className="sidebar-session-delete-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setPendingBulkDelete(null)}
+                  disabled={bulkDeleting}
+                >
+                  {t("navigation.sessionMenu.deleteCancel")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={() => void confirmBulkDelete(pendingBulkDelete.ids)}
+                  disabled={bulkDeleting}
+                >
+                  {bulkDeleting
                     ? t("navigation.sessionMenu.deleting")
                     : t("navigation.sessionMenu.deleteConfirmAction")}
                 </button>

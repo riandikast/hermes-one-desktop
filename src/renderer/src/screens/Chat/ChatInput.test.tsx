@@ -66,7 +66,8 @@ describe("ChatInput — CJK IME Enter handling", () => {
     // compositionend commits the last syllable; React flushes the full value.
     fireEvent.compositionEnd(textarea, { target: { value: "안녕하세요" } });
     fireEvent.change(textarea, { target: { value: "안녕하세요" } });
-    fireEvent.keyDown(textarea, { key: "Enter" }); // now a real submit
+    fireEvent.keyDown(textarea, { key: "Enter" }); // arms confirmation
+    fireEvent.keyDown(textarea, { key: "Enter" }); // now confirmed submit
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(onSubmit).toHaveBeenCalledWith("안녕하세요", []);
