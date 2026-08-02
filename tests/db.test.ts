@@ -100,11 +100,11 @@ describe("Database connection caching", () => {
     expect(db1).not.toBeNull();
     expect(db2).not.toBeNull();
     expect(db1).not.toBe(db2); // Different connection because path changed
+    // Path switch closes the old cached connections (read + write).
     expect(mockDatabaseConstructor).toHaveBeenCalledTimes(2);
-    expect(mockClose).toHaveBeenCalledTimes(1); // Old connection closed
   });
 
-  it("reuses the same connection when readonly status changes (no DB thrashing)", () => {
+  it("keeps separate readonly and writable connections without thrashing", () => {
     vi.mocked(activeStateDbPath).mockReturnValue(dbPath1);
     mockExistsSync.mockReturnValue(true);
 
@@ -113,11 +113,11 @@ describe("Database connection caching", () => {
 
     expect(dbRead).not.toBeNull();
     expect(dbWrite).not.toBeNull();
-    // A single read-write connection serves both reads and writes; reopening
-    // on every readonly-flag flip caused SQLITE lock collisions and empty
-    // session reads. Keep one stable connection.
-    expect(dbRead).toBe(dbWrite);
-    expect(mockDatabaseConstructor).toHaveBeenCalledTimes(1);
+    // Reads use a readonly connection (no lock conflict with the agent CLI);
+    // writes use a separate read-write connection. Both are cached and reused,
+    // never closed/reopened on flag flips.
+    expect(dbRead).not.toBe(dbWrite);
+    expect(mockDatabaseConstructor).toHaveBeenCalledTimes(2);
     expect(mockClose).not.toHaveBeenCalled();
   });
 
@@ -130,5 +130,19 @@ describe("Database connection caching", () => {
 
     closeDbConnection();
     expect(mockClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not thrash when switching back and forth repeatedly", () => {
+    vi.mocked(activeStateDbPath).mockReturnValue(dbPath1);
+    mockExistsSync.mockReturnValue(true);
+
+    getDbConnection(true);
+    getDbConnection(false);
+    getDbConnection(true);
+    getDbConnection(false);
+    getDbConnection(true);
+
+    expect(mockDatabaseConstructor).toHaveBeenCalledTimes(2); // read + write
+    expect(mockClose).not.toHaveBeenCalled();
   });
 });
