@@ -23,6 +23,7 @@ import type {
   DesktopSessionLocalError,
 } from "../../shared/session-continuation";
 import { stageAttachment, clearStagedAttachments } from "../attachment-staging";
+import { zoomBy, zoomApply } from "../zoom";
 import { persistPromptImageAttachments } from "../session-attachment-store";
 import {
   discoverProviderModels,
@@ -680,6 +681,15 @@ export function registerIpcHandlers(context: IpcContext): void {
     openExternalUrl,
   } = context;
   const mainWindow = getMainWindow();
+  // UI zoom (Ctrl+± / Ctrl+0 / Shift+wheel)
+  ipcMain.handle("zoom-by", (_event, delta: number) => {
+    const win = getMainWindow();
+    return win ? zoomBy(win, delta) : null;
+  });
+  ipcMain.handle("zoom-apply", (_event, level: number) => {
+    const win = getMainWindow();
+    return win ? zoomApply(win, level) : null;
+  });
   // Installation
   ipcMain.handle("check-install", () => {
     return checkInstallStatus();
