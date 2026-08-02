@@ -554,6 +554,51 @@ function Layout({
     [runs, activeRunId, activeProfile],
   );
 
+  const handleCloseOthers = useCallback(
+    (runId: string) => {
+      const keep = runs.find((r) => r.runId === runId);
+      if (!keep) return;
+      for (const r of runs) {
+        if (r.runId !== runId) window.hermesAPI.abortChat(r.runId);
+      }
+      setRuns([keep]);
+      setActiveRunId(keep.runId);
+      setActiveProfile(keep.profile);
+    },
+    [runs],
+  );
+
+  const handleCloseToRight = useCallback(
+    (runId: string) => {
+      const idx = runs.findIndex((r) => r.runId === runId);
+      if (idx < 0) return;
+      const keep = runs.slice(0, idx + 1);
+      const drop = runs.slice(idx + 1);
+      for (const r of drop) window.hermesAPI.abortChat(r.runId);
+      setRuns(keep);
+      if (!keep.some((r) => r.runId === activeRunId)) {
+        setActiveRunId(runId);
+        setActiveProfile(keep[keep.length - 1].profile);
+      }
+    },
+    [runs, activeRunId],
+  );
+
+  const handleReorderRuns = useCallback(
+    (sourceRunId: string, targetRunId: string) => {
+      setRuns((prev) => {
+        const fromIdx = prev.findIndex((r) => r.runId === sourceRunId);
+        const toIdx = prev.findIndex((r) => r.runId === targetRunId);
+        if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return prev;
+        const next = [...prev];
+        const [moved] = next.splice(fromIdx, 1);
+        next.splice(toIdx, 0, moved);
+        return next;
+      });
+    },
+    [],
+  );
+
   // Chrome/iTerm-style tab shortcuts for the conversation tabs: Ctrl+Tab /
   // Ctrl+Shift+Tab, Cmd/Ctrl+Shift+[ / ], Cmd/Ctrl+Option+←/→ and
   // Cmd/Ctrl+Shift+←/→ cycle; Cmd/Ctrl+1..8 jump to the Nth tab and 9 to the
@@ -849,6 +894,9 @@ function Layout({
             activeRunId={activeRunId}
             onSelect={handleActivateRun}
             onClose={handleCloseRun}
+            onCloseOthers={handleCloseOthers}
+            onCloseToRight={handleCloseToRight}
+            onReorder={handleReorderRuns}
             onNew={handleNewChat}
             getAppearance={getAppearance}
           />

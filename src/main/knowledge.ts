@@ -209,9 +209,10 @@ export async function buildKnowledgeIndex(
       } catch {
         /* hint optional */
       }
+      const fullPath = join(bundlePath, fileName);
       const line = hint
-        ? `- ${fileName} — ${hint}`
-        : `- ${fileName}`;
+        ? `- ${fullPath} — ${hint}`
+        : `- ${fullPath}`;
       lines.push(line);
       budget -= line.length;
     }

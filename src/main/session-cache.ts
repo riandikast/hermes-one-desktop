@@ -33,6 +33,7 @@ export interface CachedSession {
   source: string;
   messageCount: number;
   model: string;
+  contextFolder?: string | null;
   contextFolders: string[];
 }
 
@@ -85,16 +86,18 @@ function readCache(): CacheData {
       sessions: Array.isArray(parsed.sessions)
         ? parsed.sessions.map((s) => {
             const legacy = s as LegacySession;
+            const folders = Array.isArray(s.contextFolders)
+              ? s.contextFolders.filter(
+                  (f): f is string => typeof f === "string",
+                )
+              : typeof legacy.contextFolder === "string" && legacy.contextFolder
+                ? [legacy.contextFolder]
+                : [];
+            const folder = folders[0] ?? legacy.contextFolder ?? null;
             return {
               ...s,
-              contextFolders: Array.isArray(s.contextFolders)
-                ? s.contextFolders.filter(
-                    (f): f is string => typeof f === "string",
-                  )
-                : typeof legacy.contextFolder === "string" &&
-                    legacy.contextFolder
-                  ? [legacy.contextFolder]
-                  : [],
+              contextFolder: folder,
+              contextFolders: folders,
             };
           })
         : [],
@@ -122,30 +125,35 @@ function getDb(): Database.Database | null {
 // fast read path (`listCachedSessions`) stay DB-free.
 function attachContextFolders(sessions: CachedSession[]): CachedSession[] {
   const folders = getSessionContextFolders(sessions.map((s) => s.id));
-  return sessions.map((session) => ({
-    ...session,
-    contextFolders: folders.get(session.id) ?? [],
-  }));
+  return sessions.map((session) => {
+    const list = folders.get(session.id) ?? [];
+    const first = list[0] ?? session.contextFolder ?? null;
+    return {
+      ...session,
+      contextFolder: first,
+      contextFolders: list.length > 0 ? list : first ? [first] : [],
+    };
+  });
 }
 
-// Sync from hermes DB to local cache — only fetches new/updated sessions
+// Sync from hermes DB to local cache
 export function syncSessionCache(): CachedSession[] {
   const cache = readCache();
   const db = getDb();
   if (!db) return cache.sessions;
 
   try {
-    const lastSync = cache.sessions.length === 0 ? 0 : cache.lastSync;
-
-    // Fetch sessions newer than last sync, or all if first sync
+    // Always fetch all sessions. The incremental lastSync-window approach
+    // was missing sessions that were in the DB but not yet in the cache
+    // (e.g. after a cache reset), permanently hiding them from the sidebar.
+    // Full scans of even 1000+ rows are <5ms on better-sqlite3.
     const rows = db
       .prepare(
         `SELECT s.id, s.started_at, s.source, s.message_count, s.model, s.title
          FROM sessions s
-         WHERE s.started_at > ?
          ORDER BY s.started_at DESC`,
       )
-      .all(lastSync > 0 ? lastSync - 300 : 0) as Array<{
+      .all() as Array<{
       id: string;
       started_at: number;
       source: string;

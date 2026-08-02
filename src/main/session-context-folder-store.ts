@@ -16,6 +16,7 @@ const TABLE = "desktop_session_context_folders";
 const TABLE_ROOTS = "desktop_session_context_folder_roots";
 
 function ensureTable(db: Database.Database): void {
+  if (db.readonly) return;
   db.exec(`
     CREATE TABLE IF NOT EXISTS ${TABLE} (
       session_id TEXT PRIMARY KEY,
@@ -26,6 +27,7 @@ function ensureTable(db: Database.Database): void {
 }
 
 function ensureRootsTable(db: Database.Database): void {
+  if (db.readonly) return;
   db.exec(`
     CREATE TABLE IF NOT EXISTS ${TABLE_ROOTS} (
       session_id TEXT NOT NULL,
@@ -35,6 +37,13 @@ function ensureRootsTable(db: Database.Database): void {
       PRIMARY KEY (session_id, folder_path)
     );
   `);
+}
+
+export function initContextFolderTables(): void {
+  const db = getDbConnection(false);
+  if (!db) return;
+  ensureTable(db);
+  ensureRootsTable(db);
 }
 
 function tableExists(db: Database.Database): boolean {
@@ -91,6 +100,37 @@ export function setSessionContextFolder(
   setSessionContextFolders(sessionId, folder ? [folder] : []);
 }
 
+function getCwdFromSessionsTable(
+  db: Database.Database,
+  sessionIds: string[],
+): Map<string, string> {
+  const map = new Map<string, string>();
+  if (sessionIds.length === 0) return map;
+  const CHUNK = 500;
+  for (let i = 0; i < sessionIds.length; i += CHUNK) {
+    const chunk = sessionIds.slice(i, i + CHUNK);
+    const placeholders = chunk.map(() => "?").join(", ");
+    try {
+      const rows = db
+        .prepare(
+          `SELECT id, cwd, git_repo_root FROM sessions WHERE id IN (${placeholders})`,
+        )
+        .all(...chunk) as Array<{
+        id: string;
+        cwd?: string | null;
+        git_repo_root?: string | null;
+      }>;
+      for (const r of rows) {
+        const folder = (r.cwd || r.git_repo_root)?.trim();
+        if (folder) map.set(r.id, folder);
+      }
+    } catch {
+      /* ignore if sessions table is missing or doesn't have cwd columns */
+    }
+  }
+  return map;
+}
+
 /** Read the legacy single folder linked to a session, or null. */
 export function getSessionContextFolder(sessionId: string): string | null {
   if (!sessionId) return null;
@@ -104,30 +144,35 @@ export function getSessionContextFolder(sessionId: string): string | null {
 
 /**
  * Read the folders linked to a session, in selection order. Sessions that
- * only have a legacy single-folder row are lazily migrated to the roots
- * table on first read.
+ * only have a legacy single-folder row or a CLI `sessions.cwd` row are
+ * lazily migrated to the roots table on first read.
  */
 export function getSessionContextFoldersForSession(
   sessionId: string,
 ): string[] {
   if (!sessionId) return [];
+  initContextFolderTables();
   const db = getDbConnection(true);
-  if (!db || !tableExists(db)) return [];
-  ensureRootsTable(db);
-  const rows = db
-    .prepare(
-      `SELECT folder_path FROM ${TABLE_ROOTS} WHERE session_id = ? ORDER BY position ASC`,
-    )
-    .all(sessionId) as Array<{ folder_path: string }>;
-  const roots = rows.map((r) => r.folder_path);
-  if (roots.length === 0) {
-    const legacy = getSessionContextFolder(sessionId);
-    if (legacy) {
-      setSessionContextFolders(sessionId, [legacy]);
-      return [legacy];
-    }
+  if (!db) return [];
+  if (rootsTableExists(db)) {
+    const rows = db
+      .prepare(
+        `SELECT folder_path FROM ${TABLE_ROOTS} WHERE session_id = ? ORDER BY position ASC`,
+      )
+      .all(sessionId) as Array<{ folder_path: string }>;
+    const roots = rows.map((r) => r.folder_path);
+    if (roots.length > 0) return roots;
   }
-  return roots;
+  const legacy = getSessionContextFolder(sessionId);
+  if (legacy) return [legacy];
+
+  const cwdMap = getCwdFromSessionsTable(db, [sessionId]);
+  const cwd = cwdMap.get(sessionId);
+  if (cwd) {
+    setSessionContextFolders(sessionId, [cwd]);
+    return [cwd];
+  }
+  return [];
 }
 
 /**
@@ -143,36 +188,47 @@ export function getSessionContextFolders(
   const result = new Map<string, string[]>();
   if (sessionIds.length === 0) return result;
   const db = getDbConnection(true);
-  if (!db || !tableExists(db)) return result;
-  ensureRootsTable(db);
+  if (!db) return result;
 
-  // Chunk well under SQLITE_MAX_VARIABLE_NUMBER for portability, matching the
-  // batching used elsewhere in the session cache.
-  const CHUNK = 500;
-  for (let i = 0; i < sessionIds.length; i += CHUNK) {
-    const chunk = sessionIds.slice(i, i + CHUNK);
-    const placeholders = chunk.map(() => "?").join(", ");
-    const rows = db
-      .prepare(
-        `SELECT session_id, folder_path FROM ${TABLE_ROOTS} WHERE session_id IN (${placeholders}) ORDER BY session_id, position ASC`,
-      )
-      .all(...chunk) as Array<{ session_id: string; folder_path: string }>;
-    for (const r of rows) {
-      const list = result.get(r.session_id) ?? [];
-      if (r.folder_path) list.push(r.folder_path);
-      result.set(r.session_id, list);
-    }
-  }
-  // Lazy-migrate sessions that only have a legacy single-folder row.
-  for (const sessionId of sessionIds) {
-    if (!result.has(sessionId)) {
-      const legacy = getSessionContextFolder(sessionId);
-      if (legacy) {
-        setSessionContextFolders(sessionId, [legacy]);
-        result.set(sessionId, [legacy]);
+  if (rootsTableExists(db)) {
+    const CHUNK = 500;
+    for (let i = 0; i < sessionIds.length; i += CHUNK) {
+      const chunk = sessionIds.slice(i, i + CHUNK);
+      const placeholders = chunk.map(() => "?").join(", ");
+      const rows = db
+        .prepare(
+          `SELECT session_id, folder_path FROM ${TABLE_ROOTS} WHERE session_id IN (${placeholders}) ORDER BY session_id, position ASC`,
+        )
+        .all(...chunk) as Array<{ session_id: string; folder_path: string }>;
+      for (const r of rows) {
+        const list = result.get(r.session_id) ?? [];
+        if (r.folder_path) list.push(r.folder_path);
+        result.set(r.session_id, list);
       }
     }
   }
+
+  if (tableExists(db)) {
+    for (const sessionId of sessionIds) {
+      if (!result.has(sessionId)) {
+        const legacy = getSessionContextFolder(sessionId);
+        if (legacy) {
+          result.set(sessionId, [legacy]);
+        }
+      }
+    }
+  }
+
+  // Fallback: migrate CLI sessions that have `cwd` or `git_repo_root` in state.db
+  const unlinkedIds = sessionIds.filter((id) => !result.has(id));
+  if (unlinkedIds.length > 0) {
+    const cwdMap = getCwdFromSessionsTable(db, unlinkedIds);
+    for (const [id, cwd] of cwdMap.entries()) {
+      result.set(id, [cwd]);
+      setSessionContextFolders(id, [cwd]);
+    }
+  }
+
   return result;
 }
 
@@ -198,7 +254,7 @@ export function deleteSessionContextFolderForSession(
  */
 export function getRecentSessionContextFolders(limit = 20): string[] {
   const db = getDbConnection(true);
-  if (!db || !tableExists(db)) return [];
+  if (!db || !rootsTableExists(db)) return [];
   // GROUP BY (not DISTINCT) so each folder appears once ordered by its most
   // recent use. A `DISTINCT folder_path ... ORDER BY updated_at` collapses the
   // duplicates but then orders by an arbitrary one of each path's rows, so a

@@ -70,6 +70,10 @@ interface EnsureDashboardRuntimeSessionParams {
   messages: ReadonlyArray<ChatMessage>;
   profile?: string;
   storedSessionId?: string | null;
+  /** Global knowledge bundle index injected as a system-role seed message so
+   *  the agent sees it as context — never prepended to the user's prompt text
+   *  (which would leak the system prompt into the visible user bubble). */
+  knowledgeIndex?: string;
 }
 
 interface EnsureDashboardRuntimeSessionResult {
@@ -131,7 +135,7 @@ interface UseDashboardChatTransportResult {
 
 interface DashboardSeedMessage {
   content: string;
-  role: "assistant" | "user";
+  role: "assistant" | "system" | "user";
 }
 
 interface DashboardSeedOptions {
@@ -260,6 +264,12 @@ export async function ensureDashboardRuntimeSession(
   const seedMessages = dashboardSeedMessagesFromTranscript(params.messages, {
     excludeUserId: params.excludeSeedUserId ?? null,
   });
+  if (params.knowledgeIndex && params.knowledgeIndex.trim()) {
+    seedMessages.unshift({
+      role: "system",
+      content: params.knowledgeIndex,
+    });
+  }
   const created = await params.client.request<SessionResponse>(
     "session.create",
     {
@@ -1286,6 +1296,7 @@ export function useDashboardChatTransport({
           messages: messagesRef.current,
           profile,
           storedSessionId: stored,
+          knowledgeIndex: knowledgeIndexRef.current,
         });
 
         if (stored && response.created) {
@@ -1306,6 +1317,10 @@ export function useDashboardChatTransport({
         storedSessionIdRef.current = storedId;
         recreateRuntimeSessionRef.current = false;
         setHermesSessionId(storedId);
+        // A new session row was committed to state.db by the agent; ask the
+        // sidebar recent-sessions list to re-sync immediately (mirrors the
+        // legacy-transport dispatch in useChatIPC).
+        window.dispatchEvent(new Event("hermes-session-db-synced"));
       }
 
       if (
@@ -1567,10 +1582,7 @@ export function useDashboardChatTransport({
           "Dashboard chat supports image attachments only in this build. Use Auto or Legacy for mixed file attachments.",
         );
       }
-      const knowledgeIndex = knowledgeIndexRef.current;
-      const promptText = knowledgeIndex
-        ? `${knowledgeIndex}\n\n${dashboardText}`
-        : dashboardText;
+      const promptText = dashboardText;
 
       let client: DashboardGatewayClient;
       try {

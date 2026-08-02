@@ -38,8 +38,37 @@ export interface DbHistoryItem {
  * the gateway forwards reasoning chunks during the stream, the agent
  * still writes them to state.db at finalisation — refreshing here
  * makes them appear without the user having to focus-change to
- * trigger a re-sync (issue #352).
  */
+
+/**
+ * Strip a legacy knowledge-bundle index header that was previously prepended
+ * to the user's prompt text (so the agent would see it). Those rows were
+ * saved into state.db verbatim, so reopening the session rendered the system
+ * prompt inside the visible user bubble. The header starts with the fixed
+ * intro line, followed by `## <bundle>` / `- <file>` listing lines.
+ */
+export function stripKnowledgeIndexHeader(text: string): string {
+  if (!text) return "";
+  const trimmed = text.trim();
+  if (!/^The user attached the following knowledge bundles\./i.test(trimmed)) {
+    return trimmed;
+  }
+  const lines = text.split(/\r?\n/);
+  let i = 0;
+  // Skip the intro line and every subsequent blank / `##` / `-` listing line.
+  if (i < lines.length) i++;
+  while (
+    i < lines.length &&
+    (lines[i].trim() === "" ||
+      /^(##\s+|\s*-)/.test(lines[i]) ||
+      /^(##\s+|\s*-)/.test(lines[i].trim()))
+  ) {
+    i++;
+  }
+  const rest = lines.slice(i).join("\n").trim();
+  return rest || trimmed;
+}
+
 export function dbItemsToChatMessages(
   items: ReadonlyArray<DbHistoryItem>,
 ): ChatMessage[] {
@@ -50,7 +79,7 @@ export function dbItemsToChatMessages(
           return {
             id: `db-${it.id}`,
             role: "user",
-            content: it.content || "",
+            content: stripKnowledgeIndexHeader(it.content || ""),
             ...(typeof it.timestamp === "number"
               ? { timestamp: it.timestamp }
               : {}),

@@ -42,6 +42,39 @@ describe("dbItemsToChatMessages", () => {
     expect(out[2]).toMatchObject({ role: "agent", content: "4" });
   });
 
+  it("strips legacy knowledge-bundle index header from user bubble content", () => {
+    const leaked =
+      "The user attached the following knowledge bundles. Read files with the file tools when relevant to the request; do not dump their contents into the conversation unless asked.\n" +
+      "\n" +
+      "## GeloraApp\n" +
+      "- C:\\path\\knowledge\\GeloraApp\\Style.md — # Style.md\n" +
+      "\n" +
+      "Explain the style rules";
+    const items: DbHistoryItem[] = [
+      { kind: "user", id: 1, content: leaked },
+    ];
+
+    const out = dbItemsToChatMessages(items);
+
+    expect(out[0]).toMatchObject({
+      role: "user",
+      content: "Explain the style rules",
+    });
+  });
+
+  it("leaves normal user messages untouched", () => {
+    const items: DbHistoryItem[] = [
+      { kind: "user", id: 1, content: "what's 2+2?" },
+    ];
+
+    const out = dbItemsToChatMessages(items);
+
+    expect(out[0]).toMatchObject({
+      role: "user",
+      content: "what's 2+2?",
+    });
+  });
+
   it("preserves attachments on user, assistant, and tool_result", () => {
     const att = [{ id: "a1", kind: "image" as const, name: "x.png", size: 1 }];
     const items: DbHistoryItem[] = [
