@@ -219,15 +219,31 @@ function Chat({
   // Load attached knowledge bundles for this session
   useEffect(() => {
     if (!hermesSessionId) {
-      setAttachedKnowledgeBundles([]);
       return;
     }
     try {
       const raw = localStorage.getItem(`hermes.session.knowledge.${hermesSessionId}`);
-      if (raw) setAttachedKnowledgeBundles(JSON.parse(raw));
-      else setAttachedKnowledgeBundles([]);
+      if (raw) {
+        setAttachedKnowledgeBundles(JSON.parse(raw));
+      } else {
+        // If bundles were attached during a new chat before hermesSessionId was assigned,
+        // persist them under the new session ID so they don't auto-reset to empty.
+        setAttachedKnowledgeBundles((prev) => {
+          if (prev.length > 0) {
+            try {
+              localStorage.setItem(
+                `hermes.session.knowledge.${hermesSessionId}`,
+                JSON.stringify(prev),
+              );
+            } catch {
+              /* ignore */
+            }
+          }
+          return prev;
+        });
+      }
     } catch {
-      setAttachedKnowledgeBundles([]);
+      /* ignore */
     }
   }, [hermesSessionId]);
 
@@ -471,7 +487,7 @@ function Chat({
     };
   }, [profile, chatCurrentModel, chatCurrentProvider, chatCurrentBaseUrl]);
 
-  const visibleSessionScopeId = messages.length === 0 ? null : hermesSessionId;
+  const visibleSessionScopeId = hermesSessionId ?? null;
 
   useChatIPC({
     runId,
