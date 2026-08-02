@@ -1494,6 +1494,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       runId?: string,
       modelOverride?: SessionModelOverride,
       knowledgeBundles?: string[],
+      planMode?: boolean,
     ) => {
       const primaryContextFolder = Array.isArray(contextFolder)
         ? contextFolder[0]
@@ -1647,6 +1648,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         knowledgeBundles && knowledgeBundles.length > 0
           ? await buildKnowledgeIndex(knowledgeBundles).catch(() => "")
           : "",
+        planMode ?? false,
       );
 
       activeRuns.set(chatRunId, handle.abort);

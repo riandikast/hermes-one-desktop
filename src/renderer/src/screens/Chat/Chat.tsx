@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Zap, Globe } from "lucide-react";
+import { Zap, Globe, ClipboardList, Hammer } from "lucide-react";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatEmptyState } from "./ChatEmptyState";
 import { MessageList } from "./MessageList";
@@ -194,6 +194,27 @@ function Chat({
     initialContextFolders ?? [],
   );
   const [attachedKnowledgeBundles, setAttachedKnowledgeBundles] = useState<string[]>([]);
+  // PLAN / BUILD mode toggle. Persisted per session so a re-opened
+  // conversation restores its mode. When PLAN, the agent is instructed (via a
+  // system message) to never mutate files.
+  const [planMode, setPlanMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("hermes.session.planMode") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const togglePlanMode = useCallback(() => {
+    setPlanMode((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("hermes.session.planMode", String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
   // Gate folder persistence until the stored value for a resumed session has
   // been loaded — otherwise the initial null would overwrite the saved folder
   // before the load resolves. A brand-new chat (no initialSessionId) has
@@ -666,6 +687,7 @@ function Chat({
     fallbackOnUnavailable: chatTransportPreference === "auto",
     hermesSessionId,
     knowledgeBundles: attachedKnowledgeBundles,
+    planMode,
     messages,
     model: chatCurrentModel,
     modelBaseUrl: chatCurrentBaseUrl,
@@ -776,6 +798,7 @@ function Chat({
     activeTurnRef,
     contextFolders,
     knowledgeBundles: attachedKnowledgeBundles,
+    planMode,
     sessionModel: sessionModelOverride,
     sendViaDashboard: dashboardTransport.enabled
       ? dashboardTransport.sendMessage
@@ -1171,6 +1194,39 @@ function Chat({
                 onToggleWorktree={handleToggleWorktree}
                 onSelectRecentFolder={handleSelectRecentFolder}
               />
+              <button
+                type="button"
+                className={`btn-ghost chat-tool-btn ${
+                  planMode ? "chat-tool-btn-active" : ""
+                }`}
+                onClick={togglePlanMode}
+                title={
+                  planMode
+                    ? "PLAN mode — agent must not modify files. Click to switch to BUILD."
+                    : "BUILD mode — agent may modify files. Click to switch to PLAN."
+                }
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 28,
+                  height: 28,
+                  padding: 0,
+                  borderRadius: 6,
+                  gap: 4,
+                  color: planMode
+                    ? "var(--accent-text)"
+                    : "var(--text-secondary)",
+                  background: planMode
+                    ? "color-mix(in srgb, var(--accent-text) 12%, transparent)"
+                    : "transparent",
+                }}
+              >
+                {planMode ? <ClipboardList size={14} /> : <Hammer size={14} />}
+                <span style={{ fontSize: 10, fontWeight: 600 }}>
+                  {planMode ? "PLAN" : "BUILD"}
+                </span>
+              </button>
               <button
                 type="button"
                 className={`btn-ghost chat-tool-btn ${webPreviewVisible ? "chat-tool-btn-active" : ""}`}

@@ -451,6 +451,7 @@ interface HermesAPI {
     runId?: string,
     modelOverride?: SessionModelOverride,
     knowledgeBundles?: string[],
+    planMode?: boolean,
   ) => Promise<{ response: string; sessionId?: string }>;
   getKnowledgeIndex: (bundleNames: string[]) => Promise<string>;
   abortChat: (runId?: string) => Promise<void>;

@@ -98,6 +98,8 @@ interface UseDashboardChatTransportArgs {
    *  index is prepended to each submitted prompt so the gateway-side agent
    *  can reference/update those files with its file tools. */
   knowledgeBundles?: string[];
+  /** PLAN mode: inject a system-role instruction forbidding file mutations. */
+  planMode?: boolean;
   setHermesSessionId: (id: string) => void;
   setIsLoading: (loading: boolean) => void;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
@@ -917,6 +919,7 @@ export function useDashboardChatTransport({
   profile,
   provider,
   knowledgeBundles,
+  planMode,
   setHermesSessionId,
   setIsLoading,
   setMessages,
@@ -947,6 +950,10 @@ export function useDashboardChatTransport({
   >([]);
   const lastSyncedCwdRef = useRef<string | null>(null);
   const knowledgeIndexRef = useRef<string>("");
+  const planModeRef = useRef<boolean>(Boolean(planMode));
+  useEffect(() => {
+    planModeRef.current = Boolean(planMode);
+  }, [planMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1288,6 +1295,18 @@ export function useDashboardChatTransport({
         const stored = storedSessionIdRef.current;
         const excludeSeedUserId =
           options.excludeSeedUserId ?? activeTurnRef.current?.userId ?? null;
+        const systemParts: string[] = [];
+        if (planModeRef.current) {
+          systemParts.push(
+            "You are in PLAN mode. You must NOT create, modify, or delete any files, " +
+              "and you must NOT run commands that change the project state. Only analyze " +
+              "the codebase and produce a detailed plan. Do not use write/edit/apply/run " +
+              "tools that mutate files until the user switches you back to BUILD mode.",
+          );
+        }
+        if (knowledgeIndexRef.current) {
+          systemParts.push(knowledgeIndexRef.current);
+        }
         const response = await ensureDashboardRuntimeSession({
           client,
           contextFolder,
@@ -1296,7 +1315,7 @@ export function useDashboardChatTransport({
           messages: messagesRef.current,
           profile,
           storedSessionId: stored,
-          knowledgeIndex: knowledgeIndexRef.current,
+          knowledgeIndex: systemParts.join("\n\n"),
         });
 
         if (stored && response.created) {

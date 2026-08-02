@@ -1182,6 +1182,27 @@ export function contextFolderSystemMessage(
   };
 }
 
+export const PLAN_MODE_SYSTEM_MESSAGE =
+  "You are in PLAN mode. You must NOT create, modify, or delete any files, " +
+  "and you must NOT run commands that change the project state. Only analyze " +
+  "the codebase, reason about the problem, and produce a detailed plan " +
+  "(what will be changed, where, and why). Do not use write/edit/apply/run " +
+  "tools that mutate files or the environment until the user switches you " +
+  "back to BUILD mode.";
+
+/** Combine the optional plan-mode instruction with the knowledge index into a
+ *  single system-channel payload, so every transport injects it as context
+ *  (never as user text). */
+export function systemContextWithPlanMode(
+  knowledgeIndex: string | undefined,
+  planMode: boolean | undefined,
+): string {
+  const parts: string[] = [];
+  if (planMode) parts.push(PLAN_MODE_SYSTEM_MESSAGE);
+  if (knowledgeIndex && knowledgeIndex.trim()) parts.push(knowledgeIndex);
+  return parts.join("\n\n");
+}
+
 function reasoningEffortForProfile(
   profile?: string,
 ): "minimal" | "low" | "medium" | "high" | "xhigh" | null {
@@ -2909,8 +2930,13 @@ export async function sendMessage(
   contextFolder?: string,
   override?: SessionModelOverride,
   knowledgeIndex?: string,
+  planMode?: boolean,
 ): Promise<ChatHandle> {
   ensureInitialized();
+  const effectiveSystemContext = systemContextWithPlanMode(
+    knowledgeIndex,
+    planMode,
+  );
 
   // Remote mode: always use API, no CLI fallback. Cross-provider session
   // overrides are limited to the model string here (no CLI transport remotely).
@@ -2924,7 +2950,7 @@ export async function sendMessage(
       attachments,
       contextFolder,
       override,
-      knowledgeIndex,
+      effectiveSystemContext,
     );
   }
 
@@ -2987,7 +3013,7 @@ export async function sendMessage(
       attachments,
       contextFolder,
       override,
-      knowledgeIndex,
+      effectiveSystemContext,
     );
   }
 

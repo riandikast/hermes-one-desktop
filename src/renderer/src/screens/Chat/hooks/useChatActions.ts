@@ -58,6 +58,8 @@ interface UseChatActionsArgs {
    *  index is injected into the system prompt so the agent can reference or
    *  update those files with its file tools. */
   knowledgeBundles?: string[];
+  /** PLAN mode: inject a system instruction forbidding file mutations. */
+  planMode?: boolean;
   /** Session-local model override — selected via the chat picker without
    *  persisting to config.yaml (issue #688). Carries the full identity so a
    *  cross-provider switch routes to the right backend, not just the model. */
@@ -126,6 +128,7 @@ export function useChatActions({
   activeTurnRef,
   contextFolders,
   knowledgeBundles,
+  planMode,
   sessionModel,
   sendViaDashboard,
   execSlashViaDashboard,
@@ -183,12 +186,13 @@ export function useChatActions({
           knowledgeBundles && knowledgeBundles.length > 0
             ? knowledgeBundles
             : undefined,
+          planMode,
         );
       } catch {
         // onChatError IPC already surfaces this to the user
       }
     },
-    [runId, profile, hermesSessionId, contextFolders, knowledgeBundles, sendViaDashboard],
+    [runId, profile, hermesSessionId, contextFolders, knowledgeBundles, planMode, sendViaDashboard],
   );
 
   // Shared "side question" flow (the 💭 quick-ask button and a typed `/btw`).

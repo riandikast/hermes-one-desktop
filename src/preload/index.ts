@@ -535,6 +535,7 @@ const hermesAPI = {
     runId?: string,
     modelOverride?: SessionModelOverride,
     knowledgeBundles?: string[],
+    planMode?: boolean,
   ): Promise<{ response: string; sessionId?: string }> =>
     ipcRenderer.invoke(
       "send-message",
@@ -547,6 +548,7 @@ const hermesAPI = {
       runId,
       modelOverride,
       knowledgeBundles,
+      planMode,
     ),
 
   getKnowledgeIndex: (bundleNames: string[]): Promise<string> =>
