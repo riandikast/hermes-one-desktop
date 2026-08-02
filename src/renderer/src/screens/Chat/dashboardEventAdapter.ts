@@ -677,7 +677,7 @@ export function applyDashboardStreamEvent(
       return {
         messages: appendReasoningDelta(
           state.messages,
-          thinkingTextFromPayload(event.payload, "text", "delta", "reasoning"),
+          thinkingTextFromPayload(event.payload, "reasoning", "thinking"),
           state.reasoningSegmentClosed,
           now,
         ),
@@ -687,7 +687,7 @@ export function applyDashboardStreamEvent(
       return {
         messages: appendReasoningSnapshot(
           state.messages,
-          thinkingTextFromPayload(event.payload, "text", "delta", "reasoning"),
+          thinkingTextFromPayload(event.payload, "reasoning", "thinking"),
           options.activeTurn,
           now,
         ),
@@ -717,6 +717,7 @@ export function applyDashboardStreamEvent(
       const finalReasoning = thinkingTextFromPayload(
         event.payload,
         "reasoning",
+        "thinking",
       );
       const messagesWithReasoning = addCompletionReasoningFallback(
         state.messages,

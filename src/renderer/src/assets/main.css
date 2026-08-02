@@ -7654,13 +7654,18 @@ body:has(.shell-vibrant),
   position: relative;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .chat-ctxfolder-group {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 2px;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 64px;
+  overflow-y: auto;
 }
 
 .chat-ctxfolder-dropdown {

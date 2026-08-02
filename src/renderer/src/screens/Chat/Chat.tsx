@@ -1194,6 +1194,9 @@ function Chat({
               </button>
             </>
           }
+          onCompactContext={() => {
+            void actions.handleSend("/compact");
+          }}
         />
       </div>
       {dragActive && (

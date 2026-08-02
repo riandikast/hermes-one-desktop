@@ -8,6 +8,7 @@ export interface ContextUsage {
   window: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  onCompact?: () => void;
 }
 
 function fmtTokens(n: number): string {
@@ -33,6 +34,7 @@ export const ContextGauge = memo(function ContextGauge({
   window: ctxWindow,
   cacheReadTokens,
   cacheWriteTokens,
+  onCompact,
 }: ContextUsage): React.JSX.Element {
   const { t } = useI18n();
   const pct =
@@ -100,6 +102,25 @@ export const ContextGauge = memo(function ContextGauge({
               write: fmtTokens(cacheWriteTokens || 0),
             })}
           </div>
+        )}
+        {onCompact && (
+          <button
+            type="button"
+            className="btn btn-secondary btn-xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCompact();
+            }}
+            style={{
+              marginTop: 6,
+              width: "100%",
+              fontSize: 11,
+              padding: "3px 6px",
+              cursor: "pointer",
+            }}
+          >
+            Compress Context (/compact)
+          </button>
         )}
       </div>
     </div>

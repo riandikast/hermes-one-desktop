@@ -23,6 +23,13 @@ export default function AppearancePane(): React.JSX.Element {
   const [gpuStatus, setGpuStatus] = useState<GpuStatus | null>(null);
   const [savedPref, setSavedPref] = useState<GpuPreferenceMode | null>(null);
   const [gpuSaveError, setGpuSaveError] = useState(false);
+  const [autoExpandReasoning, setAutoExpandReasoning] = useState(() => {
+    try {
+      return localStorage.getItem("hermes.autoExpandReasoning") === "true";
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     window.hermesAPI
@@ -121,6 +128,31 @@ export default function AppearancePane(): React.JSX.Element {
               type="checkbox"
               checked={rounded}
               onChange={() => setRounded(!rounded)}
+            />
+            <span className="tools-toggle-track" />
+          </label>
+        </div>
+
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <div className="settings-row-label">Auto-expand reasoning</div>
+            <div className="settings-row-hint">
+              Show thinking blocks expanded and type out live reasoning during response
+            </div>
+          </div>
+          <label className="tools-toggle" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={autoExpandReasoning}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setAutoExpandReasoning(next);
+                try {
+                  localStorage.setItem("hermes.autoExpandReasoning", String(next));
+                } catch {
+                  /* ignore */
+                }
+              }}
             />
             <span className="tools-toggle-track" />
           </label>

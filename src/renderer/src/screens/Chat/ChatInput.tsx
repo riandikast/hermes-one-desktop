@@ -75,6 +75,7 @@ interface ChatInputProps {
   profile?: string;
   /** Context-window occupancy for the gauge; null until the first response. */
   contextUsage?: ContextUsage | null;
+  onCompactContext?: () => void;
   /** Pre-send validation state. When `ok` is false, Send is disabled
    * and an inline banner explains why + how to fix it. */
   readiness?: ChatInputReadiness;
@@ -97,6 +98,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       contextFolders,
       profile,
       contextUsage,
+      onCompactContext,
       readiness,
       toolbarExtras,
       slashCommands = SLASH_COMMANDS,
@@ -1139,7 +1141,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             )}
             <div className="chat-input-toolbar-spacer" />
             {contextUsage && contextUsage.used > 0 && (
-              <ContextGauge {...contextUsage} />
+              <ContextGauge {...contextUsage} onCompact={onCompactContext} />
             )}
             {isLoading ? (
               <button

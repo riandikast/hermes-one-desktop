@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Brain, ChevronRight, Wrench } from "../../assets/icons";
 import { OrbLoader } from "../../components/OrbLoader";
 import { useI18n } from "../../components/useI18n";
@@ -32,7 +32,26 @@ export const ReasoningRow = memo(function ReasoningRow({
   agent?: AgentAvatarInfo;
 }): React.JSX.Element {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem("hermes.autoExpandReasoning") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  // Auto-expand live reasoning chunks during streaming if preference is enabled
+  useEffect(() => {
+    if (active) {
+      try {
+        if (localStorage.getItem("hermes.autoExpandReasoning") === "true") {
+          setOpen(true);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [active, msg.text]);
   return (
     <div
       className={`chat-message chat-message-agent chat-message-history${
