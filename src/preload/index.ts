@@ -245,6 +245,18 @@ const hermesAPI = {
   setLocale: (locale: AppLocale): Promise<AppLocale> =>
     ipcRenderer.invoke("set-locale", locale),
 
+  // UI zoom (Ctrl+± / Ctrl+0 / Shift+wheel)
+  zoomBy: (delta: number): Promise<number | null> =>
+    ipcRenderer.invoke("zoom-by", delta),
+  zoomApply: (level: number): Promise<number | null> =>
+    ipcRenderer.invoke("zoom-apply", level),
+  onUiZoomChanged: (callback: (level: number) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, level: unknown): void =>
+      callback(Number(level));
+    ipcRenderer.on("ui-zoom-changed", handler);
+    return () => ipcRenderer.removeListener("ui-zoom-changed", handler);
+  },
+
   // Configuration (profile-aware)
   getEnv: (profile?: string): Promise<Record<string, string>> =>
     ipcRenderer.invoke("get-env", profile),

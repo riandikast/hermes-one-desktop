@@ -290,6 +290,11 @@ interface HermesAPI {
   getLocale: () => Promise<AppLocale>;
   setLocale: (locale: AppLocale) => Promise<AppLocale>;
 
+  // UI zoom (Ctrl+± / Ctrl+0 / Shift+wheel)
+  zoomBy: (delta: number) => Promise<number | null>;
+  zoomApply: (level: number) => Promise<number | null>;
+  onUiZoomChanged: (callback: (level: number) => void) => () => void;
+
   // Configuration (profile-aware)
   getEnv: (profile?: string) => Promise<Record<string, string>>;
   setEnv: (key: string, value: string, profile?: string) => Promise<boolean>;
