@@ -4,31 +4,31 @@ import { activeStateDbPath } from "./utils";
 
 let cachedDb: Database.Database | null = null;
 let cachedDbPath: string | null = null;
-let cachedDbReadonly: boolean | null = null;
 
 /**
  * Return a cached database connection for the active profile state DB.
  * If the active profile database path or readonly status changes,
  * the old database connection is cleanly closed and a new one is established.
  */
-export function getDbConnection(readonly = true): Database.Database | null {
+export function getDbConnection(_readonly = true): Database.Database | null {
   const dbPath = activeStateDbPath();
   if (!existsSync(dbPath)) {
     closeDbConnection();
     return null;
   }
 
-  // Reuse the existing cached connection if the path and mode match
-  if (cachedDb && cachedDbPath === dbPath && cachedDbReadonly === readonly) {
+  // Reuse the existing cached connection if the database path matches.
+  // A single read-write connection handles both reads and writes cleanly
+  // without closing/re-opening the database file.
+  if (cachedDb && cachedDbPath === dbPath) {
     return cachedDb;
   }
 
   closeDbConnection();
 
   try {
-    cachedDb = new Database(dbPath, readonly ? { readonly: true } : {});
+    cachedDb = new Database(dbPath);
     cachedDbPath = dbPath;
-    cachedDbReadonly = readonly;
     return cachedDb;
   } catch (err) {
     console.error(`[db] Failed to open database at ${dbPath}:`, err);
@@ -48,6 +48,5 @@ export function closeDbConnection(): void {
     }
     cachedDb = null;
     cachedDbPath = null;
-    cachedDbReadonly = null;
   }
 }

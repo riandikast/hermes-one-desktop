@@ -2072,6 +2072,11 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
       setSessionContextFolders(sessionId, clean);
       updateSessionContextFoldersInCache(sessionId, clean);
+      try {
+        syncSessionCache();
+      } catch {
+        /* best-effort */
+      }
       return true;
     },
   );

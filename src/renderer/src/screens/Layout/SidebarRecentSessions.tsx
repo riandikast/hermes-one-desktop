@@ -115,10 +115,12 @@ function storeClosedFolders(paths: Set<string>): void {
 function sameSessions(a: RecentSession[], b: RecentSession[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
+    const folderA = (a[i].contextFolders?.[0] || a[i].contextFolder)?.trim() ?? null;
+    const folderB = (b[i].contextFolders?.[0] || b[i].contextFolder)?.trim() ?? null;
     if (
       a[i].id !== b[i].id ||
       a[i].title !== b[i].title ||
-      (a[i].contextFolder ?? null) !== (b[i].contextFolder ?? null)
+      folderA !== folderB
     ) {
       return false;
     }
@@ -287,7 +289,16 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
           (Array.isArray(contextFolders) && contextFolders[0]) ||
           contextFolder ||
           null;
-        return { id, title, contextFolder: folder?.trim() || null };
+        return {
+          id,
+          title,
+          contextFolder: folder?.trim() || null,
+          contextFolders: Array.isArray(contextFolders)
+            ? contextFolders
+            : folder
+              ? [folder]
+              : [],
+        };
       }),
     [],
   );
