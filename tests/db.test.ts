@@ -104,7 +104,7 @@ describe("Database connection caching", () => {
     expect(mockClose).toHaveBeenCalledTimes(1); // Old connection closed
   });
 
-  it("re-creates connection if readonly status changes", () => {
+  it("reuses the same connection when readonly status changes (no DB thrashing)", () => {
     vi.mocked(activeStateDbPath).mockReturnValue(dbPath1);
     mockExistsSync.mockReturnValue(true);
 
@@ -113,9 +113,12 @@ describe("Database connection caching", () => {
 
     expect(dbRead).not.toBeNull();
     expect(dbWrite).not.toBeNull();
-    expect(dbRead).not.toBe(dbWrite); // Different connection because mode changed
-    expect(mockDatabaseConstructor).toHaveBeenCalledTimes(2);
-    expect(mockClose).toHaveBeenCalledTimes(1); // Old connection closed
+    // A single read-write connection serves both reads and writes; reopening
+    // on every readonly-flag flip caused SQLITE lock collisions and empty
+    // session reads. Keep one stable connection.
+    expect(dbRead).toBe(dbWrite);
+    expect(mockDatabaseConstructor).toHaveBeenCalledTimes(1);
+    expect(mockClose).not.toHaveBeenCalled();
   });
 
   it("closes connection on closeDbConnection", () => {

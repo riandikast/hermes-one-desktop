@@ -275,31 +275,6 @@ function appendReasoningDelta(
   ];
 }
 
-function appendReasoningSnapshot(
-  messages: ReadonlyArray<ChatMessage>,
-  text: string,
-  activeTurn?: ActiveTurn | null,
-  now = Date.now(),
-): ChatMessage[] {
-  if (!text) return [...messages];
-  if (hasAssistantText(messages, activeTurn)) return [...messages];
-
-  const lastUserIndex = findLastUserIndex(messages);
-  const keepReasoning = (msg: ChatMessage): boolean =>
-    !("kind" in msg && msg.kind === "reasoning");
-
-  return [
-    ...messages.slice(0, lastUserIndex + 1),
-    ...messages.slice(lastUserIndex + 1).filter(keepReasoning),
-    {
-      id: `reasoning-dashboard-${now}-${messages.length}`,
-      kind: "reasoning",
-      role: "agent",
-      text,
-    },
-  ];
-}
-
 function findToolCallIndex(
   messages: ReadonlyArray<ChatMessage>,
   callId: string,
@@ -501,20 +476,6 @@ function findLastUserIndex(messages: ReadonlyArray<ChatMessage>): number {
   return -1;
 }
 
-function hasAssistantText(
-  messages: ReadonlyArray<ChatMessage>,
-  activeTurn?: ActiveTurn | null,
-): boolean {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg.role === "user") break;
-    if (!isAssistantBubble(msg) || msg.error) continue;
-    if (activeTurn && msg.turnId && msg.turnId !== activeTurn.turnId) continue;
-    if (normalizeText(msg.content)) return true;
-  }
-  return false;
-}
-
 function removeDuplicateReasoning(
   messages: ReadonlyArray<ChatMessage>,
   finalText: string,
@@ -677,22 +638,19 @@ export function applyDashboardStreamEvent(
       return {
         messages: appendReasoningDelta(
           state.messages,
-          thinkingTextFromPayload(event.payload, "reasoning", "thinking"),
+          thinkingTextFromPayload(event.payload, "text", "delta", "reasoning"),
           state.reasoningSegmentClosed,
           now,
         ),
         reasoningSegmentClosed: false,
       };
+    // `reasoning.available` is a post-hoc preview signal that on some
+    // transports/providers carries the full visible assistant text rather than
+    // private reasoning. Injecting it as a "Thought" duplicates the response,
+    // so it is ignored entirely; canonical reasoning comes from the streamed
+    // `reasoning.delta` chunks (and the DB reconciliation path).
     case "reasoning.available":
-      return {
-        messages: appendReasoningSnapshot(
-          state.messages,
-          thinkingTextFromPayload(event.payload, "reasoning", "thinking"),
-          options.activeTurn,
-          now,
-        ),
-        reasoningSegmentClosed: false,
-      };
+      return state;
     case "tool.start":
     case "tool.progress":
     case "tool.generating":

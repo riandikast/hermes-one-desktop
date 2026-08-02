@@ -193,6 +193,10 @@ export function useChatIPC({
         if (sessionId) {
           acceptedSessionIdRef.current = sessionId;
           setHermesSessionId(sessionId);
+          // A fresh session row was committed to state.db by the CLI; ask the
+          // sidebar recent-sessions list to re-sync immediately so the new
+          // conversation shows up without waiting for the next refresh tick.
+          window.dispatchEvent(new Event("hermes-session-db-synced"));
         }
         if (!sessionId || activeTurn?.status === "failed") {
           activeTurnRef.current = null;

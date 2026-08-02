@@ -1167,7 +1167,6 @@ function Chat({
                 worktreeVisible={worktreeVisible}
                 onPickFolder={handlePickFolder}
                 onRemoveFolder={handleRemoveFolder}
-                onRemoveKnowledgeBundle={handleToggleKnowledgeBundle}
                 onToggleKnowledgeBundle={handleToggleKnowledgeBundle}
                 onToggleWorktree={handleToggleWorktree}
                 onSelectRecentFolder={handleSelectRecentFolder}

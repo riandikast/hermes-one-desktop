@@ -248,7 +248,7 @@ const hermesAPI = {
   // UI zoom (Ctrl+± / Ctrl+0 / Shift+wheel)
   zoomBy: (delta: number): Promise<number | null> =>
     ipcRenderer.invoke("zoom-by", delta),
-  zoomApply: async (level: number): Promise<number | null> => {
+  zoomApply: (level: number): Promise<number | null> => {
     webFrame.setZoomLevel(level);
     return ipcRenderer.invoke("zoom-apply", level);
   },

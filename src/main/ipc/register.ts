@@ -1584,6 +1584,16 @@ export function registerIpcHandlers(context: IpcContext): void {
             }
             safeSend("chat-done", sessionId || "");
             resolveChat({ response: fullResponse, sessionId });
+            // Pull the freshly-saved session into the sidebar cache so a just-
+            // completed conversation shows up in the recent-sessions list without
+            // waiting for the next sidebar open/focus/interval refresh. The agent
+            // CLI has already committed the row to state.db by the time onDone
+            // fires; syncSessionCache reads that DB and writes desktop/sessions.json.
+            try {
+              syncSessionCache();
+            } catch (err) {
+              console.warn("[sessions] sync after completion failed:", err);
+            }
             // Desktop notification when window is not focused and response took >10s
             if (
               mainWindow &&

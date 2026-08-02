@@ -1,5 +1,5 @@
-import { memo, useState, useEffect, useRef, Fragment } from "react";
-import { FolderOpen, FolderTree, X, Check, Plus, BookOpen } from "lucide-react";
+import { memo, useState, useEffect, useRef } from "react";
+import { FolderOpen, FolderTree, X, Check, BookOpen } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 
 interface ContextFolderChipProps {
@@ -12,7 +12,6 @@ interface ContextFolderChipProps {
   worktreeVisible: boolean;
   onPickFolder: () => void;
   onRemoveFolder: (path: string) => void;
-  onRemoveKnowledgeBundle?: (bundleName: string) => void;
   onToggleKnowledgeBundle?: (bundleName: string) => void;
   onToggleWorktree: () => void;
   onSelectRecentFolder?: (path: string) => void;
@@ -36,7 +35,6 @@ export const ContextFolderChip = memo(function ContextFolderChip({
   worktreeVisible,
   onPickFolder,
   onRemoveFolder,
-  onRemoveKnowledgeBundle,
   onToggleKnowledgeBundle,
   onToggleWorktree,
   onSelectRecentFolder,
@@ -172,6 +170,41 @@ export const ContextFolderChip = memo(function ContextFolderChip({
 
   const renderDropdown = (): React.JSX.Element => (
     <div className="chat-ctxfolder-dropdown">
+      {contextFolders.length > 0 && (
+        <>
+          <div className="chat-ctxfolder-dropdown-header">Selected</div>
+          <div className="chat-ctxfolder-dropdown-list">
+            {contextFolders.map((path) => (
+              <button
+                key={path}
+                type="button"
+                className="chat-ctxfolder-dropdown-item chat-ctxfolder-dropdown-item--active"
+                onClick={() => {
+                  // Click toggles (removes) the selected folder.
+                  onRemoveFolder(path);
+                }}
+                onContextMenu={(e) => {
+                  // Right-click deletes it from the selection/options.
+                  e.preventDefault();
+                  onRemoveFolder(path);
+                }}
+                title={`${path} — click/right-click to remove`}
+              >
+                <span className="chat-ctxfolder-dropdown-item-name">
+                  {folderName(path)}
+                </span>
+                <span
+                  className="chat-ctxfolder-dropdown-item-check"
+                  style={{ display: "inline-flex", alignItems: "center" }}
+                >
+                  <X size={12} />
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="chat-ctxfolder-dropdown-divider" />
+        </>
+      )}
       <div className="chat-ctxfolder-dropdown-header">Recent</div>
       <div className="chat-ctxfolder-dropdown-list">
         {recentFolders.length === 0 ? (
@@ -220,43 +253,14 @@ export const ContextFolderChip = memo(function ContextFolderChip({
     </div>
   );
 
-  if (contextFolders.length === 0) {
-    return (
-      <div className="chat-ctxfolder-picker" ref={containerRef}>
-        <button
-          className={`chat-meta-chip${attachedKnowledgeBundles.length > 0 ? " chat-meta-chip--active" : ""}`}
-          onClick={() => setIsKnowledgeOpen((v) => !v)}
-          title="Manage Attached Knowledge Bundles"
-          type="button"
-        >
-          <BookOpen size={13} />
-          <span>
-            {attachedKnowledgeBundles.length > 0
-              ? `Knowledge (${attachedKnowledgeBundles.length})`
-              : "Knowledge"}
-          </span>
-        </button>
-
-        <button
-          className="chat-meta-chip"
-          onClick={() => setIsOpen((v) => !v)}
-          title={t("chat.setContextFolder")}
-          type="button"
-        >
-          <FolderOpen size={13} />
-          <span>{t("chat.contextFolderChip")}</span>
-        </button>
-        {isOpen && renderDropdown()}
-        {isKnowledgeOpen && renderKnowledgeDropdown()}
-      </div>
-    );
-  }
-
   return (
-    <div className="chat-ctxfolder-group" ref={containerRef}>
+    <div className="chat-ctxfolder-picker" ref={containerRef}>
       <button
         className={`chat-meta-chip${attachedKnowledgeBundles.length > 0 ? " chat-meta-chip--active" : ""}`}
-        onClick={() => setIsKnowledgeOpen((v) => !v)}
+        onClick={() => {
+          setIsOpen(false);
+          setIsKnowledgeOpen((v) => !v);
+        }}
         title="Manage Attached Knowledge Bundles"
         type="button"
       >
@@ -268,55 +272,23 @@ export const ContextFolderChip = memo(function ContextFolderChip({
         </span>
       </button>
 
-      {attachedKnowledgeBundles.map((bundleName) => (
-        <Fragment key={`kb-${bundleName}`}>
-          <div
-            className="chat-meta-chip chat-meta-chip--active"
-            title={`Attached Knowledge: ${bundleName}`}
-          >
-            <BookOpen size={13} />
-            <span className="chat-ctxfolder-name">{bundleName}</span>
-          </div>
-          <button
-            className="chat-meta-chip-icon"
-            onClick={() => onRemoveKnowledgeBundle?.(bundleName)}
-            title="Detach Knowledge Bundle"
-            type="button"
-          >
-            <X size={11} />
-          </button>
-        </Fragment>
-      ))}
-
-      {contextFolders.map((folder) => (
-        <Fragment key={folder}>
-          <button
-            className="chat-meta-chip chat-meta-chip--active"
-            onClick={() => setIsOpen((v) => !v)}
-            title={t("chat.contextFolderActive", { path: folder })}
-            type="button"
-          >
-            <FolderOpen size={13} />
-            <span className="chat-ctxfolder-name">{folderName(folder)}</span>
-          </button>
-          <button
-            className="chat-meta-chip-icon"
-            onClick={() => onRemoveFolder(folder)}
-            title={t("chat.removeContextFolder")}
-            type="button"
-          >
-            <X size={11} />
-          </button>
-        </Fragment>
-      ))}
       <button
-        className="chat-meta-chip-icon"
-        onClick={() => setIsOpen((v) => !v)}
-        title={t("chat.addContextFolder")}
+        className={`chat-meta-chip${contextFolders.length > 0 ? " chat-meta-chip--active" : ""}`}
+        onClick={() => {
+          setIsKnowledgeOpen(false);
+          setIsOpen((v) => !v);
+        }}
+        title={t("chat.setContextFolder")}
         type="button"
       >
-        <Plus size={13} />
+        <FolderOpen size={13} />
+        <span>
+          {contextFolders.length > 0
+            ? `Folder (${contextFolders.length})`
+            : t("chat.contextFolderChip")}
+        </span>
       </button>
+
       <button
         className={`chat-meta-chip-icon${
           worktreeVisible ? " chat-meta-chip-icon--active" : ""
