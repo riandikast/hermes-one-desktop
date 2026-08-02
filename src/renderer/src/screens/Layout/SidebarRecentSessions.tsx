@@ -34,6 +34,7 @@ interface RecentSession {
   id: string;
   title: string;
   contextFolder?: string | null;
+  contextFolders?: string[];
 }
 
 // ChatGPT-style paged conversation list under the pinned app navigation.
@@ -137,7 +138,8 @@ function groupSessionsByWorkspace(sessions: RecentSession[]): {
   const chats: RecentSession[] = [];
 
   for (const session of sessions) {
-    const contextFolder = session.contextFolder?.trim();
+    const rawFolder = session.contextFolders?.[0] || session.contextFolder;
+    const contextFolder = rawFolder?.trim();
     if (!contextFolder) {
       chats.push(session);
       continue;
@@ -177,6 +179,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   resumingSessionId,
   onSelect,
   onSessionDeleted,
+  onNewChatInProject,
   scrollRootRef,
 }: {
   open: boolean;
@@ -190,6 +193,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   onSelect: (sessionId: string) => void;
   /** Notifies Layout when a row is deleted so it can leave a stale active chat. */
   onSessionDeleted?: (sessionId: string) => void;
+  onNewChatInProject?: (folderPath: string) => void;
   /** Scroll container owned by Layout; nearing its bottom loads the next page. */
   scrollRootRef: RefObject<HTMLDivElement | null>;
 }): React.JSX.Element | null {
@@ -1160,16 +1164,29 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             onClick={(e) => e.stopPropagation()}
           >
             {projectMenu.path !== "__chats__" && projectMenu.path !== "__pinned__" && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  startProjectRename(projectMenu.path);
-                  setProjectMenu(null);
-                }}
-              >
-                {t("navigation.renameProject")}
-              </button>
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const targetPath = projectMenu.path;
+                    setProjectMenu(null);
+                    onNewChatInProject?.(targetPath);
+                  }}
+                >
+                  + New Chat in Project
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    startProjectRename(projectMenu.path);
+                    setProjectMenu(null);
+                  }}
+                >
+                  {t("navigation.renameProject")}
+                </button>
+              </>
             )}
             <button
               type="button"

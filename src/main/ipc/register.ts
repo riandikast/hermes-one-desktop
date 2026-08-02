@@ -215,6 +215,7 @@ import {
   syncSessionCache,
   listCachedSessions,
   updateSessionTitle,
+  updateSessionContextFoldersInCache,
 } from "../session-cache";
 import {
   remoteDeleteSession,
@@ -2063,13 +2064,14 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(
     "set-session-context-folder",
     (_event, sessionId: string, folders: string[] | string | null) => {
+      let clean: string[] = [];
       if (Array.isArray(folders)) {
-        setSessionContextFolders(sessionId, folders);
-      } else if (typeof folders === "string") {
-        setSessionContextFolders(sessionId, [folders]);
-      } else {
-        setSessionContextFolders(sessionId, []);
+        clean = folders.map((f) => f.trim()).filter(Boolean);
+      } else if (typeof folders === "string" && folders.trim()) {
+        clean = [folders.trim()];
       }
+      setSessionContextFolders(sessionId, clean);
+      updateSessionContextFoldersInCache(sessionId, clean);
       return true;
     },
   );

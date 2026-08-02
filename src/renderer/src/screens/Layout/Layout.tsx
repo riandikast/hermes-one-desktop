@@ -446,6 +446,16 @@ function Layout({
     goTo("chat");
   }, [runs, activeRunId, activeProfile, goTo]);
 
+  const handleNewChatInProject = useCallback(
+    (folderPath: string) => {
+      const run = mintRun(activeProfile, undefined, [folderPath]);
+      setRuns((prev) => [...prev, run]);
+      setActiveRunId(run.runId);
+      goTo("chat");
+    },
+    [activeProfile, goTo],
+  );
+
   // Listen for menu IPC events (Cmd+N, Cmd+K from app menu)
   useEffect(() => {
     const cleanupNewChat = window.hermesAPI.onMenuNewChat(() => {
@@ -739,6 +749,7 @@ function Layout({
                     // so the user isn't left viewing a now-gone conversation.
                     if (id === currentSessionId) handleNewChat();
                   }}
+                  onNewChatInProject={handleNewChatInProject}
                   scrollRootRef={sidebarChatScrollRef}
                 />
               </div>
@@ -865,6 +876,7 @@ function Layout({
                   runId={run.runId}
                   initialMessages={run.seed}
                   initialSessionId={run.sessionId}
+                  initialContextFolders={run.initialContextFolders}
                   active={run.runId === activeRunId}
                   profile={run.profile}
                   onNewChat={handleNewChat}

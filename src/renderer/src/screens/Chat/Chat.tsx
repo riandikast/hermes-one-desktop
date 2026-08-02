@@ -89,6 +89,8 @@ interface ChatProps {
   initialMessages?: ChatMessage[];
   /** Gateway session id when resuming a known session; null for a new chat. */
   initialSessionId?: string | null;
+  /** Workspace context folders to pre-attach when mounting. */
+  initialContextFolders?: string[];
   /** Whether this run is the one currently shown (drives keyboard handlers). */
   active?: boolean;
   profile?: string;
@@ -115,6 +117,7 @@ function Chat({
   runId,
   initialMessages,
   initialSessionId,
+  initialContextFolders,
   active = true,
   profile,
   onSessionStarted,
@@ -187,7 +190,9 @@ function Chat({
   // Working folder bound to this conversation (issue #27). Per-conversation;
   // persisted per session so a re-opened conversation restores its folder, and
   // reset on new chat below.
-  const [contextFolders, setContextFolders] = useState<string[]>([]);
+  const [contextFolders, setContextFolders] = useState<string[]>(
+    initialContextFolders ?? [],
+  );
   const [attachedKnowledgeBundles, setAttachedKnowledgeBundles] = useState<string[]>([]);
   // Gate folder persistence until the stored value for a resumed session has
   // been loaded — otherwise the initial null would overwrite the saved folder

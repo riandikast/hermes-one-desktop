@@ -18,6 +18,8 @@ export interface ChatRun {
   title?: string;
   /** Seed transcript when the run was opened from history. */
   seed?: ChatMessage[];
+  /** Workspace context folders to pre-attach when mounting. */
+  initialContextFolders?: string[];
 }
 
 /** A blank chat that can be reassigned to another profile without losing work. */
@@ -26,7 +28,11 @@ export function isScratchRun(r: ChatRun): boolean {
 }
 
 /** Mint a fresh, empty run under the given profile. */
-export function mintRun(profile: string, seed?: ChatMessage[]): ChatRun {
+export function mintRun(
+  profile: string,
+  seed?: ChatMessage[],
+  initialContextFolders?: string[],
+): ChatRun {
   return {
     runId:
       typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -36,6 +42,7 @@ export function mintRun(profile: string, seed?: ChatMessage[]): ChatRun {
     sessionId: null,
     loading: false,
     seed,
+    initialContextFolders,
   };
 }
 

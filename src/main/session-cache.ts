@@ -297,6 +297,19 @@ export function updateSessionTitle(sessionId: string, title: string): void {
   }
 }
 
+// Update context folders for a specific session in cache
+export function updateSessionContextFoldersInCache(
+  sessionId: string,
+  folders: string[],
+): void {
+  const cache = readCache();
+  const idx = cache.sessions.findIndex((s) => s.id === sessionId);
+  if (idx >= 0) {
+    cache.sessions[idx].contextFolders = folders;
+    writeCache(cache);
+  }
+}
+
 // Remove a session entry from the local cache. Called after the underlying
 // row in state.db is deleted so the renderer's fast-path cache doesn't keep
 // surfacing a session that no longer exists.
