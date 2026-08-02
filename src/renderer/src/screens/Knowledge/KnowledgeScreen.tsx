@@ -589,9 +589,6 @@ export function KnowledgeScreen(): React.JSX.Element {
                   <span className="file-title">
                     {selectedFile.bundleName} / {selectedFile.fileName}
                   </span>
-                  <span className="file-path" title={selectedFile.path}>
-                    {selectedFile.path}
-                  </span>
                 </div>
                 <div className="toolbar-controls" style={{ position: "relative" }}>
                   <button

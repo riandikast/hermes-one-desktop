@@ -271,13 +271,22 @@ function createWindow(): void {
   zoomTarget.webContents.on("before-input-event", (event, input) => {
     if (input.type !== "keyDown") return;
     if (!(input.control || input.meta)) return;
-    if (input.key === "+" || input.key === "=" || input.code === "NumpadAdd") {
+    if (
+      input.key === "+" ||
+      input.key === "=" ||
+      input.code === "Equal" ||
+      input.code === "NumpadAdd"
+    ) {
       event.preventDefault();
       zoomBy(zoomTarget, 1);
-    } else if (input.key === "-" || input.code === "NumpadSubtract") {
+    } else if (
+      input.key === "-" ||
+      input.code === "Minus" ||
+      input.code === "NumpadSubtract"
+    ) {
       event.preventDefault();
       zoomBy(zoomTarget, -1);
-    } else if (input.key === "0") {
+    } else if (input.key === "0" || input.code === "Digit0") {
       event.preventDefault();
       zoomReset(zoomTarget);
     }

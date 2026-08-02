@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import type { AppLocale } from "../shared/i18n/types";
 import type { Attachment } from "../shared/attachments";
 import type { SessionModelOverride } from "../shared/model-override";
@@ -248,11 +248,16 @@ const hermesAPI = {
   // UI zoom (Ctrl+± / Ctrl+0 / Shift+wheel)
   zoomBy: (delta: number): Promise<number | null> =>
     ipcRenderer.invoke("zoom-by", delta),
-  zoomApply: (level: number): Promise<number | null> =>
-    ipcRenderer.invoke("zoom-apply", level),
+  zoomApply: async (level: number): Promise<number | null> => {
+    webFrame.setZoomLevel(level);
+    return ipcRenderer.invoke("zoom-apply", level);
+  },
   onUiZoomChanged: (callback: (level: number) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, level: unknown): void =>
-      callback(Number(level));
+    const handler = (_event: Electron.IpcRendererEvent, level: unknown): void => {
+      const numLevel = Number(level);
+      webFrame.setZoomLevel(numLevel);
+      callback(numLevel);
+    };
     ipcRenderer.on("ui-zoom-changed", handler);
     return () => ipcRenderer.removeListener("ui-zoom-changed", handler);
   },

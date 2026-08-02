@@ -18,17 +18,37 @@ export function useUiZoom(): void {
     const onWheel = (event: WheelEvent): void => {
       if (!event.shiftKey) return;
       event.preventDefault();
-      const { steps, remaining } = stepWheelDelta(acc, event.deltaY);
+      // When Shift is held, Chromium converts vertical scroll (deltaY) to horizontal scroll (deltaX).
+      const rawDelta = event.deltaY !== 0 ? event.deltaY : event.deltaX;
+      if (!rawDelta) return;
+      const { steps, remaining } = stepWheelDelta(acc, rawDelta);
       acc = remaining;
       if (steps !== 0) {
         window.hermesAPI.zoomBy(steps).catch(() => undefined);
       }
     };
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      if (event.key === "=" || event.key === "+" || event.code === "Equal" || event.code === "NumpadAdd") {
+        event.preventDefault();
+        window.hermesAPI.zoomBy(1).catch(() => undefined);
+      } else if (event.key === "-" || event.code === "Minus" || event.code === "NumpadSubtract") {
+        event.preventDefault();
+        window.hermesAPI.zoomBy(-1).catch(() => undefined);
+      } else if (event.key === "0" || event.code === "Digit0") {
+        event.preventDefault();
+        window.hermesAPI.zoomApply(0).catch(() => undefined);
+      }
+    };
+
     window.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("keydown", onKeyDown);
 
     return () => {
       unsubscribe();
       window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("keydown", onKeyDown);
     };
   }, []);
 }
