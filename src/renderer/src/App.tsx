@@ -11,6 +11,7 @@ import Setup from "./screens/Setup/Setup";
 import Layout from "./screens/Layout/Layout";
 import SplashScreen from "./screens/SplashScreen/SplashScreen";
 import { captureScreenView } from "./utils/analytics";
+import { useUiZoom } from "./hooks/useUiZoom";
 
 type Screen = "splash" | "welcome" | "installing" | "setup" | "main";
 
@@ -38,6 +39,7 @@ function App(): React.JSX.Element {
   // "Switch to local mode" while an SSH tunnel attempt was still in flight)
   // can't clobber the newer run's screen transition.
   const runIdRef = useRef(0);
+  useUiZoom();
 
   const runInstallCheck = useCallback(async () => {
     const myRun = ++runIdRef.current;
