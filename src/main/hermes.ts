@@ -1551,8 +1551,17 @@ function sendMessageViaApi(
             if (processSseBlock(part)) return;
           }
         }
-        // Signal completion — even when no content was received
-        if (!hasContent && !lastError) {
+        // Surface a captured SSE error (429/RESOURCE_EXHAUSTED/etc.) without
+        // firing the probe — the probe would POST the prompt again through the
+        // gateway, which retries the upstream provider 3× and doubles the
+        // rate-limit exhaustion. Only probe if the stream truncated with zero
+        // diagnostics AND a 200 status (genuine empty-stream 幻觉).
+        if (lastError) {
+          appendChatLog(`[chat-error] Stream ended with error: ${lastError}`);
+          finish(lastError);
+          return;
+        }
+        if (!hasContent && res.statusCode === 200) {
           probeRealError();
           return;
         }
