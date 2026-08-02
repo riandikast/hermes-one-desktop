@@ -89,3 +89,26 @@ describe("zoomBy / zoomReset / zoomApply", () => {
     expect(levels).toEqual([-1]);
   });
 });
+
+import { stepWheelDelta } from "../src/renderer/src/hooks/zoomWheel";
+
+describe("stepWheelDelta", () => {
+  it("no step below threshold", () => {
+    expect(stepWheelDelta(0, 50)).toEqual({ steps: 0, remaining: 50 });
+  });
+  it("one step at threshold", () => {
+    expect(stepWheelDelta(0, 100)).toEqual({ steps: 1, remaining: 0 });
+  });
+  it("accumulates across events", () => {
+    expect(stepWheelDelta(60, 50)).toEqual({ steps: 1, remaining: 10 });
+  });
+  it("negative direction zooms out", () => {
+    expect(stepWheelDelta(0, -150)).toEqual({ steps: -1, remaining: -50 });
+  });
+  it("multi-step for large deltas", () => {
+    expect(stepWheelDelta(0, 250)).toEqual({ steps: 2, remaining: 50 });
+  });
+  it("keeps remainder small after cancellation", () => {
+    expect(stepWheelDelta(90, -80)).toEqual({ steps: 0, remaining: 10 });
+  });
+});
