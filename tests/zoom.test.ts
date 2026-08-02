@@ -11,9 +11,11 @@ import {
   type ZoomTarget,
 } from "../src/main/zoom";
 
-function fakeTarget(
-  initial = 0,
-): { target: ZoomTarget; levels: number[]; sent: number[] } {
+function fakeTarget(initial = 0): {
+  target: ZoomTarget;
+  levels: number[];
+  sent: number[];
+} {
   let level = initial;
   const levels: number[] = [];
   const sent: number[] = [];
