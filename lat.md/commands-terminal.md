@@ -10,6 +10,8 @@ integrated terminal dock — no external terminal windows.
 
 ## Search, folders, and drag-to-group
 
+Commands are searchable and grouped under collapsible folders; rows drag onto a folder header to move.
+
 [[src/renderer/src/screens/Command/CommandScreen.tsx]] filters the list by
 name/description/command as you type. Each command carries a `folder` string
 (empty = ungrouped); the list groups commands under collapsible folder
