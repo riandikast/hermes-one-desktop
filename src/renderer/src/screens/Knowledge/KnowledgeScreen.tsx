@@ -64,6 +64,63 @@ export function KnowledgeScreen(): React.JSX.Element {
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const [expandedBundles, setExpandedBundles] = useState<Record<string, boolean>>({});
 
+  // Draggable bundle-list sidebar width (persisted) so the editor can get more
+  // room. 320px default; clamps so the editor never starves.
+  const [knowledgeSidebarWidth, setKnowledgeSidebarWidth] = useState<number>(
+    () => {
+      try {
+        const raw = localStorage.getItem("hermes.knowledge.sidebarWidth");
+        const parsed = raw ? Number(raw) : 320;
+        return Number.isFinite(parsed)
+          ? Math.min(560, Math.max(180, parsed))
+          : 320;
+      } catch {
+        return 320;
+      }
+    },
+  );
+  const [knowledgeSidebarResizing, setKnowledgeSidebarResizing] =
+    useState(false);
+  const knowledgeResizeRef = useRef<{ startX: number; startWidth: number }>({
+    startX: 0,
+    startWidth: 320,
+  });
+
+  const onKnowledgeResizeStart = (
+    e: React.PointerEvent<HTMLDivElement>,
+  ): void => {
+    knowledgeResizeRef.current = {
+      startX: e.clientX,
+      startWidth: knowledgeSidebarWidth,
+    };
+    setKnowledgeSidebarResizing(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onKnowledgeResizeMove = (
+    e: React.PointerEvent<HTMLDivElement>,
+  ): void => {
+    if (!knowledgeSidebarResizing) return;
+    const { startX, startWidth } = knowledgeResizeRef.current;
+    const next = Math.min(
+      560,
+      Math.max(180, startWidth + (e.clientX - startX)),
+    );
+    setKnowledgeSidebarWidth(next);
+    try {
+      localStorage.setItem("hermes.knowledge.sidebarWidth", String(next));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const onKnowledgeResizeEnd = (
+    e: React.PointerEvent<HTMLDivElement>,
+  ): void => {
+    setKnowledgeSidebarResizing(false);
+    e.currentTarget.releasePointerCapture(e.pointerId);
+  };
+
   // @ mention autocomplete state (CodeMirror-driven)
   const editorHostRef = useRef<HTMLDivElement | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
@@ -645,7 +702,20 @@ export function KnowledgeScreen(): React.JSX.Element {
 
       <div className={bundles.length === 0 ? "knowledge-body knowledge-body--empty" : "knowledge-body"}>
         {/* Left Tree Pane */}
-        <div className="knowledge-sidebar" style={{ position: "relative" }}>
+        <div
+          className={`knowledge-sidebar ${
+            knowledgeSidebarResizing ? "knowledge-sidebar--resizing" : ""
+          }`}
+          style={{ width: knowledgeSidebarWidth }}
+        >
+          <div
+            className="knowledge-sidebar-resize"
+            onPointerDown={onKnowledgeResizeStart}
+            onPointerMove={onKnowledgeResizeMove}
+            onPointerUp={onKnowledgeResizeEnd}
+            aria-label="Resize bundle list"
+            title="Drag to resize"
+          />
           <div className="knowledge-sidebar-title">Global Knowledge Bundles</div>
           <div className="knowledge-bundle-list">
               {bundles.map((bundle) => {

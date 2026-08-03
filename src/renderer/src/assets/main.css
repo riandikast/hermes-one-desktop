@@ -2600,12 +2600,34 @@ body:has(.shell-vibrant),
 }
 
 .knowledge-sidebar {
+  position: relative;
   width: 320px;
   border-right: 1px solid var(--border-color);
   background: var(--bg-surface);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  flex-shrink: 0;
+}
+
+/* Drag handle on the bundle list's right edge; paused transition mid-drag. */
+.knowledge-sidebar--resizing {
+  transition: none !important;
+}
+.knowledge-sidebar-resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 6;
+  touch-action: none;
+  background: transparent;
+}
+.knowledge-sidebar-resize:hover,
+.knowledge-sidebar-resize:active {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .knowledge-sidebar-title {
@@ -2850,24 +2872,40 @@ body:has(.shell-vibrant),
 .knowledge-cm-host .cm-line {
   padding: 0 16px;
 }
-/* CodeMirror autocomplete popup. */
-.cm-tooltip-autocomplete {
-  background: var(--bg-elevated) !important;
-  border: 1px solid var(--border-color) !important;
-  border-radius: var(--radius-md) !important;
-  color: var(--text-primary) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+/* CodeMirror autocomplete popup — styled like the chat box @-mention menu. */
+.cm-tooltip.cm-tooltip-autocomplete {
+  background: #1e1e2e !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45) !important;
+  padding: 6px !important;
+  overflow: hidden !important;
+}
+.cm-tooltip-autocomplete > ul {
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+.cm-tooltip-autocomplete ul li {
+  padding: 6px 10px !important;
+  border-radius: 6px !important;
+  cursor: pointer;
 }
 .cm-tooltip-autocomplete ul li[aria-selected] {
-  background: var(--accent-subtle) !important;
-  color: var(--text-primary) !important;
+  background: rgba(255, 255, 255, 0.09) !important;
+  color: #e4e4e7 !important;
+}
+.cm-tooltip-autocomplete .cm-completionIcon {
+  opacity: 0.85;
 }
 .cm-tooltip-autocomplete .cm-completionLabel {
-  color: var(--text-primary);
+  color: #e4e4e7;
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 .cm-tooltip-autocomplete .cm-completionDetail {
-  color: var(--text-muted);
-  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.6) !important;
+  font-size: 11px;
+  margin-left: 8px;
 }
 
 .knowledge-markdown-preview {
