@@ -30,4 +30,4 @@ This directory defines the high-level concepts, business logic, and architecture
 - [[office-world-actions]] — chat-commanded errands: the agent's LLM emits world-action blocks from the office chat, its avatar walks the trip route to the bank/showroom, and the rep modal auto-opens running the requested action on arrival.
 - [[mcp-servers]] — add / edit / remove / enable / test MCP servers from the Capabilities → MCP tab; the shared add+edit modal and the in-place atomic `updateMcpServer` upsert (config.yaml locally, gateway REST in Remote/SSH).
 - [[ui-zoom]] - browser-style UI zoom: Ctrl+±/Ctrl+0 and Shift+wheel via `webContents.setZoomLevel`, main-process-owned state, persisted in localStorage.
-
+- [[commands-terminal]] - the Commands pinned view: a JSON store of reusable multi-line commands run in a built-in xterm.js + node-pty integrated terminal dock with tabbed sessions.
