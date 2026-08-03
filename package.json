@@ -39,6 +39,8 @@
     "@types/highlight.js": "^9.12.4",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@wesbos/code-icons": "^1.2.4",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "better-sqlite3": "^12.8.0",
     "date-fns": "^4.4.0",
     "electron-updater": "^6.3.9",
@@ -47,6 +49,7 @@
     "i18next": "^25.6.0",
     "lucide-react": "^1.7.0",
     "motion": "^12.40.0",
+    "node-pty": "^1.1.0",
     "react-file-icon": "^1.6.0",
     "react-hot-toast": "^2.6.0",
     "react-i18next": "^15.7.3",
@@ -97,6 +100,7 @@
     "better-sqlite3@12.8.0": true,
     "electron@39.8.5": true,
     "esbuild@0.25.12": true,
-    "esbuild@0.27.4": true
+    "esbuild@0.27.4": true,
+    "node-pty@1.1.0": true
   }
 }
