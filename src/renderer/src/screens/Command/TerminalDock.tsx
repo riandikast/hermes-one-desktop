@@ -25,6 +25,9 @@ interface DockSession {
   state: SessionState;
   term: Terminal;
   fit: FitAddon;
+  /** Own div this terminal was opened into — kept alive for the session's
+   *  life; tab switches toggle visibility, never dispose. */
+  pane: HTMLDivElement;
   cleanup?: () => void;
 }
 
@@ -56,7 +59,9 @@ export const TerminalDock = forwardRef<
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
-    return { state: { id, title: "Terminal", dead: false }, term, fit };
+    const pane = document.createElement("div");
+    pane.className = "terminal-dock-pane";
+    return { state: { id, title: "Terminal", dead: false }, term, fit, pane };
   }, []);
 
   const registerDataListeners = useCallback((id: string): (() => void) => {
@@ -89,9 +94,19 @@ export const TerminalDock = forwardRef<
       }
       const dock = createXterm(id);
       dock.state.title = title;
+      containerRef.current?.appendChild(dock.pane);
+      dock.term.open(dock.pane);
       sessionsRef.current.set(id, dock);
       const cleanup = registerDataListeners(id);
       dock.cleanup = cleanup;
+      const dataSub = dock.term.onData((data) => {
+        window.hermesAPI.terminalWrite({ id, data });
+      });
+      const prevCleanup = cleanup;
+      dock.cleanup = () => {
+        prevCleanup();
+        dataSub.dispose();
+      };
       setSessions((prev) => [...prev, dock.state]);
       setActiveId(id);
     },
@@ -100,16 +115,19 @@ export const TerminalDock = forwardRef<
 
   useImperativeHandle(ref, () => ({ attachSession }), [attachSession]);
 
-  // Mount the active terminal into the container + fit.
+  // Tab switch: toggle pane visibility, fit the newly active terminal, keep
+  // the pty in sync with the dock size. Terminals are NEVER disposed here —
+  // disposing is permanent in xterm and would blank the tab forever.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    for (const [sid, dock] of sessionsRef.current) {
+      dock.pane.style.display = sid === activeId ? "block" : "none";
+    }
     const active = activeId ? sessionsRef.current.get(activeId) : null;
     if (!active) return;
-    active.term.open(container);
-    active.fit.fit();
-    // Resize observer keeps the pty in sync with the dock size.
-    const ro = new ResizeObserver(() => {
+    // The pane is now visible; refit so the pty matches the real geometry.
+    const raf = requestAnimationFrame(() => {
       active.fit.fit();
       window.hermesAPI.terminalResize({
         id: active.state.id,
@@ -117,14 +135,20 @@ export const TerminalDock = forwardRef<
         rows: active.term.rows,
       });
     });
-    ro.observe(container);
-    const dataSub = active.term.onData((data) => {
-      window.hermesAPI.terminalWrite({ id: active.state.id, data });
+    const ro = new ResizeObserver(() => {
+      const cur = activeId ? sessionsRef.current.get(activeId) : null;
+      if (!cur) return;
+      cur.fit.fit();
+      window.hermesAPI.terminalResize({
+        id: cur.state.id,
+        cols: cur.term.cols,
+        rows: cur.term.rows,
+      });
     });
+    ro.observe(container);
     return () => {
-      dataSub.dispose();
+      cancelAnimationFrame(raf);
       ro.disconnect();
-      active.term.dispose();
     };
   }, [activeId]);
 
@@ -136,6 +160,8 @@ export const TerminalDock = forwardRef<
         window.hermesAPI.terminalKill(id);
         sessionsRef.current.delete(id);
         dock.cleanup?.();
+        dock.pane.remove();
+        dock.term.dispose();
       }
       setSessions((prev) => prev.filter((s) => s.id !== id));
       setActiveId((prev) => {

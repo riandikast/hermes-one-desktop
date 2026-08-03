@@ -18203,5 +18203,6 @@ body:has(.shell-vibrant),
 .terminal-dock-tab-close:hover { background: var(--bg-tertiary); }
 .terminal-dock-tab-new { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: none; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; flex-shrink: 0; }
 .terminal-dock-tab-new:hover { background: var(--bg-tertiary); color: var(--text-primary); }
-.terminal-dock-body { flex: 1; min-height: 0; padding: 6px 8px; }
+.terminal-dock-body { flex: 1; min-height: 0; padding: 6px 8px; position: relative; }
+.terminal-dock-pane { position: absolute; inset: 6px 8px; display: none; }
 .terminal-dock-body .xterm { height: 100%; }

@@ -35,6 +35,7 @@ export function CommandScreen(): React.JSX.Element {
   const [commands, setCommands] = useState<CommandItem[]>([]);
   const [editing, setEditing] = useState<CommandItem | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [showEditor, setShowEditor] = useState(false);
   const [loading, setLoading] = useState(false);
   const dockRef = useRef<TerminalDockHandle | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +56,7 @@ export function CommandScreen(): React.JSX.Element {
   const startNew = (): void => {
     setEditing(null);
     setForm({ ...EMPTY_FORM });
+    setShowEditor(true);
   };
 
   const startEdit = (cmd: CommandItem): void => {
@@ -65,6 +67,7 @@ export function CommandScreen(): React.JSX.Element {
       description: cmd.description,
       cwd: cmd.cwd,
     });
+    setShowEditor(true);
   };
 
   const pickCwd = async (): Promise<void> => {
@@ -92,6 +95,7 @@ export function CommandScreen(): React.JSX.Element {
       });
       setForm({ ...EMPTY_FORM });
       setEditing(null);
+      setShowEditor(false);
       await refresh();
     } catch {
       setError("Failed to save command.");
@@ -105,6 +109,7 @@ export function CommandScreen(): React.JSX.Element {
     if (editing?.id === id) {
       setEditing(null);
       setForm({ ...EMPTY_FORM });
+      setShowEditor(false);
     }
     await refresh();
   };
@@ -204,7 +209,7 @@ export function CommandScreen(): React.JSX.Element {
         )}
       </div>
 
-      {(editing !== null || form.name || form.command) && (
+      {(showEditor) && (
         <div className="command-editor">
           <div className="command-editor-header">
             <span>{editing ? "Edit command" : "New command"}</span>
