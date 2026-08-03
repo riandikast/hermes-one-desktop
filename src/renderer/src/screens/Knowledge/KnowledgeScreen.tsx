@@ -306,9 +306,15 @@ export function KnowledgeScreen(): React.JSX.Element {
     ],
   );
 
-  // CodeMirror autocomplete source for "@" file mentions.
-  const mentionCompletionSource = useCallback(
-    async (
+  // CodeMirror autocomplete source for "@" file mentions. The EditorView is
+  // created once, so this source must go through a ref — otherwise the view
+  // would keep calling the FIRST closure (empty bundles/state from mount).
+  const mentionSourceRef = useRef<
+    (ctx: CompletionContext) => Promise<CompletionResult | null>
+  >(async () => null);
+
+  useEffect(() => {
+    mentionSourceRef.current = async (
       ctx: CompletionContext,
     ): Promise<CompletionResult | null> => {
       const text = ctx.state.doc.toString();
@@ -328,9 +334,8 @@ export function KnowledgeScreen(): React.JSX.Element {
         },
       }));
       return { from: m.start, to: ctx.pos, options };
-    },
-    [searchMentionMatches],
-  );
+    };
+  }, [searchMentionMatches]);
 
   // Keep the current file's content mirrored into `fileContent` state (the
   // save path reads it) and sync doc replacements when a new file is opened.
@@ -352,7 +357,9 @@ export function KnowledgeScreen(): React.JSX.Element {
           basicSetup,
           oneDark,
           markdown({ codeLanguages: languages }),
-          autocompletion({ override: [mentionCompletionSource] }),
+          autocompletion({
+            override: [(ctx: CompletionContext) => mentionSourceRef.current(ctx)],
+          }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               onEditorChange(update.state.doc.toString());

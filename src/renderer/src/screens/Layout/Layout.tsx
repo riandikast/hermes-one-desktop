@@ -860,7 +860,9 @@ function Layout({
       <div className={`layout ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
         <aside
           className={`sidebar ${sidebarResizing ? "sidebar--resizing" : ""}`}
-          style={{ width: sidebarWidth }}
+          // Collapsed width comes from the .sidebar-collapsed CSS rule; only
+          // apply the inline width when expanded, else it overrides the 64px.
+          style={sidebarCollapsed ? undefined : { width: sidebarWidth }}
         >
           {!sidebarCollapsed && (
             <div
