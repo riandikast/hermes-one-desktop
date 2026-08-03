@@ -33,6 +33,7 @@ import Schedules from "../Schedules/Schedules";
 import Kanban from "../Kanban/Kanban";
 import KnowledgeScreen from "../Knowledge/KnowledgeScreen";
 import Usage from "../Usage/Usage";
+import CommandScreen from "../Command/CommandScreen";
 import RemoteNotice from "../../components/RemoteNotice";
 import VerifyWarningBanner from "../../components/VerifyWarningBanner";
 import { useSettingsModal } from "../../components/settings/SettingsModalContext";
@@ -46,6 +47,7 @@ import {
   KeyRound,
   Timer,
   BookOpen,
+  Terminal,
   Kanban as KanbanIcon,
   Download,
   PanelLeftClose,
@@ -69,6 +71,7 @@ type View =
   | "tools"
   | "schedules"
   | "knowledge"
+  | "commands"
   | "kanban"
   | "gateway"
   | "usage";
@@ -79,6 +82,7 @@ const PINNED_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "kanban", icon: KanbanIcon, labelKey: "navigation.kanban" },
   { view: "schedules", icon: Timer, labelKey: "navigation.schedules" },
   { view: "knowledge", icon: BookOpen, labelKey: "navigation.knowledge" },
+  { view: "commands", icon: Terminal, labelKey: "navigation.commands" },
 ];
 
 const FOOTER_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
@@ -321,6 +325,7 @@ function Layout({
       kanban: "navigation.kanban",
       schedules: "navigation.schedules",
       knowledge: "navigation.knowledge",
+      commands: "navigation.commands",
       providers: "navigation.providers",
       gateway: "navigation.gateway",
       tools: "navigation.tools",
@@ -1130,6 +1135,12 @@ function Layout({
           {visitedViews.has("knowledge") && (
             <div style={paneStyle("knowledge")}>
               <KnowledgeScreen />
+            </div>
+          )}
+
+          {visitedViews.has("commands") && (
+            <div style={paneStyle("commands")}>
+              <CommandScreen />
             </div>
           )}
 

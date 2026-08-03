@@ -35,6 +35,7 @@ export {
   Send,
   Settings,
   Signal,
+  Terminal,
   Drama,
   Wand,
   Sun,

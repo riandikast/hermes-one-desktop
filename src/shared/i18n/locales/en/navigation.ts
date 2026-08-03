@@ -17,6 +17,7 @@ export default {
   tools: "Capabilities",
   schedules: "Schedules",
   knowledge: "Knowledge",
+  commands: "Commands",
   kanban: "Kanban",
   gateway: "Gateway",
   usage: "Usage",
