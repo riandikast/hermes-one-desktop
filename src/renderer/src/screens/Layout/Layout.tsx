@@ -33,7 +33,7 @@ import Schedules from "../Schedules/Schedules";
 import Kanban from "../Kanban/Kanban";
 import KnowledgeScreen from "../Knowledge/KnowledgeScreen";
 import Usage from "../Usage/Usage";
-import CommandScreen from "../Command/CommandScreen";
+import { CommandScreen } from "../Command/CommandScreen";
 import RemoteNotice from "../../components/RemoteNotice";
 import VerifyWarningBanner from "../../components/VerifyWarningBanner";
 import { useSettingsModal } from "../../components/settings/SettingsModalContext";
