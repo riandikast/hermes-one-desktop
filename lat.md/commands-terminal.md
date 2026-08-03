@@ -8,6 +8,23 @@ integrated terminal dock — no external terminal windows.
 `HERMES_HOME` (or `~/.hermes`) with CRUD over IPC (`commands:list` /
 `commands:save` / `commands:delete`).
 
+## Search, folders, and drag-to-group
+
+[[src/renderer/src/screens/Command/CommandScreen.tsx]] filters the list by
+name/description/command as you type. Each command carries a `folder` string
+(empty = ungrouped); the list groups commands under collapsible folder
+headers. Command rows are draggable — dropping a row on a folder header moves
+it into that folder (saved via `commands:save`). The editor's Folder dropdown
+lists existing folders plus "＋ New folder…" which reveals an inline name
+input.
+
+## Resizable terminal dock
+
+The dock height defaults to 260px and is adjustable by dragging the
+`.terminal-dock-resize` handle between the list and the dock (VS Code style,
+120–640px clamp). The height persists in localStorage under
+`hermes.commands.terminalHeight`.
+
 ## Built-in terminal
 
 node-pty spawns the detected shell; multi-line commands run via temp scripts so the shell stays interactive.

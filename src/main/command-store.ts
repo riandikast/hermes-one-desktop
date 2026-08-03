@@ -12,6 +12,8 @@ export interface CommandRecord {
   description: string;
   /** Optional working directory the command runs in. */
   cwd: string;
+  /** Optional folder grouping; empty string = ungrouped. */
+  folder: string;
   createdAt: number;
   updatedAt: number;
 }

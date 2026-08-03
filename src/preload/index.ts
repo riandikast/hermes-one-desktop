@@ -1602,6 +1602,7 @@ const hermesAPI = {
     command: string;
     description: string;
     cwd: string;
+    folder: string;
     createdAt: number;
     updatedAt: number;
   }) => ipcRenderer.invoke("commands:save", record),

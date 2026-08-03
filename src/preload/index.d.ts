@@ -1151,6 +1151,7 @@ interface HermesAPI {
       command: string;
       description: string;
       cwd: string;
+      folder: string;
       createdAt: number;
       updatedAt: number;
     }[]
@@ -1161,9 +1162,10 @@ interface HermesAPI {
     command: string;
     description: string;
     cwd: string;
+    folder: string;
     createdAt: number;
     updatedAt: number;
-  }) => Promise<{ id: string; name: string; command: string; description: string; cwd: string; createdAt: number; updatedAt: number }>;
+  }) => Promise<{ id: string; name: string; command: string; description: string; cwd: string; folder: string; createdAt: number; updatedAt: number }>;
   deleteCommand: (id: string) => Promise<boolean>;
   terminalCreate: (payload: { cwd: string; cols: number; rows: number }) => Promise<{ id: string; shell: string }>;
   terminalWrite: (payload: { id: string; data: string }) => Promise<{ ok: boolean }>;

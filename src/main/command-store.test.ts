@@ -29,6 +29,7 @@ describe("command store", () => {
       command: "echo hi",
       description: "",
       cwd: "",
+      folder: "",
       createdAt: 0,
       updatedAt: 0,
       ...patch,
@@ -71,6 +72,14 @@ describe("command store", () => {
     const listed = await listCommands(tempDir);
     expect(listed[0].id).toBe("brand-new");
     expect(saved.id).toBe("brand-new");
+  });
+
+  it("persists the folder field and defaults missing folders to empty", async () => {
+    await saveCommand(record("f1", { folder: "Deploy" }), tempDir);
+    await saveCommand(record("f2"), tempDir);
+    const listed = await listCommands(tempDir);
+    expect(listed.find((r) => r.id === "f1")?.folder).toBe("Deploy");
+    expect(listed.find((r) => r.id === "f2")?.folder).toBe("");
   });
 
   it("deletes a command and persists the change", async () => {

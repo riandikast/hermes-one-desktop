@@ -39,8 +39,17 @@ interface DockSession {
  */
 export const TerminalDock = forwardRef<
   TerminalDockHandle,
-  { onNewSession: () => void }
->(function TerminalDock({ onNewSession }, ref): React.JSX.Element {
+  {
+    onNewSession: () => void;
+    dockHeight: number;
+    onResizeStart: (e: React.PointerEvent<HTMLDivElement>) => void;
+    onResizeMove: (e: React.PointerEvent<HTMLDivElement>) => void;
+    onResizeEnd: (e: React.PointerEvent<HTMLDivElement>) => void;
+  }
+>(function TerminalDock(
+  { onNewSession, dockHeight, onResizeStart, onResizeMove, onResizeEnd },
+  ref,
+): React.JSX.Element {
   const [sessions, setSessions] = useState<SessionState[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const sessionsRef = useRef<Map<string, DockSession>>(new Map());
@@ -174,7 +183,15 @@ export const TerminalDock = forwardRef<
   );
 
   return (
-    <div className="terminal-dock">
+    <div className="terminal-dock" style={{ height: dockHeight }}>
+      <div
+        className="terminal-dock-resize"
+        onPointerDown={onResizeStart}
+        onPointerMove={onResizeMove}
+        onPointerUp={onResizeEnd}
+        aria-label="Resize terminal"
+        title="Drag to resize"
+      />
       <div className="terminal-dock-tabs" role="tablist">
         {sessions.map((s) => (
           <div
