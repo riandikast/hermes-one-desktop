@@ -81,10 +81,36 @@ export function KnowledgeScreen(): React.JSX.Element {
   );
   const [knowledgeSidebarResizing, setKnowledgeSidebarResizing] =
     useState(false);
+  const [knowledgeSidebarCollapsed, setKnowledgeSidebarCollapsed] = useState(
+    () => {
+      try {
+        return (
+          localStorage.getItem("hermes.knowledge.sidebarCollapsed") === "true"
+        );
+      } catch {
+        return false;
+      }
+    },
+  );
   const knowledgeResizeRef = useRef<{ startX: number; startWidth: number }>({
     startX: 0,
     startWidth: 320,
   });
+
+  const toggleKnowledgeSidebar = (): void => {
+    setKnowledgeSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(
+          "hermes.knowledge.sidebarCollapsed",
+          String(next),
+        );
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   const onKnowledgeResizeStart = (
     e: React.PointerEvent<HTMLDivElement>,
@@ -705,8 +731,14 @@ export function KnowledgeScreen(): React.JSX.Element {
         <div
           className={`knowledge-sidebar ${
             knowledgeSidebarResizing ? "knowledge-sidebar--resizing" : ""
+          } ${
+            knowledgeSidebarCollapsed ? "knowledge-sidebar--collapsed" : ""
           }`}
-          style={{ width: knowledgeSidebarWidth }}
+          style={
+            knowledgeSidebarCollapsed
+              ? { width: 44 }
+              : { width: knowledgeSidebarWidth }
+          }
         >
           <div
             className="knowledge-sidebar-resize"
@@ -716,8 +748,30 @@ export function KnowledgeScreen(): React.JSX.Element {
             aria-label="Resize bundle list"
             title="Drag to resize"
           />
-          <div className="knowledge-sidebar-title">Global Knowledge Bundles</div>
-          <div className="knowledge-bundle-list">
+          <button
+            type="button"
+            className={`knowledge-sidebar-toggle ${
+              knowledgeSidebarCollapsed ? "collapsed" : ""
+            }`}
+            onClick={toggleKnowledgeSidebar}
+            aria-label={
+              knowledgeSidebarCollapsed ? "Expand bundle list" : "Collapse bundle list"
+            }
+            title={
+              knowledgeSidebarCollapsed ? "Expand bundle list" : "Collapse bundle list"
+            }
+          >
+            {knowledgeSidebarCollapsed ? (
+              <ChevronRight size={14} />
+            ) : (
+              <ChevronDown size={14} />
+            )}
+          </button>
+          {!knowledgeSidebarCollapsed && (
+            <div className="knowledge-sidebar-title">Global Knowledge Bundles</div>
+          )}
+          {!knowledgeSidebarCollapsed && (
+            <div className="knowledge-bundle-list">
               {bundles.map((bundle) => {
                 const isExpanded = expandedBundles[bundle.name] ?? true;
                 return (
@@ -865,6 +919,7 @@ export function KnowledgeScreen(): React.JSX.Element {
                 );
               })}
             </div>
+            )}
         </div>
 
         {/* Right Editor Pane */}

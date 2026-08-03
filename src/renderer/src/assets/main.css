@@ -2630,6 +2630,31 @@ body:has(.shell-vibrant),
   background: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
+/* Collapsed bundle list: 44px rail with a centered toggle button. */
+.knowledge-sidebar--collapsed {
+  align-items: center;
+  padding-top: 10px;
+  overflow: hidden;
+}
+.knowledge-sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition), color var(--transition);
+}
+.knowledge-sidebar-toggle:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
 .knowledge-sidebar-title {
   padding: 12px 16px;
   font-size: 11px;

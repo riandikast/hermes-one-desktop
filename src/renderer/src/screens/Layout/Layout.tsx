@@ -414,11 +414,11 @@ function Layout({
     (v: View) => {
       setVisitedViews((prev) => (prev.has(v) ? prev : new Set(prev).add(v)));
       if (v === "chat") {
-        const chatRun = runs.find((r) => !r.targetView);
-        if (chatRun) {
-          setActiveRunId(chatRun.runId);
-          setActiveProfile(chatRun.profile);
-        }
+        // Never pick a run here: every caller (resume session, new chat,
+        // profile switch) activates the EXACT run it wants before calling
+        // goTo("chat"), and no navigation event dispatches "chat". Picking
+        // "the first chat run" here overrode that activation with the
+        // leftmost session tab (reported bug).
         setView("chat");
         return;
       }
