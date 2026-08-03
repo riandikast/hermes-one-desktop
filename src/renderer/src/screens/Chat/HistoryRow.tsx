@@ -57,6 +57,11 @@ export const ReasoningRow = memo(function ReasoningRow({
     // Re-check when the setting changes (broadcast from AppearancePane).
     window.addEventListener("hermes-auto-expand-reasoning-changed", checkAutoExpand);
     // Re-check when new reasoning text arrives.
+    return () =>
+      window.removeEventListener(
+        "hermes-auto-expand-reasoning-changed",
+        checkAutoExpand,
+      );
   }, [active, msg.text]);
   return (
     <div

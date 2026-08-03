@@ -2853,15 +2853,16 @@ body:has(.shell-vibrant),
   width: 280px;
   max-height: 360px;
   overflow-y: auto;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  background: var(--bg-elevated, #1c1c22);
+  border: 1px solid var(--border-bright, rgba(255, 255, 255, 0.18));
   border-radius: var(--radius-md);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
   z-index: 200;
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  opacity: 1;
 }
 
 .knowledge-sources-popover .popover-header {

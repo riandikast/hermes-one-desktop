@@ -466,9 +466,35 @@ export function KnowledgeScreen(): React.JSX.Element {
 
       <div className={bundles.length === 0 ? "knowledge-body knowledge-body--empty" : "knowledge-body"}>
         {/* Left Tree Pane */}
-        <div className="knowledge-sidebar">
+        <div className="knowledge-sidebar" style={{ position: "relative" }}>
           <div className="knowledge-sidebar-title">Global Knowledge Bundles</div>
-          {bundles.length === 0 ? null : (
+          {bundles.length === 0 ? null : mentionOpen && mentionResults.length > 0 ? (
+            <div
+              className="knowledge-mention-dropdown"
+              role="listbox"
+              aria-label="File mention suggestions"
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              {mentionResults.map((item, idx) => (
+                <div
+                  key={item.path}
+                  className={`knowledge-mention-item ${
+                    idx === mentionSelectedIndex ? "active" : ""
+                  }`}
+                  role="option"
+                  aria-selected={idx === mentionSelectedIndex}
+                  onClick={() => insertFileMention(item)}
+                  onMouseEnter={() => setMentionSelectedIndex(idx)}
+                >
+                  {item.isDirectory ? <Folder size={13} /> : <FileText size={13} />}
+                  <span className="knowledge-mention-item-name">{item.name}</span>
+                  <span className="knowledge-mention-item-path" title={item.path}>
+                    {item.path}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
             <div className="knowledge-bundle-list">
               {bundles.map((bundle) => {
                 const isExpanded = expandedBundles[bundle.name] ?? true;
@@ -729,35 +755,6 @@ export function KnowledgeScreen(): React.JSX.Element {
                       onKeyDown={handleTextareaKeyDown}
                       placeholder="Type knowledge notes, guidelines, or preferences (use @ to search file paths)..."
                     />
-                    {mentionOpen && mentionResults.length > 0 && (
-                      <div className="knowledge-mention-dropdown">
-                        {mentionResults.map((item, idx) => (
-                          <div
-                            key={item.path}
-                            className={`knowledge-mention-item ${
-                              idx === mentionSelectedIndex ? "active" : ""
-                            }`}
-                            onClick={() => insertFileMention(item)}
-                            onMouseEnter={() => setMentionSelectedIndex(idx)}
-                          >
-                            {item.isDirectory ? (
-                              <Folder size={13} />
-                            ) : (
-                              <FileText size={13} />
-                            )}
-                            <span className="knowledge-mention-item-name">
-                              {item.name}
-                            </span>
-                            <span
-                              className="knowledge-mention-item-path"
-                              title={item.path}
-                            >
-                              {item.path}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </>
                 ) : (
                   <div className="knowledge-markdown-preview">
