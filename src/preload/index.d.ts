@@ -1134,6 +1134,11 @@ interface HermesAPI {
     fileName: string,
     content: string,
   ) => Promise<boolean>;
+  renameKnowledgeFile: (
+    bundleName: string,
+    oldFileName: string,
+    newFileName: string,
+  ) => Promise<boolean>;
   deleteKnowledgeFile: (bundleName: string, fileName: string) => Promise<boolean>;
   importKnowledgeFolder: (
     sourceFolderPath: string,

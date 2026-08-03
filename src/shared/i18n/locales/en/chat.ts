@@ -72,6 +72,8 @@ export default {
   contextUsed: "{{pct}}% used ({{left}}% left)",
   contextTokens: "{{used}} / {{total}} tokens used",
   contextCache: "Cache: {{pct}}% hit ({{read}} read / {{write}} write)",
+  contextEmpty: "Context window (no data yet)",
+  contextEmptyHint: "Send a prompt to see context usage.",
   removeAttachment: "Remove attachment",
   dropToAttach: "Drop files to attach",
   dashboardUnavailableFallback:

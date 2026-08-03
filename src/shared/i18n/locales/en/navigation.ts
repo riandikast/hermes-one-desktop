@@ -19,6 +19,7 @@ export default {
   knowledge: "Knowledge",
   kanban: "Kanban",
   gateway: "Gateway",
+  usage: "Usage",
   settings: "Settings",
   collapseSidebar: "Collapse sidebar",
   expandSidebar: "Expand sidebar",

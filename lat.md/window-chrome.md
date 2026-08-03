@@ -36,6 +36,14 @@ A native system strip pinned full-width beneath the sidebar+content row surfaces
 
 Visually the strip is a Safari-style tab bar: the strip uses the darker `--bg-secondary` toolbar shade; tabs are flat (no border/fill) and separated by thin vertical dividers drawn with an `::before` on each non-first chip. The active tab fills with `--bg-primary` — the same colour as the transparent content area below it — and rounds its top corners, so it docks into the page; the dividers flanking the active tab are hidden for a seamless join.
 
+## Top menu collapse/expand
+
+The sessions tab strip can be collapsed to a thin 22px toggle bar to reclaim vertical space, useful on smaller windows or when many panels are open.
+
+[[src/renderer/src/screens/Layout/Layout.tsx#Layout]] wraps the bar in `.top-menu-wrapper` > `.top-menu-container`; a `.top-menu-collapse-toggle` button (ChevronUp when expanded, ChevronDown when collapsed) sits at the right edge of the strip with `-webkit-app-region: no-drag` so it stays clickable over the drag layer. State persists in `localStorage` under `hermes.topmenu.collapsed` (see `TOP_MENU_COLLAPSED_KEY`).
+
+Collapsed: `.top-menu-container.top-menu-collapsed` drops `min-height` to 0 and hides overflow, the `.active-sessions-bar` animates to height 0/opacity 0, and the toggle shrinks to a 22px rounded-bottom bar. Expanded: the bar returns to its normal 34px strip. On ≤640px screens the toggle is slightly larger (32px wide, 24px when collapsed).
+
 ## Blank until a real session exists
 
 The bar always renders so it is always a drag area, but chips stay hidden only while the sole conversation is still a blank scratch chat.

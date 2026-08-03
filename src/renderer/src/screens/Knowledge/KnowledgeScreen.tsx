@@ -12,6 +12,7 @@ import {
   Save,
   ChevronRight,
   ChevronDown,
+  Pencil,
 } from "../../assets/icons";
 
 export interface KnowledgeFileItem {
@@ -43,6 +44,11 @@ export function KnowledgeScreen(): React.JSX.Element {
   const [showNewBundleInput, setShowNewBundleInput] = useState(false);
   const [newFileName, setNewFileName] = useState("");
   const [addingFileBundle, setAddingFileBundle] = useState<string | null>(null);
+  const [renamingFile, setRenamingFile] = useState<{
+    bundleName: string;
+    oldFileName: string;
+  } | null>(null);
+  const [renamingValue, setRenamingValue] = useState("");
 
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const [expandedBundles, setExpandedBundles] = useState<Record<string, boolean>>({});
@@ -71,12 +77,77 @@ export function KnowledgeScreen(): React.JSX.Element {
       /* ignore */
     }
   }, [mentionCustomFolders]);
+
+  const [fileCustomFolders, setFileCustomFolders] = useState<
+    Record<string, string[]>
+  >(() => {
+    try {
+      const raw = localStorage.getItem("hermes.knowledge.file_custom_folders");
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "hermes.knowledge.file_custom_folders",
+        JSON.stringify(fileCustomFolders),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [fileCustomFolders]);
+
+  const [fileCustomFolderState, setFileCustomFolderState] = useState<
+    Record<string, Record<string, boolean>>
+  >(() => {
+    try {
+      const raw = localStorage.getItem("hermes.knowledge.file_custom_folder_state");
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "hermes.knowledge.file_custom_folder_state",
+        JSON.stringify(fileCustomFolderState),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [fileCustomFolderState]);
   const [disabledBundles, setDisabledBundles] = useState<Record<string, boolean>>({});
   const [showMentionSourcesPopover, setShowMentionSourcesPopover] = useState(false);
   const [mentionResults, setMentionResults] = useState<
     Array<{ name: string; path: string; isDirectory: boolean }>
   >([]);
   const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
+
+  const activeFileKey = selectedFile
+    ? `${selectedFile.bundleName}/${selectedFile.fileName}`
+    : "";
+
+  const handleToggleCustomFolderForFile = (folderPath: string) => {
+    const fileKey = selectedFile
+      ? `${selectedFile.bundleName}/${selectedFile.fileName}`
+      : "__global__";
+    setFileCustomFolderState((prev) => {
+      const fileMap = prev[fileKey] ?? {};
+      const current = fileMap[folderPath] ?? true;
+      return {
+        ...prev,
+        [fileKey]: {
+          ...fileMap,
+          [folderPath]: !current,
+        },
+      };
+    });
+  };
 
   const handlePickMentionFolder = async () => {
     try {
@@ -85,6 +156,15 @@ export function KnowledgeScreen(): React.JSX.Element {
       setMentionCustomFolders((prev) =>
         prev.includes(folderPath) ? prev : [...prev, folderPath],
       );
+      if (selectedFile) {
+        const fileKey = `${selectedFile.bundleName}/${selectedFile.fileName}`;
+        setFileCustomFolders((prev) => {
+          const list = prev[fileKey] ?? [];
+          return list.includes(folderPath)
+            ? prev
+            : { ...prev, [fileKey]: [...list, folderPath] };
+        });
+      }
     } catch {
       /* ignore */
     }
@@ -92,6 +172,13 @@ export function KnowledgeScreen(): React.JSX.Element {
 
   const handleRemoveMentionFolder = (folderPath: string) => {
     setMentionCustomFolders((prev) => prev.filter((f) => f !== folderPath));
+    if (selectedFile) {
+      const fileKey = `${selectedFile.bundleName}/${selectedFile.fileName}`;
+      setFileCustomFolders((prev) => {
+        const list = prev[fileKey] ?? [];
+        return { ...prev, [fileKey]: list.filter((p) => p !== folderPath) };
+      });
+    }
   };
 
   const handleToggleMentionBundle = (bundleName: string) => {
@@ -128,8 +215,19 @@ export function KnowledgeScreen(): React.JSX.Element {
           }
         }
 
-        // 2. Add files from custom picked folders (recursive)
-        for (const folder of mentionCustomFolders) {
+        // 2. Add files from custom picked folders (global + per-file, filtered
+        // by per-file checkbox state — unchecked folders are hidden from @ mention).
+        const activeFileFolders = activeFileKey
+          ? fileCustomFolders[activeFileKey] ?? []
+          : [];
+        const searchFolders = [
+          ...new Set([...mentionCustomFolders, ...activeFileFolders]),
+        ].filter((folder) => {
+          if (!activeFileKey) return true; // global when no file selected
+          const fileState = fileCustomFolderState[activeFileKey] ?? {};
+          return fileState[folder] !== false; // unchecked → hidden
+        });
+        for (const folder of searchFolders) {
           try {
             const entries = await window.hermesAPI.listFilesRecursive(folder);
             if (entries && Array.isArray(entries)) {
@@ -385,6 +483,57 @@ export function KnowledgeScreen(): React.JSX.Element {
     }
   };
 
+  const startRenameFile = (
+    bundleName: string,
+    oldFileName: string,
+    e: React.MouseEvent,
+  ) => {
+    e.stopPropagation();
+    setRenamingFile({ bundleName, oldFileName });
+    setRenamingValue(oldFileName);
+  };
+
+  const submitRenameFile = async () => {
+    if (!renamingFile) return;
+    const { bundleName, oldFileName } = renamingFile;
+    let trimmed = renamingValue.trim();
+    if (!trimmed) {
+      setRenamingFile(null);
+      return;
+    }
+    if (!trimmed.includes(".")) {
+      const ext = oldFileName.includes(".")
+        ? oldFileName.slice(oldFileName.lastIndexOf("."))
+        : ".md";
+      trimmed = `${trimmed}${ext}`;
+    }
+    if (trimmed === oldFileName) {
+      setRenamingFile(null);
+      return;
+    }
+    try {
+      const ok = await window.hermesAPI.renameKnowledgeFile(
+        bundleName,
+        oldFileName,
+        trimmed,
+      );
+      if (ok) {
+        if (
+          selectedFile?.bundleName === bundleName &&
+          selectedFile?.fileName === oldFileName
+        ) {
+          const newPath = selectedFile.path.replace(oldFileName, trimmed);
+          setSelectedFile({ bundleName, fileName: trimmed, path: newPath });
+        }
+        await reloadBundles();
+      }
+    } catch {
+      /* ignore error */
+    } finally {
+      setRenamingFile(null);
+    }
+  };
+
   const handleDeleteFile = async (bundleName: string, fileName: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm(`Delete file "${fileName}"?`)) return;
@@ -562,17 +711,40 @@ export function KnowledgeScreen(): React.JSX.Element {
                             const isSelected =
                               selectedFile?.bundleName === bundle.name &&
                               selectedFile?.fileName === file.name;
-                            const mentionTag = `@knowledge/${bundle.name}/${file.name}`;
+                            const isRenamingThis =
+                              renamingFile?.bundleName === bundle.name &&
+                              renamingFile?.oldFileName === file.name;
                             return (
                               <div
                                 key={file.name}
                                 className={`knowledge-file-item ${isSelected ? "selected" : ""}`}
                                 onClick={() =>
+                                  !isRenamingThis &&
                                   void handleSelectFile(bundle.name, file.name, file.path)
                                 }
                               >
                                 <FileText size={13} />
-                                <span className="file-name">{file.name}</span>
+                                {isRenamingThis ? (
+                                  <input
+                                    type="text"
+                                    className="knowledge-inline-rename-input"
+                                    autoFocus
+                                    value={renamingValue}
+                                    onChange={(e) => setRenamingValue(e.target.value)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        void submitRenameFile();
+                                      } else if (e.key === "Escape") {
+                                        setRenamingFile(null);
+                                      }
+                                    }}
+                                    onBlur={() => void submitRenameFile()}
+                                  />
+                                ) : (
+                                  <span className="file-name">{file.name}</span>
+                                )}
                                 <div className="file-hover-actions">
                                   <button
                                     type="button"
@@ -592,17 +764,12 @@ export function KnowledgeScreen(): React.JSX.Element {
                                   <button
                                     type="button"
                                     className="btn-ghost btn-xs"
-                                    title="Copy @ Mention Tag"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      copyToClipboard(mentionTag, `tag:${mentionTag}`);
-                                    }}
+                                    title="Rename File"
+                                    onClick={(e) =>
+                                      startRenameFile(bundle.name, file.name, e)
+                                    }
                                   >
-                                    {copiedPath === `tag:${mentionTag}` ? (
-                                      <Check size={12} />
-                                    ) : (
-                                      <span className="tag-icon">@</span>
-                                    )}
+                                    <Pencil size={12} />
                                   </button>
                                   <button
                                     type="button"
@@ -696,21 +863,48 @@ export function KnowledgeScreen(): React.JSX.Element {
                         {mentionCustomFolders.length === 0 ? (
                           <div className="popover-empty">No custom folders added</div>
                         ) : (
-                          mentionCustomFolders.map((folderPath) => (
-                            <div key={folderPath} className="popover-item-folder">
-                              <span title={folderPath}>
-                                {folderPath.split(/[\\/]/).filter(Boolean).at(-1) || folderPath}
-                              </span>
-                              <button
-                                type="button"
-                                className="btn-ghost btn-xs danger"
-                                title="Remove Folder"
-                                onClick={() => handleRemoveMentionFolder(folderPath)}
+                          mentionCustomFolders.map((folderPath) => {
+                            const fileMap = activeFileKey
+                              ? fileCustomFolderState[activeFileKey] ?? {}
+                              : {};
+                            const isFolderChecked =
+                              fileMap[folderPath] !== false; // default true
+                            return (
+                              <label
+                                key={folderPath}
+                                className="popover-item-folder"
+                                title={folderPath}
                               >
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                          ))
+                                <input
+                                  type="checkbox"
+                                  checked={isFolderChecked}
+                                  disabled={!activeFileKey}
+                                  onChange={() =>
+                                    handleToggleCustomFolderForFile(
+                                      folderPath,
+                                    )
+                                  }
+                                />
+                                <span>
+                                  {folderPath
+                                    .split(/[\\/]/)
+                                    .filter(Boolean)
+                                    .at(-1) || folderPath}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="btn-ghost btn-xs danger"
+                                  title="Remove Folder"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    handleRemoveMentionFolder(folderPath);
+                                  }}
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </label>
+                            );
+                          })
                         )}
                       </div>
                       <div className="popover-divider" />
@@ -724,10 +918,10 @@ export function KnowledgeScreen(): React.JSX.Element {
                       </button>
                     </div>
                   )}
-                  // Preview/edit toggle removed — always edit mode now.
+                
                   <button
                     type="button"
-                    className="btn btn-primary btn-sm"
+                    className="btn btn-primary btn-sm ml-2"
                     onClick={() => void handleSaveFile()}
                     disabled={saving}
                   >

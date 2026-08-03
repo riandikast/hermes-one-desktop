@@ -161,7 +161,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       const el = inputRef.current;
       if (!el) return;
       el.style.height = "auto";
-      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+      // Floor at 28px (one 14px line + padding) so a scrollHeight measured
+      // while the pane is display:none (or otherwise 0) never leaves the
+      // textarea collapsed — that previously cropped the placeholder text.
+      el.style.height = `${Math.min(Math.max(el.scrollHeight, 28), 120)}px`;
     }, []);
 
     // Resize the textarea once per committed value, in a layout effect, rather
@@ -1140,8 +1143,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               </>
             )}
             <div className="chat-input-toolbar-spacer" />
-            {contextUsage && contextUsage.used > 0 && (
+            {contextUsage ? (
               <ContextGauge {...contextUsage} onCompact={onCompactContext} />
+            ) : (
+              <ContextGauge
+                used={0}
+                window={0}
+                onCompact={onCompactContext}
+              />
             )}
             {isLoading ? (
               <button

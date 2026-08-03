@@ -20,11 +20,13 @@ export interface ChatRun {
   seed?: ChatMessage[];
   /** Workspace context folders to pre-attach when mounting. */
   initialContextFolders?: string[];
+  /** Target view if this tab represents a pinned tool or destination page (e.g. "kanban", "knowledge"). */
+  targetView?: string;
 }
 
 /** A blank chat that can be reassigned to another profile without losing work. */
 export function isScratchRun(r: ChatRun): boolean {
-  return !r.sessionId && !r.loading && !r.title;
+  return !r.sessionId && !r.loading && !r.title && !r.targetView;
 }
 
 /** Mint a fresh, empty run under the given profile. */

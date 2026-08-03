@@ -33,6 +33,7 @@ import type { SessionModelOverride } from "../../../../shared/model-override";
 import type { ActiveTurn, ChatMessage, UsageState } from "./types";
 import type { ContextUsage } from "./ContextGauge";
 import { contextWindowForModel } from "./contextWindows";
+import { useUsageTracker } from "./hooks/useUsageTracker";
 import { QueuedMessages } from "./QueuedMessages";
 import { SLASH_COMMANDS, type SlashCommand } from "./slashCommands";
 import { reconcileSlashCatalog } from "./slash/commandCatalog";
@@ -178,6 +179,10 @@ function Chat({
   }, [runId, messages, onTitleChange]);
   const [toolProgress, setToolProgress] = useState<string | null>(null);
   const [usage, setUsage] = useState<UsageState | null>(null);
+  // Long-lived usage log: every usage update (from either the local CLI
+  // transport or the dashboard/gateway transport) appends a record to a
+  // localStorage-backed history. The Usage page reads the same store.
+  const usageTracker = useUsageTracker();
   const [dragActive, setDragActive] = useState(false);
   const [remoteMode, setRemoteMode] = useState(false);
   const [connectionMode, setConnectionMode] = useState<
@@ -406,6 +411,37 @@ function Chat({
   const chatDisplayModel = sessionModelOverride?.model
     ? sessionModelOverride.model.split("/").pop() || sessionModelOverride.model
     : modelConfig.displayModel;
+
+  // Append a record to the persistent usage log whenever the dashboard /
+  // gateway transport reports a fresh usage payload. The hook dedupes
+  // preview+final pairs from the gateway so the table doesn't show
+  // duplicates for the same turn.
+  const lastRecordedAt = useRef<number>(0);
+  useEffect(() => {
+    if (!usage) return;
+    if (usage.promptTokens === 0 && usage.completionTokens === 0) return;
+    const now = Date.now();
+    // De-dupe bursts (e.g. dashboard preview + final within 750ms).
+    if (now - lastRecordedAt.current < 750) return;
+    lastRecordedAt.current = now;
+    usageTracker.recordUsage({
+      provider: chatCurrentProvider || "default",
+      model: chatCurrentModel || "unknown",
+      inputTokens: usage.promptTokens,
+      outputTokens: usage.completionTokens,
+      totalTokens: usage.totalTokens,
+      contextTokens: usage.contextTokens,
+      contextMax: usage.contextWindowTokens,
+      cost: usage.cost,
+    });
+    // Reset the throttle on session/profile change so a new session isn't
+    // suppressed by an old throttle window.
+  }, [
+    usage,
+    chatCurrentProvider,
+    chatCurrentModel,
+    usageTracker,
+  ]);
 
   // Restore the model/provider linked to a resumed session. The saved value is
   // applied only to this chat's local picker state (`persist:false`) so it never

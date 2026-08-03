@@ -2690,6 +2690,18 @@ body:has(.shell-vibrant),
   font-weight: 500;
 }
 
+.knowledge-inline-rename-input {
+  background: var(--bg-card, #141418);
+  border: 1px solid var(--border-bright, rgba(255, 255, 255, 0.3));
+  border-radius: var(--radius-sm, 4px);
+  color: var(--text-primary, #ffffff);
+  font-size: 12px;
+  padding: 2px 6px;
+  outline: none;
+  width: 100%;
+  max-width: 180px;
+}
+
 .file-hover-actions {
   margin-left: auto;
   display: flex;
@@ -6304,7 +6316,11 @@ body:has(.shell-vibrant),
   padding: 4px 6px;
   outline: none;
   resize: none;
-  min-height: 20px;
+  /* One 14px line (19.6px) + 8px vertical padding; guards against the
+     inline height collapsing to 0 when autoResize measures while the pane
+     is display:none — without this the placeholder text gets vertically
+     cropped. */
+  min-height: 28px;
   max-height: 120px;
   overflow-y: auto;
   line-height: 1.4;
@@ -6517,6 +6533,16 @@ body:has(.shell-vibrant),
   pointer-events: none;
 }
 
+/* Hit bridge covering the 8px gap between gauge and tooltip */
+.chat-ctx-tooltip::before {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: -12px;
+  right: -12px;
+  height: 14px;
+}
+
 .chat-ctx-gauge:hover .chat-ctx-tooltip,
 .chat-ctx-gauge:focus-visible .chat-ctx-tooltip,
 .chat-ctx-gauge.open .chat-ctx-tooltip {
@@ -6528,6 +6554,22 @@ body:has(.shell-vibrant),
 
 .chat-ctx-gauge {
   cursor: pointer;
+}
+
+/* Empty / no-data state — gauge icon still renders (so the user knows it's
+ * there and can click it) but with a subtle "—" sentinel and dimmed ring. */
+.chat-ctx-gauge--empty .chat-ctx-gauge-num {
+  opacity: 0.6;
+  font-weight: 500;
+}
+
+.chat-ctx-gauge--empty .chat-ctx-gauge-fill {
+  opacity: 0.35;
+}
+
+.chat-ctx-tooltip-empty {
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .chat-ctx-tooltip-title {
@@ -7361,6 +7403,47 @@ body:has(.shell-vibrant),
 .chat-history-pre--scroll {
   max-height: 600px;
   overflow-y: auto;
+}
+
+/* ── Reasoning text body — friendlier typography than the default monospace
+ *    pre. Larger size, generous line-height, subtle accent on the caret
+ *    while the typewriter animation plays. Uses the app's chosen font stack
+ *    (--font-sans) so it picks up the user's AppearancePane preference. */
+.chat-reasoning-pre {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-elevated, rgba(127, 127, 127, 0.04));
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 13.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.chat-reasoning-text {
+  font-family: inherit;
+  color: inherit;
+  white-space: pre-wrap;
+}
+
+.type-animation-caret {
+  display: inline-block;
+  width: 0.5ch;
+  margin-left: 1px;
+  color: var(--accent-text, currentColor);
+  opacity: 0.85;
+  animation: type-animation-caret-blink 1s steps(2, end) infinite;
+  font-weight: 600;
+}
+
+@keyframes type-animation-caret-blink {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 0; }
 }
 
 .chat-history-attachments {
@@ -17731,3 +17814,349 @@ body:has(.shell-vibrant),
 
 .chat-confirm-banner { display:flex; align-items:center; gap:8px; padding:4px 10px; margin:0 10px 4px; font-size:11px; color:var(--color-primary); background:color-mix(in srgb, var(--color-primary) 10%, transparent); border-radius:var(--radius-md); }
 .chat-confirm-banner span { margin-right:auto; }
+
+/* ── Usage dashboard ────────────────────────────────────────────────────── */
+.usage-page { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; padding: 20px 24px; gap: 18px; overflow-y: auto; overflow-x: hidden; color: var(--text-primary, currentColor); min-width: 0; }
+.usage-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.usage-hero-text { display: flex; flex-direction: column; gap: 6px; }
+.usage-hero-eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-text, var(--text-secondary)); }
+.usage-hero-title { font-size: 24px; font-weight: 800; margin: 0; line-height: 1.1; }
+.usage-hero-sub { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.usage-page-actions { display: flex; gap: 8px; flex-shrink: 0; padding-top: 2px; }
+
+.usage-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; min-width: 0; }
+.usage-stat { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 10px; background: var(--bg-secondary, rgba(127,127,127,0.05)); border: 1px solid var(--border-color, rgba(127,127,127,0.16)); transition: border-color 0.18s ease, transform 0.15s ease, box-shadow 0.18s ease; min-width: 0; }
+.usage-stat:hover { border-color: var(--border-bright, rgba(127,127,127,0.3)); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.25); }
+.usage-stat-icon { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; }
+.usage-stat--input  .usage-stat-icon { background: color-mix(in srgb, #3b82f6 18%, transparent); color: #3b82f6; }
+.usage-stat--output .usage-stat-icon { background: color-mix(in srgb, #22c55e 18%, transparent); color: #22c55e; }
+.usage-stat--total  .usage-stat-icon { background: color-mix(in srgb, #a855f7 18%, transparent); color: #a855f7; }
+.usage-stat--cost   .usage-stat-icon { background: color-mix(in srgb, #f59e0b 18%, transparent); color: #f59e0b; }
+.usage-stat--turns  .usage-stat-icon { background: color-mix(in srgb, #06b6d4 18%, transparent); color: #06b6d4; }
+.usage-stat--total { border-color: color-mix(in srgb, #a855f7 40%, transparent); }
+.usage-stat-body { display: flex; flex-direction: column; gap: 2px; }
+.usage-stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
+.usage-stat-value { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text-primary); line-height: 1; }
+.usage-stat-sub { font-size: 11px; color: var(--text-muted); }
+
+.usage-dual-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; min-width: 0; }
+.usage-panel { background: var(--bg-secondary, rgba(127,127,127,0.05)); border: 1px solid var(--border-color, rgba(127,127,127,0.16)); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.usage-panel-header { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+.usage-panel-body--stack { display: flex; flex-direction: column; gap: 8px; }
+
+.usage-breakdown-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.usage-breakdown-label { min-width: 80px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+.usage-breakdown-track { flex: 1; height: 6px; border-radius: 99px; background: var(--bg-card, rgba(127,127,127,0.08)); overflow: hidden; }
+.usage-breakdown-fill { height: 100%; border-radius: 99px; background: var(--accent-text, #3b82f6); transition: width 0.3s ease; }
+.usage-breakdown-value { min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-primary); }
+
+.usage-activity-strip { display: flex; align-items: flex-end; gap: 4px; height: 56px; padding-top: 4px; }
+.usage-activity-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; height: 100%; justify-content: flex-end; }
+.usage-activity-bar { width: 100%; border-radius: 3px 3px 0 0; background: var(--accent-text, #3b82f6); opacity: 0.8; min-height: 3px; transition: height 0.3s ease; }
+.usage-activity-day { font-size: 9px; color: var(--text-muted); white-space: nowrap; overflow: hidden; }
+
+.usage-filter-row { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-secondary); }
+.usage-filter-select { background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; font-size: 12px; }
+.usage-filter-count { font-size: 11px; color: var(--text-muted); }
+
+.usage-table-wrapper { display: block; flex-shrink: 0; min-width: 0; max-width: 100%; height: 320px; overflow: auto; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-secondary); }
+.usage-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.usage-table th { position: sticky; top: 0; background: var(--bg-elevated); text-align: left; padding: 10px 12px; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); border-bottom: 1px solid var(--border-color); z-index: 2; box-shadow: 0 1px 0 var(--border-color); white-space: nowrap; }
+.usage-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-subtle, rgba(127,127,127,0.08)); }
+.usage-table tr:last-child td { border-bottom: none; }
+.usage-table tr:hover td { background: var(--bg-hover, rgba(127,127,127,0.04)); }
+.usage-table-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.usage-table-mono { font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace); font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; }
+
+.usage-empty { padding: 48px 16px; text-align: center; color: var(--text-secondary); }
+.usage-empty-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.usage-footer-meta { font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; align-items: center; }
+.usage-footer-meta code { font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace); background: var(--bg-secondary); padding: 1px 6px; border-radius: 3px; }
+
+/* Bottom-left sidebar footer collapse/extend — fully hides the icon
+ * row when collapsed so the session/project list above gets maximum vertical
+ * space back. Only the chevron toggle button stays visible. */
+.sidebar-footer-actions--collapsed {
+  display: none !important;
+}
+
+.sidebar-footer-collapse-chevron {
+  transition: transform 0.18s ease;
+}
+
+.sidebar-footer-collapse-chevron.collapsed {
+  transform: rotate(180deg);
+}
+
+.sidebar-footer-collapse-toggle.active {
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+/* ── Top Menu Collapse/Expand ────────────────────────────────────────── */
+.top-menu-wrapper {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1001;
+}
+
+.top-menu-container {
+  display: flex;
+  align-items: stretch;
+  position: relative;
+  min-height: 34px;
+  transition: min-height 0.25s ease;
+}
+
+.top-menu-container.top-menu-collapsed {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.top-menu-container .active-sessions-bar {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Collapse toggle button - positioned on the right side of the top menu */
+.top-menu-collapse-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 34px;
+  padding: 0 8px;
+  border: none;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+  -webkit-app-region: no-drag;
+}
+
+.top-menu-collapse-toggle:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.top-menu-collapse-toggle svg {
+  transition: transform 0.25s ease;
+}
+
+/* When collapsed, the toggle sits as a thin bar */
+.top-menu-collapsed .top-menu-collapse-toggle {
+  height: 22px;
+  border-radius: 0 0 6px 6px;
+  background: var(--bg-secondary);
+}
+
+.top-menu-collapsed .top-menu-collapse-toggle:hover {
+  background: var(--bg-tertiary);
+}
+
+/* ActiveSessionsBar modifications when top menu is collapsed */
+.top-menu-collapsed .active-sessions-bar {
+  min-height: 0;
+  height: 0;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: all 0.25s ease;
+}
+
+.top-menu-container:not(.top-menu-collapsed) .active-sessions-bar {
+  min-height: 34px;
+  height: auto;
+  padding: 0 8px 0 12px;
+  opacity: 1;
+  transition: all 0.25s ease;
+}
+
+/* Adjust content area when top menu is collapsed */
+.top-menu-collapsed + .content > *:first-child {
+  margin-top: 0;
+}
+
+/* When top menu is collapsed, the verify warning banner sits right below */
+.top-menu-collapsed ~ .VerifyWarningBanner {
+  margin-top: 0;
+}
+
+/* ActiveSessionsBar scrollbar hiding */
+.active-sessions-bar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.active-sessions-bar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Responsive: on smaller screens, make the toggle more prominent */
+@media (max-width: 640px) {
+  .top-menu-collapse-toggle {
+    width: 32px;
+    height: 34px;
+  }
+
+  .top-menu-collapsed .top-menu-collapse-toggle {
+    height: 24px;
+  }
+}
+
+/* ── Sidebar Pinned Navigation Menu Collapse ── */
+.sidebar-new-chat-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.sidebar-new-chat-row .sidebar-new-chat {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-pinned-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--transition);
+}
+
+.sidebar-pinned-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sidebar-pinned-chevron {
+  transition: transform 0.2s ease;
+}
+
+.sidebar-pinned-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
+.sidebar-pinned-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  margin-top: 2px;
+  transition: all 0.2s ease;
+}
+
+.sidebar-pinned-items--collapsed {
+  display: none !important;
+}
+
+.sidebar-collapsed .sidebar-pinned-toggle {
+  display: none;
+}
+
+/* ── Sidebar Bottom Hover Menu ── */
+.sidebar-footer-menu {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: auto;
+}
+
+.sidebar-footer-flyout {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  width: 36px;
+  margin-bottom: 0;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px) scale(0.95);
+  transform-origin: bottom left;
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease, visibility 0.16s ease;
+  z-index: 1000;
+}
+
+/* Invisible hit bridge so moving mouse into flyout never loses hover state */
+.sidebar-footer-flyout::before {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: -6px;
+  right: -6px;
+  height: 12px;
+}
+
+.sidebar-footer-menu:hover .sidebar-footer-flyout,
+.sidebar-footer-menu:focus-within .sidebar-footer-flyout {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-4px) scale(1);
+  pointer-events: auto;
+}
+
+.sidebar-footer-flyout .sidebar-footer-action {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+}
+
+.sidebar-footer-menu .sidebar-footer-action[data-tooltip]::after {
+  left: calc(100% + 10px);
+  right: auto;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1001;
+}
+
+.sidebar-settings-trigger {
+  width: 36px;
+  height: 34px;
+}
+
+.sidebar-collapsed .sidebar-footer-menu {
+  width: 40px;
+  align-items: center;
+}
+
+.sidebar-collapsed .sidebar-footer-flyout {
+  width: 40px;
+  left: 50%;
+  transform: translateX(-50%) translateY(4px) scale(0.95);
+  transform-origin: bottom center;
+}
+
+.sidebar-collapsed .sidebar-footer-menu:hover .sidebar-footer-flyout,
+.sidebar-collapsed .sidebar-footer-menu:focus-within .sidebar-footer-flyout {
+  transform: translateX(-50%) translateY(-4px) scale(1);
+}
+
+.sidebar-collapsed .sidebar-footer-flyout .sidebar-footer-action {
+  width: 32px;
+  height: 32px;
+}
+
+.sidebar-collapsed .sidebar-settings-trigger {
+  width: 40px;
+  height: 40px;
+}

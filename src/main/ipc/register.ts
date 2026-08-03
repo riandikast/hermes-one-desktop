@@ -56,6 +56,7 @@ import {
   deleteKnowledgeBundle,
   readKnowledgeFile,
   writeKnowledgeFile,
+  renameKnowledgeFile,
   deleteKnowledgeFile,
   importKnowledgeFolder,
   buildKnowledgeIndex,
@@ -2995,6 +2996,18 @@ export function registerIpcHandlers(context: IpcContext): void {
       content: string,
     ) => {
       return writeKnowledgeFile(bundleName, fileName, content);
+    },
+  );
+
+  ipcMain.handle(
+    "rename-knowledge-file",
+    async (
+      _event,
+      bundleName: string,
+      oldFileName: string,
+      newFileName: string,
+    ) => {
+      return renameKnowledgeFile(bundleName, oldFileName, newFileName);
     },
   );
 

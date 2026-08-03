@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import { Brain, ChevronRight, Wrench } from "../../assets/icons";
 import { OrbLoader } from "../../components/OrbLoader";
+import { TypeAnimation } from "../../components/TypeAnimation";
 import { useI18n } from "../../components/useI18n";
 import { AttachmentChip } from "../../components/AttachmentChip";
 import { ToolGlyph, humanizeToolName } from "../../components/toolMeta";
@@ -111,7 +112,14 @@ export const ReasoningRow = memo(function ReasoningRow({
           }`}
         >
           <div className="chat-tool-collapse-inner">
-            <pre className="chat-history-pre">{msg.text}</pre>
+            <pre className="chat-history-pre chat-reasoning-pre">
+              <TypeAnimation
+                text={msg.text}
+                active={active}
+                charsPerSecond={36}
+                className="chat-reasoning-text"
+              />
+            </pre>
           </div>
         </div>
       </div>

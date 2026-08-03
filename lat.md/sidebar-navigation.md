@@ -4,6 +4,14 @@ The sidebar starts with New Chat, keeps app destinations pinned, then gives conv
 
 [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] renders a New Chat action before Discover, Office, Kanban, and Schedules from `PINNED_NAV_ITEMS`, then renders [[src/renderer/src/screens/Layout/SidebarRecentSessions.tsx]] inside a flexible `.sidebar-chat-section`. New Chat is active when the visible Chat view has no session id yet. The standalone `sessions` view is still absent from the `View` union; the full list opens from the Cmd/Ctrl+K menu action.
 
+## Collapsible pinned navigation
+
+The top-left pinned navigation items (Discover, Office, Kanban, Schedules, Knowledge) can be collapsed using a chevron toggle next to the New Chat button.
+
+[[src/renderer/src/screens/Layout/Layout.tsx#Layout]] places a `.sidebar-pinned-toggle` button inside `.sidebar-new-chat-row` alongside the New Chat button. The toggle state persists in `localStorage` under `hermes.sidebar.pinnedCollapsed` (see `PINNED_NAV_COLLAPSED_KEY`).
+
+When collapsed (`pinnedNavCollapsed` = true), `.sidebar-pinned-items--collapsed` sets `display: none`, hiding the navigation destinations while keeping the New Chat button accessible. When the sidebar itself is collapsed to icon-only mode (`.sidebar-collapsed`), the toggle button is hidden to preserve space.
+
 ## Collapse toggle brand mark
 
 The sidebar header's collapse control doubles as the brand mark: collapsed it shows a circular dot that swaps to the expand icon on hover; expanded it is just the collapse icon, parked top-right for a clean, logo-free header.

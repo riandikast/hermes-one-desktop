@@ -32,6 +32,7 @@ import Providers from "../Providers/Providers";
 import Schedules from "../Schedules/Schedules";
 import Kanban from "../Kanban/Kanban";
 import KnowledgeScreen from "../Knowledge/KnowledgeScreen";
+import Usage from "../Usage/Usage";
 import RemoteNotice from "../../components/RemoteNotice";
 import VerifyWarningBanner from "../../components/VerifyWarningBanner";
 import { useSettingsModal } from "../../components/settings/SettingsModalContext";
@@ -50,8 +51,11 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  ChevronUp,
+  ChevronDown,
 } from "../../assets/icons";
 import type { LucideIcon } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 
 type View =
@@ -66,16 +70,13 @@ type View =
   | "schedules"
   | "knowledge"
   | "kanban"
-  | "gateway";
+  | "gateway"
+  | "usage";
 
 const PINNED_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "discover", icon: Compass, labelKey: "navigation.discover" },
-  // "agents" (Profiles) is reached from the sidebar-footer ProfileSwitcher's
-  // "Manage profiles" action rather than a top-level nav item.
   { view: "office", icon: Building, labelKey: "navigation.office" },
   { view: "kanban", icon: KanbanIcon, labelKey: "navigation.kanban" },
-  // "skills" lives under the Discover tab (installed + community), so it's no
-  // longer a top-level nav item.
   { view: "schedules", icon: Timer, labelKey: "navigation.schedules" },
   { view: "knowledge", icon: BookOpen, labelKey: "navigation.knowledge" },
 ];
@@ -85,10 +86,13 @@ const FOOTER_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "gateway", icon: Signal, labelKey: "navigation.gateway" },
   { view: "tools", icon: Workflow, labelKey: "navigation.tools" },
   { view: "memory", icon: Brain, labelKey: "navigation.memory" },
+  { view: "usage", icon: BarChart3, labelKey: "navigation.usage" },
 ];
 
 const SIDEBAR_COLLAPSED_KEY = "hermes.sidebar.collapsed";
+const TOP_MENU_COLLAPSED_KEY = "hermes.topmenu.collapsed";
 const SIDEBAR_SCROLLBAR_HIDE_MS = 700;
+const PINNED_NAV_COLLAPSED_KEY = "hermes.sidebar.pinnedCollapsed";
 
 interface LayoutProps {
   verifyWarning?: boolean;
@@ -104,20 +108,12 @@ function Layout({
   const { t } = useI18n();
   const { openSettings } = useSettingsModal();
   const [view, setView] = useState<View>("chat");
-  // Multiple conversations coexist (background sessions + multi-agent). Each is
-  // a ChatRun; all are mounted, only the active one is shown. Profile switches
-  // preserve existing conversations and activate a scratch run for the selected
-  // agent so `activeProfile` stays aligned with the visible chat transport.
   const [activeProfile, setActiveProfile] = useState("default");
   const [runs, setRuns] = useState<ChatRun[]>(() => [mintRun("default")]);
   const [activeRunId, setActiveRunId] = useState<string>(() => runs[0].runId);
-  // While a resume's history is loading, show its spinner immediately.
   const [resumingSessionId, setResumingSessionId] = useState<string | null>(
     null,
   );
-  // Sessions whose resume is in flight — dedupes rapid double-clicks that would
-  // otherwise mount two tabs for the same session (the live check straddles an
-  // await, so it can't rely on `runs` state alone).
   const resumingRef = useRef<Set<string>>(new Set());
   const sidebarChatScrollRef = useRef<HTMLDivElement | null>(null);
   const sidebarScrollbarHideRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -210,9 +206,6 @@ function Layout({
     };
   }, [updateSidebarScrollbar]);
 
-  // Per-profile avatar/colour, so the active-sessions bar (which only knows a
-  // run's profile name) can render real avatars. Refreshed when the selected
-  // profile or the current view changes — e.g. after editing on the Agents page.
   const [profileAppearance, setProfileAppearance] = useState<
     Record<string, { color?: string | null; avatar?: string | null }>
   >({});
@@ -239,7 +232,6 @@ function Layout({
     [profileAppearance],
   );
 
-  // Per-run reporters wired into each <Chat>.
   const handleRunLoading = useCallback((runId: string, loading: boolean) => {
     setRuns((prev) => patchRun(prev, runId, { loading }));
   }, []);
@@ -259,19 +251,56 @@ function Layout({
       return false;
     }
   });
-  // Full-list sessions modal (opened from the sidebar "Show more" affordance or
-  // the Cmd/Ctrl+K menu action). Reuses the Sessions screen inside a modal —
-  // there is no longer a top-level Sessions view.
+  
+  // NEW: Top menu collapse state
+  const [topMenuCollapsed, setTopMenuCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(TOP_MENU_COLLAPSED_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+
+
+  
+  // NEW: Toggle top menu collapse
+  const toggleTopMenuCollapsed = useCallback(() => {
+    setTopMenuCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(TOP_MENU_COLLAPSED_KEY, String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
+  const [pinnedNavCollapsed, setPinnedNavCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(PINNED_NAV_COLLAPSED_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const togglePinnedNavCollapsed = useCallback(() => {
+    setPinnedNavCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(PINNED_NAV_COLLAPSED_KEY, String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
   const [sessionsModalOpen, setSessionsModalOpen] = useState(false);
-  // Tabs lazy-mount on first visit, then stay mounted (display:none toggle).
-  // Keeps IPC refetch / DOM rebuild off the tab-switch hot path.
   const [visitedViews, setVisitedViews] = useState<Set<View>>(
     () => new Set<View>(["chat"]),
   );
-  // Remote-only mode — SSH tunnel has full access; only pure HTTP remote mode restricts screens
   const [remoteMode, setRemoteMode] = useState(false);
-  // Set by the Capabilities screen's "Browse" actions to focus a Discover tab
-  // (Skills → Community, or MCPs). The nonce re-fires Discover's effect.
   const [discoverFocus, setDiscoverFocus] = useState<{
     kind: "skills" | "mcps";
     nonce: number;
@@ -284,10 +313,59 @@ function Layout({
     overflow: "hidden",
   });
 
-  const goTo = useCallback((v: View) => {
-    setVisitedViews((prev) => (prev.has(v) ? prev : new Set(prev).add(v)));
-    setView(v);
-  }, []);
+  const VIEW_LABEL_KEYS: Record<View, string> = useMemo(
+    () => ({
+      chat: "navigation.chat",
+      discover: "navigation.discover",
+      office: "navigation.office",
+      kanban: "navigation.kanban",
+      schedules: "navigation.schedules",
+      knowledge: "navigation.knowledge",
+      providers: "navigation.providers",
+      gateway: "navigation.gateway",
+      tools: "navigation.tools",
+      memory: "navigation.memory",
+      usage: "navigation.usage",
+      agents: "navigation.agents",
+      skills: "navigation.skills",
+    }),
+    [],
+  );
+
+  const goTo = useCallback(
+    (v: View) => {
+      setVisitedViews((prev) => (prev.has(v) ? prev : new Set(prev).add(v)));
+      if (v === "chat") {
+        const chatRun = runs.find((r) => !r.targetView);
+        if (chatRun) {
+          setActiveRunId(chatRun.runId);
+          setActiveProfile(chatRun.profile);
+        }
+        setView("chat");
+        return;
+      }
+
+      const existing = runs.find((r) => r.targetView === v);
+      if (existing) {
+        setActiveRunId(existing.runId);
+        setView(v);
+      } else {
+        const labelKey = VIEW_LABEL_KEYS[v];
+        const viewRun: ChatRun = {
+          runId: `view-${v}-${Date.now()}`,
+          profile: activeProfile,
+          sessionId: null,
+          loading: false,
+          title: labelKey ? t(labelKey) : v,
+          targetView: v,
+        };
+        setRuns((prev) => [...prev, viewRun]);
+        setActiveRunId(viewRun.runId);
+        setView(v);
+      }
+    },
+    [runs, activeProfile, t, VIEW_LABEL_KEYS],
+  );
 
   useEffect(() => {
     const handleNavigation = (e: Event): void => {
@@ -299,8 +377,6 @@ function Layout({
       window.removeEventListener("navigation:goto", handleNavigation);
   }, [goTo]);
 
-  // Cmd/Ctrl+, opens the settings modal from anywhere (the conventional
-  // "preferences" shortcut).
   useEffect(() => {
     const handleKey = (e: KeyboardEvent): void => {
       if ((e.metaKey || e.ctrlKey) && e.key === ",") {
@@ -320,14 +396,10 @@ function Layout({
     [goTo],
   );
 
-  // Re-check remote mode on tab switch (picks up Settings changes)
   useEffect(() => {
     window.hermesAPI.isRemoteOnlyMode().then(setRemoteMode);
   }, [view]);
 
-  // Restore the last-activated profile on launch. The main process persists it
-  // in ~/.hermes/active_profile (via `hermes profile use`), so the desktop
-  // should reopen on that profile rather than always resetting to "default".
   useEffect(() => {
     let cancelled = false;
     window.hermesAPI
@@ -337,8 +409,6 @@ function Layout({
         const active = profiles.find((p) => p.isActive);
         if (active && active.id !== "default") {
           setActiveProfile(active.id);
-          // Re-home the initial pristine run onto the restored profile so the
-          // first chat runs under the right agent (no session/turn yet).
           setRuns((prev) =>
             prev.length === 1 && !prev[0].sessionId && !prev[0].loading
               ? [{ ...prev[0], profile: active.id }]
@@ -354,7 +424,6 @@ function Layout({
     };
   }, []);
 
-  // Auto-update state
   const [updateState, setUpdateState] = useState<
     "available" | "downloading" | "ready" | "error" | null
   >(null);
@@ -363,9 +432,6 @@ function Layout({
   const [updateError, setUpdateError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Surface a startup upgrade button as soon as GitHub reports a newer
-    // release. If auto-upgrade is enabled, electron-updater also downloads in
-    // the background and this state advances to downloading/ready.
     const cleanupAvailable = window.hermesAPI.onUpdateAvailable((info) => {
       setUpdateState("available");
       setUpdateVersion(info.version);
@@ -397,18 +463,14 @@ function Layout({
 
   async function handleUpdate(): Promise<void> {
     if (updateState === "ready") {
-      // The only user action: restart into the already-downloaded update.
       await window.hermesAPI.installUpdate();
     } else if (updateState === "available" || updateState === "error") {
-      // Download the available update (or retry a failed auto-download).
-      // Set downloading state immediately to prevent re-entrancy.
       setUpdateState("downloading");
       setUpdatePercent(null);
       setUpdateError(null);
       try {
         const ok = await window.hermesAPI.downloadUpdate();
         if (!ok) setUpdateState("error");
-        // On success, we wait for the onUpdateDownloaded callback to set "ready"
       } catch (err) {
         setUpdateError(err instanceof Error ? err.message : String(err));
         setUpdateState("error");
@@ -431,20 +493,16 @@ function Layout({
             : undefined);
 
   const handleNewChat = useCallback(() => {
-    // Open a fresh run WITHOUT aborting others — any in-flight session keeps
-    // streaming in the background and stays reachable via the active bar. If the
-    // current chat is already a blank scratch, reuse it instead of stacking
-    // another empty tab.
     const active = runs.find((r) => r.runId === activeRunId);
-    if (active && !active.sessionId && !active.loading && !active.title) {
-      goTo("chat");
+    if (active && !active.sessionId && !active.loading && !active.title && !active.targetView) {
+      setView("chat");
       return;
     }
     const run = mintRun(activeProfile);
     setRuns((prev) => [...prev, run]);
     setActiveRunId(run.runId);
-    goTo("chat");
-  }, [runs, activeRunId, activeProfile, goTo]);
+    setView("chat");
+  }, [runs, activeRunId, activeProfile]);
 
   const handleNewChatInProject = useCallback(
     (folderPath: string) => {
@@ -456,7 +514,6 @@ function Layout({
     [activeProfile, goTo],
   );
 
-  // Listen for menu IPC events (Cmd+N, Cmd+K from app menu)
   useEffect(() => {
     const cleanupNewChat = window.hermesAPI.onMenuNewChat(() => {
       handleNewChat();
@@ -470,7 +527,6 @@ function Layout({
     };
   }, [handleNewChat]);
 
-  // Esc closes the full-list sessions modal.
   useEffect(() => {
     if (!sessionsModalOpen) return;
     const onKeyDown = (e: KeyboardEvent): void => {
@@ -482,11 +538,6 @@ function Layout({
 
   const handleSelectProfile = useCallback(
     (name: string) => {
-      // Selecting an agent is administrative: switch the active profile (the
-      // component already started its gateway via setActiveProfile). Existing
-      // chats remain on their original profile, but the visible chat must move
-      // to a scratch run for the selected profile so the footer and transport
-      // never point at different agents.
       setActiveProfile(name);
       const next = selectProfileRunTransition(runs, activeRunId, name);
       setRuns(next.runs);
@@ -495,8 +546,6 @@ function Layout({
     [runs, activeRunId],
   );
 
-  // The "Chat" affordance: start (or reuse a blank) conversation with an agent
-  // and show it. This is the only path from the profile list that opens a chat.
   const handleChatWithProfile = useCallback(
     (name: string) => {
       setActiveProfile(name);
@@ -517,22 +566,23 @@ function Layout({
     [runs, activeRunId, goTo],
   );
 
-  // Jump to an already-open run (e.g. from the active-sessions bar), switching
-  // the selected profile so the rest of the app follows the agent.
   const handleActivateRun = useCallback(
     (runId: string) => {
       const run = runs.find((r) => r.runId === runId);
       if (!run) return;
       setActiveRunId(runId);
       setActiveProfile(run.profile);
-      goTo("chat");
+      if (run.targetView) {
+        const tv = run.targetView as View;
+        setVisitedViews((prev) => (prev.has(tv) ? prev : new Set(prev).add(tv)));
+        setView(tv);
+      } else {
+        setView("chat");
+      }
     },
-    [runs, goTo],
+    [runs],
   );
 
-  // Close a conversation tab: stop it if it's running, drop it from the list,
-  // and (if it was active) move to a neighbour. Always keep at least one chat
-  // open so the chat view is never empty.
   const handleCloseRun = useCallback(
     (runId: string) => {
       window.hermesAPI.abortChat(runId);
@@ -542,6 +592,7 @@ function Layout({
         const fresh = mintRun(activeProfile);
         setRuns([fresh]);
         setActiveRunId(fresh.runId);
+        setView("chat");
         return;
       }
       setRuns(remaining);
@@ -549,6 +600,13 @@ function Layout({
         const neighbour = remaining[Math.min(idx, remaining.length - 1)];
         setActiveRunId(neighbour.runId);
         setActiveProfile(neighbour.profile);
+        if (neighbour.targetView) {
+          const tv = neighbour.targetView as View;
+          setVisitedViews((prev) => (prev.has(tv) ? prev : new Set(prev).add(tv)));
+          setView(tv);
+        } else {
+          setView("chat");
+        }
       }
     },
     [runs, activeRunId, activeProfile],
@@ -599,12 +657,6 @@ function Layout({
     [],
   );
 
-  // Chrome/iTerm-style tab shortcuts for the conversation tabs: Ctrl+Tab /
-  // Ctrl+Shift+Tab, Cmd/Ctrl+Shift+[ / ], Cmd/Ctrl+Option+←/→ and
-  // Cmd/Ctrl+Shift+←/→ cycle; Cmd/Ctrl+1..8 jump to the Nth tab and 9 to the
-  // last; Cmd/Ctrl+W closes the active tab. Matches on e.code so the
-  // shortcuts keep working while a CJK IME is active. Cmd+Shift+arrow is
-  // skipped inside editable fields where it means "select to line start/end".
   useEffect(() => {
     const isEditable = (t: EventTarget | null): boolean => {
       if (!(t instanceof HTMLElement)) return false;
@@ -619,8 +671,6 @@ function Layout({
       let target: string | null = null;
       let matched = false;
       if (primary && !e.shiftKey && !e.altKey && e.code === "KeyW") {
-        // Close the active conversation tab (iTerm/Chrome). handleCloseRun
-        // keeps at least one chat open, so the window itself never closes.
         e.preventDefault();
         handleCloseRun(activeRunId);
         return;
@@ -643,8 +693,6 @@ function Layout({
       } else if (
         primary &&
         (e.code === "ArrowRight" || e.code === "ArrowLeft") &&
-        // Cmd+Option+arrow (Chrome macOS) or Cmd+Shift+arrow — the latter
-        // only outside editable fields, where it selects text instead.
         ((e.altKey && !e.shiftKey) ||
           (e.shiftKey && !e.altKey && !isEditable(e.target)))
       ) {
@@ -671,16 +719,12 @@ function Layout({
 
   const handleResumeSession = useCallback(
     async (sessionId: string) => {
-      // Already open as a live run? Re-attach to it (keeps live streaming).
       const live = findRunBySession(runs, sessionId);
       if (live) {
         handleActivateRun(live.runId);
         goTo("chat");
         return;
       }
-      // Guard against a double-click resuming the same session twice: the live
-      // check above and the setRuns below straddle an await, so without this a
-      // second click would pass the stale guard and mount a duplicate tab.
       if (resumingRef.current.has(sessionId)) return;
       resumingRef.current.add(sessionId);
       setResumingSessionId(sessionId);
@@ -719,6 +763,11 @@ function Layout({
     ? t("navigation.expandSidebar")
     : t("navigation.collapseSidebar");
 
+  // NEW: Top menu toggle label
+  const topMenuToggleLabel = topMenuCollapsed
+    ? t("navigation.expandTopMenu")
+    : t("navigation.collapseTopMenu");
+
   return (
     <div className="layout-shell">
       <div className={`layout ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
@@ -733,9 +782,6 @@ function Layout({
               aria-expanded={!sidebarCollapsed}
             >
               {sidebarCollapsed ? (
-                // Collapsed: show the circular brand mark by default and swap to
-                // the expand icon on hover/focus. Both sit in a fixed-size box so
-                // the swap never changes the button's footprint.
                 <span className="sidebar-collapse-swap">
                   <span className="sidebar-collapse-mark" aria-hidden="true" />
                   <PanelLeftOpen
@@ -750,33 +796,49 @@ function Layout({
           </div>
 
           <nav className="sidebar-nav sidebar-nav-pinned">
-            <button
-              className={`sidebar-nav-item sidebar-new-chat ${
-                view === "chat" && currentSessionId === null ? "active" : ""
-              }`}
-              onClick={handleNewChat}
-              title={t("navigation.newChat")}
-              aria-label={t("navigation.newChat")}
-            >
-              <Plus size={16} />
-              <span className="sidebar-nav-label">
-                {t("navigation.newChat")}
-              </span>
-            </button>
-            {PINNED_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => {
-              return (
-                <button
-                  key={v}
-                  className={`sidebar-nav-item ${view === v ? "active" : ""}`}
-                  onClick={() => goTo(v)}
-                  title={t(labelKey)}
-                  aria-label={t(labelKey)}
-                >
-                  <Icon size={16} />
-                  <span className="sidebar-nav-label">{t(labelKey)}</span>
-                </button>
-              );
-            })}
+            <div className="sidebar-new-chat-row">
+              <button
+                className={`sidebar-nav-item sidebar-new-chat ${
+                  view === "chat" && currentSessionId === null ? "active" : ""
+                }`}
+                onClick={handleNewChat}
+                title={t("navigation.newChat")}
+                aria-label={t("navigation.newChat")}
+              >
+                <Plus size={16} />
+                <span className="sidebar-nav-label">
+                  {t("navigation.newChat")}
+                </span>
+              </button>
+              <button
+                type="button"
+                className={`sidebar-pinned-toggle ${pinnedNavCollapsed ? "collapsed" : ""}`}
+                onClick={togglePinnedNavCollapsed}
+                title={pinnedNavCollapsed ? "Expand navigation menu" : "Collapse navigation menu"}
+                aria-label={pinnedNavCollapsed ? "Expand navigation menu" : "Collapse navigation menu"}
+              >
+                <ChevronDown
+                  size={14}
+                  className={`sidebar-pinned-chevron ${pinnedNavCollapsed ? "collapsed" : ""}`}
+                />
+              </button>
+            </div>
+            <div className={`sidebar-pinned-items ${pinnedNavCollapsed ? "sidebar-pinned-items--collapsed" : ""}`}>
+              {PINNED_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => {
+                return (
+                  <button
+                    key={v}
+                    className={`sidebar-nav-item ${view === v ? "active" : ""}`}
+                    onClick={() => goTo(v)}
+                    title={t(labelKey)}
+                    aria-label={t(labelKey)}
+                  >
+                    <Icon size={16} />
+                    <span className="sidebar-nav-label">{t(labelKey)}</span>
+                  </button>
+                );
+              })}
+            </div>
           </nav>
 
           <div className="sidebar-chat-section">
@@ -790,8 +852,6 @@ function Layout({
                   resumingSessionId={resumingSessionId}
                   onSelect={handleResumeSession}
                   onSessionDeleted={(id) => {
-                    // If the open chat was the one deleted, drop to a fresh chat
-                    // so the user isn't left viewing a now-gone conversation.
                     if (id === currentSessionId) handleNewChat();
                   }}
                   onNewChatInProject={handleNewChatInProject}
@@ -818,8 +878,6 @@ function Layout({
           </div>
 
           <div className="sidebar-footer">
-            {/* Show an upgrade affordance at startup when GitHub has a newer
-              release; it becomes a restart action once downloaded. */}
             {updateState && (
               <button
                 className={`sidebar-update-btn ${
@@ -851,23 +909,23 @@ function Layout({
                 )}
               </button>
             )}
-            <div
-              className="sidebar-footer-actions"
-              aria-label="Workspace tools"
-            >
-              {FOOTER_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => (
-                <button
-                  key={v}
-                  className={`sidebar-footer-action ${view === v ? "active" : ""}`}
-                  onClick={() => goTo(v)}
-                  aria-label={t(labelKey)}
-                  data-tooltip={t(labelKey)}
-                >
-                  <Icon size={16} />
-                </button>
-              ))}
+            <div className="sidebar-footer-menu" aria-label="Workspace tools">
+              <div className="sidebar-footer-flyout">
+                {FOOTER_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => (
+                  <button
+                    key={v}
+                    className={`sidebar-footer-action ${view === v ? "active" : ""}`}
+                    onClick={() => goTo(v)}
+                    aria-label={t(labelKey)}
+                    data-tooltip={t(labelKey)}
+                  >
+                    <Icon size={16} />
+                  </button>
+                ))}
+              </div>
               <button
-                className="sidebar-footer-action"
+                type="button"
+                className="sidebar-footer-action sidebar-settings-trigger"
                 onClick={() =>
                   openSettings(undefined, { profile: activeProfile })
                 }
@@ -887,19 +945,37 @@ function Layout({
         </aside>
 
         <main className="content">
-          {/* Doubles as the window drag strip — keep it first so it owns the top
-            band; the warning banner (if any) sits just below it. */}
-          <ActiveSessionsBar
-            runs={runs}
-            activeRunId={activeRunId}
-            onSelect={handleActivateRun}
-            onClose={handleCloseRun}
-            onCloseOthers={handleCloseOthers}
-            onCloseToRight={handleCloseToRight}
-            onReorder={handleReorderRuns}
-            onNew={handleNewChat}
-            getAppearance={getAppearance}
-          />
+          {/* Top menu wrapper with collapse toggle */}
+          <div className="top-menu-wrapper">
+            <div className={`top-menu-container ${topMenuCollapsed ? "top-menu-collapsed" : ""}`}>
+              <ActiveSessionsBar
+                runs={runs}
+                activeRunId={activeRunId}
+                onSelect={handleActivateRun}
+                onClose={handleCloseRun}
+                onCloseOthers={handleCloseOthers}
+                onCloseToRight={handleCloseToRight}
+                onReorder={handleReorderRuns}
+                onNew={handleNewChat}
+                getAppearance={getAppearance}
+              />
+              <button
+                className="top-menu-collapse-toggle"
+                type="button"
+                onClick={toggleTopMenuCollapsed}
+                title={topMenuToggleLabel}
+                aria-label={topMenuToggleLabel}
+                aria-expanded={!topMenuCollapsed}
+              >
+                {topMenuCollapsed ? (
+                  <ChevronDown size={16} />
+                ) : (
+                  <ChevronUp size={16} />
+                )}
+              </button>
+            </div>
+          </div>
+
           {verifyWarning && onReinstall && onDismissVerifyWarning && (
             <VerifyWarningBanner
               onReinstall={onReinstall}
@@ -1074,6 +1150,12 @@ function Layout({
               ) : (
                 <Gateway profile={activeProfile} />
               )}
+            </div>
+          )}
+
+          {visitedViews.has("usage") && (
+            <div style={paneStyle("usage")}>
+              <Usage />
             </div>
           )}
         </main>

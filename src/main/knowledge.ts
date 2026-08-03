@@ -1,4 +1,4 @@
-import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "fs/promises";
+import { cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
 
@@ -125,6 +125,23 @@ export async function writeKnowledgeFile(
   const filePath = join(bundleDir, fileName);
   try {
     await writeFile(filePath, content, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function renameKnowledgeFile(
+  bundleName: string,
+  oldFileName: string,
+  newFileName: string,
+  homeOverride?: string,
+): Promise<boolean> {
+  const root = await ensureKnowledgeDir(homeOverride);
+  const oldPath = join(root, bundleName, oldFileName);
+  const newPath = join(root, bundleName, newFileName);
+  try {
+    await rename(oldPath, newPath);
     return true;
   } catch {
     return false;

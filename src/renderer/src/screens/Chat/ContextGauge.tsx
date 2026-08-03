@@ -28,6 +28,11 @@ function fmtTokens(n: number): string {
  * hover/focus tooltip breaking down tokens used and prompt-cache hits. Mirrors
  * the webui's context indicator. Auto-compress threshold is intentionally
  * omitted — the gateway doesn't expose it over the chat API.
+ *
+ * Always renders (even with no usage yet) so the user can see and click the
+ * gauge immediately on app start. When `usage` is null/empty the ring is
+ * empty (0%) and the tooltip shows "no usage data yet" — this prevents the
+ * gauge from mysteriously appearing/disappearing as usage arrives.
  */
 export const ContextGauge = memo(function ContextGauge({
   used,
@@ -38,6 +43,7 @@ export const ContextGauge = memo(function ContextGauge({
 }: ContextUsage): React.JSX.Element {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  const hasData = used > 0 || ctxWindow > 0;
   const pct =
     ctxWindow > 0 ? Math.min(100, Math.round((used / ctxWindow) * 100)) : 0;
   const left = 100 - pct;
@@ -58,9 +64,13 @@ export const ContextGauge = memo(function ContextGauge({
 
   return (
     <div
-      className={`chat-ctx-gauge ${open ? "open" : ""}`}
+      className={`chat-ctx-gauge ${open ? "open" : ""} ${hasData ? "" : "chat-ctx-gauge--empty"}`}
       role="button"
-      aria-label={t("chat.contextUsed", { pct, left })}
+      aria-label={
+        hasData
+          ? t("chat.contextUsed", { pct, left })
+          : t("chat.contextEmpty")
+      }
       aria-expanded={open}
       tabIndex={0}
       onClick={() => setOpen((v) => !v)}
@@ -89,24 +99,32 @@ export const ContextGauge = memo(function ContextGauge({
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
       </svg>
-      <span className="chat-ctx-gauge-num">{pct}</span>
+      <span className="chat-ctx-gauge-num">{hasData ? pct : "—"}</span>
 
       <div className="chat-ctx-tooltip" role="tooltip">
         <div className="chat-ctx-tooltip-title">{t("chat.contextWindow")}</div>
-        <div>{t("chat.contextUsed", { pct, left })}</div>
-        <div>
-          {t("chat.contextTokens", {
-            used: fmtTokens(used),
-            total: fmtTokens(ctxWindow),
-          })}
-        </div>
-        {hasCache && (
-          <div>
-            {t("chat.contextCache", {
-              pct: cacheHitPct,
-              read: fmtTokens(cacheReadTokens || 0),
-              write: fmtTokens(cacheWriteTokens || 0),
-            })}
+        {hasData ? (
+          <>
+            <div>{t("chat.contextUsed", { pct, left })}</div>
+            <div>
+              {t("chat.contextTokens", {
+                used: fmtTokens(used),
+                total: fmtTokens(ctxWindow),
+              })}
+            </div>
+            {hasCache && (
+              <div>
+                {t("chat.contextCache", {
+                  pct: cacheHitPct,
+                  read: fmtTokens(cacheReadTokens || 0),
+                  write: fmtTokens(cacheWriteTokens || 0),
+                })}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="chat-ctx-tooltip-empty">
+            {t("chat.contextEmptyHint")}
           </div>
         )}
         {onCompact && (

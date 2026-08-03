@@ -1580,6 +1580,17 @@ const hermesAPI = {
     ipcRenderer.invoke("read-knowledge-file", bundleName, fileName),
   writeKnowledgeFile: (bundleName: string, fileName: string, content: string) =>
     ipcRenderer.invoke("write-knowledge-file", bundleName, fileName, content),
+  renameKnowledgeFile: (
+    bundleName: string,
+    oldFileName: string,
+    newFileName: string,
+  ) =>
+    ipcRenderer.invoke(
+      "rename-knowledge-file",
+      bundleName,
+      oldFileName,
+      newFileName,
+    ),
   deleteKnowledgeFile: (bundleName: string, fileName: string) =>
     ipcRenderer.invoke("delete-knowledge-file", bundleName, fileName),
   importKnowledgeFolder: (sourceFolderPath: string, bundleName: string) =>

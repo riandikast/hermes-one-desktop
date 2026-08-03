@@ -71,7 +71,7 @@ export const ActiveSessionsBar = memo(function ActiveSessionsBar({
   }, [contextMenu]);
 
   const anyLoading = runs.some((r) => r.loading);
-  const hasRealSession = runs.some((r) => r.sessionId || r.title);
+  const hasRealSession = runs.some((r) => r.sessionId || r.title || r.targetView);
   // Nothing real to switch to yet → leave the strip empty (pure drag area).
   const showChips = runs.length > 1 || anyLoading || hasRealSession;
 
