@@ -333,7 +333,11 @@ export function KnowledgeScreen(): React.JSX.Element {
           });
         },
       }));
-      return { from: m.start, to: ctx.pos, options };
+      // filter: false — CM6 otherwise fuzzy-matches option labels against the
+      // matched range text ("@" + query), and file-name labels never match an
+      // "@" prefix, silently dropping every option. The source re-runs on each
+      // keystroke (typing activation), so narrowing still works.
+      return { from: m.start, to: ctx.pos, options, filter: false };
     };
   }, [searchMentionMatches]);
 
