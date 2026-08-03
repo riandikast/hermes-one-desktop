@@ -54,6 +54,26 @@ export const TerminalDock = forwardRef<
   const [activeId, setActiveId] = useState<string | null>(null);
   const sessionsRef = useRef<Map<string, DockSession>>(new Map());
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const tabsScrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Keep the newest tab visible: when a session is added, scroll the tab
+  // strip to the end so the fresh tab is always in view.
+  useEffect(() => {
+    const el = tabsScrollRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [sessions.length]);
+
+  // Plain wheel over the tab strip scrolls it horizontally (browser-tab
+  // style). Shift+wheel is reserved for UI zoom (useUiZoom) — never touch it.
+  const onTabsWheel = (e: React.WheelEvent<HTMLDivElement>): void => {
+    if (e.shiftKey) return;
+    const el = tabsScrollRef.current;
+    if (!el) return;
+    const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+    if (!delta) return;
+    el.scrollLeft += delta;
+    e.preventDefault();
+  };
 
   const createXterm = useCallback((id: string): DockSession => {
     const term = new Terminal({
@@ -192,30 +212,7 @@ export const TerminalDock = forwardRef<
         aria-label="Resize terminal"
         title="Drag to resize"
       />
-      <div className="terminal-dock-tabs" role="tablist">
-        {sessions.map((s) => (
-          <div
-            key={s.id}
-            role="tab"
-            aria-selected={s.id === activeId}
-            className={`terminal-dock-tab ${s.id === activeId ? "active" : ""} ${s.dead ? "dead" : ""}`}
-            onClick={() => setActiveId(s.id)}
-            title={s.title}
-          >
-            <span className="terminal-dock-tab-title">{s.title}</span>
-            <button
-              type="button"
-              className="terminal-dock-tab-close"
-              onClick={(e) => {
-                e.stopPropagation();
-                closeSession(s.id);
-              }}
-              aria-label="Close terminal"
-            >
-              <X size={11} />
-            </button>
-          </div>
-        ))}
+      <div className="terminal-dock-tabs">
         <button
           type="button"
           className="terminal-dock-tab-new"
@@ -225,6 +222,36 @@ export const TerminalDock = forwardRef<
         >
           <Plus size={13} />
         </button>
+        <div
+          className="terminal-dock-tabs-scroll"
+          role="tablist"
+          ref={tabsScrollRef}
+          onWheel={onTabsWheel}
+        >
+          {sessions.map((s) => (
+            <div
+              key={s.id}
+              role="tab"
+              aria-selected={s.id === activeId}
+              className={`terminal-dock-tab ${s.id === activeId ? "active" : ""} ${s.dead ? "dead" : ""}`}
+              onClick={() => setActiveId(s.id)}
+              title={s.title}
+            >
+              <span className="terminal-dock-tab-title">{s.title}</span>
+              <button
+                type="button"
+                className="terminal-dock-tab-close"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeSession(s.id);
+                }}
+                aria-label="Close terminal"
+              >
+                <X size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
       <div className="terminal-dock-body" ref={containerRef} />
     </div>
