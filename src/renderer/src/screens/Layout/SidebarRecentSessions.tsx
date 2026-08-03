@@ -582,6 +582,14 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       if (editingIdRef.current === id) cancelRename();
       try {
         await window.hermesAPI.updateSessionTitle(id, trimmed);
+        // Keep the top-bar session tab in sync with a sidebar rename: the
+        // ActiveSessionsBar label comes from Layout's runs state, which has no
+        // other way to learn about a rename performed here.
+        window.dispatchEvent(
+          new CustomEvent("hermes-session-title-changed", {
+            detail: { sessionId: id, title: trimmed },
+          }),
+        );
       } catch (err) {
         console.error("Failed to rename session", id, err);
         setSessions((prev) =>

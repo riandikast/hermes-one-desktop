@@ -248,6 +248,26 @@ function Layout({
   const handleRunTitle = useCallback((runId: string, title: string) => {
     setRuns((prev) => patchRun(prev, runId, { title }));
   }, []);
+
+  // A sidebar rename updates the DB and the sidebar list, but the top-bar tab
+  // label comes from this component's runs state — patch the matching run by
+  // session id so the tab reflects the new title immediately.
+  useEffect(() => {
+    const handleTitleChanged = (e: Event): void => {
+      const { sessionId, title } = (
+        e as CustomEvent<{ sessionId: string; title: string }>
+      ).detail;
+      setRuns((prev) =>
+        prev.map((r) => (r.sessionId === sessionId ? { ...r, title } : r)),
+      );
+    };
+    window.addEventListener("hermes-session-title-changed", handleTitleChanged);
+    return () =>
+      window.removeEventListener(
+        "hermes-session-title-changed",
+        handleTitleChanged,
+      );
+  }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
