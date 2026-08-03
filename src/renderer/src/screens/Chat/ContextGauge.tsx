@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { useI18n } from "../../components/useI18n";
 
 export interface ContextUsage {
@@ -37,6 +37,7 @@ export const ContextGauge = memo(function ContextGauge({
   onCompact,
 }: ContextUsage): React.JSX.Element {
   const { t } = useI18n();
+  const [open, setOpen] = useState(false);
   const pct =
     ctxWindow > 0 ? Math.min(100, Math.round((used / ctxWindow) * 100)) : 0;
   const left = 100 - pct;
@@ -57,10 +58,15 @@ export const ContextGauge = memo(function ContextGauge({
 
   return (
     <div
-      className="chat-ctx-gauge"
-      tabIndex={0}
-      role="img"
+      className={`chat-ctx-gauge ${open ? "open" : ""}`}
+      role="button"
       aria-label={t("chat.contextUsed", { pct, left })}
+      aria-expanded={open}
+      tabIndex={0}
+      onClick={() => setOpen((v) => !v)}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") setOpen(false);
+      }}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <circle

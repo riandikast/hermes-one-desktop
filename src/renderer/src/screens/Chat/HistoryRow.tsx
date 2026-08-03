@@ -42,15 +42,21 @@ export const ReasoningRow = memo(function ReasoningRow({
 
   // Auto-expand live reasoning chunks during streaming if preference is enabled
   useEffect(() => {
-    if (active) {
-      try {
-        if (localStorage.getItem("hermes.autoExpandReasoning") === "true") {
-          setOpen(true);
+    const checkAutoExpand = () => {
+      if (active) {
+        try {
+          if (localStorage.getItem("hermes.autoExpandReasoning") === "true") {
+            setOpen(true);
+          }
+        } catch {
+          /* ignore */
         }
-      } catch {
-        /* ignore */
       }
-    }
+    };
+    checkAutoExpand();
+    // Re-check when the setting changes (broadcast from AppearancePane).
+    window.addEventListener("hermes-auto-expand-reasoning-changed", checkAutoExpand);
+    // Re-check when new reasoning text arrives.
   }, [active, msg.text]);
   return (
     <div

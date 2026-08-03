@@ -1063,6 +1063,57 @@ export function useDashboardChatTransport({
 
       const failed =
         event.type === "message.complete" && completionFailed(event.payload);
+
+      // PLAN MODE: intercept tool.start events for write-mutation tools.
+      // Instead of relying on the model to obey a system instruction, we
+      // inject an error result directly so the model sees its write attempt
+      // was rejected and must proceed read-only.
+      if (
+        planModeRef.current &&
+        event.type === "tool.start" &&
+        event.payload &&
+        typeof event.payload === "object"
+      ) {
+        const toolName = String(
+          (event.payload as { name?: string; tool_name?: string }).name ||
+          (event.payload as { tool_name?: string }).tool_name || "",
+        ).toLowerCase();
+        const WRITE_TOOLS = [
+          "write_file", "edit_file", "patch_file", "delete_file",
+          "create_file", "move_file", "copy_file", "rename_file",
+          "run_command", "execute_code", "shell", "terminal",
+          "apply_patch", "str_replace", "save_file", "create_directory",
+          "remove_directory", "git_commit", "git_push", "git_checkout",
+          "mkdir", "rm", "delete",
+        ];
+        if (
+          WRITE_TOOLS.some((w) => toolName.includes(w))
+        ) {
+          // Inject a tool error result so the model knows it was blocked.
+          const blockedEvent: DashboardStreamEvent = {
+            type: "tool.complete",
+            payload: {
+              tool_id: (event.payload as { tool_id?: string }).tool_id || "",
+              name: toolName,
+              result: "BLOCKED: Plan mode is active. File mutations are not allowed. Switch to BUILD mode to make changes.",
+              error: "Plan mode: write tool blocked",
+            },
+            session_id: event.session_id,
+          };
+          const blockedNext = applyDashboardStreamEvent(
+            {
+              messages: messagesRef.current,
+              reasoningSegmentClosed: reasoningSegmentClosedRef.current,
+            },
+            blockedEvent,
+            { activeTurn: activeTurnRef.current, renderAssistantDeltas: true },
+          );
+          messagesRef.current = blockedNext.messages;
+          setMessages(blockedNext.messages);
+          return; // Suppress the original tool.start so it never executes
+        }
+      }
+
       const next = applyDashboardStreamEvent(
         {
           messages: messagesRef.current,
@@ -1778,13 +1829,24 @@ export function useDashboardChatTransport({
   const abort = useCallback(() => {
     const client = clientRef.current;
     const sessionId = runtimeSessionIdRef.current;
-    if (!enabled || !client || !sessionId) return;
-    void client
-      .request("session.interrupt", { session_id: sessionId })
-      .catch(() => {
-        client.close();
-      });
-  }, [enabled]);
+    if (!enabled) return;
+    if (client && sessionId) {
+      void client
+        .request("session.interrupt", { session_id: sessionId })
+        .catch(() => undefined);
+    }
+    // Force-close the WebSocket so any late streaming events after the
+    // interrupt don't keep arriving and updating the transcript. The next
+    // sendMessage reconnects cleanly.
+    if (client) {
+      client.close();
+      clientRef.current = null;
+    }
+    // Clear loading immediately — don't wait for the gateway to confirm.
+    activeTurnRef.current = null;
+    setIsLoading(false);
+    setToolProgress(null);
+  }, [enabled, setIsLoading, setToolProgress]);
 
   useEffect(
     () => () => {

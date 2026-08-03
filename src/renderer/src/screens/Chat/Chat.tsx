@@ -948,21 +948,12 @@ function Chat({
     [dashboardTransport, addAgentMessage],
   );
 
-  // Un-send the last user message: /undo 1 truncates the portal transcript
-  // server-side (no double token), then we put the text back in the input
-  // box so the user can edit and resend.
+  // Un-send the last user message: remove it (and everything after) from the
+  // renderer transcript and put the text back in the input box for editing.
+  // We skip the gateway /undo call because it can hang. The next message
+  // builds context from the truncated renderer state.
   const handleUnsendLastUser = useCallback(
     async (_msgId: string, content: string) => {
-      const execSlash = dashboardTransport.enabled
-        ? dashboardTransport.execSlash
-        : undefined;
-      if (execSlash) {
-        try {
-          await execSlash("/undo 1", () => {});
-        } catch {
-          /* best-effort */
-        }
-      }
       // Truncate renderer-side: remove the last user message + everything after it.
       setMessages((prev) => {
         let lastUserIdx = -1;
@@ -988,7 +979,7 @@ function Chat({
       activeTurnRef.current = null;
       setIsLoading(false);
     },
-    [dashboardTransport, setMessages, chatInputRef, setIsLoading],
+    [setMessages, chatInputRef, setIsLoading],
   );
 
   // Drag-and-drop: filter for dragenter events carrying files (suppresses

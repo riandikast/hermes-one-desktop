@@ -9,8 +9,6 @@ import {
   Copy,
   Check,
   Upload,
-  Edit3,
-  Eye,
   Save,
   ChevronRight,
   ChevronDown,
@@ -38,7 +36,7 @@ export function KnowledgeScreen(): React.JSX.Element {
   } | null>(null);
 
   const [fileContent, setFileContent] = useState("");
-  const [isEditing, setIsEditing] = useState(true);
+  const [isEditing] = useState(true); // Always edit mode — preview removed
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [newBundleName, setNewBundleName] = useState("");
@@ -278,6 +276,31 @@ export function KnowledgeScreen(): React.JSX.Element {
   useEffect(() => {
     void reloadBundles();
   }, [reloadBundles]);
+
+  // Auto-refresh when the Knowledge screen gains focus (e.g. clicking the
+  // sidebar Knowledge nav) so newly imported files appear without a manual
+  // reload — including re-reading the currently open file's content.
+  useEffect(() => {
+    const onFocus = () => {
+      void reloadBundles();
+      // Re-read the currently selected file's content from disk.
+      if (selectedFile) {
+        void (async () => {
+          try {
+            const content = await window.hermesAPI.readKnowledgeFile(
+              selectedFile.bundleName,
+              selectedFile.fileName,
+            );
+            setFileContent(content ?? "");
+          } catch {
+            /* ignore */
+          }
+        })();
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [reloadBundles, selectedFile]);
 
   const toggleBundleExpand = (bundleName: string) => {
     setExpandedBundles((prev) => ({
@@ -675,14 +698,7 @@ export function KnowledgeScreen(): React.JSX.Element {
                       </button>
                     </div>
                   )}
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => setIsEditing((v) => !v)}
-                  >
-                    {isEditing ? <Eye size={13} /> : <Edit3 size={13} />}
-                    <span>{isEditing ? "Preview" : "Edit"}</span>
-                  </button>
+                  // Preview/edit toggle removed — always edit mode now.
                   <button
                     type="button"
                     className="btn btn-primary btn-sm"

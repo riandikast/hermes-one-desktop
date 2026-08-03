@@ -152,6 +152,8 @@ export default function AppearancePane(): React.JSX.Element {
                 } catch {
                   /* ignore */
                 }
+                // Broadcast so already-mounted ReasoningRows re-read the setting.
+                window.dispatchEvent(new Event("hermes-auto-expand-reasoning-changed"));
               }}
             />
             <span className="tools-toggle-track" />
