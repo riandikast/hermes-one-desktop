@@ -16,10 +16,35 @@ export function useChatScroll(messages: ChatMessage[]): {
   const bottomRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
   const prevMessageCountRef = useRef(messages.length);
+  const mountedRef = useRef(false);
 
   const scrollToBottom = useCallback((force?: boolean) => {
     if (!force && userScrolledUpRef.current) return;
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  // On first mount (opening/resuming a session) jump INSTANTLY to the bottom.
+  // Smooth scrollIntoView from an unlaid-out container (content-visibility
+  // rows, still-loading images) lands at the top of a long conversation.
+  // Re-settle a couple of times so late layout (images, fonts) doesn't leave
+  // the view mid-conversation.
+  useEffect(() => {
+    if (mountedRef.current) return;
+    mountedRef.current = true;
+    userScrolledUpRef.current = false;
+    const container = containerRef.current;
+    const jump = (): void => {
+      if (container) container.scrollTop = container.scrollHeight;
+    };
+    jump();
+    const raf = requestAnimationFrame(jump);
+    const t1 = window.setTimeout(jump, 80);
+    const t2 = window.setTimeout(jump, 250);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
   }, []);
 
   // Track manual scroll position

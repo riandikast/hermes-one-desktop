@@ -4,6 +4,12 @@ The sidebar starts with New Chat, keeps app destinations pinned, then gives conv
 
 [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] renders a New Chat action before Discover, Office, Kanban, and Schedules from `PINNED_NAV_ITEMS`, then renders [[src/renderer/src/screens/Layout/SidebarRecentSessions.tsx]] inside a flexible `.sidebar-chat-section`. New Chat is active when the visible Chat view has no session id yet. The standalone `sessions` view is still absent from the `View` union; the full list opens from the Cmd/Ctrl+K menu action.
 
+## Drag-resizable sidebar width
+
+The sidebar can be narrowed by dragging a handle on its right edge; the default 250px is the maximum.
+
+[[src/renderer/src/screens/Layout/Layout.tsx#Layout]] applies the width as an inline style from `sidebarWidth` state (clamped 180–250px, persisted in localStorage under `hermes.sidebar.width`) and renders `.sidebar-resize-handle` on the sidebar's right edge. The handle is hidden while the sidebar is collapsed. During a drag the `.sidebar--resizing` class disables the width transition so the handle tracks the cursor without lag.
+
 ## Collapsible pinned navigation
 
 The top-left pinned navigation items (Discover, Office, Kanban, Schedules, Knowledge) can be collapsed using a chevron toggle next to the New Chat button.

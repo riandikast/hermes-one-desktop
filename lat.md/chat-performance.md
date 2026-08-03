@@ -2,6 +2,12 @@
 
 Typing in the composer must stay fast no matter how long the conversation is. The transcript is not virtualized in JS, so the layout cost is bounded with CSS containment plus a single batched textarea measurement (issue #748).
 
+## Opening a session starts at the bottom
+
+Resuming a long conversation jumps straight to the newest message instead of the top.
+
+[[src/renderer/src/screens/Chat/hooks/useChatScroll.ts#useChatScroll]] runs an instant jump (`scrollTop = scrollHeight`) once on mount, then re-settles at 1 frame / 80ms / 250ms. A smooth `scrollIntoView` from an unlaid-out container — `content-visibility` rows and still-loading images — lands at the top of a long transcript; the instant jump + settle passes cover late layout growth.
+
 The symptom this guards against: in conversations with many messages, each keystroke took up to ~2.6s with an empty JS profile — the cost was entirely in Chromium's layout engine, recalculating the whole transcript on every keystroke. CPU and memory were normal; new sessions were instant.
 
 ## Off-screen rows are skipped with content-visibility

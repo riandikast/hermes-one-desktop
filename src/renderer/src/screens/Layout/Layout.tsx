@@ -94,9 +94,14 @@ const FOOTER_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
 ];
 
 const SIDEBAR_COLLAPSED_KEY = "hermes.sidebar.collapsed";
+const SIDEBAR_WIDTH_KEY = "hermes.sidebar.width";
 const TOP_MENU_COLLAPSED_KEY = "hermes.topmenu.collapsed";
 const SIDEBAR_SCROLLBAR_HIDE_MS = 700;
 const PINNED_NAV_COLLAPSED_KEY = "hermes.sidebar.pinnedCollapsed";
+
+/** Sidebar drag-resize bounds: current 250px is the max; can only be narrowed. */
+const SIDEBAR_WIDTH_MIN = 180;
+const SIDEBAR_WIDTH_MAX = 250;
 
 interface LayoutProps {
   verifyWarning?: boolean;
@@ -275,6 +280,54 @@ function Layout({
       return false;
     }
   });
+
+  // Drag-resizable sidebar width. Persisted; only narrows from the current
+  // default (250px) down to a comfortable minimum.
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+      const parsed = raw ? Number(raw) : SIDEBAR_WIDTH_MAX;
+      return Number.isFinite(parsed)
+        ? Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, parsed))
+        : SIDEBAR_WIDTH_MAX;
+    } catch {
+      return SIDEBAR_WIDTH_MAX;
+    }
+  });
+  const [sidebarResizing, setSidebarResizing] = useState(false);
+  const sidebarResizeRef = useRef<{ startX: number; startWidth: number }>({
+    startX: 0,
+    startWidth: SIDEBAR_WIDTH_MAX,
+  });
+
+  const onSidebarResizeStart = (e: React.PointerEvent<HTMLDivElement>): void => {
+    sidebarResizeRef.current = {
+      startX: e.clientX,
+      startWidth: sidebarWidth,
+    };
+    setSidebarResizing(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onSidebarResizeMove = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (!sidebarResizing) return;
+    const { startX, startWidth } = sidebarResizeRef.current;
+    const next = Math.min(
+      SIDEBAR_WIDTH_MAX,
+      Math.max(SIDEBAR_WIDTH_MIN, startWidth + (e.clientX - startX)),
+    );
+    setSidebarWidth(next);
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(next));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const onSidebarResizeEnd = (e: React.PointerEvent<HTMLDivElement>): void => {
+    setSidebarResizing(false);
+    e.currentTarget.releasePointerCapture(e.pointerId);
+  };
   
   // NEW: Top menu collapse state
   const [topMenuCollapsed, setTopMenuCollapsed] = useState(() => {
@@ -796,7 +849,20 @@ function Layout({
   return (
     <div className="layout-shell">
       <div className={`layout ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-        <aside className="sidebar">
+        <aside
+          className={`sidebar ${sidebarResizing ? "sidebar--resizing" : ""}`}
+          style={{ width: sidebarWidth }}
+        >
+          {!sidebarCollapsed && (
+            <div
+              className="sidebar-resize-handle"
+              onPointerDown={onSidebarResizeStart}
+              onPointerMove={onSidebarResizeMove}
+              onPointerUp={onSidebarResizeEnd}
+              aria-label="Resize sidebar"
+              title="Drag to resize"
+            />
+          )}
           <div className="sidebar-brand">
             <button
               className="sidebar-collapse-toggle"

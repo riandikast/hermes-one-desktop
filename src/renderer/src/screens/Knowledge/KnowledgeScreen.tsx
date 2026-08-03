@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { findMention } from "../Chat/mention";
 import {
   BookOpen,
@@ -14,6 +14,35 @@ import {
   ChevronDown,
   Pencil,
 } from "../../assets/icons";
+
+// Lazy-load the syntax highlighter (highlight.js core API + common language
+// bundle, ~36 langs) only when the editor first mounts — mirrors
+// AgentMarkdown's lazy pattern.
+let _hljsMod: typeof import("highlight.js/lib/core") | null = null;
+let _hljsPromise: Promise<typeof import("highlight.js/lib/core") | null> | null =
+  null;
+
+function loadHighlighter(): Promise<typeof import("highlight.js/lib/core") | null> {
+  if (!_hljsPromise) {
+    _hljsPromise = Promise.all([
+      import("highlight.js/lib/core"),
+      import("highlight.js/lib/common"),
+    ])
+      .then(([core]) => {
+        _hljsMod = core;
+        return core;
+      })
+      .catch(() => null);
+  }
+  return _hljsPromise;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
 export interface KnowledgeFileItem {
   name: string;
@@ -55,6 +84,8 @@ export function KnowledgeScreen(): React.JSX.Element {
 
   // @ mention autocomplete state
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const highlightRef = useRef<HTMLPreElement>(null);
+  const [hljsReady, setHljsReady] = useState(false);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionStart, setMentionStart] = useState(0);
@@ -66,6 +97,37 @@ export function KnowledgeScreen(): React.JSX.Element {
       return [];
     }
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadHighlighter().then(() => {
+      if (!cancelled) setHljsReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Syntax-highlighted HTML for the overlay <pre>; plain-escaped until the
+  // highlighter finishes loading or the content is too large to highlight
+  // per keystroke cheaply.
+  const highlightedHtml = useMemo(() => {
+    if (!hljsReady || !_hljsMod || fileContent.length > 200_000) {
+      return escapeHtml(fileContent);
+    }
+    try {
+      return _hljsMod.default.highlightAuto(fileContent).value;
+    } catch {
+      return escapeHtml(fileContent);
+    }
+  }, [fileContent, hljsReady]);
+
+  // Keep the overlay <pre> scroll in lockstep with the transparent textarea.
+  const syncHighlightScroll = useCallback((): void => {
+    const ta = textareaRef.current;
+    const pre = highlightRef.current;
+    if (ta && pre) pre.scrollTop = ta.scrollTop;
+  }, []);
 
   useEffect(() => {
     try {
@@ -936,6 +998,13 @@ export function KnowledgeScreen(): React.JSX.Element {
                   <div className="editor-loading">Loading content...</div>
                 ) : isEditing ? (
                   <>
+                    <pre
+                      ref={highlightRef}
+                      className="knowledge-highlight"
+                      aria-hidden="true"
+                    >
+                      <code dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
+                    </pre>
                     <textarea
                       ref={textareaRef}
                       className="knowledge-textarea"
@@ -943,9 +1012,11 @@ export function KnowledgeScreen(): React.JSX.Element {
                       onChange={(e) => {
                         setFileContent(e.target.value);
                         handleTextareaCaret(e);
+                        syncHighlightScroll();
                       }}
                       onKeyUp={handleTextareaCaret}
                       onClick={handleTextareaCaret}
+                      onScroll={syncHighlightScroll}
                       onKeyDown={handleTextareaKeyDown}
                       placeholder="Type knowledge notes, guidelines, or preferences (use @ to search file paths)..."
                     />
