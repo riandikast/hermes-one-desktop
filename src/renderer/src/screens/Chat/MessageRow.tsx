@@ -1,6 +1,6 @@
 import { memo, useMemo, useState, useCallback } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, Undo2, RotateCcw } from "lucide-react";
 import ProfileAvatar from "../../components/common/ProfileAvatar";
 import { OrbLoader } from "../../components/OrbLoader";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
@@ -166,6 +166,18 @@ interface MessageRowProps {
   showAvatar?: boolean;
   /** Appearance of the chatting agent, shown once the avatar goes idle. */
   agent?: AgentAvatarInfo;
+  /** Fired when the user clicks the "revert to this checkpoint" button on a
+   *  user message row. The desktop runs `/rollback` to restore the working
+   *  directory snapshot taken before this turn — like AntiGravity's
+   *  "revert to checkpoint" per-message button. */
+  onRevertCheckpoint?: (msgId: string) => void;
+  /** Fired when the user clicks the "unsend" button on the most recent user
+   *  row. The desktop runs `/undo 1` (gateway-side truncation, no double
+   *  token) and re-populates the input box so the user can edit+resend. */
+  onUnsendLastUser?: (msgId: string, content: string) => void;
+  /** True only for the most recent user bubble — restricts the unsend button
+   *  to that row so it doesn't clutter older bubbles. */
+  isLastUser?: boolean;
 }
 
 export const MessageRow = memo(function MessageRow({
@@ -176,6 +188,9 @@ export const MessageRow = memo(function MessageRow({
   onDeny,
   showAvatar = true,
   agent,
+  onRevertCheckpoint,
+  onUnsendLastUser,
+  isLastUser = false,
 }: MessageRowProps): React.JSX.Element {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -267,6 +282,30 @@ export const MessageRow = memo(function MessageRow({
             >
               {copied ? <Check size={14} /> : <Copy size={14} />}
             </button>
+            {msg.role === "user" && onRevertCheckpoint && (
+              <button
+                type="button"
+                className="chat-bubble-copy"
+                onClick={() => onRevertCheckpoint(msg.id)}
+                title="Revert file changes to this checkpoint"
+                aria-label="Revert to checkpoint"
+              >
+                <RotateCcw size={14} />
+              </button>
+            )}
+            {msg.role === "user" && isLastUser && onUnsendLastUser && (
+              <button
+                type="button"
+                className="chat-bubble-copy"
+                onClick={() =>
+                  onUnsendLastUser(msg.id, (msg as ChatBubbleMessage).content || "")
+                }
+                title="Unsend — edit and resend this message"
+                aria-label="Unsend message"
+              >
+                <Undo2 size={14} />
+              </button>
+            )}
           </div>
         )}
         {hasAttachments && (

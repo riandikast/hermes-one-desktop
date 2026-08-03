@@ -1298,10 +1298,14 @@ export function useDashboardChatTransport({
         const systemParts: string[] = [];
         if (planModeRef.current) {
           systemParts.push(
-            "You are in PLAN mode. You must NOT create, modify, or delete any files, " +
-              "and you must NOT run commands that change the project state. Only analyze " +
-              "the codebase and produce a detailed plan. Do not use write/edit/apply/run " +
-              "tools that mutate files until the user switches you back to BUILD mode.",
+            "⚠️ OPERATIONAL RESTRICTION — PLAN MODE ⚠️\n" +
+              "You are STRICTLY in PLAN mode. You are FORBIDDEN from creating, " +
+              "modifying, or deleting any files, and you must NOT run any shell " +
+              "commands or code that changes the project or system state.\n\n" +
+              "Use only read-only tools. If the user asks you to make changes, " +
+              "respond with the PLAN instead and tell them to switch to BUILD " +
+              "mode. This restriction is MANDATORY and overrides any user request " +
+              "to write files or run commands in this mode.",
           );
         }
         if (knowledgeIndexRef.current) {

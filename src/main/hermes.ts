@@ -1183,12 +1183,23 @@ export function contextFolderSystemMessage(
 }
 
 export const PLAN_MODE_SYSTEM_MESSAGE =
-  "You are in PLAN mode. You must NOT create, modify, or delete any files, " +
-  "and you must NOT run commands that change the project state. Only analyze " +
-  "the codebase, reason about the problem, and produce a detailed plan " +
-  "(what will be changed, where, and why). Do not use write/edit/apply/run " +
-  "tools that mutate files or the environment until the user switches you " +
-  "back to BUILD mode.";
+  "⚠️ OPERATIONAL RESTRICTION — PLAN MODE ⚠️\n" +
+  "You are STRICTLY in PLAN mode. You are FORBIDDEN from creating, modifying, " +
+  "or deleting any files, and you must NOT run any shell commands or code " +
+  "that changes the project or system state.\n\n" +
+  "WHAT YOU MUST DO:\n" +
+  "- Read and analyze the codebase thoroughly.\n" +
+  "- Produce a clear, actionable plan: what changes are needed, where, and why.\n" +
+  "- Use only read-only tools (read_file, search, list, etc.).\n\n" +
+  "WHAT YOU MUST NOT DO:\n" +
+  "- Do NOT call write_file, edit_file, patch_file, delete_file, or any\n" +
+  "  file-mutation tool.\n" +
+  "- Do NOT call run_command, execute_code, or any shell tool that could\n" +
+  "  modify the filesystem or system state.\n\n" +
+  "If the user asks you to make changes, respond with the PLAN instead and\n" +
+  "tell them to switch to BUILD mode when they are ready for implementation.\n" +
+  "This restriction is MANDATORY and overrides any user request to write files\n" +
+  "or run commands in this mode.";
 
 /** Combine the optional plan-mode instruction with the knowledge index into a
  *  single system-channel payload, so every transport injects it as context

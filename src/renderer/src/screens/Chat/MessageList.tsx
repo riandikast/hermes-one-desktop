@@ -26,6 +26,13 @@ interface MessageListProps {
   /** Appearance of the agent this conversation is with, so idle avatars show
    *  the agent's profile picture instead of the loading gif. */
   agentAvatar?: AgentAvatarInfo;
+  /** Per-user-message revert-to-checkpoint button. Runs `/rollback` on the
+   *  gateway to restore the working directory snapshot taken before this turn. */
+  onRevertCheckpoint?: (msgId: string) => void;
+  /** Un-send the most recent user message. Runs `/undo 1` so the gateway
+   *  truncates the transcript (no double token), then re-populates the
+   *  input box for editing+resend. */
+  onUnsendLastUser?: (msgId: string, content: string) => void;
 }
 
 function TypingIndicator({
@@ -73,6 +80,8 @@ export const MessageList = memo(function MessageList({
   onDeny,
   onClarifyResolved,
   agentAvatar,
+  onRevertCheckpoint,
+  onUnsendLastUser,
 }: MessageListProps): React.JSX.Element {
   // Bubbles with empty content are still hidden (live-stream placeholders).
   // History rows pass through unconditionally. Agent bubbles streaming live are kept.
@@ -89,6 +98,13 @@ export const MessageList = memo(function MessageList({
 
   const lastBubble = [...visibleMessages].reverse().find(isBubble);
   const lastMessageIsAgent = !!lastBubble && lastBubble.role === "agent";
+  const lastUserBubbleIdx = (() => {
+    for (let j = visibleMessages.length - 1; j >= 0; j--) {
+      const m = visibleMessages[j];
+      if (isBubble(m) && m.role === "user") return j;
+    }
+    return -1;
+  })();
 
   // Render plan: bubble/reasoning rows pass through one-to-one, but a
   // contiguous run of tool_call/tool_result rows folds into a single
@@ -166,6 +182,9 @@ export const MessageList = memo(function MessageList({
         onDeny={onDeny}
         showAvatar={showAvatar}
         agent={agentAvatar}
+        onRevertCheckpoint={onRevertCheckpoint}
+        onUnsendLastUser={onUnsendLastUser}
+        isLastUser={i === lastUserBubbleIdx}
       />,
     );
   }

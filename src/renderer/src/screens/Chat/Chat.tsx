@@ -928,6 +928,69 @@ function Chat({
     setWorktreeVisible((v) => !v);
   }, []);
 
+  // Revert file-system to a prior turn via /rollback (gateway-side checkpoint
+  // restore — same as AntiGravity's "revert to checkpoint").
+  const handleRevertCheckpoint = useCallback(
+    async (_msgId: string) => {
+      const execSlash = dashboardTransport.enabled
+        ? dashboardTransport.execSlash
+        : undefined;
+      if (!execSlash) return;
+      try {
+        const result = await execSlash("/rollback", () => {});
+        if (result.kind === "error") {
+          addAgentMessage?.(`revert error: ${result.message}`);
+        }
+      } catch {
+        /* best-effort */
+      }
+    },
+    [dashboardTransport, addAgentMessage],
+  );
+
+  // Un-send the last user message: /undo 1 truncates the portal transcript
+  // server-side (no double token), then we put the text back in the input
+  // box so the user can edit and resend.
+  const handleUnsendLastUser = useCallback(
+    async (_msgId: string, content: string) => {
+      const execSlash = dashboardTransport.enabled
+        ? dashboardTransport.execSlash
+        : undefined;
+      if (execSlash) {
+        try {
+          await execSlash("/undo 1", () => {});
+        } catch {
+          /* best-effort */
+        }
+      }
+      // Truncate renderer-side: remove the last user message + everything after it.
+      setMessages((prev) => {
+        let lastUserIdx = -1;
+        for (let i = prev.length - 1; i >= 0; i--) {
+          const m = prev[i];
+          if (
+            typeof m === "object" &&
+            "role" in m &&
+            (m as { role: string }).role === "user" &&
+            !("kind" in m)
+          ) {
+            lastUserIdx = i;
+            break;
+          }
+        }
+        if (lastUserIdx < 0) return prev;
+        return prev.slice(0, lastUserIdx);
+      });
+      // Populate the input box with the unsent text so the user can edit + resend.
+      chatInputRef.current?.clear();
+      chatInputRef.current?.setText(content);
+      chatInputRef.current?.focus();
+      activeTurnRef.current = null;
+      setIsLoading(false);
+    },
+    [dashboardTransport, setMessages, chatInputRef, setIsLoading],
+  );
+
   // Drag-and-drop: filter for dragenter events carrying files (suppresses
   // text-drag noise from the textarea autocomplete and other in-app drags).
   const eventHasFiles = useCallback((e: React.DragEvent): boolean => {
@@ -1104,6 +1167,8 @@ function Chat({
               onDeny={actions.handleDeny}
               onClarifyResolved={handleClarifyResolved}
               agentAvatar={agentAvatar}
+              onRevertCheckpoint={handleRevertCheckpoint}
+              onUnsendLastUser={handleUnsendLastUser}
             />
           )}
           <div ref={bottomRef} />
