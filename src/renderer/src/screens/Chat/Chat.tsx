@@ -90,6 +90,8 @@ interface ChatProps {
   initialMessages?: ChatMessage[];
   /** Gateway session id when resuming a known session; null for a new chat. */
   initialSessionId?: string | null;
+  /** Persisted (possibly user-renamed) title; suppresses auto-title derivation. */
+  initialTitle?: string;
   /** Workspace context folders to pre-attach when mounting. */
   initialContextFolders?: string[];
   /** Whether this run is the one currently shown (drives keyboard handlers). */
@@ -118,6 +120,7 @@ function Chat({
   runId,
   initialMessages,
   initialSessionId,
+  initialTitle,
   initialContextFolders,
   active = true,
   profile,
@@ -166,9 +169,15 @@ function Chat({
     onSessionIdChange?.(runId, hermesSessionId);
   }, [runId, hermesSessionId, onSessionIdChange]);
   // Best-effort title from the first user bubble (for the active-sessions bar).
+  // Suppressed when a persisted title was restored (e.g. user-renamed) — the
+  // auto-derived first-message title must not clobber it on reopen.
   const reportedTitleRef = useRef(false);
   useEffect(() => {
     if (reportedTitleRef.current) return;
+    if (initialTitle) {
+      reportedTitleRef.current = true;
+      return;
+    }
     const firstUser = messages.find(
       (m) => m.role === "user" && "content" in m && m.content.trim(),
     );
@@ -176,7 +185,7 @@ function Chat({
       reportedTitleRef.current = true;
       onTitleChange?.(runId, firstUser.content.slice(0, 60));
     }
-  }, [runId, messages, onTitleChange]);
+  }, [runId, messages, onTitleChange, initialTitle]);
   const [toolProgress, setToolProgress] = useState<string | null>(null);
   const [usage, setUsage] = useState<UsageState | null>(null);
   // Long-lived usage log: every usage update (from either the local CLI

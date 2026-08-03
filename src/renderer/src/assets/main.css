@@ -2825,58 +2825,49 @@ body:has(.shell-vibrant),
   overflow: hidden;
 }
 
-.knowledge-textarea {
-  width: 100%;
-  height: 100%;
-  resize: none;
-  background: transparent;
-  color: transparent;
-  caret-color: var(--text-primary);
+/* CodeMirror 6 markdown editor host: fills the editor body. Uses the oneDark
+   theme (set in KnowledgeScreen) for markdown + code-block token colors. */
+.knowledge-cm-host {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  padding: 16px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  word-break: break-word;
+  background: #282c34; /* oneDark editor background */
 }
-
-/* Syntax-highlighted overlay: the <pre> sits on top of the transparent
-   textarea (same metrics) so colored tokens show through; the textarea keeps
-   the caret + selection. The textarea still owns focus/editing. */
-.knowledge-highlight {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  right: 16px;
-  bottom: 16px;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  font-family: var(--font-mono);
+.knowledge-cm-host .cm-editor {
+  height: 100%;
   font-size: 13px;
+}
+.knowledge-cm-host .cm-scroller {
+  font-family: var(--font-mono);
   line-height: 1.6;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  word-break: break-word;
-  pointer-events: none;
+  overflow: auto;
+}
+.knowledge-cm-host .cm-content {
+  padding: 16px 0;
+}
+.knowledge-cm-host .cm-line {
+  padding: 0 16px;
+}
+/* CodeMirror autocomplete popup. */
+.cm-tooltip-autocomplete {
+  background: var(--bg-elevated) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-md) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+}
+.cm-tooltip-autocomplete ul li[aria-selected] {
+  background: var(--accent-subtle) !important;
+  color: var(--text-primary) !important;
+}
+.cm-tooltip-autocomplete .cm-completionLabel {
   color: var(--text-primary);
-  background: var(--bg-card);
-  z-index: 0;
 }
-
-.knowledge-textarea {
-  position: relative;
-  z-index: 1;
-}
-
-.knowledge-textarea::selection {
-  background: color-mix(in srgb, var(--accent) 30%, transparent);
-  color: transparent;
+.cm-tooltip-autocomplete .cm-completionDetail {
+  color: var(--text-muted);
+  font-size: 10.5px;
 }
 
 .knowledge-markdown-preview {

@@ -10,6 +10,12 @@ The sidebar can be narrowed by dragging a handle on its right edge; the default 
 
 [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] applies the width as an inline style from `sidebarWidth` state (clamped 180–250px, persisted in localStorage under `hermes.sidebar.width`) and renders `.sidebar-resize-handle` on the sidebar's right edge. The handle is hidden while the sidebar is collapsed. During a drag the `.sidebar--resizing` class disables the width transition so the handle tracks the cursor without lag.
 
+## Rename propagates to the session tab
+
+Sidebar renames update the DB, the sidebar list, and the open top-bar tab.
+
+[[src/renderer/src/screens/Layout/SidebarRecentSessions.tsx#SidebarRecentSessions]] dispatches `hermes-session-title-changed` after a successful `updateSessionTitle`; [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] listens and patches the matching run's title. On reopen, `handleResumeSession` restores the persisted title from the session cache (`listCachedSessions`) into the run, and [[src/renderer/src/screens/Chat/Chat.tsx#Chat]] suppresses its first-message auto-title when `initialTitle` is present — so a renamed session shows the rename after a restart/reopen, not the old derived title.
+
 ## Collapsible pinned navigation
 
 The top-left pinned navigation items (Discover, Office, Kanban, Schedules, Knowledge) can be collapsed using a chevron toggle next to the New Chat button.

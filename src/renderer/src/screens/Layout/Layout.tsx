@@ -812,6 +812,15 @@ function Layout({
         )) as DbHistoryItem[];
         const run = mintRun(activeProfile, dbItemsToChatMessages(items));
         run.sessionId = sessionId;
+        // Restore the persisted title (possibly user-renamed) so the tab
+        // doesn't fall back to the auto-derived first-message title.
+        try {
+          const cached = await window.hermesAPI.listCachedSessions(200);
+          const found = cached.find((s) => s.id === sessionId);
+          if (found?.title) run.title = found.title;
+        } catch {
+          /* title is best-effort */
+        }
         setRuns(
           (prev) => openSessionRunTransition(prev, activeRunId, run).runs,
         );
@@ -1091,6 +1100,7 @@ function Layout({
                   runId={run.runId}
                   initialMessages={run.seed}
                   initialSessionId={run.sessionId}
+                  initialTitle={run.title}
                   initialContextFolders={run.initialContextFolders}
                   active={run.runId === activeRunId}
                   profile={run.profile}

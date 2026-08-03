@@ -1,18 +1,21 @@
 # Knowledge file editor
 
-The Knowledge page edits files inline with syntax highlighting — an overlay
-technique that keeps a real `<textarea>` for editing while showing colored
-tokens.
+The Knowledge page edits files inline with markdown-aware syntax highlighting
+via CodeMirror 6 — a real editor, not a highlighting overlay.
 
-[[src/renderer/src/screens/Knowledge/KnowledgeScreen.tsx]] renders a
-highlighted `<pre class="knowledge-highlight">` behind the `.knowledge-textarea`.
-The textarea's text is transparent (`color: transparent; caret-color:
-var(--text-primary)`) so the caret, selection, and `@` mention autocomplete
-still behave natively while the tokens show through. Both layers share the
-same monospace metrics (13px/1.6, 16px padding, `pre-wrap`), and the textarea's
-`scroll` event syncs the overlay's `scrollTop` so they stay aligned.
+[[src/renderer/src/screens/Knowledge/KnowledgeScreen.tsx]] mounts an
+`EditorView` into `.knowledge-cm-host` with `@codemirror/lang-markdown` (fenced
+code blocks use `@codemirror/language-data`) and the `oneDark` theme. The
+editor is recreated per file (`selectedFile?.path`/`loading` deps); external
+content changes (file switch, save, focus refresh) dispatch a full-doc replace
+that preserves the caret. `fileContent` state mirrors the doc via an update
+listener, so the existing Save path is unchanged.
 
-The highlighter (highlight.js core API + the `lib/common` side-effect bundle,
-~36 languages, `highlightAuto`) is lazy-loaded once via `loadHighlighter()`,
-mirroring AgentMarkdown's lazy pattern. Content over 200k chars renders
-escaped-plain instead of highlighted to keep per-keystroke cost bounded.
+## @ mention autocomplete
+
+`@`-mention file search is a CodeMirror autocomplete source, not a custom dropdown.
+
+Typing `@` opens the standard autocomplete popup at the caret; picking a
+candidate inserts the path followed by a space. Candidates come from bundles +
+custom folders + Everything + recent folders; `findMention` (from the chat
+mention module) detects the token and its query.

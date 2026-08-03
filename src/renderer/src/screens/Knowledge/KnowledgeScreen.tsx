@@ -1,5 +1,16 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { findMention } from "../Chat/mention";
+import { basicSetup } from "codemirror";
+import { EditorView } from "@codemirror/view";
+import { EditorState } from "@codemirror/state";
+import { markdown } from "@codemirror/lang-markdown";
+import { languages } from "@codemirror/language-data";
+import { oneDark } from "@codemirror/theme-one-dark";
+import {
+  autocompletion,
+  type CompletionContext,
+  type CompletionResult,
+} from "@codemirror/autocomplete";
 import {
   BookOpen,
   Folder,
@@ -14,35 +25,6 @@ import {
   ChevronDown,
   Pencil,
 } from "../../assets/icons";
-
-// Lazy-load the syntax highlighter (highlight.js core API + common language
-// bundle, ~36 langs) only when the editor first mounts — mirrors
-// AgentMarkdown's lazy pattern.
-let _hljsMod: typeof import("highlight.js/lib/core") | null = null;
-let _hljsPromise: Promise<typeof import("highlight.js/lib/core") | null> | null =
-  null;
-
-function loadHighlighter(): Promise<typeof import("highlight.js/lib/core") | null> {
-  if (!_hljsPromise) {
-    _hljsPromise = Promise.all([
-      import("highlight.js/lib/core"),
-      import("highlight.js/lib/common"),
-    ])
-      .then(([core]) => {
-        _hljsMod = core;
-        return core;
-      })
-      .catch(() => null);
-  }
-  return _hljsPromise;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
 
 export interface KnowledgeFileItem {
   name: string;
@@ -82,13 +64,9 @@ export function KnowledgeScreen(): React.JSX.Element {
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const [expandedBundles, setExpandedBundles] = useState<Record<string, boolean>>({});
 
-  // @ mention autocomplete state
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const highlightRef = useRef<HTMLPreElement>(null);
-  const [hljsReady, setHljsReady] = useState(false);
-  const [mentionOpen, setMentionOpen] = useState(false);
-  const [mentionQuery, setMentionQuery] = useState("");
-  const [mentionStart, setMentionStart] = useState(0);
+  // @ mention autocomplete state (CodeMirror-driven)
+  const editorHostRef = useRef<HTMLDivElement | null>(null);
+  const editorViewRef = useRef<EditorView | null>(null);
   const [mentionCustomFolders, setMentionCustomFolders] = useState<string[]>(() => {
     try {
       const raw = localStorage.getItem("hermes.knowledge.custom_folders");
@@ -97,37 +75,6 @@ export function KnowledgeScreen(): React.JSX.Element {
       return [];
     }
   });
-
-  useEffect(() => {
-    let cancelled = false;
-    void loadHighlighter().then(() => {
-      if (!cancelled) setHljsReady(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // Syntax-highlighted HTML for the overlay <pre>; plain-escaped until the
-  // highlighter finishes loading or the content is too large to highlight
-  // per keystroke cheaply.
-  const highlightedHtml = useMemo(() => {
-    if (!hljsReady || !_hljsMod || fileContent.length > 200_000) {
-      return escapeHtml(fileContent);
-    }
-    try {
-      return _hljsMod.default.highlightAuto(fileContent).value;
-    } catch {
-      return escapeHtml(fileContent);
-    }
-  }, [fileContent, hljsReady]);
-
-  // Keep the overlay <pre> scroll in lockstep with the transparent textarea.
-  const syncHighlightScroll = useCallback((): void => {
-    const ta = textareaRef.current;
-    const pre = highlightRef.current;
-    if (ta && pre) pre.scrollTop = ta.scrollTop;
-  }, []);
 
   useEffect(() => {
     try {
@@ -185,10 +132,6 @@ export function KnowledgeScreen(): React.JSX.Element {
   }, [fileCustomFolderState]);
   const [disabledBundles, setDisabledBundles] = useState<Record<string, boolean>>({});
   const [showMentionSourcesPopover, setShowMentionSourcesPopover] = useState(false);
-  const [mentionResults, setMentionResults] = useState<
-    Array<{ name: string; path: string; isDirectory: boolean }>
-  >([]);
-  const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
 
   const activeFileKey = selectedFile
     ? `${selectedFile.bundleName}/${selectedFile.fileName}`
@@ -250,179 +193,193 @@ export function KnowledgeScreen(): React.JSX.Element {
     }));
   };
 
+  // Search bundles + custom folders + Everything for @ mention candidates.
+  const searchMentionMatches = useCallback(
+    async (
+      query: string,
+    ): Promise<Array<{ name: string; path: string; isDirectory: boolean }>> => {
+      const q = query.trim().toLowerCase();
+      let matches: Array<{ name: string; path: string; isDirectory: boolean }> =
+        [];
+
+      // 1. Add files from enabled knowledge bundles
+      for (const bundle of bundles) {
+        if (disabledBundles[bundle.name]) continue;
+        for (const file of bundle.files) {
+          if (
+            !q ||
+            file.name.toLowerCase().includes(q) ||
+            file.path.toLowerCase().includes(q)
+          ) {
+            matches.push({
+              name: file.name,
+              path: file.path,
+              isDirectory: false,
+            });
+          }
+        }
+      }
+
+      // 2. Add files from custom picked folders (global + per-file, filtered
+      // by per-file checkbox state — unchecked folders are hidden from @ mention).
+      const activeFileFolders = activeFileKey
+        ? fileCustomFolders[activeFileKey] ?? []
+        : [];
+      const searchFolders = [
+        ...new Set([...mentionCustomFolders, ...activeFileFolders]),
+      ].filter((folder) => {
+        if (!activeFileKey) return true; // global when no file selected
+        const fileState = fileCustomFolderState[activeFileKey] ?? {};
+        return fileState[folder] !== false; // unchecked → hidden
+      });
+      for (const folder of searchFolders) {
+        try {
+          const entries = await window.hermesAPI.listFilesRecursive(folder);
+          if (entries && Array.isArray(entries)) {
+            for (const en of entries) {
+              if (!q || en.name.toLowerCase().includes(q) || en.path.toLowerCase().includes(q)) {
+                matches.push({
+                  name: en.name,
+                  path: en.path,
+                  isDirectory: en.isDirectory,
+                });
+              }
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      // 3. Query Voidtools Everything (mirror ChatInput behavior)
+      if (window.hermesAPI.everythingSearch && q.length >= 2) {
+        try {
+          const ev = await window.hermesAPI.everythingSearch(q);
+          if (ev && Array.isArray(ev)) {
+            const seen = new Set(matches.map((m) => m.path));
+            for (const item of ev) {
+              if (!seen.has(item.path)) {
+                matches.push({
+                  name: item.name,
+                  path: item.path,
+                  isDirectory: item.isDirectory,
+                });
+                seen.add(item.path);
+              }
+            }
+          }
+        } catch {
+          /* Everything search unavailable or failed */
+        }
+      }
+
+      if (matches.length === 0) {
+        try {
+          const recent = await window.hermesAPI.listRecentSessionContextFolders(10);
+          if (recent && Array.isArray(recent)) {
+            const seen = new Set(matches.map((m) => m.path));
+            for (const p of recent) {
+              if (!seen.has(p)) {
+                const parts = p.split(/[\\/]/).filter(Boolean);
+                matches.push({
+                  name: parts.at(-1) || p,
+                  path: p,
+                  isDirectory: true,
+                });
+              }
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      return matches.slice(0, 20);
+    },
+    [
+      bundles,
+      disabledBundles,
+      activeFileKey,
+      fileCustomFolders,
+      mentionCustomFolders,
+      fileCustomFolderState,
+    ],
+  );
+
+  // CodeMirror autocomplete source for "@" file mentions.
+  const mentionCompletionSource = useCallback(
+    async (
+      ctx: CompletionContext,
+    ): Promise<CompletionResult | null> => {
+      const text = ctx.state.doc.toString();
+      const m = findMention(text, ctx.pos);
+      if (!m) return null;
+      const matches = await searchMentionMatches(m.query);
+      if (matches.length === 0) return null;
+      const options = matches.map((item) => ({
+        label: item.name,
+        detail: item.path,
+        type: item.isDirectory ? "folder" : "file",
+        apply: (view: EditorView, _completion: unknown, from: number, to: number) => {
+          view.dispatch({
+            changes: { from, to, insert: item.path + " " },
+            selection: { anchor: from + item.path.length + 1 },
+          });
+        },
+      }));
+      return { from: m.start, to: ctx.pos, options };
+    },
+    [searchMentionMatches],
+  );
+
+  // Keep the current file's content mirrored into `fileContent` state (the
+  // save path reads it) and sync doc replacements when a new file is opened.
+  const onEditorChange = useCallback(
+    (content: string) => {
+      setFileContent(content);
+    },
+    [],
+  );
+
   useEffect(() => {
-    if (!mentionOpen) return;
-    let cancelled = false;
-    const q = mentionQuery.trim().toLowerCase();
-
-    void (async () => {
-      try {
-        let matches: Array<{ name: string; path: string; isDirectory: boolean }> = [];
-
-        // 1. Add files from enabled knowledge bundles
-        for (const bundle of bundles) {
-          if (disabledBundles[bundle.name]) continue;
-          for (const file of bundle.files) {
-            if (
-              !q ||
-              file.name.toLowerCase().includes(q) ||
-              file.path.toLowerCase().includes(q)
-            ) {
-              matches.push({
-                name: file.name,
-                path: file.path,
-                isDirectory: false,
-              });
+    const host = editorHostRef.current;
+    if (!host) return;
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: fileContent,
+        extensions: [
+          basicSetup,
+          oneDark,
+          markdown({ codeLanguages: languages }),
+          autocompletion({ override: [mentionCompletionSource] }),
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) {
+              onEditorChange(update.state.doc.toString());
             }
-          }
-        }
-
-        // 2. Add files from custom picked folders (global + per-file, filtered
-        // by per-file checkbox state — unchecked folders are hidden from @ mention).
-        const activeFileFolders = activeFileKey
-          ? fileCustomFolders[activeFileKey] ?? []
-          : [];
-        const searchFolders = [
-          ...new Set([...mentionCustomFolders, ...activeFileFolders]),
-        ].filter((folder) => {
-          if (!activeFileKey) return true; // global when no file selected
-          const fileState = fileCustomFolderState[activeFileKey] ?? {};
-          return fileState[folder] !== false; // unchecked → hidden
-        });
-        for (const folder of searchFolders) {
-          try {
-            const entries = await window.hermesAPI.listFilesRecursive(folder);
-            if (entries && Array.isArray(entries)) {
-              for (const en of entries) {
-                if (!q || en.name.toLowerCase().includes(q) || en.path.toLowerCase().includes(q)) {
-                  matches.push({
-                    name: en.name,
-                    path: en.path,
-                    isDirectory: en.isDirectory,
-                  });
-                }
-              }
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-
-        // 3. Query Voidtools Everything (mirror ChatInput behavior)
-        if (window.hermesAPI.everythingSearch && q.length >= 2) {
-          try {
-            const ev = await window.hermesAPI.everythingSearch(q);
-            if (ev && Array.isArray(ev)) {
-              const seen = new Set(matches.map((m) => m.path));
-              for (const item of ev) {
-                if (!seen.has(item.path)) {
-                  matches.push({
-                    name: item.name,
-                    path: item.path,
-                    isDirectory: item.isDirectory,
-                  });
-                  seen.add(item.path);
-                }
-              }
-            }
-          } catch {
-            /* Everything search unavailable or failed */
-          }
-        }
-
-        if (matches.length === 0) {
-          try {
-            const recent = await window.hermesAPI.listRecentSessionContextFolders(10);
-            if (recent && Array.isArray(recent)) {
-              const seen = new Set(matches.map((m) => m.path));
-              for (const p of recent) {
-                if (!seen.has(p)) {
-                  const parts = p.split(/[\\/]/).filter(Boolean);
-                  matches.push({
-                    name: parts.at(-1) || p,
-                    path: p,
-                    isDirectory: true,
-                  });
-                }
-              }
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-
-        if (!cancelled) {
-          setMentionResults(matches.slice(0, 20));
-        }
-      } catch {
-        if (!cancelled) setMentionResults([]);
-      }
-    })();
-
+          }),
+        ],
+      }),
+    });
+    editorViewRef.current = view;
     return () => {
-      cancelled = true;
+      view.destroy();
+      editorViewRef.current = null;
     };
-  }, [mentionOpen, mentionQuery, bundles, mentionCustomFolders, disabledBundles]);
+    // Recreate when the host appears (loading → editing) or the file changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFile?.path, loading]);
 
-  const handleTextareaCaret = (
-    e: React.SyntheticEvent<HTMLTextAreaElement>,
-  ) => {
-    const target = e.currentTarget;
-    const caret = target.selectionStart;
-    const m = findMention(target.value, caret);
-    if (m) {
-      setMentionOpen(true);
-      setMentionStart(m.start);
-      setMentionQuery(m.query);
-      setMentionSelectedIndex(0);
-    } else {
-      setMentionOpen(false);
-    }
-  };
-
-  const insertFileMention = (entry: { name: string; path: string }) => {
-    const textarea = textareaRef.current;
-    const caret = textarea?.selectionStart ?? fileContent.length;
-    const before = fileContent.slice(0, mentionStart);
-    const after = fileContent.slice(caret);
-    const inserted = entry.path;
-    const next = before + inserted + " " + after;
-    setFileContent(next);
-    setMentionOpen(false);
-
-    setTimeout(() => {
-      if (textarea) {
-        const newPos = mentionStart + inserted.length + 1;
-        textarea.selectionStart = newPos;
-        textarea.selectionEnd = newPos;
-        textarea.focus();
-      }
-    }, 0);
-  };
-
-  const handleTextareaKeyDown = (
-    e: React.KeyboardEvent<HTMLTextAreaElement>,
-  ) => {
-    if (!mentionOpen || mentionResults.length === 0) return;
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setMentionSelectedIndex((i) => (i + 1) % mentionResults.length);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setMentionSelectedIndex(
-        (i) => (i - 1 + mentionResults.length) % mentionResults.length,
-      );
-    } else if (e.key === "Enter" || e.key === "Tab") {
-      e.preventDefault();
-      const selected = mentionResults[mentionSelectedIndex];
-      if (selected) {
-        insertFileMention(selected);
-      }
-    } else if (e.key === "Escape") {
-      setMentionOpen(false);
-    }
-  };
+  // External content changes (file switch, save-as, focus refresh) replace
+  // the editor doc without moving the caret to the start.
+  useEffect(() => {
+    const view = editorViewRef.current;
+    if (!view) return;
+    if (view.state.doc.toString() === fileContent) return;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: fileContent },
+    });
+  }, [fileContent]);
 
   const reloadBundles = useCallback(async () => {
     try {
@@ -679,34 +636,7 @@ export function KnowledgeScreen(): React.JSX.Element {
         {/* Left Tree Pane */}
         <div className="knowledge-sidebar" style={{ position: "relative" }}>
           <div className="knowledge-sidebar-title">Global Knowledge Bundles</div>
-          {bundles.length === 0 ? null : mentionOpen && mentionResults.length > 0 ? (
-            <div
-              className="knowledge-mention-dropdown"
-              role="listbox"
-              aria-label="File mention suggestions"
-              onMouseDown={(e) => e.preventDefault()}
-            >
-              {mentionResults.map((item, idx) => (
-                <div
-                  key={item.path}
-                  className={`knowledge-mention-item ${
-                    idx === mentionSelectedIndex ? "active" : ""
-                  }`}
-                  role="option"
-                  aria-selected={idx === mentionSelectedIndex}
-                  onClick={() => insertFileMention(item)}
-                  onMouseEnter={() => setMentionSelectedIndex(idx)}
-                >
-                  {item.isDirectory ? <Folder size={13} /> : <FileText size={13} />}
-                  <span className="knowledge-mention-item-name">{item.name}</span>
-                  <span className="knowledge-mention-item-path" title={item.path}>
-                    {item.path}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="knowledge-bundle-list">
+          <div className="knowledge-bundle-list">
               {bundles.map((bundle) => {
                 const isExpanded = expandedBundles[bundle.name] ?? true;
                 return (
@@ -854,7 +784,6 @@ export function KnowledgeScreen(): React.JSX.Element {
                 );
               })}
             </div>
-          )}
         </div>
 
         {/* Right Editor Pane */}
@@ -997,30 +926,10 @@ export function KnowledgeScreen(): React.JSX.Element {
                 {loading ? (
                   <div className="editor-loading">Loading content...</div>
                 ) : isEditing ? (
-                  <>
-                    <pre
-                      ref={highlightRef}
-                      className="knowledge-highlight"
-                      aria-hidden="true"
-                    >
-                      <code dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
-                    </pre>
-                    <textarea
-                      ref={textareaRef}
-                      className="knowledge-textarea"
-                      value={fileContent}
-                      onChange={(e) => {
-                        setFileContent(e.target.value);
-                        handleTextareaCaret(e);
-                        syncHighlightScroll();
-                      }}
-                      onKeyUp={handleTextareaCaret}
-                      onClick={handleTextareaCaret}
-                      onScroll={syncHighlightScroll}
-                      onKeyDown={handleTextareaKeyDown}
-                      placeholder="Type knowledge notes, guidelines, or preferences (use @ to search file paths)..."
-                    />
-                  </>
+                  <div
+                    className="knowledge-cm-host"
+                    ref={editorHostRef}
+                  />
                 ) : (
                   <div className="knowledge-markdown-preview">
                     <pre>{fileContent}</pre>
