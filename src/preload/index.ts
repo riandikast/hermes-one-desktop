@@ -1595,6 +1595,38 @@ const hermesAPI = {
     ipcRenderer.invoke("delete-knowledge-file", bundleName, fileName),
   importKnowledgeFolder: (sourceFolderPath: string, bundleName: string) =>
     ipcRenderer.invoke("import-knowledge-folder", sourceFolderPath, bundleName),
+  listCommands: () => ipcRenderer.invoke("commands:list"),
+  saveCommand: (record: {
+    id: string;
+    name: string;
+    command: string;
+    description: string;
+    cwd: string;
+    createdAt: number;
+    updatedAt: number;
+  }) => ipcRenderer.invoke("commands:save", record),
+  deleteCommand: (id: string) => ipcRenderer.invoke("commands:delete", id),
+  terminalCreate: (payload: { cwd: string; cols: number; rows: number }) =>
+    ipcRenderer.invoke("terminal:create", payload),
+  terminalWrite: (payload: { id: string; data: string }) =>
+    ipcRenderer.invoke("terminal:write", payload),
+  terminalResize: (payload: { id: string; cols: number; rows: number }) =>
+    ipcRenderer.invoke("terminal:resize", payload),
+  terminalKill: (id: string) => ipcRenderer.invoke("terminal:kill", id),
+  commandRun: (payload: { commandId: string; cwd: string; command: string }) =>
+    ipcRenderer.invoke("command:run", payload),
+  onTerminalData: (callback: (payload: { id: string; data: string }) => void) => {
+    const listener = (_e: unknown, payload: { id: string; data: string }): void =>
+      callback(payload);
+    ipcRenderer.on("terminal:data", listener);
+    return () => ipcRenderer.removeListener("terminal:data", listener);
+  },
+  onTerminalExit: (callback: (payload: { id: string }) => void) => {
+    const listener = (_e: unknown, payload: { id: string }): void =>
+      callback(payload);
+    ipcRenderer.on("terminal:exit", listener);
+    return () => ipcRenderer.removeListener("terminal:exit", listener);
+  },
   readImageFile: (filePath: string): Promise<string | null> =>
     ipcRenderer.invoke("read-image-file", filePath),
   kanbanAssignTask: (

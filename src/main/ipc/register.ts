@@ -62,6 +62,22 @@ import {
   buildKnowledgeIndex,
 } from "../knowledge";
 import {
+  deleteCommand,
+  listCommands,
+  saveCommand,
+  type CommandRecord,
+} from "../command-store";
+import {
+  buildFeedLine,
+  createTerminalSession,
+  killSession,
+  resolveShellExecutable,
+  resizeSession,
+  shellKindFor,
+  writeToSession,
+} from "../terminal-session";
+import { scheduleScriptCleanup, writeTempScript } from "../run-command";
+import {
   getGpuStatus,
   reenableGpuAndRelaunch,
   setGpuPreference,
@@ -3030,6 +3046,106 @@ export function registerIpcHandlers(context: IpcContext): void {
     async (_event, bundleNames: string[]) => {
       if (!Array.isArray(bundleNames) || bundleNames.length === 0) return "";
       return buildKnowledgeIndex(bundleNames).catch(() => "");
+    },
+  );
+
+  // ── Commands store ─────────────────────────────────────────────────
+  ipcMain.handle("commands:list", async () => {
+    return listCommands();
+  });
+
+  ipcMain.handle(
+    "commands:save",
+    async (_event, record: CommandRecord) => {
+      return saveCommand(record);
+    },
+  );
+
+  ipcMain.handle("commands:delete", async (_event, id: string) => {
+    return deleteCommand(id);
+  });
+
+  // ── Built-in terminal sessions ─────────────────────────────────────
+  ipcMain.handle(
+    "terminal:create",
+    async (
+      _event,
+      payload: { cwd: string; cols: number; rows: number },
+    ) => {
+      const shell = resolveShellExecutable();
+      const id = createTerminalSession(
+        shell,
+        payload.cwd || process.cwd(),
+        Math.max(payload.cols, 40),
+        Math.max(payload.rows, 10),
+        (data) => {
+          if (!_event.sender.isDestroyed()) {
+            _event.sender.send("terminal:data", { id, data });
+          }
+        },
+        (deadId) => {
+          if (!_event.sender.isDestroyed()) {
+            _event.sender.send("terminal:exit", { id: deadId });
+          }
+        },
+      );
+      return { id, shell };
+    },
+  );
+
+  ipcMain.handle(
+    "terminal:write",
+    async (_event, payload: { id: string; data: string }) => {
+      try {
+        writeToSession(payload.id, payload.data);
+        return { ok: true };
+      } catch {
+        return { ok: false };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "terminal:resize",
+    async (_event, payload: { id: string; cols: number; rows: number }) => {
+      resizeSession(payload.id, payload.cols, payload.rows);
+      return { ok: true };
+    },
+  );
+
+  ipcMain.handle("terminal:kill", async (_event, id: string) => {
+    killSession(id);
+    return { ok: true };
+  });
+
+  ipcMain.handle(
+    "command:run",
+    async (
+      _event,
+      payload: { commandId: string; cwd: string; command: string },
+    ) => {
+      const shell = resolveShellExecutable();
+      const kind = shellKindFor(shell);
+      const scriptPath = await writeTempScript(payload.command, kind);
+      scheduleScriptCleanup(scriptPath);
+      const id = createTerminalSession(
+        shell,
+        payload.cwd || process.cwd(),
+        80,
+        24,
+        (data) => {
+          if (!_event.sender.isDestroyed()) {
+            _event.sender.send("terminal:data", { id, data });
+          }
+        },
+        (deadId) => {
+          if (!_event.sender.isDestroyed()) {
+            _event.sender.send("terminal:exit", { id: deadId });
+          }
+        },
+      );
+      writeToSession(id, buildFeedLine(scriptPath, kind));
+      return { id, shell };
     },
   );
 

@@ -1144,6 +1144,34 @@ interface HermesAPI {
     sourceFolderPath: string,
     bundleName: string,
   ) => Promise<{ name: string; path: string }>;
+  listCommands: () => Promise<
+    {
+      id: string;
+      name: string;
+      command: string;
+      description: string;
+      cwd: string;
+      createdAt: number;
+      updatedAt: number;
+    }[]
+  >;
+  saveCommand: (record: {
+    id: string;
+    name: string;
+    command: string;
+    description: string;
+    cwd: string;
+    createdAt: number;
+    updatedAt: number;
+  }) => Promise<{ id: string; name: string; command: string; description: string; cwd: string; createdAt: number; updatedAt: number }>;
+  deleteCommand: (id: string) => Promise<boolean>;
+  terminalCreate: (payload: { cwd: string; cols: number; rows: number }) => Promise<{ id: string; shell: string }>;
+  terminalWrite: (payload: { id: string; data: string }) => Promise<{ ok: boolean }>;
+  terminalResize: (payload: { id: string; cols: number; rows: number }) => Promise<{ ok: boolean }>;
+  terminalKill: (id: string) => Promise<{ ok: boolean }>;
+  commandRun: (payload: { commandId: string; cwd: string; command: string }) => Promise<{ id: string; shell: string }>;
+  onTerminalData: (callback: (payload: { id: string; data: string }) => void) => () => void;
+  onTerminalExit: (callback: (payload: { id: string }) => void) => () => void;
   readImageFile: (filePath: string) => Promise<string | null>;
   kanbanAssignTask: (
     taskId: string,
