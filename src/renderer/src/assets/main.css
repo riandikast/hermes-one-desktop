@@ -18475,3 +18475,159 @@ body:has(.shell-vibrant),
 .terminal-dock-body { flex: 1; min-height: 0; padding: 6px 8px; position: relative; }
 .terminal-dock-pane { position: absolute; inset: 6px 8px; display: none; }
 .terminal-dock-body .xterm { height: 100%; }
+/* ── File-changes summary dialog ── */
+.file-changes-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.file-changes-dialog {
+  width: min(900px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+.file-changes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.file-changes-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+.file-changes-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+.file-changes-list {
+  width: 260px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.file-changes-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+}
+.file-changes-item.active {
+  background: var(--accent-subtle);
+  color: var(--text-primary);
+}
+.file-changes-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.file-changes-item-stats {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.file-changes-diff {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.file-changes-diff-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.file-changes-diff-file {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.file-changes-diff-stats {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.file-changes-diff-panes {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.file-changes-pane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+}
+.file-changes-pane:last-child {
+  border-right: none;
+}
+.file-changes-pane-title {
+  padding: 6px 12px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+.file-changes-code {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #282c34;
+}
+.file-changes-code .cm-editor {
+  height: 100%;
+  font-size: 12.5px;
+}
+.file-changes-code .cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.55;
+}
+
+/* Badge on assistant bubbles */
+.chat-file-changes-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.chat-file-changes-badge:hover {
+  background: var(--accent-subtle);
+  color: var(--text-primary);
+}
