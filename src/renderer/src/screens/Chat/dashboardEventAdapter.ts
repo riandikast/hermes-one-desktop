@@ -13,6 +13,13 @@ export interface DashboardEventState {
   reasoningSegmentClosed: boolean;
 }
 
+/** Tool names that mutate files — captured for the file-changes summary. */
+export const WRITE_TOOL_NAMES = [
+  "write_file", "edit_file", "patch_file", "create_file", "delete_file",
+  "move_file", "copy_file", "rename_file", "apply_patch", "str_replace",
+  "save_file",
+];
+
 interface ApplyDashboardEventOptions {
   activeTurn?: ActiveTurn | null;
   now?: number;

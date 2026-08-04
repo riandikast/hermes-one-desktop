@@ -8,11 +8,19 @@ import {
 import {
   applyDashboardStreamEvent,
   type DashboardStreamEvent,
+  WRITE_TOOL_NAMES,
 } from "../dashboardEventAdapter";
+import { extractToolPath } from "../fileChanges";
 import { DashboardGatewayClient } from "../dashboardGatewayClient";
 import { executeSlash, type SlashExecOutcome } from "../slashExec";
 import type { AgentCommandsCatalogResponse } from "../slash/types";
-import type { ActiveTurn, Attachment, ChatMessage, UsageState } from "../types";
+import type {
+  ActiveTurn,
+  Attachment,
+  ChatMessage,
+  FileChange,
+  UsageState,
+} from "../types";
 import type { DesktopSessionContinuationItem } from "../../../../../shared/session-continuation";
 
 interface SessionResponse {
@@ -944,6 +952,10 @@ export function useDashboardChatTransport({
   const appliedModelRef = useRef<string | null>(null);
   const recreateRuntimeSessionRef = useRef(false);
   const lastRuntimeSessionWasCreatedRef = useRef(false);
+  // Per-turn file-change capture: path → latest before/after pair. Reset on
+  // each new user turn; attached to the assistant bubble on message.complete.
+  const fileChangesRef = useRef<Map<string, FileChange>>(new Map());
+  const pendingFileChangeCallIdRef = useRef<string>("");
   const pendingClarifyRequestIdRef = useRef<string | null>(null);
   const pendingRecoveredContinuationRef = useRef<
     DesktopSessionContinuationItem[]
@@ -1114,6 +1126,73 @@ export function useDashboardChatTransport({
         }
       }
 
+      // FILE-CHANGES: snapshot the file before a write tool runs.
+      if (
+        event.type === "tool.start" &&
+        event.payload &&
+        typeof event.payload === "object"
+      ) {
+        const toolName = String(
+          (event.payload as { name?: string; tool_name?: string }).name ||
+          (event.payload as { tool_name?: string }).tool_name || "",
+        ).toLowerCase();
+        if (WRITE_TOOL_NAMES.some((w) => toolName.includes(w))) {
+          const args = (event.payload as { args?: unknown }).args;
+          const path = extractToolPath(args);
+          const callId = String(
+            (event.payload as { tool_id?: string }).tool_id ||
+            (event.payload as { tool_call_id?: string }).tool_call_id || "",
+          );
+          if (path && !fileChangesRef.current.has(path)) {
+            // Record before-content (best-effort; null when the file
+            // doesn't exist yet → created).
+            void window.hermesAPI
+              .readFile(path)
+              .then((res) => {
+                const existing = fileChangesRef.current.get(path);
+                if (existing?.after !== undefined) return; // already completed
+                fileChangesRef.current.set(path, {
+                  path,
+                  before: res?.content ?? null,
+                  after: null,
+                });
+                if (callId) pendingFileChangeCallIdRef.current = callId;
+              })
+              .catch(() => undefined);
+          }
+        }
+      }
+
+      // FILE-CHANGES: read the after-content when a write tool completes.
+      if (
+        event.type === "tool.complete" &&
+        event.payload &&
+        typeof event.payload === "object"
+      ) {
+        const callId = String(
+          (event.payload as { tool_id?: string }).tool_id ||
+          (event.payload as { tool_call_id?: string }).tool_call_id || "",
+        );
+        if (callId && pendingFileChangeCallIdRef.current === callId) {
+          pendingFileChangeCallIdRef.current = "";
+          // Read after-content for every path captured this turn whose
+          // after is still null (the just-completed write).
+          for (const [path, change] of fileChangesRef.current) {
+            if (change.after !== null) continue;
+            void window.hermesAPI
+              .readFile(path)
+              .then((res) => {
+                fileChangesRef.current.set(path, {
+                  path,
+                  before: change.before,
+                  after: res?.content ?? null,
+                });
+              })
+              .catch(() => undefined);
+          }
+        }
+      }
+
       const next = applyDashboardStreamEvent(
         {
           messages: messagesRef.current,
@@ -1163,6 +1242,30 @@ export function useDashboardChatTransport({
         activeTurnRef.current = null;
         setToolProgress(null);
         setIsLoading(false);
+        // FILE-CHANGES: attach the accumulated changes to the finished bubble.
+        if (fileChangesRef.current.size > 0) {
+          const changes = Array.from(fileChangesRef.current.values()).filter(
+            (c) => c.after !== null || c.before !== null,
+          );
+          if (changes.length > 0) {
+            setMessages((prev) => {
+              const idx = prev.length - 1;
+              const last = prev[idx];
+              if (last && last.role === "agent" && "content" in last) {
+                const next = [...prev];
+                next[idx] = {
+                  ...last,
+                  fileChanges: changes,
+                } as ChatMessage;
+                messagesRef.current = next;
+                return next;
+              }
+              return prev;
+            });
+          }
+          fileChangesRef.current = new Map();
+          pendingFileChangeCallIdRef.current = "";
+        }
         const usage = usageFromPayload(event.payload);
         if (usage || !failed) {
           // The gauge only renders when `contextTokens` is set, so it must be
@@ -1559,6 +1662,9 @@ export function useDashboardChatTransport({
   const sendMessage = useCallback(
     async (text: string, attachments?: Attachment[]): Promise<boolean> => {
       if (!enabled) return false;
+      // FILE-CHANGES: a new user turn starts a fresh accumulator.
+      fileChangesRef.current = new Map();
+      pendingFileChangeCallIdRef.current = "";
       const pendingClarifyRequestId = pendingClarifyRequestIdRef.current;
       if (pendingClarifyRequestId) {
         pendingClarifyRequestIdRef.current = null;
