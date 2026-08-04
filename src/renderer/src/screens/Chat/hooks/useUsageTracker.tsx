@@ -29,20 +29,27 @@ export interface UsageRecord {
 const STORAGE_KEY = "hermes.usage.history.v1";
 const MAX_RECORDS = 2000;
 
-/** De-duplicate by `input+output` token sum within a 750ms window — the
- *  gateway can emit two usage events for one turn (preview + final) and we
- *  don't want both rows in the table. */
-function dedupeAndTrim(records: UsageRecord[]): UsageRecord[] {
+/**
+ * Collapse duplicate records: the gateway can emit preview+final usage for
+ * one turn, and the pre-fix recordUsage loop wrote a duplicate every 750ms
+ * while a turn streamed (same values, seconds apart). Collapse any run of
+ * records with identical model + input/output tokens within a 10s window —
+ * real consecutive turns are far apart and differ in at least one field.
+ */
+export function dedupeAndTrim(records: UsageRecord[]): UsageRecord[] {
   const out: UsageRecord[] = [];
   let last: UsageRecord | null = null;
   for (const r of records) {
     if (
       last &&
-      Math.abs(new Date(r.timestamp).getTime() - new Date(last.timestamp).getTime()) < 750 &&
-      r.inputTokens === last.inputTokens &&
-      r.outputTokens === last.outputTokens
+      last.model === r.model &&
+      last.inputTokens === r.inputTokens &&
+      last.outputTokens === r.outputTokens &&
+      Math.abs(
+        new Date(r.timestamp).getTime() - new Date(last.timestamp).getTime(),
+      ) < 10_000
     ) {
-      // Skip duplicate preview/final pair.
+      // Duplicate preview/final pair or legacy loop spam — skip.
       continue;
     }
     out.push(r);
@@ -58,7 +65,13 @@ function load(): UsageRecord[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return dedupeAndTrim(parsed as UsageRecord[]);
+    const next = dedupeAndTrim(parsed as UsageRecord[]);
+    // Persist the cleanup immediately so the corrupted history doesn't keep
+    // re-loading (and re-inflating the totals) on every app start.
+    if (next.length !== (parsed as UsageRecord[]).length) {
+      save(next);
+    }
+    return next;
   } catch {
     return [];
   }

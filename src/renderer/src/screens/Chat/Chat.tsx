@@ -447,10 +447,12 @@ function Chat({
       model: chatCurrentModel || "unknown",
       inputTokens: usage.promptTokens,
       outputTokens: usage.completionTokens,
-      totalTokens: usage.totalTokens,
+      // Store input+output so the page's Grand total, per-model breakdown,
+      // activity strip, and table Total column all agree (the payload's own
+      // `total` can differ from input+output).
+      totalTokens: usage.promptTokens + usage.completionTokens,
       contextTokens: usage.contextTokens,
       contextMax: usage.contextWindowTokens,
-      cost: usage.cost,
     });
     // Reset the throttle on session/profile change so a new session isn't
     // suppressed by an old throttle window.

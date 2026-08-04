@@ -5,7 +5,6 @@ import {
   Activity,
   ArrowDownRight,
   ArrowUpRight,
-  DollarSign,
   Layers,
   Brain,
   Calendar,
@@ -200,7 +199,7 @@ export default function Usage(): React.JSX.Element {
           </div>
           <h2 className="usage-hero-title">{t("navigation.usage")} Dashboard</h2>
           <p className="usage-hero-sub">
-            Track every model response: input/output tokens, cost and context
+            Track every model response: input/output tokens and context
             occupancy, in real time.
           </p>
         </div>
@@ -254,12 +253,6 @@ export default function Usage(): React.JSX.Element {
           value={fmtTokens(totals.totalTokens)}
           tone="total"
           sub="input + output"
-        />
-        <StatCard
-          icon={DollarSign}
-          label="Estimated cost"
-          value={`$${totals.totalCost.toFixed(4)}`}
-          tone="cost"
         />
         <StatCard
           icon={Brain}
@@ -320,7 +313,6 @@ export default function Usage(): React.JSX.Element {
                 <th className="usage-table-num">Output</th>
                 <th className="usage-table-num">Total</th>
                 <th className="usage-table-num">Context</th>
-                <th className="usage-table-num">Cost</th>
               </tr>
             </thead>
             <tbody>
@@ -346,9 +338,6 @@ export default function Usage(): React.JSX.Element {
                       : r.contextTokens
                         ? fmtTokens(r.contextTokens)
                         : "—"}
-                  </td>
-                  <td className="usage-table-num">
-                    {r.cost !== undefined ? `$${r.cost.toFixed(4)}` : "—"}
                   </td>
                 </tr>
               ))}
