@@ -431,6 +431,10 @@ function Chat({
   // preview+final pairs from the gateway so the table doesn't show
   // duplicates for the same turn.
   const lastRecordedAt = useRef<number>(0);
+  // `recordUsage` is a stable useCallback; the hook's returned object is NOT
+  // (new identity every render) — using the object in deps would re-fire this
+  // effect on every render, causing a setState loop and app-wide lag.
+  const { recordUsage } = usageTracker;
   useEffect(() => {
     if (!usage) return;
     if (usage.promptTokens === 0 && usage.completionTokens === 0) return;
@@ -438,7 +442,7 @@ function Chat({
     // De-dupe bursts (e.g. dashboard preview + final within 750ms).
     if (now - lastRecordedAt.current < 750) return;
     lastRecordedAt.current = now;
-    usageTracker.recordUsage({
+    recordUsage({
       provider: chatCurrentProvider || "default",
       model: chatCurrentModel || "unknown",
       inputTokens: usage.promptTokens,
@@ -454,7 +458,7 @@ function Chat({
     usage,
     chatCurrentProvider,
     chatCurrentModel,
-    usageTracker,
+    recordUsage,
   ]);
 
   // Restore the model/provider linked to a resumed session. The saved value is

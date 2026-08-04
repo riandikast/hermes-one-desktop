@@ -18486,8 +18486,9 @@ body:has(.shell-vibrant),
   justify-content: center;
 }
 .file-changes-dialog {
-  width: min(900px, 92vw);
-  max-height: 80vh;
+  width: 96vw;
+  max-width: 1600px;
+  height: 94vh;
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);
@@ -18513,7 +18514,7 @@ body:has(.shell-vibrant),
   flex: 1;
 }
 .file-changes-list {
-  width: 260px;
+  width: 300px;
   flex-shrink: 0;
   overflow-y: auto;
   border-right: 1px solid var(--border);
@@ -18578,15 +18579,28 @@ body:has(.shell-vibrant),
   min-height: 0;
   display: grid;
   grid-template-columns: 1fr 1fr;
+  grid-template-rows: minmax(0, 1fr);
 }
 .file-changes-pane {
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border);
 }
 .file-changes-pane:last-child {
   border-right: none;
+}
+.file-changes-pane-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-muted);
 }
 .file-changes-pane-title {
   padding: 6px 12px;

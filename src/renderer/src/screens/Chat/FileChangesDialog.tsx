@@ -84,7 +84,14 @@ export function FileChangesDialog({
               <div className="file-changes-diff-panes">
                 <div className="file-changes-pane">
                   <div className="file-changes-pane-title">Before</div>
-                  <ReadOnlyCode content={selected.before ?? ""} />
+                  {selected.before !== null || selected.beforeKnown ? (
+                    <ReadOnlyCode content={selected.before ?? ""} />
+                  ) : (
+                    <div className="file-changes-pane-empty">
+                      Before not captured — the file content was read after
+                      the tool completed.
+                    </div>
+                  )}
                 </div>
                 <div className="file-changes-pane">
                   <div className="file-changes-pane-title">After</div>
