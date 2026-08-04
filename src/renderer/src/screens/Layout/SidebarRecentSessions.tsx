@@ -18,6 +18,7 @@ import {
   MoreHorizontal,
   Pin,
   X,
+  Bot,
 } from "../../assets/icons";
 import SidebarSessionMenu, {
   type SidebarMenuProject,
@@ -35,6 +36,8 @@ interface RecentSession {
   title: string;
   contextFolder?: string | null;
   contextFolders?: string[];
+  /** Set for subagent/branch runs — hidden from the default list. */
+  parentSessionId?: string | null;
 }
 
 // ChatGPT-style paged conversation list under the pinned app navigation.
@@ -53,6 +56,9 @@ const PROJECTS_OPEN_KEY = "hermes.sidebar.projectsOpen";
 const CHATS_OPEN_KEY = "hermes.sidebar.chatsOpen";
 const FOLDERS_CLOSED_KEY = "hermes.sidebar.closedProjectFolders";
 const PINNED_OPEN_KEY = "hermes.sidebar.pinnedOpen";
+// Subagent runs (parentSessionId set) are filtered from the default list;
+// the toggle reveals them so they stay deletable.
+const SHOW_SUBAGENT_RUNS_KEY = "hermes.sidebar.showSubagentRuns";
 // Pinned session ids live in localStorage like the disclosure state — pinning
 // is a desktop-only UI affordance, not part of the agent session schema.
 const PINNED_IDS_KEY = "hermes.sidebar.pinnedSessions";
@@ -91,6 +97,16 @@ function readStoredOpen(key: string): boolean {
     return localStorage.getItem(key) !== "false";
   } catch {
     return true;
+  }
+}
+
+function readStoredBool(key: string, defaultValue: boolean): boolean {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return defaultValue;
+    return raw === "true";
+  } catch {
+    return defaultValue;
   }
 }
 
@@ -219,6 +235,11 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   const [pinnedOpen, setPinnedOpen] = useState(() =>
     readStoredOpen(PINNED_OPEN_KEY),
   );
+  // Subagent/branch runs are hidden by default; the toggle reveals them
+  // (with delete support) so nothing becomes unreachable.
+  const [showSubagentRuns, setShowSubagentRuns] = useState(() =>
+    readStoredBool(SHOW_SUBAGENT_RUNS_KEY, false),
+  );
   // Row whose context menu is open, anchored to viewport coordinates.
   const [menuTarget, setMenuTarget] = useState<SidebarMenuTarget | null>(null);
   // Inline rename: the row id being edited and its working title.
@@ -272,6 +293,14 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     storePinned(pinnedIds);
   }, [pinnedIds]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(SHOW_SUBAGENT_RUNS_KEY, String(showSubagentRuns));
+    } catch {
+      /* ignore */
+    }
+  }, [showSubagentRuns]);
+
   const normalizeRows = useCallback<
     (
       list: Array<{
@@ -279,28 +308,42 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
         title: string;
         contextFolder?: string | null;
         contextFolders?: string[];
+        parentSessionId?: string | null;
       }>,
       limit?: number,
     ) => RecentSession[]
   >(
     (list, limit = RECENT_SESSIONS_PAGE_SIZE) =>
-      list.slice(0, limit).map(({ id, title, contextFolder, contextFolders }) => {
-        const folder =
-          (Array.isArray(contextFolders) && contextFolders[0]) ||
-          contextFolder ||
-          null;
-        return {
-          id,
-          title,
-          contextFolder: folder?.trim() || null,
-          contextFolders: Array.isArray(contextFolders)
-            ? contextFolders
-            : folder
-              ? [folder]
-              : [],
-        };
-      }),
-    [],
+      // Subagent runs stay out of the default list; the toggle reveals them.
+      list
+        .filter((s) => showSubagentRuns || !s.parentSessionId)
+        .slice(0, limit)
+        .map(
+          ({
+            id,
+            title,
+            contextFolder,
+            contextFolders,
+            parentSessionId,
+          }) => {
+            const folder =
+              (Array.isArray(contextFolders) && contextFolders[0]) ||
+              contextFolder ||
+              null;
+            return {
+              id,
+              title,
+              contextFolder: folder?.trim() || null,
+              contextFolders: Array.isArray(contextFolders)
+                ? contextFolders
+                : folder
+                  ? [folder]
+                  : [],
+              parentSessionId: parentSessionId ?? null,
+            };
+          },
+        ),
+    [showSubagentRuns],
   );
 
   const applyFirstPage = useCallback(
@@ -916,7 +959,16 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             fill={active ? "currentColor" : "none"}
           />
         )}
-        <span className="sidebar-recent-session-title">{title}</span>
+        <span className="sidebar-recent-session-title">
+          {s.parentSessionId && (
+            <Bot
+              className="sidebar-recent-session-sub"
+              size={10}
+              aria-label="Subagent run"
+            />
+          )}
+          {title}
+        </span>
         <button
           type="button"
           className="sidebar-recent-session-options"
@@ -1151,6 +1203,23 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                 size={13}
               />
             )}
+          </button>
+          <button
+            type="button"
+            className={`sidebar-recent-filter-toggle ${
+              showSubagentRuns ? "active" : ""
+            }`}
+            onClick={() => setShowSubagentRuns((v) => !v)}
+            title={
+              showSubagentRuns
+                ? "Hide subagent runs"
+                : "Show subagent runs (hidden by default)"
+            }
+            aria-label="Toggle subagent runs"
+            aria-pressed={showSubagentRuns}
+            tabIndex={expanded ? 0 : -1}
+          >
+            <Bot size={12} />
           </button>
           <div
             className={`sidebar-recent-collapse ${chatsOpen ? "expanded" : ""}`}

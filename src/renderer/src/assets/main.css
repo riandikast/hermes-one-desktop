@@ -3174,6 +3174,45 @@ body:has(.shell-vibrant),
   white-space: nowrap;
 }
 
+/* Show-subagent-runs filter button, inline with the Chats section header */
+.sidebar-recent-filter-toggle {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 6px 12px 0 0;
+  margin-left: auto;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.45;
+  transition:
+    opacity var(--transition),
+    color var(--transition),
+    background var(--transition),
+    border-color var(--transition);
+}
+.sidebar-recent-filter-toggle:hover {
+  opacity: 1;
+  color: var(--text-secondary);
+}
+.sidebar-recent-filter-toggle.active {
+  opacity: 1;
+  color: var(--accent-text);
+  border-color: var(--border);
+  background: var(--accent-subtle);
+}
+
+/* Subagent indicator on sidebar session rows */
+.sidebar-recent-session-sub {
+  margin-right: 5px;
+  color: var(--accent-text);
+  vertical-align: -1px;
+}
+
 .sidebar-recent-disclosure-icon {
   margin-left: auto;
   color: var(--text-muted);
@@ -13228,6 +13267,50 @@ body:has(.shell-vibrant),
 .sessions-searchbar-clear {
   padding: 2px;
   color: var(--text-muted);
+}
+
+/* Subagent filter + auto-GC controls */
+.sessions-filters {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 2px 2px 10px;
+  flex-wrap: wrap;
+}
+.sessions-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.sessions-filter-toggle input {
+  accent-color: var(--accent-text);
+  margin: 0;
+}
+.sessions-gc-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.sessions-gc-control select {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  font-size: 12px;
+}
+.sessions-tag--subagent {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--accent-text);
+  border-color: var(--accent-subtle);
 }
 
 /* Loading & empty states */

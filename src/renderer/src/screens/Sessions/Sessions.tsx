@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo, memo } from "react";
-import { Plus, Search, X, ChatBubble, Trash, Pencil } from "../../assets/icons";
+import { Plus, Search, X, ChatBubble, Trash, Pencil, Bot } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
 import { OrbLoader } from "../../components/OrbLoader";
 
@@ -10,6 +10,9 @@ interface CachedSession {
   source: string;
   messageCount: number;
   model: string;
+  /** Set for subagent/branch runs — hidden behind the "Show subagent runs"
+   *  filter and flagged with a badge on the card. */
+  parentSessionId?: string | null;
 }
 
 interface SearchResult {
@@ -235,6 +238,12 @@ const SessionCard = memo(function SessionCard({
         <span className="sessions-tag sessions-tag--source">
           {session.source}
         </span>
+        {session.parentSessionId && (
+          <span className="sessions-tag sessions-tag--subagent">
+            <Bot size={10} />
+            subagent
+          </span>
+        )}
         <span className="sessions-tag">
           {session.messageCount} msg{session.messageCount !== 1 ? "s" : ""}
         </span>
@@ -319,6 +328,17 @@ function Sessions({
   const loadRequestId = useRef(0);
   const searchRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  // Subagent/branch runs are hidden by default; the filter reveals them.
+  const [showSubagentRuns, setShowSubagentRuns] = useState(false);
+  // Auto-GC interval for old subagent runs (0 = off). Loaded from main.
+  const [subagentGcDays, setSubagentGcDays] = useState(0);
+
+  useEffect(() => {
+    void window.hermesAPI
+      .getSubagentGcDays()
+      .then((days) => setSubagentGcDays(days))
+      .catch(() => undefined);
+  }, []);
 
   // Rename state
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -365,6 +385,14 @@ function Sessions({
       }
     }
   }, []);
+
+  const changeGcDays = useCallback((days: number): void => {
+    setSubagentGcDays(days);
+    void window.hermesAPI
+      .setSubagentGcDays(days)
+      .then(() => refreshSessions())
+      .catch(() => undefined);
+  }, [refreshSessions]);
 
   useEffect(() => {
     loadSessions();
@@ -623,13 +651,20 @@ function Sessions({
   }, [searchQuery]);
 
   const isShowingSearch = searchQuery.trim().length > 0;
-  const grouped = groupSessions(sessions);
+  const filteredSessions = useMemo(
+    () =>
+      showSubagentRuns
+        ? sessions
+        : sessions.filter((s) => !s.parentSessionId),
+    [sessions, showSubagentRuns],
+  );
+  const grouped = groupSessions(filteredSessions);
   const visibleSessionIds = useMemo(() => {
     const ids = isShowingSearch
       ? searchResults.map((result) => result.sessionId)
-      : sessions.map((session) => session.id);
+      : filteredSessions.map((session) => session.id);
     return Array.from(new Set(ids));
-  }, [isShowingSearch, searchResults, sessions]);
+  }, [isShowingSearch, searchResults, filteredSessions]);
   const visibleSessionIdKey = visibleSessionIds.join("\u0000");
   const selectedCount = selectedSessionIds.size;
   const allVisibleSelected =
@@ -702,6 +737,29 @@ function Sessions({
               <X size={13} />
             </button>
           )}
+        </div>
+        <div className="sessions-filters">
+          <label className="sessions-filter-toggle">
+            <input
+              type="checkbox"
+              checked={showSubagentRuns}
+              onChange={(e) => setShowSubagentRuns(e.target.checked)}
+            />
+            <Bot size={12} />
+            <span>Show subagent runs</span>
+          </label>
+          <label className="sessions-gc-control">
+            <span>Auto-delete subagent runs after:</span>
+            <select
+              value={subagentGcDays}
+              onChange={(e) => changeGcDays(Number(e.target.value))}
+            >
+              <option value={0}>Off</option>
+              <option value={7}>7 days</option>
+              <option value={30}>30 days</option>
+              <option value={90}>90 days</option>
+            </select>
+          </label>
         </div>
         {isSelectionMode && (
           <div className="sessions-selection-toolbar">

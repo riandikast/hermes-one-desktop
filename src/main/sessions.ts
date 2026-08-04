@@ -1,9 +1,16 @@
 import Database from "better-sqlite3";
+import { readFileSync } from "fs";
+import { join } from "path";
 import type { Attachment } from "../shared/attachments";
 import { isImageMime } from "../shared/attachments";
 import { clearStagedAttachments } from "./attachment-staging";
 import { removeSessionFromCache } from "./session-cache";
 import { getDbConnection } from "./db";
+import {
+  getActiveProfileNameSync,
+  profileHome,
+  safeWriteFile,
+} from "./utils";
 import {
   attachmentFromLocalVisionImagePath,
   deletePromptImageAttachmentsForSession,
@@ -19,6 +26,7 @@ import {
 } from "./session-continuation-store";
 import { deleteSessionContextFolderForSession } from "./session-context-folder-store";
 import { deleteSessionModelOverrideForSession } from "./session-model-override-store";
+import { collectSubtreeOrder } from "./subtree-order";
 
 // Sentinel prefix used by hermes-agent's hermes_state.py to mark
 // JSON-encoded multimodal content in the messages.content column.
@@ -34,6 +42,8 @@ export interface SessionSummary {
   model: string;
   title: string | null;
   preview: string;
+  /** Set by the agent for subagent runs / branches; null for normal chats. */
+  parentSessionId?: string | null;
 }
 
 export interface SessionMessage {
@@ -265,6 +275,7 @@ export function listSessions(limit = 30, offset = 0): SessionSummary[] {
   if (!db) return [];
 
   // Simple query without correlated subquery — titles come from session cache
+  const hasParent = hasParentSessionColumn(db);
   const rows = db
     .prepare(
       `SELECT
@@ -274,7 +285,7 @@ export function listSessions(limit = 30, offset = 0): SessionSummary[] {
         s.ended_at,
         s.message_count,
         s.model,
-        s.title
+        s.title${hasParent ? ",\n        s.parent_session_id" : ""}
       FROM sessions s
       ORDER BY s.started_at DESC
       LIMIT ? OFFSET ?`,
@@ -287,6 +298,7 @@ export function listSessions(limit = 30, offset = 0): SessionSummary[] {
     message_count: number;
     model: string;
     title: string | null;
+    parent_session_id: string | null;
   }>;
 
   return rows.map((r) => ({
@@ -298,6 +310,7 @@ export function listSessions(limit = 30, offset = 0): SessionSummary[] {
     model: r.model || "",
     title: r.title,
     preview: "",
+    parentSessionId: r.parent_session_id ?? null,
   }));
 }
 
@@ -747,23 +760,38 @@ function hasParentSessionColumn(db: Database.Database): boolean {
 function deleteSessionRows(db: Database.Database, sessionId: string): number {
   deletePromptImageAttachmentsForSession(db, sessionId);
   deleteSessionContinuationForSession(db, sessionId);
-  // Unlink any child sessions first. better-sqlite3 enables
-  // PRAGMA foreign_keys=ON by default, so deleting a parent while a child
-  // still references it via parent_session_id throws "FOREIGN KEY constraint
-  // failed", which rolls back the whole delete transaction -> 0 rows deleted
-  // with no surfaced error (and a select-all batch deletes nothing, since one
-  // violation aborts the entire transaction). Detach children rather than
-  // cascade-delete so a session the user didn't select is never removed.
-  if (hasParentSessionColumn(db)) {
-    db.prepare(
-      "UPDATE sessions SET parent_session_id = NULL WHERE parent_session_id = ?",
-    ).run(sessionId);
-  }
   deleteSessionContextFolderForSession(db, sessionId);
   deleteSessionModelOverrideForSession(db, sessionId);
   db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
   const result = db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
   return result.changes;
+}
+
+/** Pre-order DFS of the subtree rooted at `rootId` (the root first, then each
+ *  child's own subtree). Reversing the result yields a post-order: children
+ *  before parents — the order required to delete a subtree without tripping
+ *  the parent_session_id FK. See `subtree-order.ts`. */
+
+function directChildIds(db: Database.Database, sessionId: string): string[] {
+  if (!hasParentSessionColumn(db)) return [];
+  const rows = db
+    .prepare(
+      "SELECT id FROM sessions WHERE parent_session_id = ?",
+    )
+    .all(sessionId) as Array<{ id: string }>;
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Delete a session AND its subagent children (recursively). Subagent runs
+ * are throwaway by definition — deleting the parent conversation must not
+ * leave orphaned child rows eating state.db storage.
+ */
+function deleteSessionSubtree(db: Database.Database, sessionId: string): number {
+  const order = collectSubtreeOrder(sessionId, (id) => directChildIds(db, id));
+  let deleted = 0;
+  for (const id of order) deleted += deleteSessionRows(db, id);
+  return deleted;
 }
 
 function cleanupDeletedSession(sessionId: string): void {
@@ -779,7 +807,7 @@ export function deleteSession(sessionId: string): void {
 
   if (db) {
     const tx = db.transaction((sessionIdToDelete: string) => {
-      deleteSessionRows(db, sessionIdToDelete);
+      deleteSessionSubtree(db, sessionIdToDelete);
     });
     tx(id);
   }
@@ -796,7 +824,7 @@ export function deleteSessions(sessionIds: string[]): DeleteSessionsResult {
   if (db) {
     const tx = db.transaction((idsToDelete: string[]) => {
       for (const id of idsToDelete) {
-        deleted += deleteSessionRows(db, id);
+        deleted += deleteSessionSubtree(db, id);
       }
     });
     tx(ids);
@@ -807,4 +835,72 @@ export function deleteSessions(sessionIds: string[]): DeleteSessionsResult {
   }
 
   return { requested: ids.length, deleted };
+}
+
+// ── Auto-GC of old subagent sessions ───────────────────────────────────────
+// Subagent runs (parent_session_id set) are throwaway by nature. A reaper
+// deletes child sessions older than N days so forgotten runs can't
+// accumulate in state.db. The interval lives in a small JSON next to the
+// session cache; 0 disables the reaper entirely.
+
+const DEFAULT_SUBAGENT_GC_DAYS = 30;
+const SUBAGENT_GC_FILE = "subagent-gc.json";
+
+function subagentGcFilePath(): string {
+  return join(
+    profileHome(getActiveProfileNameSync()),
+    "desktop",
+    SUBAGENT_GC_FILE,
+  );
+}
+
+export function getSubagentGcDays(): number {
+  try {
+    const raw = readFileSync(subagentGcFilePath(), "utf-8");
+    const parsed = JSON.parse(raw) as { days?: unknown };
+    if (typeof parsed.days === "number" && Number.isFinite(parsed.days)) {
+      return Math.max(0, Math.floor(parsed.days));
+    }
+  } catch {
+    // missing/corrupt — use the default
+  }
+  return DEFAULT_SUBAGENT_GC_DAYS;
+}
+
+export function setSubagentGcDays(days: number): void {
+  const normalized = Math.max(0, Math.floor(days));
+  try {
+    safeWriteFile(
+      subagentGcFilePath(),
+      JSON.stringify({ days: normalized }),
+    );
+  } catch {
+    // non-fatal
+  }
+}
+
+/** Delete child (subagent) sessions older than `maxAgeDays` days, including
+ *  their own subtrees. Returns the number of rows removed. */
+export function reapSubagentSessions(maxAgeDays: number): number {
+  if (!maxAgeDays || maxAgeDays <= 0) return 0;
+  const db = getDb(false);
+  if (!db || !hasParentSessionColumn(db)) return 0;
+
+  const cutoffSec = Math.floor(Date.now() / 1000) - maxAgeDays * 86_400;
+  const rows = db
+    .prepare(
+      "SELECT id FROM sessions WHERE parent_session_id IS NOT NULL AND started_at < ?",
+    )
+    .all(cutoffSec) as Array<{ id: string }>;
+
+  if (rows.length === 0) return 0;
+
+  let deleted = 0;
+  const tx = db.transaction((ids: Array<{ id: string }>) => {
+    for (const { id } of ids) deleted += deleteSessionSubtree(db, id);
+  });
+  tx(rows);
+
+  for (const { id } of rows) cleanupDeletedSession(id);
+  return deleted;
 }

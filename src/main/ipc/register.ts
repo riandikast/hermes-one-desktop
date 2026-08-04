@@ -227,6 +227,9 @@ import {
   searchSessions,
   deleteSession,
   deleteSessions,
+  getSubagentGcDays,
+  setSubagentGcDays,
+  reapSubagentSessions,
 } from "../sessions";
 import {
   syncSessionCache,
@@ -2478,11 +2481,35 @@ export function registerIpcHandlers(context: IpcContext): void {
         activeSshProfile(),
       );
     try {
-      return syncSessionCache();
+      const synced = syncSessionCache();
+      // Auto-GC of old subagent runs (local only — remote/SSH sessions are
+      // owned by the remote side). Cheap filter query; deletes only when
+      // child rows older than the configured max age exist.
+      if (conn.mode === "local") {
+        try {
+          reapSubagentSessions(getSubagentGcDays());
+        } catch {
+          // GC must never break the sidebar sync
+        }
+      }
+      return synced;
     } catch (error) {
       console.error("sync-session-cache failed; using local cache", error);
       return listCachedSessions(50);
     }
+  });
+  ipcMain.handle("get-subagent-gc-days", () => getSubagentGcDays());
+  ipcMain.handle("set-subagent-gc-days", (_event, days: number) => {
+    setSubagentGcDays(days);
+    const conn = getConnectionConfig();
+    if (conn.mode === "local") {
+      try {
+        reapSubagentSessions(days);
+      } catch {
+        // non-fatal
+      }
+    }
+    return getSubagentGcDays();
   });
   ipcMain.handle(
     "update-session-title",

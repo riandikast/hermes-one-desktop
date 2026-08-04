@@ -35,6 +35,8 @@ export interface CachedSession {
   model: string;
   contextFolder?: string | null;
   contextFolders: string[];
+  /** Set by the agent for subagent runs / branches; null for normal chats. */
+  parentSessionId?: string | null;
 }
 
 interface CacheData {
@@ -119,6 +121,25 @@ function getDb(): Database.Database | null {
   return getDbConnection(true);
 }
 
+// The sessions table has a self-referential FK parent_session_id (set by the
+// agent for subagent runs / branches). Older state.db files lack the column —
+// guard the SELECT and cache the answer after the first lookup.
+let cacheHasParentColumn: boolean | null = null;
+function hasParentSessionColumn(db: Database.Database): boolean {
+  if (cacheHasParentColumn !== null) return cacheHasParentColumn;
+  try {
+    cacheHasParentColumn =
+      db
+        .prepare(
+          "SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'parent_session_id'",
+        )
+        .get() != null;
+  } catch {
+    cacheHasParentColumn = false;
+  }
+  return cacheHasParentColumn;
+}
+
 // Attach each session's linked folder in a single batched store read, so a
 // full sync stays a couple of queries rather than two per row. The result is
 // written into the JSON cache by `syncSessionCache`, which lets the renderer's
@@ -147,9 +168,12 @@ export function syncSessionCache(): CachedSession[] {
     // was missing sessions that were in the DB but not yet in the cache
     // (e.g. after a cache reset), permanently hiding them from the sidebar.
     // Full scans of even 1000+ rows are <5ms on better-sqlite3.
+    const hasParent = hasParentSessionColumn(db);
     const rows = db
       .prepare(
-        `SELECT s.id, s.started_at, s.source, s.message_count, s.model, s.title
+        `SELECT s.id, s.started_at, s.source, s.message_count, s.model, s.title${
+          hasParent ? ", s.parent_session_id" : ""
+        }
          FROM sessions s
          ORDER BY s.started_at DESC`,
       )
@@ -160,6 +184,7 @@ export function syncSessionCache(): CachedSession[] {
       message_count: number;
       model: string;
       title: string | null;
+      parent_session_id: string | null;
     }>;
 
     // Index existing sessions by id once so the per-row update below is
@@ -178,6 +203,9 @@ export function syncSessionCache(): CachedSession[] {
         existing.messageCount = row.message_count;
         if (row.model) existing.model = row.model;
         if (row.title) existing.title = row.title;
+        if (row.parent_session_id) {
+          existing.parentSessionId = row.parent_session_id;
+        }
         continue;
       }
 
@@ -206,6 +234,7 @@ export function syncSessionCache(): CachedSession[] {
         source: row.source,
         messageCount: row.message_count,
         model: row.model || "",
+        parentSessionId: row.parent_session_id,
         // Filled in below by the single batched `attachContextFolders` pass
         // over the merged set, so we don't query the store once per new row.
         contextFolders: [],

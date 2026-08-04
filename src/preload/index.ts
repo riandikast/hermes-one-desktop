@@ -1120,6 +1120,7 @@ const hermesAPI = {
       messageCount: number;
       model: string;
       contextFolders: string[];
+      parentSessionId?: string | null;
     }>
   > => ipcRenderer.invoke("list-cached-sessions", limit, offset),
 
@@ -1132,8 +1133,14 @@ const hermesAPI = {
       messageCount: number;
       model: string;
       contextFolders: string[];
+      parentSessionId?: string | null;
     }>
   > => ipcRenderer.invoke("sync-session-cache"),
+
+  getSubagentGcDays: (): Promise<number> =>
+    ipcRenderer.invoke("get-subagent-gc-days"),
+  setSubagentGcDays: (days: number): Promise<number> =>
+    ipcRenderer.invoke("set-subagent-gc-days", days),
 
   updateSessionTitle: (sessionId: string, title: string): Promise<void> =>
     ipcRenderer.invoke("update-session-title", sessionId, title),

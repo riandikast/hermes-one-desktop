@@ -821,6 +821,7 @@ interface HermesAPI {
       messageCount: number;
       model: string;
       contextFolders: string[];
+      parentSessionId?: string | null;
     }>
   >;
   syncSessionCache: () => Promise<
@@ -832,8 +833,11 @@ interface HermesAPI {
       messageCount: number;
       model: string;
       contextFolders: string[];
+      parentSessionId?: string | null;
     }>
   >;
+  getSubagentGcDays: () => Promise<number>;
+  setSubagentGcDays: (days: number) => Promise<number>;
   updateSessionTitle: (sessionId: string, title: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
   deleteSessions: (
