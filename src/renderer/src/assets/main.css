@@ -2885,6 +2885,7 @@ body:has(.shell-vibrant),
 .knowledge-cm-host .cm-editor {
   height: 100%;
   font-size: 13px;
+  position: relative;
 }
 .knowledge-cm-host .cm-scroller {
   font-family: var(--font-mono);
@@ -2896,6 +2897,41 @@ body:has(.shell-vibrant),
 }
 .knowledge-cm-host .cm-line {
   padding: 0 16px;
+}
+/* Floating search panel (same treatment as the file viewer host). */
+.knowledge-cm-host .cm-panels-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 300;
+  background: #282c34 !important;
+  border-bottom: 1px solid #3a3f4b !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+.knowledge-cm-host .cm-panel.cm-search input {
+  color: #e4e4e7;
+  background: #1e1e2e;
+  border: 1px solid #3a3f4b;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+.knowledge-cm-host .cm-panel.cm-search button {
+  color: #c6c6cd;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.knowledge-cm-host .cm-panel.cm-search button:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+.knowledge-cm-host .cm-panel.cm-search .cm-textfield-label,
+.knowledge-cm-host .cm-panel.cm-search .cm-search-label {
+  color: #9a9aa3;
 }
 /* CodeMirror autocomplete popup — styled like the chat box @-mention menu. */
 .cm-tooltip.cm-tooltip-autocomplete {
@@ -4957,6 +4993,7 @@ body:has(.shell-vibrant),
 .file-viewer-cm-host .cm-editor {
   height: 100%;
   font-size: 13px;
+  position: relative;
 }
 .file-viewer-cm-host .cm-scroller {
   font-family: var(--font-mono);
@@ -4968,6 +5005,43 @@ body:has(.shell-vibrant),
 }
 .file-viewer-cm-host .cm-line {
   padding: 0 12px;
+}
+/* Floating search panel: pull it out of the scroller flow so it hovers over
+   the code (VS Code style) instead of pushing content down / covering
+   matches. */
+.file-viewer-cm-host .cm-panels-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 300;
+  background: #282c34 !important;
+  border-bottom: 1px solid #3a3f4b !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+.file-viewer-cm-host .cm-panel.cm-search input {
+  color: #e4e4e7;
+  background: #1e1e2e;
+  border: 1px solid #3a3f4b;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+.file-viewer-cm-host .cm-panel.cm-search button {
+  color: #c6c6cd;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.file-viewer-cm-host .cm-panel.cm-search button:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+.file-viewer-cm-host .cm-panel.cm-search .cm-textfield-label,
+.file-viewer-cm-host .cm-panel.cm-search .cm-search-label {
+  color: #9a9aa3;
 }
 
 /* Autosave indicator in the header */
