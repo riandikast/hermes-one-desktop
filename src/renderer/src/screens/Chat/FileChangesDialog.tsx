@@ -6,7 +6,9 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import type { FileChange } from "./types";
 
 function diffStats(change: FileChange): string {
-  if (change.before === null && change.after !== null) return "Created";
+  if (change.before === null && change.after !== null) {
+    return change.beforeKnown ? "Created" : "Edited";
+  }
   if (change.before !== null && change.after === null) return "Deleted";
   const beforeLines = (change.before ?? "").split("\n").length;
   const afterLines = (change.after ?? "").split("\n").length;

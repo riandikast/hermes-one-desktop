@@ -33,4 +33,39 @@ describe("extractToolPath", () => {
       extractToolPath({ file_path: "relative.ts", absolute_path: "/abs/rel.ts" }),
     ).toBe("/abs/rel.ts");
   });
+
+  it("extracts a path token embedded in a plain string", () => {
+    expect(extractToolPath("Write file: C:\\tmp\\a.txt")).toBe("C:\\tmp\\a.txt");
+    expect(extractToolPath("echo hi > C:/tmp/b.txt now")).toBe("C:/tmp/b.txt");
+    expect(extractToolPath("Read C:\\repo\\src\\main.ts")).toBe(
+      "C:\\repo\\src\\main.ts",
+    );
+  });
+
+  it("extracts a path token embedded in a shell command arg", () => {
+    expect(
+      extractToolPath({ command: "echo hi > C:\\tmp\\a.txt" }),
+    ).toBe("C:\\tmp\\a.txt");
+    expect(
+      extractToolPath({
+        command: "cd C:\\proj && node build.mjs && dir /x",
+      }),
+    ).toBe("C:\\proj");
+  });
+
+  it("extracts a path from a JSON-encoded string arg", () => {
+    expect(
+      extractToolPath('{"command": "echo hi > C:\\\\tmp\\\\a.txt"}'),
+    ).toBe("C:\\tmp\\a.txt");
+  });
+
+  it("does not treat URLs as paths", () => {
+    expect(extractToolPath("See https://example.com/x for details")).toBeNull();
+    expect(extractToolPath({ url: "https://example.com/x" })).toBeNull();
+  });
+
+  it("does not treat relative paths as absolute", () => {
+    expect(extractToolPath({ command: "node src/a.js" })).toBeNull();
+    expect(extractToolPath("node src/a.js")).toBeNull();
+  });
 });

@@ -965,7 +965,6 @@ export function useDashboardChatTransport({
   // Per-turn file-change capture: path → latest before/after pair. Reset on
   // each new user turn; attached to the assistant bubble on message.complete.
   const fileChangesRef = useRef<Map<string, FileChange>>(new Map());
-  const pendingFileChangeCallIdRef = useRef<string>("");
   const pendingClarifyRequestIdRef = useRef<string | null>(null);
   const pendingRecoveredContinuationRef = useRef<
     DesktopSessionContinuationItem[]
@@ -1059,6 +1058,23 @@ export function useDashboardChatTransport({
       }
       logDashboardEvent(event, "accepted", runtimeSessionId);
 
+      // DIAGNOSTIC (file-changes investigation): reveal every tool-ish and
+      // terminal event type + payload keys the gateway actually emits.
+      const evType = String(event.type);
+      if (
+        evType.includes("tool") ||
+        evType === "message.complete" ||
+        evType.includes("message")
+      ) {
+        console.info(
+          "[file-changes] event seen",
+          JSON.stringify({
+            type: evType,
+            keys: Object.keys(asRecord(event.payload)).sort(),
+          }),
+        );
+      }
+
       // Background (`/btw`) prompts run on a separate agent and report back via
       // `background.complete` — outside the main turn lifecycle, so render the
       // answer as a standalone agent message without touching isLoading or the
@@ -1136,7 +1152,9 @@ export function useDashboardChatTransport({
         }
       }
 
-      // FILE-CHANGES: snapshot the file before a write tool runs.
+      // FILE-CHANGES: best-effort before-snapshot. The gateway's tool.start
+      // carries no args (only context/name/tool_id) — the file path can only
+      // be recovered from the context description text when it mentions one.
       if (
         event.type === "tool.start" &&
         event.payload &&
@@ -1151,83 +1169,113 @@ export function useDashboardChatTransport({
           "function_name",
           "tool_name",
         ).toLowerCase();
-        if (WRITE_TOOL_NAMES.some((w) => toolName.includes(w))) {
-          const args =
-            (toolPayload.args as unknown) ??
-            toolPayload.input ??
-            toolPayload.arguments;
-          const path = extractToolPath(args);
-          const callId = payloadText(
-            toolPayload,
-            "tool_id",
-            "tool_call_id",
-            "callId",
-            "id",
+        const matched = WRITE_TOOL_NAMES.some((w) => toolName.includes(w));
+        console.info(
+          "[file-changes] tool.start",
+          JSON.stringify({
+            toolName,
+            matched,
+            path: extractToolPath(
+              toolPayload.context ??
+                (toolPayload.args as unknown) ??
+                toolPayload.input ??
+                toolPayload.arguments,
+            ),
+          }),
+        );
+        if (matched) {
+          const path = extractToolPath(
+            toolPayload.context ??
+              (toolPayload.args as unknown) ??
+              toolPayload.input ??
+              toolPayload.arguments,
           );
-          if (path) {
-            // Track the pending call id synchronously so tool.complete can
-            // match it even when the before-read is still in flight.
-            if (callId) pendingFileChangeCallIdRef.current = callId;
-            const existing = fileChangesRef.current.get(path);
-            if (existing) {
-              // Repeated write to the same file this turn: refresh the after
-              // on the next tool.complete so the final content is captured.
-              if (existing.after !== null) {
-                fileChangesRef.current.set(path, { ...existing, after: null });
-              }
-            } else {
-              // Record before-content (best-effort; null when the file
-              // doesn't exist yet → created).
-              fileChangesRef.current.set(path, { path, before: null, after: null });
-              void window.hermesAPI
-                .readFile(path)
-                .then((res) => {
-                  const current = fileChangesRef.current.get(path);
-                  if (!current) return;
-                  fileChangesRef.current.set(path, {
-                    ...current,
-                    before: res?.content ?? null,
-                  });
-                })
-                .catch(() => undefined);
-            }
+          if (path && !fileChangesRef.current.has(path)) {
+            fileChangesRef.current.set(path, {
+              path,
+              before: null,
+              after: null,
+              beforeKnown: false,
+            });
+            void window.hermesAPI
+              .readFile(path)
+              .then((res) => {
+                const current = fileChangesRef.current.get(path);
+                if (!current) return;
+                // Read succeeded → the file existed before the tool ran.
+                fileChangesRef.current.set(path, {
+                  ...current,
+                  before: res?.content ?? null,
+                  beforeKnown: true,
+                });
+              })
+              .catch(() => {
+                const current = fileChangesRef.current.get(path);
+                if (!current) return;
+                // Read failed → the file did not exist yet (created).
+                fileChangesRef.current.set(path, {
+                  ...current,
+                  before: null,
+                  beforeKnown: true,
+                });
+              });
           }
         }
       }
 
-      // FILE-CHANGES: read the after-content when a write tool completes.
+      // FILE-CHANGES: the authoritative path arrives on tool.complete (args).
+      // Read the after-content for the touched path.
       if (
         event.type === "tool.complete" &&
         event.payload &&
         typeof event.payload === "object"
       ) {
         const toolPayload = event.payload as Record<string, unknown>;
-        const callId = payloadText(
+        const toolName = payloadText(
           toolPayload,
-          "tool_id",
-          "tool_call_id",
-          "callId",
-          "id",
+          "name",
+          "tool",
+          "function",
+          "function_name",
+          "tool_name",
+        ).toLowerCase();
+        const matched = WRITE_TOOL_NAMES.some((w) => toolName.includes(w));
+        const args =
+          (toolPayload.args as unknown) ??
+          toolPayload.input ??
+          toolPayload.arguments;
+        const path = extractToolPath(args);
+        console.info(
+          "[file-changes] tool.complete",
+          JSON.stringify({
+            toolName,
+            matched,
+            path,
+            capturedPaths: Array.from(fileChangesRef.current.keys()),
+          }),
         );
-        if (callId && pendingFileChangeCallIdRef.current === callId) {
-          pendingFileChangeCallIdRef.current = "";
-          // Read after-content for every path captured this turn whose
-          // after is still null (the just-completed write).
-          for (const [path, change] of fileChangesRef.current) {
-            if (change.after !== null) continue;
-            void window.hermesAPI
-              .readFile(path)
-              .then((res) => {
-                const current = fileChangesRef.current.get(path);
-                if (!current) return;
-                fileChangesRef.current.set(path, {
-                  path,
-                  before: current.before,
-                  after: res?.content ?? null,
-                });
-              })
-              .catch(() => undefined);
+        if (matched && path) {
+          if (!fileChangesRef.current.has(path)) {
+            // The before was never captured (path unknown at tool.start) —
+            // the file may already be modified by the time we read.
+            fileChangesRef.current.set(path, {
+              path,
+              before: null,
+              after: null,
+              beforeKnown: false,
+            });
           }
+          void window.hermesAPI
+            .readFile(path)
+            .then((res) => {
+              const current = fileChangesRef.current.get(path);
+              if (!current) return;
+              fileChangesRef.current.set(path, {
+                ...current,
+                after: res?.content ?? null,
+              });
+            })
+            .catch(() => undefined);
         }
       }
 
@@ -1286,6 +1334,16 @@ export function useDashboardChatTransport({
             (c) => c.after !== null || c.before !== null,
           );
           const attachChanges = (list: FileChange[]): void => {
+            console.info(
+              "[file-changes] attaching",
+              JSON.stringify({
+                count: list.length,
+                paths: list.map((c) => c.path),
+                missingAfter: list.filter((c) => c.after === null).length,
+                lastRowKind: (messagesRef.current[messagesRef.current.length - 1] as { kind?: string })?.kind ?? null,
+                lastRowRole: messagesRef.current[messagesRef.current.length - 1]?.role ?? null,
+              }),
+            );
             setMessages((prev) => {
               // The bubble is not necessarily the last row — tool rows are
               // appended after it. Scan backwards for the last assistant
@@ -1304,8 +1362,10 @@ export function useDashboardChatTransport({
                 const next = [...prev];
                 next[idx] = { ...last, fileChanges: list } as ChatMessage;
                 messagesRef.current = next;
+                console.info(`[file-changes] attached to bubble at index ${idx}`);
                 return next;
               }
+              console.info("[file-changes] NO bubble found to attach");
               return prev;
             });
           };
@@ -1332,7 +1392,6 @@ export function useDashboardChatTransport({
             }
           }
           fileChangesRef.current = new Map();
-          pendingFileChangeCallIdRef.current = "";
         }
         const usage = usageFromPayload(event.payload);
         if (usage || !failed) {
@@ -1732,7 +1791,7 @@ export function useDashboardChatTransport({
       if (!enabled) return false;
       // FILE-CHANGES: a new user turn starts a fresh accumulator.
       fileChangesRef.current = new Map();
-      pendingFileChangeCallIdRef.current = "";
+      console.info("[file-changes] sendMessage via dashboard transport");
       const pendingClarifyRequestId = pendingClarifyRequestIdRef.current;
       if (pendingClarifyRequestId) {
         pendingClarifyRequestIdRef.current = null;

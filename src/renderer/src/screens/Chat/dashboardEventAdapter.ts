@@ -13,11 +13,14 @@ export interface DashboardEventState {
   reasoningSegmentClosed: boolean;
 }
 
-/** Tool names that mutate files — captured for the file-changes summary. */
+/** Tool names that mutate files — captured for the file-changes summary.
+ *  Includes command-executors (terminal/process/bash/…) because write tools
+ *  vary by gateway; the real filter is the absolute path found in args. */
 export const WRITE_TOOL_NAMES = [
   "write_file", "edit_file", "patch_file", "create_file", "delete_file",
   "move_file", "copy_file", "rename_file", "apply_patch", "str_replace",
-  "save_file",
+  "save_file", "terminal", "process", "bash", "shell", "exec",
+  "run_command", "execute_code", "execute", "mkdir", "rm", "mv", "cp",
 ];
 
 interface ApplyDashboardEventOptions {

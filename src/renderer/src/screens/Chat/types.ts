@@ -10,11 +10,14 @@ import type { Attachment } from "../../../../shared/attachments";
  * one of the variants of the broader `ChatMessage` history union.
  */
 /** One file modified by an assistant turn; before/after content captured
- *  live from the tool stream (null before = created, null after = deleted). */
+ *  live from the tool stream (null before = created, null after = deleted).
+ *  `beforeKnown` is false when the before content was never captured (the
+ *  path only appeared at tool.complete, after the write already happened). */
 export interface FileChange {
   path: string;
   before: string | null;
   after: string | null;
+  beforeKnown?: boolean;
 }
 
 export interface ChatBubbleMessage {
