@@ -23,6 +23,16 @@ import type {
 } from "../types";
 import type { DesktopSessionContinuationItem } from "../../../../../shared/session-continuation";
 
+/** First non-empty string field among the given keys (mirrors the adapter's
+ *  canonical payload keys — gateway events vary between them). */
+function payloadText(payload: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "string" && value) return value;
+  }
+  return "";
+}
+
 interface SessionResponse {
   info?: unknown;
   messages?: unknown[];
@@ -1132,33 +1142,55 @@ export function useDashboardChatTransport({
         event.payload &&
         typeof event.payload === "object"
       ) {
-        const toolName = String(
-          (event.payload as { name?: string; tool_name?: string }).name ||
-          (event.payload as { tool_name?: string }).tool_name || "",
+        const toolPayload = event.payload as Record<string, unknown>;
+        const toolName = payloadText(
+          toolPayload,
+          "name",
+          "tool",
+          "function",
+          "function_name",
+          "tool_name",
         ).toLowerCase();
         if (WRITE_TOOL_NAMES.some((w) => toolName.includes(w))) {
-          const args = (event.payload as { args?: unknown }).args;
+          const args =
+            (toolPayload.args as unknown) ??
+            toolPayload.input ??
+            toolPayload.arguments;
           const path = extractToolPath(args);
-          const callId = String(
-            (event.payload as { tool_id?: string }).tool_id ||
-            (event.payload as { tool_call_id?: string }).tool_call_id || "",
+          const callId = payloadText(
+            toolPayload,
+            "tool_id",
+            "tool_call_id",
+            "callId",
+            "id",
           );
-          if (path && !fileChangesRef.current.has(path)) {
-            // Record before-content (best-effort; null when the file
-            // doesn't exist yet → created).
-            void window.hermesAPI
-              .readFile(path)
-              .then((res) => {
-                const existing = fileChangesRef.current.get(path);
-                if (existing?.after !== undefined) return; // already completed
-                fileChangesRef.current.set(path, {
-                  path,
-                  before: res?.content ?? null,
-                  after: null,
-                });
-                if (callId) pendingFileChangeCallIdRef.current = callId;
-              })
-              .catch(() => undefined);
+          if (path) {
+            // Track the pending call id synchronously so tool.complete can
+            // match it even when the before-read is still in flight.
+            if (callId) pendingFileChangeCallIdRef.current = callId;
+            const existing = fileChangesRef.current.get(path);
+            if (existing) {
+              // Repeated write to the same file this turn: refresh the after
+              // on the next tool.complete so the final content is captured.
+              if (existing.after !== null) {
+                fileChangesRef.current.set(path, { ...existing, after: null });
+              }
+            } else {
+              // Record before-content (best-effort; null when the file
+              // doesn't exist yet → created).
+              fileChangesRef.current.set(path, { path, before: null, after: null });
+              void window.hermesAPI
+                .readFile(path)
+                .then((res) => {
+                  const current = fileChangesRef.current.get(path);
+                  if (!current) return;
+                  fileChangesRef.current.set(path, {
+                    ...current,
+                    before: res?.content ?? null,
+                  });
+                })
+                .catch(() => undefined);
+            }
           }
         }
       }
@@ -1169,9 +1201,13 @@ export function useDashboardChatTransport({
         event.payload &&
         typeof event.payload === "object"
       ) {
-        const callId = String(
-          (event.payload as { tool_id?: string }).tool_id ||
-          (event.payload as { tool_call_id?: string }).tool_call_id || "",
+        const toolPayload = event.payload as Record<string, unknown>;
+        const callId = payloadText(
+          toolPayload,
+          "tool_id",
+          "tool_call_id",
+          "callId",
+          "id",
         );
         if (callId && pendingFileChangeCallIdRef.current === callId) {
           pendingFileChangeCallIdRef.current = "";
@@ -1182,9 +1218,11 @@ export function useDashboardChatTransport({
             void window.hermesAPI
               .readFile(path)
               .then((res) => {
+                const current = fileChangesRef.current.get(path);
+                if (!current) return;
                 fileChangesRef.current.set(path, {
                   path,
-                  before: change.before,
+                  before: current.before,
                   after: res?.content ?? null,
                 });
               })
@@ -1247,21 +1285,51 @@ export function useDashboardChatTransport({
           const changes = Array.from(fileChangesRef.current.values()).filter(
             (c) => c.after !== null || c.before !== null,
           );
-          if (changes.length > 0) {
+          const attachChanges = (list: FileChange[]): void => {
             setMessages((prev) => {
-              const idx = prev.length - 1;
-              const last = prev[idx];
-              if (last && last.role === "agent" && "content" in last) {
+              // The bubble is not necessarily the last row — tool rows are
+              // appended after it. Scan backwards for the last assistant
+              // bubble (no kind), skipping tool/reasoning rows.
+              for (let idx = prev.length - 1; idx >= 0; idx--) {
+                const last = prev[idx];
+                if (!last || last.role !== "agent") break;
+                const kind = (last as { kind?: string }).kind;
+                if (
+                  kind === "tool_call" ||
+                  kind === "tool_result" ||
+                  kind === "reasoning"
+                ) {
+                  continue;
+                }
                 const next = [...prev];
-                next[idx] = {
-                  ...last,
-                  fileChanges: changes,
-                } as ChatMessage;
+                next[idx] = { ...last, fileChanges: list } as ChatMessage;
                 messagesRef.current = next;
                 return next;
               }
               return prev;
             });
+          };
+          if (changes.length > 0) {
+            const missingAfter = changes.filter((c) => c.after === null);
+            if (missingAfter.length === 0) {
+              attachChanges(changes);
+            } else {
+              // The final tool.complete sweep may still be in flight —
+              // re-read the remaining afters before attaching.
+              void Promise.all(
+                missingAfter.map((c) =>
+                  window.hermesAPI
+                    .readFile(c.path)
+                    .then((res) => ({ ...c, after: res?.content ?? null }))
+                    .catch(() => ({ ...c, after: null })),
+                ),
+              ).then((filled) => {
+                const merged = changes.map(
+                  (c) => filled.find((f) => f.path === c.path) ?? c,
+                );
+                attachChanges(merged);
+              });
+            }
           }
           fileChangesRef.current = new Map();
           pendingFileChangeCallIdRef.current = "";
