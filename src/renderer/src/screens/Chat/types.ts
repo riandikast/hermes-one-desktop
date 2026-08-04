@@ -9,6 +9,14 @@ import type { Attachment } from "../../../../shared/attachments";
  * Visible chat bubble (user or assistant). Used for live streaming and as
  * one of the variants of the broader `ChatMessage` history union.
  */
+/** One file modified by an assistant turn; before/after content captured
+ *  live from the tool stream (null before = created, null after = deleted). */
+export interface FileChange {
+  path: string;
+  before: string | null;
+  after: string | null;
+}
+
 export interface ChatBubbleMessage {
   id: string;
   kind?: "user" | "assistant"; // optional for backward compat; absent ⇒ user/assistant by role
@@ -27,6 +35,8 @@ export interface ChatBubbleMessage {
   timestamp?: number;
   /** Renderer-only progress row while a slash command is executing. */
   isSlashLoader?: boolean;
+  /** Files this assistant turn wrote/edited/deleted (dashboard transport only). */
+  fileChanges?: FileChange[];
 }
 
 /**
