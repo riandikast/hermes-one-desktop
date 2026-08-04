@@ -2900,11 +2900,11 @@ body:has(.shell-vibrant),
 }
 /* Floating search panel (same treatment as the file viewer host). */
 .knowledge-cm-host .cm-panels-top {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 300;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 300 !important;
   background: #282c34 !important;
   border-bottom: 1px solid #3a3f4b !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
@@ -5008,13 +5008,14 @@ body:has(.shell-vibrant),
 }
 /* Floating search panel: pull it out of the scroller flow so it hovers over
    the code (VS Code style) instead of pushing content down / covering
-   matches. */
+   matches. !important beats CM's base-theme sticky (injected after our
+   stylesheet, same specificity). */
 .file-viewer-cm-host .cm-panels-top {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 300;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 300 !important;
   background: #282c34 !important;
   border-bottom: 1px solid #3a3f4b !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);

@@ -4,6 +4,7 @@ import { basicSetup } from "codemirror";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
+import { search } from "@codemirror/search";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { languages } from "@codemirror/language-data";
 import { keymap } from "@codemirror/view";
@@ -224,6 +225,7 @@ export const FileViewer = memo(function FileViewer({
           extensions: [
             basicSetup,
             oneDark,
+            search({ top: true }),
             saveKeymap,
             ...(lang ? [lang] : []),
             EditorView.updateListener.of((update) => {

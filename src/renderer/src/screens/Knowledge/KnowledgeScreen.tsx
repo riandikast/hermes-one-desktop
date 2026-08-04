@@ -5,6 +5,7 @@ import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
+import { search } from "@codemirror/search";
 import { oneDark } from "@codemirror/theme-one-dark";
 import {
   autocompletion,
@@ -443,6 +444,7 @@ export function KnowledgeScreen(): React.JSX.Element {
         extensions: [
           basicSetup,
           oneDark,
+          search({ top: true }),
           markdown({ codeLanguages: languages }),
           autocompletion({
             override: [(ctx: CompletionContext) => mentionSourceRef.current(ctx)],
