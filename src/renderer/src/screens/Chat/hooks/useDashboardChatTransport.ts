@@ -1045,6 +1045,46 @@ export function useDashboardChatTransport({
     lastSyncedCwdRef.current = null;
   }, [connectionMode, profile]);
 
+  // Turn stall watchdog: `prompt.submit` is only an ACK — the turn completes
+  // via async `message.complete` notifications. If the provider/gateway stalls
+  // after the ack (overload, dropped request), nothing ever completes and the
+  // chat would show the typing indicator forever. Any accepted stream event
+  // resets the timer; firing fails the turn with a clear error.
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const TURN_STALL_TIMEOUT_MS = 120_000;
+
+  const clearStallTimer = useCallback((): void => {
+    if (stallTimerRef.current !== null) {
+      clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+  }, []);
+
+  const resetStallTimer = useCallback((): void => {
+    clearStallTimer();
+    stallTimerRef.current = setTimeout(() => {
+      stallTimerRef.current = null;
+      const activeTurn = activeTurnRef.current;
+      if (!activeTurn) return;
+      const message =
+        "No response from the model for 2 minutes — the provider may be " +
+        "overloaded or the request was dropped. Send again to retry.";
+      activeTurn.status = "failed";
+      const failedMessages = markActiveTurnFailed(
+        messagesRef.current,
+        message,
+        activeTurn,
+      );
+      messagesRef.current = failedMessages;
+      setMessages(failedMessages);
+      activeTurnRef.current = null;
+      setToolProgress(null);
+      setIsLoading(false);
+    }, TURN_STALL_TIMEOUT_MS);
+  }, [clearStallTimer, setMessages, setToolProgress, setIsLoading]);
+
+  useEffect(() => clearStallTimer, [clearStallTimer]);
+
   const handleGatewayEvent = useCallback(
     (event: DashboardStreamEvent): void => {
       const runtimeSessionId = runtimeSessionIdRef.current;
@@ -1057,7 +1097,8 @@ export function useDashboardChatTransport({
         return;
       }
       logDashboardEvent(event, "accepted", runtimeSessionId);
-
+      // Any accepted event = the turn is alive; push the stall deadline out.
+      resetStallTimer();
       // Background (`/btw`) prompts run on a separate agent and report back via
       // `background.complete` — outside the main turn lifecycle, so render the
       // answer as a standalone agent message without touching isLoading or the
@@ -1420,6 +1461,7 @@ export function useDashboardChatTransport({
     [
       activeTurnRef,
       connectionMode,
+      resetStallTimer,
       setIsLoading,
       setMessages,
       setToolProgress,
@@ -1943,6 +1985,10 @@ export function useDashboardChatTransport({
           promptText,
           syncedAttachments.refs,
         );
+        // Arm the stall watchdog: if the gateway never answers (provider
+        // overload / dropped request), fail the turn instead of loading
+        // forever. Any accepted stream event pushes the deadline out.
+        resetStallTimer();
         await submitDashboardPromptWithRecovery(client, {
           sessionId: selectedSessionId,
           storedSessionId: storedSessionIdRef.current,
@@ -1954,6 +2000,7 @@ export function useDashboardChatTransport({
         });
         return true;
       } catch (err) {
+        clearStallTimer();
         appliedModelRef.current = null;
         recreateRuntimeSessionRef.current = true;
         const message = err instanceof Error ? err.message : String(err);
@@ -1962,6 +2009,7 @@ export function useDashboardChatTransport({
     },
     [
       activeTurnRef,
+      clearStallTimer,
       connectionMode,
       enabled,
       fallbackOnUnavailable,
