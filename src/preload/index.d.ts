@@ -1113,6 +1113,10 @@ interface HermesAPI {
     filePath: string,
     maxBytes?: number,
   ) => Promise<{ content: string; truncated: boolean } | null>;
+  writeFile: (
+    filePath: string,
+    content: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
   openFileInEditor: (filePath: string) => Promise<boolean>;
   openTerminal: (dirPath: string) => Promise<boolean>;
   everythingSearch: (

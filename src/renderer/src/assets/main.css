@@ -4946,6 +4946,47 @@ body:has(.shell-vibrant),
   tab-size: 2;
 }
 
+/* CodeMirror editor host inside the file viewer (replaces the read-only
+   <pre>). oneDark theme comes from FileViewer.tsx. */
+.file-viewer-cm-host {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #282c34;
+}
+.file-viewer-cm-host .cm-editor {
+  height: 100%;
+  font-size: 13px;
+}
+.file-viewer-cm-host .cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  overflow: auto;
+}
+.file-viewer-cm-host .cm-content {
+  padding: 12px 0;
+}
+.file-viewer-cm-host .cm-line {
+  padding: 0 12px;
+}
+
+/* Autosave indicator in the header */
+.file-viewer-save-state {
+  font-size: 11px;
+  font-weight: 500;
+  margin-left: 8px;
+  opacity: 0.8;
+}
+.file-viewer-save-state--saving {
+  color: #d4d4d4;
+}
+.file-viewer-save-state--saved {
+  color: #4ec9b0;
+}
+.file-viewer-save-state--error {
+  color: #f14c4c;
+}
+
 /* Custom scrollbar for file viewer */
 .file-viewer-content::-webkit-scrollbar {
   width: 10px;

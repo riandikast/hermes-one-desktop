@@ -1562,6 +1562,11 @@ const hermesAPI = {
     maxBytes?: number,
   ): Promise<{ content: string; truncated: boolean } | null> =>
     ipcRenderer.invoke("read-file", filePath, maxBytes),
+  writeFile: (
+    filePath: string,
+    content: string,
+  ): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("write-file", filePath, content),
   openFileInEditor: (filePath: string): Promise<boolean> =>
     ipcRenderer.invoke("open-file-in-editor", filePath),
   openTerminal: (dirPath: string): Promise<boolean> =>

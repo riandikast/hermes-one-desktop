@@ -1,7 +1,13 @@
-import { useState, useEffect, useRef, memo } from "react";
+import { useState, useEffect, useRef, memo, useCallback } from "react";
 import { X, FileCode, ExternalLink } from "lucide-react";
-import hljs from "highlight.js";
-import "highlight.js/styles/github-dark.css";
+import { basicSetup } from "codemirror";
+import { EditorView } from "@codemirror/view";
+import { EditorState } from "@codemirror/state";
+import type { Extension } from "@codemirror/state";
+import { oneDark } from "@codemirror/theme-one-dark";
+import { languages } from "@codemirror/language-data";
+import { keymap } from "@codemirror/view";
+import { Prec } from "@codemirror/state";
 import { useI18n } from "../../components/useI18n";
 
 interface FileViewerProps {
@@ -9,88 +15,6 @@ interface FileViewerProps {
   onClose: () => void;
 }
 
-// Map file extensions to highlight.js language names
-const EXTENSION_TO_LANGUAGE: Record<string, string> = {
-  js: "javascript",
-  ts: "typescript",
-  jsx: "javascript",
-  tsx: "typescript",
-  json: "json",
-  html: "html",
-  htm: "html",
-  css: "css",
-  scss: "scss",
-  less: "less",
-  py: "python",
-  php: "php",
-  java: "java",
-  go: "go",
-  rs: "rust",
-  c: "c",
-  cpp: "cpp",
-  h: "c",
-  hpp: "cpp",
-  swift: "swift",
-  kt: "kotlin",
-  dart: "dart",
-  lua: "lua",
-  sh: "bash",
-  bash: "bash",
-  zsh: "bash",
-  ps1: "powershell",
-  yaml: "yaml",
-  yml: "yaml",
-  toml: "toml",
-  ini: "ini",
-  conf: "ini",
-  config: "ini",
-  xml: "xml",
-  sql: "sql",
-  md: "markdown",
-  markdown: "markdown",
-  txt: "plaintext",
-  log: "plaintext",
-  vue: "javascript",
-  svelte: "javascript",
-  dockerfile: "dockerfile",
-  rb: "ruby",
-  ex: "elixir",
-  exs: "elixir",
-  erl: "erlang",
-  scala: "scala",
-  r: "r",
-  m: "objectivec",
-  mm: "objectivec",
-  pl: "perl",
-  pm: "perl",
-  groovy: "groovy",
-  gradle: "groovy",
-  tf: "hcl",
-  hcl: "hcl",
-};
-
-function getFileExtension(filename: string): string {
-  const parts = filename.split(".");
-  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "";
-}
-
-function getLanguage(filename: string): string | undefined {
-  const ext = getFileExtension(filename);
-  return EXTENSION_TO_LANGUAGE[ext];
-}
-
-function getFileName(filePath: string): string {
-  return filePath.split(/[\\/]/).pop() || filePath;
-}
-
-function formatFileSize(content: string): string {
-  const bytes = new Blob([content]).size;
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-// Image extensions that can be previewed
 const VIEWABLE_IMAGE_EXTENSIONS = new Set([
   "png",
   "jpg",
@@ -102,7 +26,6 @@ const VIEWABLE_IMAGE_EXTENSIONS = new Set([
   "ico",
 ]);
 
-// Binary/non-text file extensions that can't be displayed
 const BINARY_EXTENSIONS = new Set([
   "heic",
   "heif",
@@ -153,12 +76,41 @@ const BINARY_EXTENSIONS = new Set([
   "eot",
 ]);
 
+function getFileExtension(filename: string): string {
+  const parts = filename.split(".");
+  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "";
+}
+
+function getFileName(filePath: string): string {
+  return filePath.split(/[\\/]/).pop() || filePath;
+}
+
+function formatFileSize(content: string): string {
+  const bytes = new Blob([content]).size;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function isImageFile(filename: string): boolean {
   return VIEWABLE_IMAGE_EXTENSIONS.has(getFileExtension(filename));
 }
 
 function isBinaryFile(filename: string): boolean {
   return BINARY_EXTENSIONS.has(getFileExtension(filename));
+}
+
+/** Resolve a CodeMirror language extension by filename (extension match). */
+async function resolveLanguage(filename: string): Promise<Extension | null> {
+  const desc = languages.find((l) =>
+    l.extensions.includes(getFileExtension(filename)),
+  );
+  if (!desc) return null;
+  try {
+    return await desc.load();
+  } catch {
+    return null;
+  }
 }
 
 export const FileViewer = memo(function FileViewer({
@@ -171,18 +123,41 @@ export const FileViewer = memo(function FileViewer({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const codeRef = useRef<HTMLElement>(null);
+  const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "error">(
+    "idle",
+  );
+  const editorHostRef = useRef<HTMLDivElement | null>(null);
+  const editorViewRef = useRef<EditorView | null>(null);
+  const filePathRef = useRef(filePath);
+  filePathRef.current = filePath;
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firstEditRef = useRef(true);
 
   const fileName = getFileName(filePath);
+
+  // Debounced autosave: write the current doc back to disk.
+  const scheduleSave = useCallback((): void => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const view = editorViewRef.current;
+      if (!view) return;
+      const text = view.state.doc.toString();
+      setSaving("saving");
+      void window.hermesAPI
+        .writeFile(filePathRef.current, text)
+        .then((res) => setSaving(res.ok ? "saved" : "error"))
+        .catch(() => setSaving("error"));
+    }, 500);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
     setError(null);
     setImageUrl(null);
+    setSaving("idle");
 
     const loadFile = async (): Promise<void> => {
-      // If image file, load as data URL
       if (isImageFile(filePath)) {
         const imageData = await window.hermesAPI.readImageFile(filePath);
         if (cancelled) return;
@@ -195,7 +170,6 @@ export const FileViewer = memo(function FileViewer({
         return;
       }
 
-      // Otherwise load as text
       const result = await window.hermesAPI.readFile(filePath, 102400);
       if (cancelled) return;
       if (result === null) {
@@ -210,25 +184,84 @@ export const FileViewer = memo(function FileViewer({
     void loadFile();
     return () => {
       cancelled = true;
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
   }, [filePath, t]);
 
-  // Apply syntax highlighting after content loads
+  // Mount the CodeMirror editor once the content is ready and the host div
+  // exists. Recreated per file path (deps include filePath).
   useEffect(() => {
-    if (content && codeRef.current) {
-      const detectedLang = getLanguage(fileName);
-      if (detectedLang) {
-        codeRef.current.className = `hljs language-${detectedLang}`;
-        hljs.highlightElement(codeRef.current);
-      }
-    }
-  }, [content, fileName]);
+    const host = editorHostRef.current;
+    if (!host || content === null) return;
+    let disposed = false;
+    firstEditRef.current = true;
+    setSaving("idle");
 
-  // Handle Escape key to close file viewer
+    void resolveLanguage(fileName).then((lang) => {
+      if (disposed) return;
+      const saveKeymap = Prec.highest(
+        keymap.of([
+          {
+            key: "Mod-s",
+            run: () => {
+              const view = editorViewRef.current;
+              if (!view) return false;
+              const text = view.state.doc.toString();
+              setSaving("saving");
+              void window.hermesAPI
+                .writeFile(filePathRef.current, text)
+                .then((res) => setSaving(res.ok ? "saved" : "error"))
+                .catch(() => setSaving("error"));
+              return true;
+            },
+          },
+        ]),
+      );
+      const view = new EditorView({
+        parent: host,
+        state: EditorState.create({
+          doc: content ?? "",
+          extensions: [
+            basicSetup,
+            oneDark,
+            saveKeymap,
+            ...(lang ? [lang] : []),
+            EditorView.updateListener.of((update) => {
+              if (update.docChanged) {
+                scheduleSave();
+              }
+            }),
+          ],
+        }),
+      });
+      editorViewRef.current = view;
+      // Store the view so the cleanup below can destroy it even though it's
+      // created asynchronously (language resolution).
+      (editorHostRef.current as HTMLDivElement & { _cmView?: EditorView })._cmView =
+        view;
+    });
+
+    return () => {
+      disposed = true;
+      editorViewRef.current = null;
+      const hostView = (editorHostRef.current as
+        | (HTMLDivElement & { _cmView?: EditorView })
+        | null)?._cmView;
+      hostView?.destroy();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filePath, content === null]);
+
+  // Escape closes the viewer, unless the CodeMirror search panel is open —
+  // in that case CM's own Escape handler closes the panel first and stops
+  // propagation, so the viewer stays open.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key === "Escape") {
-        onClose();
+        const searchOpen = document.querySelector(
+          ".file-viewer-cm-host .cm-panel.cm-search",
+        );
+        if (!searchOpen) onClose();
       }
     };
     document.addEventListener("keydown", handleKeyDown);
@@ -250,6 +283,19 @@ export const FileViewer = memo(function FileViewer({
               <span className="file-viewer-size">
                 {content ? formatFileSize(content) : imageUrl ? "Image" : ""}
                 {truncated && content && ` (${t("worktree.fileTruncated")})`}
+              </span>
+            )}
+            {content !== null && (
+              <span
+                className={`file-viewer-save-state file-viewer-save-state--${saving}`}
+              >
+                {saving === "saving"
+                  ? "Saving…"
+                  : saving === "saved"
+                    ? "Saved"
+                    : saving === "error"
+                      ? "Save failed"
+                      : ""}
               </span>
             )}
           </div>
@@ -308,11 +354,7 @@ export const FileViewer = memo(function FileViewer({
                   {t("worktree.fileTruncatedWarning")}
                 </div>
               )}
-              <pre className="file-viewer-code">
-                <code ref={codeRef as React.RefObject<HTMLElement>}>
-                  {content}
-                </code>
-              </pre>
+              <div className="file-viewer-cm-host" ref={editorHostRef} />
             </>
           )}
         </div>

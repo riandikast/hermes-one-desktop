@@ -11,7 +11,7 @@ import {
 } from "electron";
 import { extname } from "path";
 import { randomUUID } from "crypto";
-import { readdir, readFile, stat } from "fs/promises";
+import { readdir, readFile, stat, writeFile } from "fs/promises";
 import { watch } from "fs";
 import type { FSWatcher } from "fs";
 import { getActiveProfileNameSync } from "../utils";
@@ -3199,6 +3199,23 @@ export function registerIpcHandlers(context: IpcContext): void {
         return { content, truncated };
       } catch {
         return null;
+      }
+    },
+  );
+
+  // Write file contents (used by the in-app file editor)
+  ipcMain.handle(
+    "write-file",
+    async (
+      _event,
+      filePath: string,
+      content: string,
+    ): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        await writeFile(filePath, content, "utf-8");
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
     },
   );
