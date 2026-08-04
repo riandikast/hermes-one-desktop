@@ -3,6 +3,7 @@ import {
   MENTION_END,
   MENTION_SEP,
   MENTION_START,
+  citationMarker,
   displayText,
   displayToRawPos,
   expandTags,
@@ -269,36 +270,40 @@ describe("displayText / displayToRawPos / rawToDisplayPos", () => {
   const tag = (name: string, path: string): string =>
     MENTION_START + name + MENTION_SEP + path + MENTION_END;
 
-  it("collapses tag inner text to a single zero-width space (no PUA leak)", () => {
+  it("collapses tag inner text to a citation marker (no PUA leak)", () => {
     const raw = `see ${tag("main.js", "/a/b/main.js")} now`;
     const d = displayText(raw);
-    expect(d).toBe("see \u200B now");
+    expect(d).toBe("see [1] now");
     expect(d).not.toMatch(/[\uE000\uE001\uE002]/);
     expect(d.length).toBeLessThan(raw.length);
   });
 
   it("round-trips caret positions before, inside, and after a tag", () => {
     const raw = `a ${tag("x.ts", "/p/x.ts")} z`;
-    const d = displayText(raw); // "a \u200B z"
+    const d = displayText(raw); // "a [1] z"
+    const markerLen = citationMarker(0).length;
     expect(displayToRawPos(raw, 2)).toBe(2);
-    expect(displayToRawPos(raw, 3)).toBe(2 + tag("x.ts", "/p/x.ts").length);
-    expect(displayToRawPos(raw, 4)).toBe(2 + tag("x.ts", "/p/x.ts").length + 1);
+    // Inside the marker maps to the tag start (whole-tag delete).
+    expect(displayToRawPos(raw, 2 + 1)).toBe(2);
+    expect(displayToRawPos(raw, 2 + markerLen)).toBe(2 + tag("x.ts", "/p/x.ts").length);
+    expect(displayToRawPos(raw, 2 + markerLen + 1)).toBe(2 + tag("x.ts", "/p/x.ts").length + 1);
     expect(displayToRawPos(raw, d.length)).toBe(raw.length);
   });
 
   it("round-trips raw offsets to display offsets", () => {
     const raw = `a ${tag("x.ts", "/p/x.ts")} z`;
     const d = displayText(raw);
+    const markerLen = citationMarker(0).length;
     expect(rawToDisplayPos(raw, 0)).toBe(0);
     expect(rawToDisplayPos(raw, 2)).toBe(2);
-    expect(rawToDisplayPos(raw, 2 + tag("x.ts", "/p/x.ts").length)).toBe(3);
+    expect(rawToDisplayPos(raw, 2 + tag("x.ts", "/p/x.ts").length)).toBe(2 + markerLen);
     expect(rawToDisplayPos(raw, raw.length)).toBe(d.length);
   });
 
-  it("handles multiple tags", () => {
+  it("handles multiple tags with variable marker lengths", () => {
     const raw = `${tag("a.ts", "/x/a.ts")} ${tag("b.ts", "/y/b.ts")}`;
     const d = displayText(raw);
-    expect(d.match(/\u200B/g)).toHaveLength(2);
+    expect(d).toBe("[1] [2]");
     expect(displayToRawPos(raw, d.length)).toBe(raw.length);
     expect(rawToDisplayPos(raw, raw.length)).toBe(d.length);
   });
@@ -306,5 +311,41 @@ describe("displayText / displayToRawPos / rawToDisplayPos", () => {
   it("leaves plain text untouched", () => {
     expect(displayText("hello @world")).toBe("hello @world");
     expect(displayToRawPos("hello", 3)).toBe(3);
+  });
+});
+
+describe("citation markers", () => {
+  const tag = (name: string, path: string): string =>
+    MENTION_START + name + MENTION_SEP + path + MENTION_END;
+
+  it("renders [1], [2]... for consecutive tags", () => {
+    const raw = `see ${tag("a.ts", "/x/a.ts")} and ${tag("b.ts", "/y/b.ts")}`;
+    expect(displayText(raw)).toBe("see [1] and [2]");
+  });
+
+  it("citationMarker produces bracketed 1-based indices", () => {
+    expect(citationMarker(0)).toBe("[1]");
+    expect(citationMarker(1)).toBe("[2]");
+    expect(citationMarker(11)).toBe("[12]");
+  });
+
+  it("marker lengths scale with the number of digits", () => {
+    const raw = Array.from({ length: 12 }, (_, i) =>
+      tag(`f${i}.ts`, `/p/f${i}.ts`),
+    ).join(" ");
+    const d = displayText(raw);
+    expect(d).toBe(
+      Array.from({ length: 12 }, (_, i) => `[${i + 1}]`).join(" "),
+    );
+    expect(d.length).toBeGreaterThan(12 * 3);
+  });
+
+  it("leaves plain text untouched", () => {
+    expect(displayText("hello @world")).toBe("hello @world");
+  });
+
+  it("does not leak PUA markers", () => {
+    const raw = `see ${tag("main.js", "/a/b/main.js")} now`;
+    expect(displayText(raw)).not.toMatch(/[\uE000\uE001\uE002]/);
   });
 });

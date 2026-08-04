@@ -89,17 +89,28 @@ export function expandTags(text: string): string {
 }
 
 /**
- * Display form of the raw input: each tag collapses to a single zero-width
- * space, so the textarea shows no tag text at all (badges render in a chip
- * row above). The ZWSP is invisible in every font — unlike the PUA sentinel
- * trio it replaces, which leaked as tofu boxes in some UI fonts — and it
- * still occupies one character position, so backspace/selection can delete
- * a tag directly in the textarea.
+ * Journal-style citation marker for a mention tag: `[1]`, `[2]`, ...
+ * `index` is the 0-based tag position; the marker is 1-based. The length
+ * varies with the number of digits, so position-mapping functions must use
+ * this helper (never a constant) when walking display space.
  */
-export const TAG_DISPLAY_CHAR = "\u200B";
+export function citationMarker(index: number): string {
+  return `[${index + 1}]`;
+}
 
 export function displayText(raw: string): string {
-  return raw.replace(MENTION_RE, TAG_DISPLAY_CHAR);
+  const tags = parseTags(raw);
+  if (tags.length === 0) return raw;
+  let out = "";
+  let cursor = 0;
+  for (let i = 0; i < tags.length; i++) {
+    const tag = tags[i];
+    out += raw.slice(cursor, tag.start);
+    out += citationMarker(i);
+    cursor = tag.end;
+  }
+  out += raw.slice(cursor);
+  return out;
 }
 
 /**
