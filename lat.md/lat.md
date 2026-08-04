@@ -33,3 +33,4 @@ This directory defines the high-level concepts, business logic, and architecture
 - [[commands-terminal]] - the Commands pinned view: a JSON store of reusable multi-line commands run in a built-in xterm.js + node-pty integrated terminal dock with tabbed sessions.
 - [[knowledge-editor]] - the Knowledge page's syntax-highlighted file editor: a highlighted overlay behind a transparent-text textarea, lazy-loaded highlight.js.
 - [[file-viewer]] - the chat-side file preview is a CodeMirror editor with per-extension syntax highlighting and debounced autosave to disk.
+- [[mentions]] - journal-style citation numbers on @-mention tags: [n] inline in the composer and on the chip badges, derived from tag position and renumbering on removal.
