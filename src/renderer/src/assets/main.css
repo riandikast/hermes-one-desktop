@@ -18424,8 +18424,11 @@ body:has(.shell-vibrant),
   height: 12px;
 }
 
-.sidebar-footer-menu:hover .sidebar-footer-flyout,
-.sidebar-footer-menu:focus-within .sidebar-footer-flyout {
+/* Open only when hovering the Settings button or the flyout itself — the
+   Bot (subagent) button next to Settings must NOT expand the flyout. */
+.sidebar-footer-flyout:hover,
+.sidebar-settings-trigger:hover ~ .sidebar-footer-flyout,
+.sidebar-settings-trigger:focus-visible ~ .sidebar-footer-flyout {
   opacity: 1;
   visibility: visible;
   transform: translateY(-4px) scale(1);
@@ -18468,8 +18471,9 @@ body:has(.shell-vibrant),
   transform-origin: bottom center;
 }
 
-.sidebar-collapsed .sidebar-footer-menu:hover .sidebar-footer-flyout,
-.sidebar-collapsed .sidebar-footer-menu:focus-within .sidebar-footer-flyout {
+.sidebar-collapsed .sidebar-footer-flyout:hover,
+.sidebar-collapsed .sidebar-settings-trigger:hover ~ .sidebar-footer-flyout,
+.sidebar-collapsed .sidebar-settings-trigger:focus-visible ~ .sidebar-footer-flyout {
   transform: translateX(-50%) translateY(-4px) scale(1);
 }
 

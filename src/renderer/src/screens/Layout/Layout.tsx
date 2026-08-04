@@ -1035,20 +1035,18 @@ function Layout({
               </button>
             )}
             <div className="sidebar-footer-menu" aria-label="Workspace tools">
-              <div className="sidebar-footer-flyout">
-                {FOOTER_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => (
-                  <button
-                    key={v}
-                    className={`sidebar-footer-action ${view === v ? "active" : ""}`}
-                    onClick={() => goTo(v)}
-                    aria-label={t(labelKey)}
-                    data-tooltip={t(labelKey)}
-                  >
-                    <Icon size={16} />
-                  </button>
-                ))}
-              </div>
               <div className="sidebar-footer-actions-row">
+                <button
+                  type="button"
+                  className="sidebar-footer-action sidebar-settings-trigger"
+                  onClick={() =>
+                    openSettings(undefined, { profile: activeProfile })
+                  }
+                  aria-label={t("navigation.settings")}
+                  data-tooltip={t("navigation.settings")}
+                >
+                  <SettingsIcon size={16} />
+                </button>
                 <button
                   type="button"
                   className={`sidebar-footer-action sidebar-subagent-trigger ${
@@ -1068,17 +1066,19 @@ function Layout({
                 >
                   <Bot size={16} />
                 </button>
-                <button
-                  type="button"
-                  className="sidebar-footer-action sidebar-settings-trigger"
-                  onClick={() =>
-                    openSettings(undefined, { profile: activeProfile })
-                  }
-                  aria-label={t("navigation.settings")}
-                  data-tooltip={t("navigation.settings")}
-                >
-                  <SettingsIcon size={16} />
-                </button>
+              </div>
+              <div className="sidebar-footer-flyout">
+                {FOOTER_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => (
+                  <button
+                    key={v}
+                    className={`sidebar-footer-action ${view === v ? "active" : ""}`}
+                    onClick={() => goTo(v)}
+                    aria-label={t(labelKey)}
+                    data-tooltip={t(labelKey)}
+                  >
+                    <Icon size={16} />
+                  </button>
+                ))}
               </div>
             </div>
             <ProfileSwitcher
