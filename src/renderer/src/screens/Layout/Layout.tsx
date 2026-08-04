@@ -22,7 +22,9 @@ import Sessions from "../Sessions/Sessions";
 import Agents from "../Agents/Agents";
 import Discover from "../Discover/Discover";
 import ProfileSwitcher from "./ProfileSwitcher";
-import SidebarRecentSessions from "./SidebarRecentSessions";
+import SidebarRecentSessions, {
+  SHOW_SUBAGENT_RUNS_KEY,
+} from "./SidebarRecentSessions";
 import Skills from "../Skills/Skills";
 import Memory from "../Memory/Memory";
 import Tools from "../Tools/Tools";
@@ -50,6 +52,7 @@ import {
   Terminal,
   Kanban as KanbanIcon,
   Download,
+  Bot,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -299,6 +302,26 @@ function Layout({
     startX: 0,
     startWidth: SIDEBAR_WIDTH_MAX,
   });
+  // Subagent-runs filter state, mirrored from SidebarRecentSessions so the
+  // footer's Bot button can show the active state.
+  const [subagentRunsVisible, setSubagentRunsVisible] = useState<boolean>(
+    () => {
+      try {
+        return localStorage.getItem(SHOW_SUBAGENT_RUNS_KEY) === "true";
+      } catch {
+        return false;
+      }
+    },
+  );
+
+  useEffect(() => {
+    const onChange = (e: Event): void => {
+      setSubagentRunsVisible((e as CustomEvent<boolean>).detail === true);
+    };
+    window.addEventListener("hermes-sidebar-subagents-changed", onChange);
+    return () =>
+      window.removeEventListener("hermes-sidebar-subagents-changed", onChange);
+  }, []);
 
   const onSidebarResizeStart = (e: React.PointerEvent<HTMLDivElement>): void => {
     sidebarResizeRef.current = {
@@ -1025,6 +1048,25 @@ function Layout({
                   </button>
                 ))}
               </div>
+              <button
+                type="button"
+                className={`sidebar-footer-action sidebar-subagent-trigger ${
+                  subagentRunsVisible ? "active" : ""
+                }`}
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent("hermes-sidebar-toggle-subagents"),
+                  )
+                }
+                aria-label="Show subagent runs"
+                data-tooltip={
+                  subagentRunsVisible
+                    ? "Hide subagent runs"
+                    : "Show subagent runs"
+                }
+              >
+                <Bot size={16} />
+              </button>
               <button
                 type="button"
                 className="sidebar-footer-action sidebar-settings-trigger"

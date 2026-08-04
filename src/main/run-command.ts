@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { spawn } from "child_process";
 import { unlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -39,4 +40,40 @@ export function scheduleScriptCleanup(scriptPath: string, delayMs = 60_000): voi
     });
   }, delayMs);
   timer.unref?.();
+}
+
+/**
+ * Run a command in a NEW OS terminal window (PowerShell on Windows, bash
+ * elsewhere) instead of the built-in terminal dock. The command is written
+ * to a temp script and the shell is spawned detached with the window kept
+ * open (`-NoExit`) so the user sees the output.
+ */
+export async function runCommandInOsTerminal(
+  command: string,
+  cwd?: string,
+): Promise<boolean> {
+  const kind: ShellKind = process.platform === "win32" ? "pwsh" : "sh";
+  const scriptPath = await writeTempScript(command, kind);
+  // Keep the temp script alive well past the window's likely lifespan.
+  scheduleScriptCleanup(scriptPath, 180_000);
+
+  const options = {
+    cwd: cwd && cwd.trim() ? cwd.trim() : undefined,
+    detached: true,
+    stdio: "ignore" as const,
+    windowsHide: false,
+  };
+
+  if (process.platform === "win32") {
+    const child = spawn(
+      "powershell.exe",
+      ["-NoExit", "-ExecutionPolicy", "Bypass", "-File", scriptPath],
+      options,
+    );
+    child.unref();
+  } else {
+    const child = spawn("bash", [scriptPath], options);
+    child.unref();
+  }
+  return true;
 }

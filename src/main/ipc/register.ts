@@ -76,7 +76,11 @@ import {
   shellKindFor,
   writeToSession,
 } from "../terminal-session";
-import { scheduleScriptCleanup, writeTempScript } from "../run-command";
+import {
+  runCommandInOsTerminal,
+  scheduleScriptCleanup,
+  writeTempScript,
+} from "../run-command";
 import {
   getGpuStatus,
   reenableGpuAndRelaunch,
@@ -3173,6 +3177,24 @@ export function registerIpcHandlers(context: IpcContext): void {
       );
       writeToSession(id, buildFeedLine(scriptPath, kind));
       return { id, shell };
+    },
+  );
+
+  ipcMain.handle(
+    "command:run-os",
+    async (
+      _event,
+      payload: { commandId: string; cwd: string; command: string },
+    ): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const ok = await runCommandInOsTerminal(payload.command, payload.cwd);
+        return { ok };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
     },
   );
 

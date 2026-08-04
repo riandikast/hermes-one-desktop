@@ -1180,6 +1180,7 @@ interface HermesAPI {
   terminalResize: (payload: { id: string; cols: number; rows: number }) => Promise<{ ok: boolean }>;
   terminalKill: (id: string) => Promise<{ ok: boolean }>;
   commandRun: (payload: { commandId: string; cwd: string; command: string }) => Promise<{ id: string; shell: string }>;
+  commandRunOs: (payload: { commandId: string; cwd: string; command: string }) => Promise<{ ok: boolean; error?: string }>;
   onTerminalData: (callback: (payload: { id: string; data: string }) => void) => () => void;
   onTerminalExit: (callback: (payload: { id: string }) => void) => () => void;
   readImageFile: (filePath: string) => Promise<string | null>;

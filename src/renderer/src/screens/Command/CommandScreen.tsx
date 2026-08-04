@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Search,
   Copy,
+  Terminal,
 } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
 import type { TerminalDockHandle } from "./TerminalDock";
@@ -52,6 +53,9 @@ export function CommandScreen(): React.JSX.Element {
   );
   const [newFolderMode, setNewFolderMode] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  // Delete confirmation dialog (command rows delete via a two-step confirm).
+  const [pendingDelete, setPendingDelete] = useState<CommandItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [dockHeight, setDockHeight] = useState(() => {
     try {
       const raw = localStorage.getItem(TERMINAL_HEIGHT_KEY);
@@ -195,14 +199,37 @@ export function CommandScreen(): React.JSX.Element {
   };
 
   const remove = async (id: string): Promise<void> => {
-    await window.hermesAPI.deleteCommand(id);
-    if (editing?.id === id) {
-      setEditing(null);
-      setForm({ ...EMPTY_FORM });
-      setNewFolderMode(false);
-      setShowEditor(false);
+    setDeleting(true);
+    try {
+      await window.hermesAPI.deleteCommand(id);
+      if (editing?.id === id) {
+        setEditing(null);
+        setForm({ ...EMPTY_FORM });
+        setNewFolderMode(false);
+        setShowEditor(false);
+      }
+      await refresh();
+    } finally {
+      setDeleting(false);
+      setPendingDelete(null);
     }
-    await refresh();
+  };
+
+  const confirmDelete = (cmd: CommandItem): void => {
+    setPendingDelete(cmd);
+  };
+
+  const runOs = async (cmd: CommandItem): Promise<void> => {
+    try {
+      const res = await window.hermesAPI.commandRunOs({
+        commandId: cmd.id,
+        cwd: cmd.cwd,
+        command: cmd.command,
+      });
+      if (!res.ok) setError(res.error || "Failed to launch OS terminal.");
+    } catch {
+      setError("Failed to launch OS terminal.");
+    }
   };
 
   const run = async (cmd: CommandItem): Promise<void> => {
@@ -386,6 +413,15 @@ export function CommandScreen(): React.JSX.Element {
                           >
                             <Play size={14} />
                           </button>
+                          <button
+                            type="button"
+                            className="command-row-run-os"
+                            onClick={() => void runOs(cmd)}
+                            title={`Run ${cmd.name} in OS terminal`}
+                            aria-label={`Run ${cmd.name} in OS terminal`}
+                          >
+                            <Terminal size={13} />
+                          </button>
                           <div className="command-row-body">
                             <div className="command-row-title">{cmd.name}</div>
                             <div className="command-row-desc">
@@ -417,7 +453,7 @@ export function CommandScreen(): React.JSX.Element {
                           <button
                             type="button"
                             className="command-row-delete"
-                            onClick={() => void remove(cmd.id)}
+                            onClick={() => confirmDelete(cmd)}
                             title="Delete"
                             aria-label="Delete"
                           >
@@ -569,6 +605,41 @@ export function CommandScreen(): React.JSX.Element {
         onResizeMove={onResizeMove}
         onResizeEnd={onResizeEnd}
       />
+
+      {pendingDelete && (
+        <div
+          className="command-confirm-overlay"
+          onClick={() => setPendingDelete(null)}
+        >
+          <div
+            className="command-confirm-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="command-confirm-title">Delete command?</div>
+            <div className="command-confirm-body">
+              <strong>{pendingDelete.name}</strong> will be permanently removed.
+            </div>
+            <div className="command-confirm-actions">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setPendingDelete(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger btn-sm"
+                onClick={() => void remove(pendingDelete.id)}
+                disabled={deleting}
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

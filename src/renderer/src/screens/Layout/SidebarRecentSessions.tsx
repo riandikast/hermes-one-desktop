@@ -58,7 +58,7 @@ const FOLDERS_CLOSED_KEY = "hermes.sidebar.closedProjectFolders";
 const PINNED_OPEN_KEY = "hermes.sidebar.pinnedOpen";
 // Subagent runs (parentSessionId set) are filtered from the default list;
 // the toggle reveals them so they stay deletable.
-const SHOW_SUBAGENT_RUNS_KEY = "hermes.sidebar.showSubagentRuns";
+export const SHOW_SUBAGENT_RUNS_KEY = "hermes.sidebar.showSubagentRuns";
 // Pinned session ids live in localStorage like the disclosure state — pinning
 // is a desktop-only UI affordance, not part of the agent session schema.
 const PINNED_IDS_KEY = "hermes.sidebar.pinnedSessions";
@@ -299,7 +299,21 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     } catch {
       /* ignore */
     }
+    // Let the sidebar footer's subagent button reflect the state.
+    window.dispatchEvent(
+      new CustomEvent("hermes-sidebar-subagents-changed", {
+        detail: showSubagentRuns,
+      }),
+    );
   }, [showSubagentRuns]);
+
+  // The sidebar footer's subagent button toggles the same filter.
+  useEffect(() => {
+    const onToggle = (): void => setShowSubagentRuns((v) => !v);
+    window.addEventListener("hermes-sidebar-toggle-subagents", onToggle);
+    return () =>
+      window.removeEventListener("hermes-sidebar-toggle-subagents", onToggle);
+  }, []);
 
   const normalizeRows = useCallback<
     (

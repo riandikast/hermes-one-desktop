@@ -1628,6 +1628,8 @@ const hermesAPI = {
   terminalKill: (id: string) => ipcRenderer.invoke("terminal:kill", id),
   commandRun: (payload: { commandId: string; cwd: string; command: string }) =>
     ipcRenderer.invoke("command:run", payload),
+  commandRunOs: (payload: { commandId: string; cwd: string; command: string }) =>
+    ipcRenderer.invoke("command:run-os", payload),
   onTerminalData: (callback: (payload: { id: string; data: string }) => void) => {
     const listener = (_e: unknown, payload: { id: string; data: string }): void =>
       callback(payload);
