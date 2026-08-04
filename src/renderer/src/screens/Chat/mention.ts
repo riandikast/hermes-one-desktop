@@ -119,14 +119,17 @@ export function displayText(raw: string): string {
  * start; offsets at/after the tag end map to the tag's raw end.
  */
 export function displayToRawPos(raw: string, displayPos: number): number {
+  const tags = parseTags(raw);
   let d = 0;
   let r = 0;
-  for (const tag of parseTags(raw)) {
+  for (let i = 0; i < tags.length; i++) {
+    const tag = tags[i];
+    const markerLen = citationMarker(i).length;
     const outsideLen = tag.start - r;
     if (displayPos <= d + outsideLen) return r + (displayPos - d);
     d += outsideLen;
-    if (displayPos < d + TAG_DISPLAY_CHAR.length) return tag.start;
-    d += TAG_DISPLAY_CHAR.length;
+    if (displayPos < d + markerLen) return tag.start;
+    d += markerLen;
     r = tag.end;
   }
   return r + (displayPos - d);
@@ -136,13 +139,15 @@ export function displayToRawPos(raw: string, displayPos: number): number {
  * Map a RAW offset to DISPLAY space (for setSelectionRange after inserts).
  */
 export function rawToDisplayPos(raw: string, rawPos: number): number {
+  const tags = parseTags(raw);
   let d = 0;
   let lastEnd = 0;
-  for (const tag of parseTags(raw)) {
+  for (let i = 0; i < tags.length; i++) {
+    const tag = tags[i];
     if (rawPos <= tag.start) break;
     d += tag.start - lastEnd;
     if (rawPos < tag.end) return d;
-    d += TAG_DISPLAY_CHAR.length;
+    d += citationMarker(i).length;
     lastEnd = tag.end;
   }
   return d + (rawPos - lastEnd);

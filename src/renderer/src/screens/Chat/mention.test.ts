@@ -348,4 +348,25 @@ describe("citation markers", () => {
     const raw = `see ${tag("main.js", "/a/b/main.js")} now`;
     expect(displayText(raw)).not.toMatch(/[\uE000\uE001\uE002]/);
   });
+
+  it("maps positions correctly with 10+ tags (multi-digit markers)", () => {
+    const raw = Array.from({ length: 12 }, (_, i) =>
+      tag(`f${i}.ts`, `/p/f${i}.ts`),
+    ).join(" ");
+    const d = displayText(raw);
+    // Caret at the end of the whole display maps to the end of raw.
+    expect(displayToRawPos(raw, d.length)).toBe(raw.length);
+    expect(rawToDisplayPos(raw, raw.length)).toBe(d.length);
+    // Caret just after the [10] marker lands at the end of tag index 9.
+    const tenthStart =
+      Array.from({ length: 9 }, (_, i) => tag(`f${i}.ts`, `/p/f${i}.ts`))
+        .join(" ").length + 1;
+    const tenthTag = tag(`f9.ts`, `/p/f9.ts`);
+    // Display prefix = "[1] [2] ... [9] [10]" — each of the first 9 markers
+    // plus its trailing space is 4 chars (36), then the [10] marker adds 4.
+    const expectedDisplay = 36 + citationMarker(9).length;
+    expect(rawToDisplayPos(raw, tenthStart + tenthTag.length)).toBe(
+      expectedDisplay,
+    );
+  });
 });
