@@ -1058,23 +1058,6 @@ export function useDashboardChatTransport({
       }
       logDashboardEvent(event, "accepted", runtimeSessionId);
 
-      // DIAGNOSTIC (file-changes investigation): reveal every tool-ish and
-      // terminal event type + payload keys the gateway actually emits.
-      const evType = String(event.type);
-      if (
-        evType.includes("tool") ||
-        evType === "message.complete" ||
-        evType.includes("message")
-      ) {
-        console.info(
-          "[file-changes] event seen",
-          JSON.stringify({
-            type: evType,
-            keys: Object.keys(asRecord(event.payload)).sort(),
-          }),
-        );
-      }
-
       // Background (`/btw`) prompts run on a separate agent and report back via
       // `background.complete` — outside the main turn lifecycle, so render the
       // answer as a standalone agent message without touching isLoading or the
@@ -1170,19 +1153,6 @@ export function useDashboardChatTransport({
           "tool_name",
         ).toLowerCase();
         const matched = WRITE_TOOL_NAMES.some((w) => toolName.includes(w));
-        console.info(
-          "[file-changes] tool.start",
-          JSON.stringify({
-            toolName,
-            matched,
-            path: extractToolPath(
-              toolPayload.context ??
-                (toolPayload.args as unknown) ??
-                toolPayload.input ??
-                toolPayload.arguments,
-            ),
-          }),
-        );
         if (matched) {
           const path = extractToolPath(
             toolPayload.context ??
@@ -1245,27 +1215,6 @@ export function useDashboardChatTransport({
           toolPayload.input ??
           toolPayload.arguments;
         const path = extractToolPath(args);
-        let argsPreview = "";
-        if (typeof args === "string") {
-          argsPreview = args;
-        } else {
-          try {
-            argsPreview = JSON.stringify(args);
-          } catch {
-            argsPreview = String(args);
-          }
-        }
-        if (argsPreview.length > 400) argsPreview = `${argsPreview.slice(0, 400)}…`;
-        console.info(
-          "[file-changes] tool.complete",
-          JSON.stringify({
-            toolName,
-            matched,
-            path,
-            args: argsPreview,
-            capturedPaths: Array.from(fileChangesRef.current.keys()),
-          }),
-        );
         if (matched && path) {
           if (!fileChangesRef.current.has(path)) {
             // The before was never captured (path unknown at tool.start) —
@@ -1287,15 +1236,7 @@ export function useDashboardChatTransport({
                 after: res?.content ?? null,
               });
             })
-            .catch((err) => {
-              console.info(
-                "[file-changes] after-read failed",
-                JSON.stringify({
-                  path,
-                  error: err instanceof Error ? err.message : String(err),
-                }),
-              );
-            });
+            .catch(() => undefined);
         }
       }
 
@@ -1354,40 +1295,32 @@ export function useDashboardChatTransport({
             (c) => c.after !== null || c.before !== null,
           );
           const attachChanges = (list: FileChange[]): void => {
-            console.info(
-              "[file-changes] attaching",
-              JSON.stringify({
-                count: list.length,
-                paths: list.map((c) => c.path),
-                missingAfter: list.filter((c) => c.after === null).length,
-                lastRowKind: (messagesRef.current[messagesRef.current.length - 1] as { kind?: string })?.kind ?? null,
-                lastRowRole: messagesRef.current[messagesRef.current.length - 1]?.role ?? null,
-              }),
-            );
-            setMessages((prev) => {
-              // The bubble is not necessarily the last row — tool rows are
-              // appended after it. Scan backwards for the last assistant
-              // bubble (no kind), skipping tool/reasoning rows.
-              for (let idx = prev.length - 1; idx >= 0; idx--) {
-                const last = prev[idx];
-                if (!last || last.role !== "agent") break;
-                const kind = (last as { kind?: string }).kind;
-                if (
-                  kind === "tool_call" ||
-                  kind === "tool_result" ||
-                  kind === "reasoning"
-                ) {
-                  continue;
-                }
-                const next = [...prev];
-                next[idx] = { ...last, fileChanges: list } as ChatMessage;
-                messagesRef.current = next;
-                console.info(`[file-changes] attached to bubble at index ${idx}`);
-                return next;
+            // The bubble is not necessarily the last row — tool rows are
+            // appended after it. Scan backwards for the last assistant
+            // bubble (no kind), skipping tool/reasoning rows. Attach
+            // synchronously off messagesRef (the sync source of truth)
+            // rather than a functional updater, so the attach lands even if
+            // a later event's setMessages batches on top of it.
+            const current = messagesRef.current;
+            for (let idx = current.length - 1; idx >= 0; idx--) {
+              const last = current[idx];
+              if (!last || last.role !== "agent") break;
+              const kind = (last as { kind?: string }).kind;
+              if (
+                kind === "tool_call" ||
+                kind === "tool_result" ||
+                kind === "reasoning"
+              ) {
+                continue;
               }
-              console.info("[file-changes] NO bubble found to attach");
-              return prev;
-            });
+              const next = [...current];
+              next[idx] = { ...last, fileChanges: list } as ChatMessage;
+              messagesRef.current = next;
+              setMessages(next);
+              console.info(`[file-changes] badge attached (${list.length})`);
+              return;
+            }
+            console.info("[file-changes] badge NOT attached (no bubble)");
           };
           if (changes.length > 0) {
             const missingAfter = changes.filter((c) => c.after === null);
@@ -1811,7 +1744,6 @@ export function useDashboardChatTransport({
       if (!enabled) return false;
       // FILE-CHANGES: a new user turn starts a fresh accumulator.
       fileChangesRef.current = new Map();
-      console.info("[file-changes] sendMessage via dashboard transport");
       const pendingClarifyRequestId = pendingClarifyRequestIdRef.current;
       if (pendingClarifyRequestId) {
         pendingClarifyRequestIdRef.current = null;
