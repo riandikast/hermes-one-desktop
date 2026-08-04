@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { extractToolPath } from "./fileChanges";
+import { extractToolPath, diffLines, type DiffLine } from "./fileChanges";
+
+function text(lines: DiffLine[]): string {
+  return lines.map((l) => `${l.type === "add" ? "+" : l.type === "del" ? "-" : " "}${l.text}`).join("\n");
+}
 
 describe("extractToolPath", () => {
   it("reads a plain path key from args", () => {
@@ -92,5 +96,45 @@ describe("extractToolPath", () => {
     expect(extractToolPath({ path: "c:\\Users\\x\\a.ts" })).toBe(
       "C:\\Users\\x\\a.ts",
     );
+  });
+});
+
+describe("diffLines", () => {
+  it("returns all-same for identical content", () => {
+    expect(text(diffLines("a\nb\nc", "a\nb\nc")!)).toBe(" a\n b\n c");
+  });
+
+  it("marks an insertion in the middle as add", () => {
+    expect(text(diffLines("a\nc", "a\nb\nc")!)).toBe(" a\n+b\n c");
+  });
+
+  it("marks a deletion in the middle as del", () => {
+    expect(text(diffLines("a\nb\nc", "a\nc")!)).toBe(" a\n-b\n c");
+  });
+
+  it("marks a replacement as del + add", () => {
+    expect(text(diffLines("a\nold\nc", "a\nnew\nc")!)).toBe(
+      " a\n-old\n+new\n c",
+    );
+  });
+
+  it("handles empty before (created file)", () => {
+    expect(text(diffLines("", "x\ny")!)).toBe("+x\n+y");
+  });
+
+  it("handles empty after (deleted file)", () => {
+    expect(text(diffLines("x\ny", "")!)).toBe("-x\n-y");
+  });
+
+  it("trims common prefix and suffix", () => {
+    expect(text(diffLines("x\nold\nz", "x\nnew\nz")!)).toBe(
+      " x\n-old\n+new\n z",
+    );
+  });
+
+  it("returns null when the diff is too large to compute", () => {
+    const bigA = Array.from({ length: 1200 }, (_, i) => `a${i}`).join("\n");
+    const bigB = Array.from({ length: 1200 }, (_, i) => `b${i}`).join("\n");
+    expect(diffLines(bigA, bigB)).toBeNull();
   });
 });

@@ -166,6 +166,10 @@ function ActivityStrip({
   );
 }
 
+/** Cap the rendered table rows — 2000 DOM rows on first mount made tab
+ *  switches janky. Show the latest N with a footer note. */
+const TABLE_ROW_CAP = 100;
+
 export default function Usage(): React.JSX.Element {
   const { t } = useI18n();
   const { records, clearUsage, totals } = useUsageTracker();
@@ -179,8 +183,10 @@ export default function Usage(): React.JSX.Element {
   }, [records]);
 
   const visibleRecords = useMemo(() => {
-    if (!filterModel) return records;
-    return records.filter((r) => r.model === filterModel);
+    const filtered = filterModel
+      ? records.filter((r) => r.model === filterModel)
+      : records;
+    return filtered.slice(0, TABLE_ROW_CAP);
   }, [records, filterModel]);
 
   return (
@@ -360,6 +366,14 @@ export default function Usage(): React.JSX.Element {
           <span>
             Newest: <code>{fmtDate(totals.newestAt)}</code>
           </span>
+          {records.length > TABLE_ROW_CAP && (
+            <>
+              <span>·</span>
+              <span>
+                Showing latest {TABLE_ROW_CAP} of {records.length} turns
+              </span>
+            </>
+          )}
         </div>
       )}
     </div>

@@ -1216,7 +1216,31 @@ export function useDashboardChatTransport({
           toolPayload.arguments;
         const path = extractToolPath(args);
         if (matched && path) {
-          if (!fileChangesRef.current.has(path)) {
+          // Patch-style tools carry the exact hunk — capture it so the diff
+          // view renders git-style even without the full before content.
+          let removed: string[] | undefined;
+          let added: string[] | undefined;
+          if (
+            /patch|edit|replace|str_replace|update/.test(toolName) &&
+            typeof toolPayload.args === "object" &&
+            toolPayload.args !== null &&
+            !Array.isArray(toolPayload.args)
+          ) {
+            const oldString = (toolPayload.args as Record<string, unknown>).old_string;
+            const newString = (toolPayload.args as Record<string, unknown>).new_string;
+            if (typeof oldString === "string") {
+              removed = oldString === "" ? [] : oldString.split("\n");
+            }
+            if (typeof newString === "string") {
+              added = newString === "" ? [] : newString.split("\n");
+            }
+          }
+          const existing = fileChangesRef.current.get(path);
+          if (existing) {
+            if (removed || added) {
+              fileChangesRef.current.set(path, { ...existing, removed, added });
+            }
+          } else {
             // The before was never captured (path unknown at tool.start) —
             // the file may already be modified by the time we read.
             fileChangesRef.current.set(path, {
@@ -1224,6 +1248,8 @@ export function useDashboardChatTransport({
               before: null,
               after: null,
               beforeKnown: false,
+              removed,
+              added,
             });
           }
           void window.hermesAPI

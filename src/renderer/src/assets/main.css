@@ -18574,33 +18574,50 @@ body:has(.shell-vibrant),
   font-size: 11px;
   color: var(--text-muted);
 }
-.file-changes-diff-panes {
+.file-changes-diff-body {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: minmax(0, 1fr);
+  overflow: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  line-height: 1.55;
+  padding: 6px 0;
+  background: #282c34;
 }
-.file-changes-pane {
+.file-changes-diff-line {
+  display: flex;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.file-changes-diff-marker {
+  flex-shrink: 0;
+  width: 22px;
+  padding-left: 8px;
+  text-align: left;
+  user-select: none;
+  color: var(--text-muted);
+}
+.file-changes-diff-text {
+  flex: 1;
   min-width: 0;
+}
+.file-changes-diff-add {
+  background: rgba(46, 160, 67, 0.16);
+}
+.file-changes-diff-add .file-changes-diff-text {
+  color: #7ee787;
+}
+.file-changes-diff-del {
+  background: rgba(248, 81, 73, 0.16);
+}
+.file-changes-diff-del .file-changes-diff-text {
+  color: #ffa198;
+}
+.file-changes-after-only {
+  flex: 1;
   min-height: 0;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--border);
-}
-.file-changes-pane:last-child {
-  border-right: none;
-}
-.file-changes-pane-empty {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  text-align: center;
-  font-size: 12.5px;
-  color: var(--text-muted);
 }
 .file-changes-pane-title {
   padding: 6px 12px;

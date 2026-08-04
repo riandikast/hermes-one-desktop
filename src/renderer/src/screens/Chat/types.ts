@@ -12,12 +12,17 @@ import type { Attachment } from "../../../../shared/attachments";
 /** One file modified by an assistant turn; before/after content captured
  *  live from the tool stream (null before = created, null after = deleted).
  *  `beforeKnown` is false when the before content was never captured (the
- *  path only appeared at tool.complete, after the write already happened). */
+ *  path only appeared at tool.complete, after the write already happened).
+ *  `removed`/`added` carry the exact hunk from patch-style tools
+ *  (old_string/new_string) so a git-style diff can render without the
+ *  full before content. */
 export interface FileChange {
   path: string;
   before: string | null;
   after: string | null;
   beforeKnown?: boolean;
+  removed?: string[];
+  added?: string[];
 }
 
 export interface ChatBubbleMessage {

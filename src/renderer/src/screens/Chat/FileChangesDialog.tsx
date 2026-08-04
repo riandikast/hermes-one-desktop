@@ -3,18 +3,26 @@ import { X } from "lucide-react";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
+import { diffLines, type DiffLine } from "./fileChanges";
 import type { FileChange } from "./types";
 
 function diffStats(change: FileChange): string {
-  if (change.before === null && change.after !== null) {
-    return change.beforeKnown ? "Created" : "Edited";
+  if (change.before === null && change.after !== null && change.beforeKnown) {
+    return "Created";
   }
   if (change.before !== null && change.after === null) return "Deleted";
-  const beforeLines = (change.before ?? "").split("\n").length;
-  const afterLines = (change.after ?? "").split("\n").length;
-  const added = Math.max(0, afterLines - beforeLines);
-  const removed = Math.max(0, beforeLines - afterLines);
-  return `+${added} −${removed} lines`;
+  if (change.removed || change.added) {
+    return `-${change.removed?.length ?? 0} +${change.added?.length ?? 0}`;
+  }
+  if (change.before !== null && change.after !== null) {
+    const computed = diffLines(change.before, change.after);
+    if (computed) {
+      const del = computed.filter((l) => l.type === "del").length;
+      const add = computed.filter((l) => l.type === "add").length;
+      return `-${del} +${add}`;
+    }
+  }
+  return "Edited";
 }
 
 function ReadOnlyCode({ content }: { content: string }): React.JSX.Element {
@@ -34,6 +42,40 @@ function ReadOnlyCode({ content }: { content: string }): React.JSX.Element {
   return <div ref={hostRef} className="file-changes-code" />;
 }
 
+/** Build the git-style diff lines for a change: exact hunk when the tool
+ *  provided old/new strings, else a computed LCS diff over full contents,
+ *  else null (after-only view). */
+function diffFor(change: FileChange): DiffLine[] | null {
+  if (change.removed || change.added) {
+    const lines: DiffLine[] = [];
+    for (const r of change.removed ?? []) lines.push({ type: "del", text: r });
+    for (const a of change.added ?? []) lines.push({ type: "add", text: a });
+    return lines;
+  }
+  if (change.before !== null && change.after !== null) {
+    return diffLines(change.before, change.after);
+  }
+  return null;
+}
+
+function DiffView({ lines }: { lines: DiffLine[] }): React.JSX.Element {
+  return (
+    <div className="file-changes-diff-body">
+      {lines.map((line, i) => (
+        <div
+          key={i}
+          className={`file-changes-diff-line file-changes-diff-${line.type}`}
+        >
+          <span className="file-changes-diff-marker">
+            {line.type === "add" ? "+" : line.type === "del" ? "-" : " "}
+          </span>
+          <span className="file-changes-diff-text">{line.text}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function FileChangesDialog({
   changes,
   onClose,
@@ -47,6 +89,11 @@ export function FileChangesDialog({
   const fileName = useMemo(
     () => selectedPath.split(/[\\/]/).pop() || selectedPath,
     [selectedPath],
+  );
+
+  const diff = useMemo(
+    () => (selected ? diffFor(selected) : null),
+    [selected],
   );
 
   return (
@@ -81,23 +128,14 @@ export function FileChangesDialog({
                 <span className="file-changes-diff-file">{fileName}</span>
                 <span className="file-changes-diff-stats">{diffStats(selected)}</span>
               </div>
-              <div className="file-changes-diff-panes">
-                <div className="file-changes-pane">
-                  <div className="file-changes-pane-title">Before</div>
-                  {selected.before !== null || selected.beforeKnown ? (
-                    <ReadOnlyCode content={selected.before ?? ""} />
-                  ) : (
-                    <div className="file-changes-pane-empty">
-                      Before not captured — the file content was read after
-                      the tool completed.
-                    </div>
-                  )}
-                </div>
-                <div className="file-changes-pane">
+              {diff ? (
+                <DiffView lines={diff} />
+              ) : (
+                <div className="file-changes-after-only">
                   <div className="file-changes-pane-title">After</div>
                   <ReadOnlyCode content={selected.after ?? ""} />
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>

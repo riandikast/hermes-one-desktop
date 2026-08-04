@@ -121,3 +121,76 @@ export function extractToolPath(args: unknown): string | null {
   const token = findAbsolutePathToken(text);
   return token ? normalizePath(token) : null;
 }
+
+/** One line of a computed diff, git-style. */
+export interface DiffLine {
+  type: "same" | "add" | "del";
+  text: string;
+}
+
+const DIFF_CELL_BUDGET = 1_000_000;
+
+/**
+ * Line diff (LCS with common prefix/suffix trimming) between two file
+ * contents. Returns null when the remaining middle exceeds the cell budget —
+ * callers fall back to a hunk-only or after-only view.
+ */
+export function diffLines(before: string, after: string): DiffLine[] | null {
+  const a = before === "" ? [] : before.split("\n");
+  const b = after === "" ? [] : after.split("\n");
+
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start++;
+  let endA = a.length - 1;
+  let endB = b.length - 1;
+  while (endA >= start && endB >= start && a[endA] === b[endB]) {
+    endA--;
+    endB--;
+  }
+
+  const midA = a.slice(start, endA + 1);
+  const midB = b.slice(start, endB + 1);
+  if (midA.length * midB.length > DIFF_CELL_BUDGET) return null;
+
+  // LCS DP table over the middle (row-major, Int32).
+  const m1 = midB.length + 1;
+  const lcs = new Int32Array((midA.length + 1) * m1);
+  for (let i = midA.length - 1; i >= 0; i--) {
+    for (let j = midB.length - 1; j >= 0; j--) {
+      lcs[i * m1 + j] =
+        midA[i] === midB[j]
+          ? lcs[(i + 1) * m1 + j + 1] + 1
+          : Math.max(lcs[(i + 1) * m1 + j], lcs[i * m1 + j + 1]);
+    }
+  }
+
+  const out: DiffLine[] = [];
+  for (let i = 0; i < start; i++) out.push({ type: "same", text: a[i] });
+  let i = 0;
+  let j = 0;
+  while (i < midA.length && j < midB.length) {
+    if (midA[i] === midB[j]) {
+      out.push({ type: "same", text: midA[i] });
+      i++;
+      j++;
+    } else if (lcs[(i + 1) * m1 + j] >= lcs[i * m1 + j + 1]) {
+      out.push({ type: "del", text: midA[i] });
+      i++;
+    } else {
+      out.push({ type: "add", text: midB[j] });
+      j++;
+    }
+  }
+  while (i < midA.length) {
+    out.push({ type: "del", text: midA[i] });
+    i++;
+  }
+  while (j < midB.length) {
+    out.push({ type: "add", text: midB[j] });
+    j++;
+  }
+  for (let k = endA + 1; k < a.length; k++) {
+    out.push({ type: "same", text: a[k] });
+  }
+  return out;
+}
