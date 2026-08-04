@@ -189,9 +189,15 @@ export const FileViewer = memo(function FileViewer({
         return;
       }
 
-      // 0 = unlimited: the editor must see the whole file, otherwise autosave
-      // would write back only the capped prefix and destroy the rest.
-      const result = await window.hermesAPI.readFile(filePath, 0);
+      // Effectively unlimited: the editor must see the whole file, otherwise
+      // autosave would write back only the capped prefix and destroy the rest.
+      // MAX_SAFE_INTEGER (not 0) — an app running the older read-file handler
+      // treats maxBytes ?? 102400 as literal 0 when 0 is passed, truncating
+      // every file to empty.
+      const result = await window.hermesAPI.readFile(
+        filePath,
+        Number.MAX_SAFE_INTEGER,
+      );
       if (cancelled) return;
       if (result === null) {
         setError(t("worktree.errorLoading"));
