@@ -6,23 +6,35 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { diffLines, type DiffLine } from "./fileChanges";
 import type { FileChange } from "./types";
 
-function diffStats(change: FileChange): string {
+function diffStats(change: FileChange): React.JSX.Element {
   if (change.before === null && change.after !== null && change.beforeKnown) {
-    return "Created";
+    return <span>Created</span>;
   }
-  if (change.before !== null && change.after === null) return "Deleted";
+  if (change.before !== null && change.after === null) {
+    return <span>Deleted</span>;
+  }
   if (change.removed || change.added) {
-    return `-${change.removed?.length ?? 0} +${change.added?.length ?? 0}`;
+    return (
+      <span>
+        <span className="file-changes-stat-del">-{change.removed?.length ?? 0}</span>{" "}
+        <span className="file-changes-stat-add">+{change.added?.length ?? 0}</span>
+      </span>
+    );
   }
   if (change.before !== null && change.after !== null) {
     const computed = diffLines(change.before, change.after);
     if (computed) {
       const del = computed.filter((l) => l.type === "del").length;
       const add = computed.filter((l) => l.type === "add").length;
-      return `-${del} +${add}`;
+      return (
+        <span>
+          <span className="file-changes-stat-del">-{del}</span>{" "}
+          <span className="file-changes-stat-add">+{add}</span>
+        </span>
+      );
     }
   }
-  return "Edited";
+  return <span>Edited</span>;
 }
 
 function ReadOnlyCode({ content }: { content: string }): React.JSX.Element {

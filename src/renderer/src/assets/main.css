@@ -18552,6 +18552,12 @@ body:has(.shell-vibrant),
   color: var(--text-muted);
   flex-shrink: 0;
 }
+.file-changes-stat-del {
+  color: #ffa198;
+}
+.file-changes-stat-add {
+  color: #7ee787;
+}
 .file-changes-diff {
   flex: 1;
   min-width: 0;
