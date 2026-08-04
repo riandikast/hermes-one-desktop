@@ -18425,10 +18425,12 @@ body:has(.shell-vibrant),
 }
 
 /* Open only when hovering the Settings button or the flyout itself — the
-   Bot (subagent) button next to Settings must NOT expand the flyout. */
+   Bot (subagent) button next to Settings must NOT expand the flyout.
+   `:has()` is required: the flyout is not a sibling of the settings button
+   (both sit inside .sidebar-footer-actions-row). */
 .sidebar-footer-flyout:hover,
-.sidebar-settings-trigger:hover ~ .sidebar-footer-flyout,
-.sidebar-settings-trigger:focus-visible ~ .sidebar-footer-flyout {
+.sidebar-footer-menu:has(.sidebar-settings-trigger:hover) .sidebar-footer-flyout,
+.sidebar-footer-menu:has(.sidebar-settings-trigger:focus-visible) .sidebar-footer-flyout {
   opacity: 1;
   visibility: visible;
   transform: translateY(-4px) scale(1);
@@ -18472,8 +18474,8 @@ body:has(.shell-vibrant),
 }
 
 .sidebar-collapsed .sidebar-footer-flyout:hover,
-.sidebar-collapsed .sidebar-settings-trigger:hover ~ .sidebar-footer-flyout,
-.sidebar-collapsed .sidebar-settings-trigger:focus-visible ~ .sidebar-footer-flyout {
+.sidebar-collapsed .sidebar-footer-menu:has(.sidebar-settings-trigger:hover) .sidebar-footer-flyout,
+.sidebar-collapsed .sidebar-footer-menu:has(.sidebar-settings-trigger:focus-visible) .sidebar-footer-flyout {
   transform: translateX(-50%) translateY(-4px) scale(1);
 }
 
