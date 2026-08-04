@@ -1218,23 +1218,6 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
               />
             )}
           </button>
-          <button
-            type="button"
-            className={`sidebar-recent-filter-toggle ${
-              showSubagentRuns ? "active" : ""
-            }`}
-            onClick={() => setShowSubagentRuns((v) => !v)}
-            title={
-              showSubagentRuns
-                ? "Hide subagent runs"
-                : "Show subagent runs (hidden by default)"
-            }
-            aria-label="Toggle subagent runs"
-            aria-pressed={showSubagentRuns}
-            tabIndex={expanded ? 0 : -1}
-          >
-            <Bot size={12} />
-          </button>
           <div
             className={`sidebar-recent-collapse ${chatsOpen ? "expanded" : ""}`}
           >

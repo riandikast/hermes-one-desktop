@@ -3174,38 +3174,6 @@ body:has(.shell-vibrant),
   white-space: nowrap;
 }
 
-/* Show-subagent-runs filter button, inline with the Chats section header */
-.sidebar-recent-filter-toggle {
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin: 6px 12px 0 0;
-  margin-left: auto;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  background: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  opacity: 0.45;
-  transition:
-    opacity var(--transition),
-    color var(--transition),
-    background var(--transition),
-    border-color var(--transition);
-}
-.sidebar-recent-filter-toggle:hover {
-  opacity: 1;
-  color: var(--text-secondary);
-}
-.sidebar-recent-filter-toggle.active {
-  opacity: 1;
-  color: var(--accent-text);
-  border-color: var(--border);
-  background: var(--accent-subtle);
-}
-
 /* Subagent indicator on sidebar session rows */
 .sidebar-recent-session-sub {
   margin-right: 5px;
@@ -18415,6 +18383,13 @@ body:has(.shell-vibrant),
   width: auto;
 }
 
+/* Subagent + Settings sit side by side (row), below the hover flyout */
+.sidebar-footer-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .sidebar-footer-flyout {
   position: absolute;
   bottom: 100%;
@@ -18472,6 +18447,11 @@ body:has(.shell-vibrant),
 }
 
 .sidebar-settings-trigger {
+  width: 36px;
+  height: 34px;
+}
+
+.sidebar-subagent-trigger {
   width: 36px;
   height: 34px;
 }

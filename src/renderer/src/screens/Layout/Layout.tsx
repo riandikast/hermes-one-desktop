@@ -1048,36 +1048,38 @@ function Layout({
                   </button>
                 ))}
               </div>
-              <button
-                type="button"
-                className={`sidebar-footer-action sidebar-subagent-trigger ${
-                  subagentRunsVisible ? "active" : ""
-                }`}
-                onClick={() =>
-                  window.dispatchEvent(
-                    new CustomEvent("hermes-sidebar-toggle-subagents"),
-                  )
-                }
-                aria-label="Show subagent runs"
-                data-tooltip={
-                  subagentRunsVisible
-                    ? "Hide subagent runs"
-                    : "Show subagent runs"
-                }
-              >
-                <Bot size={16} />
-              </button>
-              <button
-                type="button"
-                className="sidebar-footer-action sidebar-settings-trigger"
-                onClick={() =>
-                  openSettings(undefined, { profile: activeProfile })
-                }
-                aria-label={t("navigation.settings")}
-                data-tooltip={t("navigation.settings")}
-              >
-                <SettingsIcon size={16} />
-              </button>
+              <div className="sidebar-footer-actions-row">
+                <button
+                  type="button"
+                  className={`sidebar-footer-action sidebar-subagent-trigger ${
+                    subagentRunsVisible ? "active" : ""
+                  }`}
+                  onClick={() =>
+                    window.dispatchEvent(
+                      new CustomEvent("hermes-sidebar-toggle-subagents"),
+                    )
+                  }
+                  aria-label="Show subagent runs"
+                  data-tooltip={
+                    subagentRunsVisible
+                      ? "Hide subagent runs"
+                      : "Show subagent runs"
+                  }
+                >
+                  <Bot size={16} />
+                </button>
+                <button
+                  type="button"
+                  className="sidebar-footer-action sidebar-settings-trigger"
+                  onClick={() =>
+                    openSettings(undefined, { profile: activeProfile })
+                  }
+                  aria-label={t("navigation.settings")}
+                  data-tooltip={t("navigation.settings")}
+                >
+                  <SettingsIcon size={16} />
+                </button>
+              </div>
             </div>
             <ProfileSwitcher
               activeProfile={activeProfile}
