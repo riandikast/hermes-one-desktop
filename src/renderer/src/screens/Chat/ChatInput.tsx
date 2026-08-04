@@ -993,13 +993,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             />
             {parseTags(input).length > 0 && (
               <div className="chat-mention-tag-row">
-                {parseTags(input).map((tag) => (
-                  <div
-                    key={`${tag.path}@${tag.start}`}
-                    className="chat-mention-tag"
-                    title={tag.path}
-                  >
-                    <FileText size={12} className="chat-mention-tag-icon" />
+            {parseTags(input).map((tag, idx) => (
+              <div
+                key={`${tag.path}@${tag.start}`}
+                className="chat-mention-tag"
+                title={tag.path}
+              >
+                <span className="chat-mention-tag-num">{idx + 1}</span>
+                <FileText size={12} className="chat-mention-tag-icon" />
                     <span className="chat-mention-tag-name">
                       {truncatePath(tag.name, 16, 40)}
                     </span>

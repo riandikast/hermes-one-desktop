@@ -122,3 +122,33 @@ describe("ChatInput — slash command palette", () => {
     expect(screen.queryByText("command-0")).toBeNull();
   });
 });
+
+describe("ChatInput - mention chip citation badges", () => {
+  const tag = (name: string, path: string): string =>
+    "\uE000" + name + "\uE001" + path + "\uE002";
+
+  it("renders a numbered badge per mention chip", () => {
+    const { textarea } = renderInput();
+    fireEvent.change(textarea, {
+      target: {
+        value: `see ${tag("a.ts", "/x/a.ts")} and ${tag("b.ts", "/y/b.ts")}`,
+      },
+    });
+    const badges = screen.getAllByText(/^\d+$/);
+    expect(badges).toHaveLength(2);
+    expect(badges[0].textContent).toBe("1");
+    expect(badges[1].textContent).toBe("2");
+  });
+
+  it("renumbers chips when the first mention is removed", () => {
+    const { textarea } = renderInput();
+    const t1 = tag("a.ts", "/x/a.ts");
+    const t2 = tag("b.ts", "/y/b.ts");
+    fireEvent.change(textarea, { target: { value: `${t1} ${t2}` } });
+    const removeButtons = screen.getAllByLabelText("Remove file");
+    fireEvent.click(removeButtons[0]);
+    const badges = screen.getAllByText(/^\d+$/);
+    expect(badges).toHaveLength(1);
+    expect(badges[0].textContent).toBe("1");
+  });
+});
