@@ -4,6 +4,7 @@ import { Zap, Globe, ClipboardList, Hammer } from "lucide-react";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatEmptyState } from "./ChatEmptyState";
 import { MessageList } from "./MessageList";
+import { FileChangesDialog } from "./FileChangesDialog";
 import { ModelPicker } from "./ModelPicker";
 import { ReasoningEffortPicker } from "./ReasoningEffortPicker";
 import { ContextFolderChip } from "./ContextFolderChip";
@@ -30,7 +31,7 @@ import { ConfigHealthBanner } from "../../components/ConfigHealthBanner";
 import FollowUsModal from "../../components/FollowUsModal";
 import type { Attachment } from "../../../../shared/attachments";
 import type { SessionModelOverride } from "../../../../shared/model-override";
-import type { ActiveTurn, ChatMessage, UsageState } from "./types";
+import type { ActiveTurn, ChatMessage, FileChange, UsageState } from "./types";
 import type { ContextUsage } from "./ContextGauge";
 import { contextWindowForModel } from "./contextWindows";
 import { useUsageTracker } from "./hooks/useUsageTracker";
@@ -194,6 +195,10 @@ function Chat({
   const usageTracker = useUsageTracker();
   const [dragActive, setDragActive] = useState(false);
   const [remoteMode, setRemoteMode] = useState(false);
+  // File-changes dialog: non-null = open with the given changes.
+  const [fileChangesOpen, setFileChangesOpen] = useState<FileChange[] | null>(
+    null,
+  );
   const [connectionMode, setConnectionMode] = useState<
     "local" | "remote" | "ssh"
   >("local");
@@ -1205,6 +1210,7 @@ function Chat({
               agentAvatar={agentAvatar}
               onRevertCheckpoint={handleRevertCheckpoint}
               onUnsendLastUser={handleUnsendLastUser}
+              onOpenFileChanges={(changes) => setFileChangesOpen(changes)}
             />
           )}
           <div ref={bottomRef} />
@@ -1380,6 +1386,12 @@ function Chat({
       />
       {/* Show follow-us modal only after setup is complete */}
       {active && connectionModeLoaded && readiness.ok && <FollowUsModal />}
+      {fileChangesOpen && (
+        <FileChangesDialog
+          changes={fileChangesOpen}
+          onClose={() => setFileChangesOpen(null)}
+        />
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { ClarifyCard } from "./ClarifyCard";
 import type {
   ChatMessage,
   ClarifyMessage,
+  FileChange,
   ToolCallMessage,
   ToolResultMessage,
 } from "./types";
@@ -33,6 +34,8 @@ interface MessageListProps {
    *  truncates the transcript (no double token), then re-populates the
    *  input box for editing+resend. */
   onUnsendLastUser?: (msgId: string, content: string) => void;
+  /** Open the file-changes dialog for a bubble (dashboard transport). */
+  onOpenFileChanges?: (changes: FileChange[]) => void;
 }
 
 function TypingIndicator({
@@ -82,6 +85,7 @@ export const MessageList = memo(function MessageList({
   agentAvatar,
   onRevertCheckpoint,
   onUnsendLastUser,
+  onOpenFileChanges,
 }: MessageListProps): React.JSX.Element {
   // Bubbles with empty content are still hidden (live-stream placeholders).
   // History rows pass through unconditionally. Agent bubbles streaming live are kept.
@@ -185,6 +189,7 @@ export const MessageList = memo(function MessageList({
         onRevertCheckpoint={onRevertCheckpoint}
         onUnsendLastUser={onUnsendLastUser}
         isLastUser={i === lastUserBubbleIdx}
+        onOpenFileChanges={onOpenFileChanges}
       />,
     );
   }

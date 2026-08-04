@@ -1,6 +1,6 @@
 import { memo, useMemo, useState, useCallback } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
-import { Copy, Check, Undo2, RotateCcw } from "lucide-react";
+import { Copy, Check, Undo2, RotateCcw, FilePlus2 } from "lucide-react";
 import ProfileAvatar from "../../components/common/ProfileAvatar";
 import { OrbLoader } from "../../components/OrbLoader";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
@@ -8,7 +8,7 @@ import { AttachmentChip } from "../../components/AttachmentChip";
 import { MediaSegmentView } from "../../components/MediaImage";
 import { useI18n } from "../../components/useI18n";
 import { parseMediaTokens, cleanLeakedToolTags } from "./mediaUtils";
-import type { ChatBubbleMessage, ChatMessage } from "./types";
+import type { ChatBubbleMessage, ChatMessage, FileChange } from "./types";
 
 export const APPROVAL_RE =
   /⚠️.*dangerous|requires? (your )?approval|\/approve.*\/deny|do you want (me )?to (proceed|continue|run|execute)/i;
@@ -178,6 +178,8 @@ interface MessageRowProps {
   /** True only for the most recent user bubble — restricts the unsend button
    *  to that row so it doesn't clutter older bubbles. */
   isLastUser?: boolean;
+  /** Open the file-changes dialog for this bubble (dashboard transport). */
+  onOpenFileChanges?: (changes: FileChange[]) => void;
 }
 
 export const MessageRow = memo(function MessageRow({
@@ -191,6 +193,7 @@ export const MessageRow = memo(function MessageRow({
   onRevertCheckpoint,
   onUnsendLastUser,
   isLastUser = false,
+  onOpenFileChanges,
 }: MessageRowProps): React.JSX.Element {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -346,6 +349,21 @@ export const MessageRow = memo(function MessageRow({
               )
             : msg.content)
         )}
+        {(msg as ChatBubbleMessage).fileChanges &&
+          (msg as ChatBubbleMessage).fileChanges!.length > 0 && (
+            <button
+              type="button"
+              className="chat-file-changes-badge"
+              onClick={() =>
+                onOpenFileChanges?.((msg as ChatBubbleMessage).fileChanges!)
+              }
+              title="View file changes"
+            >
+              <FilePlus2 size={13} />
+              {(msg as ChatBubbleMessage).fileChanges!.length} file
+              {(msg as ChatBubbleMessage).fileChanges!.length > 1 ? "s" : ""} changed
+            </button>
+          )}
         {msg.error && (
           <div className="chat-error-message" role="alert">
             {msg.error}
