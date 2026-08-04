@@ -30,28 +30,58 @@ function looksLikeAbsolutePath(candidate: string): boolean {
 }
 
 /** Find the first absolute-path token embedded in arbitrary text (e.g. a
- *  shell command or a human-readable tool description). Handles JSON double
+ *  shell command or a human-readable tool description). File-like tokens
+ *  (basename with a dot-extension) win over directory-like tokens — a
+ *  `terminal` tool's first path is usually its cwd. Handles JSON double
  *  backslash escapes. URL hosts ("https://…") and relative paths are
  *  rejected via explicit preceding-character checks. */
 function findAbsolutePathToken(text: string): string | null {
   const winRe = /[A-Za-z]:[\\/][^\s"'`<>|]*/g;
   const posixRe = /[\\/][^\s"'`<>|]+/g;
-  let best: { index: number; token: string } | null = null;
+  let best: { index: number; token: string; fileLike: boolean } | null = null;
+  const consider = (
+    index: number,
+    raw: string,
+    fileLike: boolean,
+  ): void => {
+    const token = raw.replace(/\\\\/g, "\\");
+    if (
+      !best ||
+      (fileLike && !best.fileLike) ||
+      (!fileLike && !best.fileLike && index < best.index)
+    ) {
+      best = { index, token, fileLike };
+    }
+  };
   for (const m of text.matchAll(winRe)) {
     const prev = m.index > 0 ? text[m.index - 1] : "";
     // Skip drive letters glued to a word ("https:…").
     if (/[A-Za-z]/.test(prev)) continue;
-    const token = m[0].replace(/\\\\/g, "\\");
-    if (!best || m.index < best.index) best = { index: m.index, token };
+    consider(m.index, m[0], /\.[^\\/]+$/.test(m[0].split(/[\\/]/).pop() ?? ""));
   }
   for (const m of text.matchAll(posixRe)) {
     const prev = m.index > 0 ? text[m.index - 1] : "";
     // Skip "/…" after a letter/digit/colon (relative path or URL host).
     if (/[A-Za-z0-9:]/.test(prev)) continue;
-    const token = m[0].replace(/\\\\/g, "\\");
-    if (!best || m.index < best.index) best = { index: m.index, token };
+    consider(m.index, m[0], /\.[^\\/]+$/.test(m[0].split(/[\\/]/).pop() ?? ""));
   }
-  return best?.token ?? null;
+  const winner = best as { token: string } | null;
+  return winner ? winner.token : null;
+}
+
+/** Normalize git-bash style paths (/c/Users/x → C:\Users\x) and lowercase
+ *  drive letters to a Windows-usable form. */
+function normalizePath(path: string): string {
+  const gitBash = path.match(/^\/([a-zA-Z])(?:\/|$)(.*)$/);
+  if (gitBash) {
+    const drive = gitBash[1].toUpperCase();
+    const rest = gitBash[2] ? `\\${gitBash[2].replace(/\//g, "\\")}` : "\\";
+    return `${drive}:${rest}`;
+  }
+  if (/^[a-z]:/.test(path)) {
+    return path[0].toUpperCase() + path.slice(1);
+  }
+  return path;
 }
 
 /**
@@ -67,7 +97,7 @@ export function extractToolPath(args: unknown): string | null {
     for (const key of PATH_KEYS) {
       const value = args[key];
       if (typeof value === "string" && looksLikeAbsolutePath(value)) {
-        return value.trim();
+        return normalizePath(value.trim());
       }
     }
     try {
@@ -85,8 +115,9 @@ export function extractToolPath(args: unknown): string | null {
   const quotedMatches = text.match(/"[^"]*[\\/][^"]*"/g) || [];
   for (const raw of quotedMatches) {
     const token = findAbsolutePathToken(raw.slice(1, -1));
-    if (token) return token;
+    if (token) return normalizePath(token);
   }
   // 3. Last resort: scan the whole text.
-  return findAbsolutePathToken(text);
+  const token = findAbsolutePathToken(text);
+  return token ? normalizePath(token) : null;
 }

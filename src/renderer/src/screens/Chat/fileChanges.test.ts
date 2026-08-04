@@ -3,14 +3,16 @@ import { extractToolPath } from "./fileChanges";
 
 describe("extractToolPath", () => {
   it("reads a plain path key from args", () => {
-    expect(extractToolPath({ path: "/a/b.ts" })).toBe("/a/b.ts");
-    expect(extractToolPath({ file_path: "/a/c.ts" })).toBe("/a/c.ts");
-    expect(extractToolPath({ file: "/a/d.ts" })).toBe("/a/d.ts");
-    expect(extractToolPath({ target: "/a/e.ts" })).toBe("/a/e.ts");
+    expect(extractToolPath({ path: "/repo/b.ts" })).toBe("/repo/b.ts");
+    expect(extractToolPath({ file_path: "/repo/c.ts" })).toBe("/repo/c.ts");
+    expect(extractToolPath({ file: "/repo/d.ts" })).toBe("/repo/d.ts");
+    expect(extractToolPath({ target: "/repo/e.ts" })).toBe("/repo/e.ts");
   });
 
   it("reads a nested path inside a stringified arg", () => {
-    expect(extractToolPath({ path: "/a/x.ts", content: "hi" })).toBe("/a/x.ts");
+    expect(extractToolPath({ path: "/repo/x.ts", content: "hi" })).toBe(
+      "/repo/x.ts",
+    );
   });
 
   it("falls back to scanning the JSON text for an absolute path", () => {
@@ -67,5 +69,28 @@ describe("extractToolPath", () => {
   it("does not treat relative paths as absolute", () => {
     expect(extractToolPath({ command: "node src/a.js" })).toBeNull();
     expect(extractToolPath("node src/a.js")).toBeNull();
+  });
+
+  it("normalizes git-bash paths to Windows form", () => {
+    expect(extractToolPath("echo hi > /c/Users/x/test.txt")).toBe(
+      "C:\\Users\\x\\test.txt",
+    );
+    expect(extractToolPath({ cwd: "/c/Users/riand/proj" })).toBe(
+      "C:\\Users\\riand\\proj",
+    );
+  });
+
+  it("prefers file-like paths over a leading directory (cwd)", () => {
+    expect(
+      extractToolPath({
+        command: "cd /c/proj && echo hi > /c/proj/test.txt",
+      }),
+    ).toBe("C:\\proj\\test.txt");
+  });
+
+  it("uppercases a lowercase drive letter", () => {
+    expect(extractToolPath({ path: "c:\\Users\\x\\a.ts" })).toBe(
+      "C:\\Users\\x\\a.ts",
+    );
   });
 });

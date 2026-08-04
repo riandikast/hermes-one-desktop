@@ -1245,12 +1245,24 @@ export function useDashboardChatTransport({
           toolPayload.input ??
           toolPayload.arguments;
         const path = extractToolPath(args);
+        let argsPreview = "";
+        if (typeof args === "string") {
+          argsPreview = args;
+        } else {
+          try {
+            argsPreview = JSON.stringify(args);
+          } catch {
+            argsPreview = String(args);
+          }
+        }
+        if (argsPreview.length > 400) argsPreview = `${argsPreview.slice(0, 400)}…`;
         console.info(
           "[file-changes] tool.complete",
           JSON.stringify({
             toolName,
             matched,
             path,
+            args: argsPreview,
             capturedPaths: Array.from(fileChangesRef.current.keys()),
           }),
         );
@@ -1275,7 +1287,15 @@ export function useDashboardChatTransport({
                 after: res?.content ?? null,
               });
             })
-            .catch(() => undefined);
+            .catch((err) => {
+              console.info(
+                "[file-changes] after-read failed",
+                JSON.stringify({
+                  path,
+                  error: err instanceof Error ? err.message : String(err),
+                }),
+              );
+            });
         }
       }
 
