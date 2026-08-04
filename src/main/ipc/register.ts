@@ -3190,7 +3190,9 @@ export function registerIpcHandlers(context: IpcContext): void {
       maxBytes?: number,
     ): Promise<{ content: string; truncated: boolean } | null> => {
       try {
-        const limit = maxBytes ?? 102400; // Default 100KB
+        // 0 = unlimited (the in-app editor must load the FULL file — a capped
+        // read + autosave would silently destroy everything past the cap).
+        const limit = maxBytes === 0 ? Infinity : (maxBytes ?? 102400);
         const buffer = await readFile(filePath);
         const truncated = buffer.byteLength > limit;
         const content = truncated

@@ -137,19 +137,37 @@ export const FileViewer = memo(function FileViewer({
   const fileName = getFileName(filePath);
 
   // Debounced autosave: write the current doc back to disk.
+  const doSave = useCallback(async (): Promise<void> => {
+    const view = editorViewRef.current;
+    if (!view) return;
+    const text = view.state.doc.toString();
+    setSaving("saving");
+    try {
+      // Guard against a stale preload (old app instance): invoking an
+      // undefined bridge method throws synchronously and would leave the
+      // indicator stuck on "Saving…" forever.
+      if (typeof window.hermesAPI.writeFile !== "function") {
+        console.error("FileViewer: hermesAPI.writeFile missing (stale app?)");
+        setSaving("error");
+        return;
+      }
+      const res = await window.hermesAPI.writeFile(filePathRef.current, text);
+      setSaving(res.ok ? "saved" : "error");
+      if (!res.ok) {
+        console.error("FileViewer: write failed", res.error);
+      }
+    } catch (err) {
+      console.error("FileViewer: write threw", err);
+      setSaving("error");
+    }
+  }, []);
+
   const scheduleSave = useCallback((): void => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      const view = editorViewRef.current;
-      if (!view) return;
-      const text = view.state.doc.toString();
-      setSaving("saving");
-      void window.hermesAPI
-        .writeFile(filePathRef.current, text)
-        .then((res) => setSaving(res.ok ? "saved" : "error"))
-        .catch(() => setSaving("error"));
+      void doSave();
     }, 500);
-  }, []);
+  }, [doSave]);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,7 +189,9 @@ export const FileViewer = memo(function FileViewer({
         return;
       }
 
-      const result = await window.hermesAPI.readFile(filePath, 102400);
+      // 0 = unlimited: the editor must see the whole file, otherwise autosave
+      // would write back only the capped prefix and destroy the rest.
+      const result = await window.hermesAPI.readFile(filePath, 0);
       if (cancelled) return;
       if (result === null) {
         setError(t("worktree.errorLoading"));
@@ -205,14 +225,7 @@ export const FileViewer = memo(function FileViewer({
           {
             key: "Mod-s",
             run: () => {
-              const view = editorViewRef.current;
-              if (!view) return false;
-              const text = view.state.doc.toString();
-              setSaving("saving");
-              void window.hermesAPI
-                .writeFile(filePathRef.current, text)
-                .then((res) => setSaving(res.ok ? "saved" : "error"))
-                .catch(() => setSaving("error"));
+              void doSave();
               return true;
             },
           },
