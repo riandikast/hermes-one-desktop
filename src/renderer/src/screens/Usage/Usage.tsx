@@ -124,6 +124,13 @@ function ModelBreakdown({
   );
 }
 
+/** Compact token count for chart labels. */
+function fmtCompact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
 /** Sparkline-ish strip: daily total tokens for the last 14 days. */
 function ActivityStrip({
   records,
@@ -143,6 +150,7 @@ function ActivityStrip({
 
   if (daily.length === 0) return null;
   const max = Math.max(...daily.map((d) => d[1]), 1);
+  const todayKey = new Date().toISOString().slice(0, 10);
 
   return (
     <div className="usage-panel">
@@ -150,14 +158,23 @@ function ActivityStrip({
         <Calendar size={13} />
         <span>Activity (last {daily.length} days)</span>
       </div>
-      <div className="usage-activity-strip">
+      <div className="usage-activity-chart">
         {daily.map(([day, total]) => (
-          <div key={day} className="usage-activity-col" title={`${day}: ${fmtTokens(total)}`}>
-            <div
-              className="usage-activity-bar"
-              style={{ height: `${Math.max(6, (total / max) * 100)}%` }}
-            />
-            <span className="usage-activity-day">{fmtDay(day)}</span>
+          <div
+            key={day}
+            className={`usage-activity-col ${day === todayKey ? "today" : ""}`}
+            title={`${day}: ${fmtTokens(total)}`}
+          >
+            <div className="usage-activity-value">{fmtCompact(total)}</div>
+            <div className="usage-activity-bar-wrap">
+              <div
+                className="usage-activity-bar"
+                style={{ height: `${Math.max(4, (total / max) * 100)}%` }}
+              />
+            </div>
+            <div className="usage-activity-day">
+              {day === todayKey ? "Today" : fmtDay(day)}
+            </div>
           </div>
         ))}
       </div>

@@ -39,7 +39,12 @@ const MAX_RECORDS = 2000;
 export function dedupeAndTrim(records: UsageRecord[]): UsageRecord[] {
   const out: UsageRecord[] = [];
   let last: UsageRecord | null = null;
-  for (const r of records) {
+  for (const raw of records) {
+    // Reconcile the stored total: old records kept the payload's `total`,
+    // which can exceed input+output (cached/context tokens) — that made the
+    // per-model breakdown and activity strip sum to MORE than the grand
+    // total card. Always derive it from the two token counts.
+    const r: UsageRecord = { ...raw, totalTokens: raw.inputTokens + raw.outputTokens };
     if (
       last &&
       last.model === r.model &&

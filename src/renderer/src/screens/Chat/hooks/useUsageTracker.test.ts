@@ -63,4 +63,15 @@ describe("dedupeAndTrim", () => {
     const out = dedupeAndTrim(records);
     expect(out.length).toBeLessThanOrEqual(2000);
   });
+
+  it("reconciles legacy totalTokens to input + output", () => {
+    const records = [
+      {
+        ...rec({ input: 1200, output: 80 }, "2026-08-04T10:00:00.000Z"),
+        totalTokens: 99_999, // stale payload total (cached/context tokens)
+      },
+    ];
+    const out = dedupeAndTrim(records);
+    expect(out[0].totalTokens).toBe(1280);
+  });
 });
