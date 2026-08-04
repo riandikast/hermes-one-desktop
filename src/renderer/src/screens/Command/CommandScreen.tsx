@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronRight,
   Search,
+  Copy,
 } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
 import type { TerminalDockHandle } from "./TerminalDock";
@@ -130,6 +131,22 @@ export function CommandScreen(): React.JSX.Element {
     setEditing(cmd);
     setForm({
       name: cmd.name,
+      command: cmd.command,
+      description: cmd.description,
+      cwd: cmd.cwd,
+      folder: cmd.folder ?? "",
+    });
+    setNewFolderMode(false);
+    setShowEditor(true);
+  };
+
+  // Duplicate: pre-fill the editor form from an existing command but save as a
+  // NEW entry (editing=null → save() mints a fresh id). Lets the user tweak
+  // and save without re-typing all fields.
+  const startDuplicate = (cmd: CommandItem): void => {
+    setEditing(null);
+    setForm({
+      name: `${cmd.name} (copy)`,
       command: cmd.command,
       description: cmd.description,
       cwd: cmd.cwd,
@@ -387,6 +404,15 @@ export function CommandScreen(): React.JSX.Element {
                             aria-label="Edit"
                           >
                             <Pencil size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            className="command-row-duplicate"
+                            onClick={() => startDuplicate(cmd)}
+                            title="Duplicate"
+                            aria-label="Duplicate"
+                          >
+                            <Copy size={13} />
                           </button>
                           <button
                             type="button"

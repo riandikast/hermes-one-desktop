@@ -45,7 +45,9 @@ terminal per session with tabbed switching, wired via `terminal:create` /
 `terminal:write` / `terminal:resize` / `terminal:kill` and the main→renderer
 `terminal:data` / `terminal:exit` broadcasts. [[src/renderer/src/screens/Command/CommandScreen.tsx]]
 hosts the list + inline editor above the dock; Run calls `command:run`, which
-creates a session and auto-executes the command.
+creates a session and auto-executes the command. Each row also has Edit,
+Duplicate (pre-fills the editor form from an existing command under a fresh
+id, so it saves as a new entry without re-typing the fields), and Delete.
 
 ## Note on native modules
 

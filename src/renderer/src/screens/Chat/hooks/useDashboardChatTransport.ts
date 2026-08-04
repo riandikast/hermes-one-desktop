@@ -1679,7 +1679,6 @@ export function useDashboardChatTransport({
 
       try {
         let continuationItems: DesktopSessionContinuationItem[] = [];
-        const forceCreateRuntime = recreateRuntimeSessionRef.current;
         if (recreateRuntimeSessionRef.current) {
           continuationItems = dashboardContinuationItemsFromTranscript(
             messagesRef.current,
@@ -1695,8 +1694,13 @@ export function useDashboardChatTransport({
           reasoningSegmentClosedRef.current = false;
           appliedModelRef.current = null;
         }
+        // Do NOT force-create a new stored session on failure recovery: that
+        // mints a brand-new row in the sidebar ("random new section" bug).
+        // Resuming the same stored session gives a fresh runtime bound to the
+        // existing id; session.create only happens if resume truly fails
+        // (session not found), which is the correct fallback.
         const runtimeSessionId = await ensureRuntimeSession(client, {
-          forceCreate: forceCreateRuntime,
+          forceCreate: false,
         });
         if (
           lastRuntimeSessionWasCreatedRef.current ||
