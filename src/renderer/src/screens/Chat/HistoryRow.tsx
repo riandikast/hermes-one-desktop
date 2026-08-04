@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Brain, ChevronRight, Wrench } from "../../assets/icons";
 import { OrbLoader } from "../../components/OrbLoader";
 import { TypeAnimation } from "../../components/TypeAnimation";
@@ -64,6 +64,23 @@ export const ReasoningRow = memo(function ReasoningRow({
         checkAutoExpand,
       );
   }, [active, msg.text]);
+
+  // Typewriter animation state. Live streaming animates while `active`; but
+  // some providers deliver the whole summary in ONE chunk at completion
+  // (message.complete fallback), when `active` has already flipped false —
+  // without this, the text would pop in like copy-paste. Any text GROWTH
+  // (while the row is still fresh) animates for a bounded window instead.
+  const [animate, setAnimate] = useState(false);
+  const prevTextRef = useRef(msg.text);
+  useEffect(() => {
+    const grew = msg.text !== prevTextRef.current;
+    prevTextRef.current = msg.text;
+    if (!grew) return;
+    setAnimate(true);
+    const timer = setTimeout(() => setAnimate(false), 15_000);
+    return () => clearTimeout(timer);
+  }, [msg.text]);
+
   return (
     <div
       className={`chat-message chat-message-agent chat-message-history${
@@ -115,7 +132,7 @@ export const ReasoningRow = memo(function ReasoningRow({
             <pre className="chat-history-pre chat-reasoning-pre">
               <TypeAnimation
                 text={msg.text}
-                active={active}
+                active={animate}
                 charsPerSecond={36}
                 className="chat-reasoning-text"
               />

@@ -28,8 +28,10 @@ export const TypeAnimation = memo(function TypeAnimation({
   // Number of characters currently visible.
   const [revealed, setRevealed] = useState(active ? 0 : text.length);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const elapsedTicksRef = useRef(0);
 
   useEffect(() => {
+    elapsedTicksRef.current = 0;
     // Stop any prior timer.
     if (intervalRef.current !== null) {
       clearInterval(intervalRef.current);
@@ -45,8 +47,13 @@ export const TypeAnimation = memo(function TypeAnimation({
     // Pick the cadence. Interval >= 50ms so the eye can track each step
     // comfortably; lower bound keeps very high cps from skipping chars.
     const stepMs = Math.max(50, Math.round(1000 / charsPerSecond));
+    // Cap the TOTAL reveal at ~15s: a large chunk that arrived all at once
+    // (e.g. a thinking summary delivered as a single blob at completion)
+    // still types out instead of dumping instantly — without taking minutes.
+    const maxTicks = Math.max(1, Math.round(15_000 / stepMs));
 
     intervalRef.current = setInterval(() => {
+      elapsedTicksRef.current += 1;
       setRevealed((prev) => {
         if (prev >= text.length) {
           if (intervalRef.current !== null) {
@@ -55,9 +62,14 @@ export const TypeAnimation = memo(function TypeAnimation({
           }
           return prev;
         }
-        // Reveal one character per tick. (If `text` grew we keep advancing;
-        // if it shrank, clamped by `Math.min(text.length, …)` callers.)
-        return prev + 1;
+        // Reveal at least one character per tick. When a large chunk arrived
+        // at once (pending >> ticks left), reveal a proportional chunk so the
+        // whole thing finishes within the 15s cap while small streamed
+        // deltas still tick one char at a time.
+        const pending = text.length - prev;
+        const ticksLeft = Math.max(1, maxTicks - elapsedTicksRef.current);
+        const chunk = Math.max(1, Math.ceil(pending / ticksLeft));
+        return prev + chunk;
       });
     }, stepMs);
 
