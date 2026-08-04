@@ -19,7 +19,8 @@ export interface DashboardEventState {
 export const WRITE_TOOL_NAMES = [
   "write_file", "edit_file", "patch_file", "create_file", "delete_file",
   "move_file", "copy_file", "rename_file", "apply_patch", "str_replace",
-  "save_file", "terminal", "process", "bash", "shell", "exec",
+  "save_file", "patch", "edit", "replace", "remove", "update",
+  "terminal", "process", "bash", "shell", "exec",
   "run_command", "execute_code", "execute", "mkdir", "rm", "mv", "cp",
 ];
 
