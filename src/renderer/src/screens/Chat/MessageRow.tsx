@@ -235,13 +235,12 @@ export const MessageRow = memo(function MessageRow({
   const { waiting } = useReasoningGate({
     waitForReasoningId,
     hasContent: Boolean(bubbleContent),
+    isLoading,
   });
 
   const renderStreamingContent = useCallback(
     (visible: string): React.ReactNode => {
-      const visibleSegments = parseMediaTokens(
-        cleanLeakedToolTags(visible),
-      );
+      const visibleSegments = parseMediaTokens(cleanLeakedToolTags(visible));
       return visibleSegments.map((segment) =>
         segment.type === "text" ? (
           segment.value.trim() ? (
@@ -346,7 +345,10 @@ export const MessageRow = memo(function MessageRow({
                 type="button"
                 className="chat-bubble-copy"
                 onClick={() =>
-                  onUnsendLastUser(msg.id, (msg as ChatBubbleMessage).content || "")
+                  onUnsendLastUser(
+                    msg.id,
+                    (msg as ChatBubbleMessage).content || "",
+                  )
                 }
                 title="Unsend — edit and resend this message"
                 aria-label="Unsend message"
@@ -406,7 +408,10 @@ export const MessageRow = memo(function MessageRow({
             >
               <FilePlus2 size={13} />
               {(msg as ChatBubbleMessage).fileChanges!.length} file
-              {(msg as ChatBubbleMessage).fileChanges!.length > 1 ? "s" : ""} changed
+              {(msg as ChatBubbleMessage).fileChanges!.length > 1
+                ? "s"
+                : ""}{" "}
+              changed
             </button>
           )}
         {msg.error && (

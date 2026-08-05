@@ -58,7 +58,10 @@ export const ReasoningRow = memo(function ReasoningRow({
     };
     checkAutoExpand();
     // Re-check when the setting changes (broadcast from AppearancePane).
-    window.addEventListener("hermes-auto-expand-reasoning-changed", checkAutoExpand);
+    window.addEventListener(
+      "hermes-auto-expand-reasoning-changed",
+      checkAutoExpand,
+    );
     // Re-check when new reasoning text arrives.
     return () =>
       window.removeEventListener(
@@ -333,6 +336,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
   active = false,
   showAvatar = true,
   agent,
+  isLoading,
   waitForReasoningId,
 }: {
   items: ToolItem[];
@@ -342,6 +346,10 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
   showAvatar?: boolean;
   /** Appearance of the chatting agent, shown once the avatar goes idle. */
   agent?: AgentAvatarInfo;
+  /** True while the turn is streaming — passed to useReasoningGate so the
+   *  gate opens immediately when the turn ends (the answer/tools must never
+   *  stay hidden after completion). */
+  isLoading?: boolean;
   /** Id of the most recent reasoning row that PRECEDES this tool run. The
    *  group stays hidden until that thought has finished typing, so tool
    *  activity never appears mid-thought ("full thought -> tools"). */
@@ -351,6 +359,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
   const { waiting } = useReasoningGate({
     waitForReasoningId,
     hasContent: items.length > 0,
+    isLoading: Boolean(isLoading),
   });
   const last = items[items.length - 1];
   const detail = itemDetail(last);

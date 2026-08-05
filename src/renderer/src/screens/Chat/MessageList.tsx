@@ -94,7 +94,12 @@ export const MessageList = memo(function MessageList({
       messages.filter((m) => {
         if (!isBubble(m)) return true;
         if (!!m.error || m.pending) return true;
-        if (m.role === "agent" && isLoading && m === messages[messages.length - 1]) return true;
+        if (
+          m.role === "agent" &&
+          isLoading &&
+          m === messages[messages.length - 1]
+        )
+          return true;
         return ((m.content as string) || "").trim().length > 0;
       }),
     [messages, isLoading],
@@ -142,6 +147,7 @@ export const MessageList = memo(function MessageList({
           items={group}
           // Active (spinner) only while streaming and this run is trailing.
           active={isLoading && i === visibleMessages.length - 1}
+          isLoading={isLoading}
           showAvatar={
             !visibleMessages[start - 1] ||
             visibleMessages[start - 1].role !== "agent"

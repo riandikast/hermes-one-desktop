@@ -113,7 +113,14 @@ export default function SecurityPane(): React.JSX.Element {
     setSaving(label);
     try {
       await api.setConfig(key, value, profile);
-      saveFlash(label);
+      // The gateway reads config.yaml at startup and doesn't hot-reload, so
+      // restart it to apply the change immediately (2-3s reconnect).
+      const ok = await api.restartGateway(profile);
+      saveFlash(
+        ok
+          ? `${label} — gateway restarted`
+          : `${label} — restart the gateway to apply`,
+      );
     } finally {
       setSaving(null);
     }
@@ -131,7 +138,12 @@ export default function SecurityPane(): React.JSX.Element {
     setSaving(label);
     try {
       await api.setConfig(key, JSON.stringify(items), profile);
-      saveFlash(label);
+      const ok = await api.restartGateway(profile);
+      saveFlash(
+        ok
+          ? `${label} — gateway restarted`
+          : `${label} — restart the gateway to apply`,
+      );
     } finally {
       setSaving(null);
     }
