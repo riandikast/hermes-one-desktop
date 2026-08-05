@@ -150,7 +150,7 @@ Administrative destinations sit beside the profile switcher so the conversation 
 
 [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] keeps Providers, Gateway, Tools, and Memory out of the main sidebar list and renders them as icon-only footer actions immediately above [[src/renderer/src/screens/Layout/ProfileSwitcher.tsx#ProfileSwitcher]]. Each button exposes a styled hover/focus tooltip and accessible label, preserving discoverability while freeing vertical room for recent conversations. Settings is no longer a `View`: its footer gear button opens the global settings modal (below) instead of switching panes.
 
-When the sidebar is collapsed, those footer actions stay in a single centered icon rail anchored to the bottom of the 64px sidebar, with the compact profile switcher below them and no divider line above the footer.
+When the sidebar is collapsed, those footer actions stay in a single centered icon rail anchored to the bottom of the 64px sidebar, with the compact profile switcher below them and no divider line above the footer. The Settings gear and the subagent (Bot) button stack vertically when collapsed (`.sidebar-collapsed .sidebar-footer-actions-row` becomes a column): the 40px rail cannot hold both 40px buttons side by side, and the row layout previously pushed the bot button out of the menu and clipped it.
 
 ## Settings modal
 

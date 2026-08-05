@@ -5969,7 +5969,12 @@ body:has(.shell-vibrant),
   white-space: pre-wrap;
   word-wrap: break-word;
   overflow-wrap: break-word;
-  min-width: 0;
+  /* Never shrink below the hover actions row (copy/revert/unsend: 3 x 28px
+     + 2 x 4px gap + 8px right offset = 100px). `.chat-bubble` is a scroll
+     container (overflow-x: auto), which clips absolutely-positioned
+     children that stick out of its box — so a short bubble ("ok") would
+     cut the icons at its edge. */
+  min-width: 108px;
   max-width: 100%;
   overflow-x: auto;
   -webkit-user-select: text;
@@ -19093,6 +19098,19 @@ body:has(.shell-vibrant),
 }
 
 .sidebar-collapsed .sidebar-settings-trigger {
+  width: 40px;
+  height: 40px;
+}
+
+/* Collapsed sidebar stacks the action buttons vertically: the 40px-wide menu
+   cannot hold Settings + Subagent side by side, which previously pushed the
+   bot button out of the menu and clipped it. */
+.sidebar-collapsed .sidebar-footer-actions-row {
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-collapsed .sidebar-subagent-trigger {
   width: 40px;
   height: 40px;
 }

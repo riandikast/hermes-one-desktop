@@ -95,6 +95,12 @@ Each user/assistant bubble reveals a relative "time ago" label on row hover, so 
 
 The canonical time comes from state.db: [[src/renderer/src/screens/Chat/sessionHistory.ts#dbItemsToChatMessages]] copies each row's `timestamp` onto the `ChatBubbleMessage`, and [[src/renderer/src/screens/Chat/sessionHistory.ts#reconcileAfterDbRefresh|the end-of-stream reconcile]] adopts it onto the matching streamed bubble (via `mergeDbMetadataIntoStreamed`) so a live turn picks up its real time after refresh without remounting. state.db stores times in **seconds**, so `toEpochMs` in MessageRow scales any sub-`1e12` value up to milliseconds before use (otherwise it renders as ~Jan 1970). [[src/renderer/src/screens/Chat/MessageRow.tsx#formatBubbleTime]] builds the label with date-fns `formatDistanceToNowStrict` (e.g. "5 minutes ago", "just now" under 10s), with `formatBubbleTimeAbsolute` supplying the exact date/time as the `<time>` element's `title`/`dateTime`. The `.chat-message:hover .chat-bubble-time` CSS fades it in below the bubble, anchored to `.chat-message` because `.chat-bubble`'s own `overflow` would clip it.
 
+## Bubble hover actions
+
+Bubbles reveal copy / revert / unsend buttons on hover, and the bubble keeps a floor width so those buttons are never clipped on very short messages.
+
+[[src/renderer/src/screens/Chat/MessageRow.tsx#MessageRow]] renders `.chat-bubble-actions` (copy for every message; revert-to-checkpoint and unsend for user bubbles) absolutely at the bubble's top-right, hidden until `.chat-bubble:hover`. Because `.chat-bubble` is a scroll container (`overflow-x: auto` for wide content), an absolutely-positioned action row that sticks out of a narrow bubble would be cut at the bubble's edge — so `.chat-bubble` has `min-width: 108px` (the 92px action row + 8px right offset plus margin), keeping the buttons inside even for a one-word "ok" bubble.
+
 ## Renderer-native commands
 
 A few non-local commands have dedicated desktop handling and must NOT be diverted to the gateway slash pipeline, or they'd lose their behaviour.
