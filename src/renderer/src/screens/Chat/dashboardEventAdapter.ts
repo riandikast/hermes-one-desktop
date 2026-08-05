@@ -214,6 +214,13 @@ function isAssistantBubble(msg: ChatMessage): msg is ChatBubbleMessage {
   return msg.role === "agent" && (!kind || kind === "assistant");
 }
 
+/** Tool rows are hard segment boundaries: reasoning/answer after a tool is a
+ *  new row, never a merge across the tool. */
+function isToolRow(msg: ChatMessage): boolean {
+  const kind = (msg as { kind?: string }).kind;
+  return kind === "tool_call" || kind === "tool_result";
+}
+
 function appendAssistantDelta(
   messages: ReadonlyArray<ChatMessage>,
   chunk: string,
@@ -221,22 +228,33 @@ function appendAssistantDelta(
   now = Date.now(),
 ): ChatMessage[] {
   if (!chunk) return [...messages];
-  const last = messages[messages.length - 1];
-  if (
-    last &&
-    isAssistantBubble(last) &&
-    !last.error &&
-    (!activeTurn || !last.turnId || last.turnId === activeTurn.turnId)
-  ) {
-    return [
-      ...messages.slice(0, -1),
-      {
-        ...last,
-        content: last.content + chunk,
-        pending: true,
-        turnId: last.turnId || activeTurn?.turnId,
-      },
-    ];
+  // Merge into the LAST assistant bubble of the current turn, even when it is
+  // not the trailing row (thinking/tool deltas interleave after the answer
+  // started). Appending a fresh bubble per delta remounts the row and replays
+  // its entry animation (a visible blink on every chunk), and stacks answer
+  // text below the thinking rows. The scan deliberately crosses tool rows:
+  // a model that answers → runs a tool → answers again must continue the SAME
+  // bubble (message.complete merges pre/post-tool text into one bubble too),
+  // not spawn a new one that blinks in mid-turn.
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role === "user") break;
+    if (
+      isAssistantBubble(msg) &&
+      !msg.error &&
+      (!activeTurn || !msg.turnId || msg.turnId === activeTurn.turnId)
+    ) {
+      return [
+        ...messages.slice(0, i),
+        {
+          ...msg,
+          content: msg.content + chunk,
+          pending: true,
+          turnId: msg.turnId || activeTurn?.turnId,
+        },
+        ...messages.slice(i + 1),
+      ];
+    }
   }
 
   return [
@@ -258,31 +276,55 @@ function appendReasoningDelta(
   now = Date.now(),
 ): ChatMessage[] {
   if (!chunk) return [...messages];
-  const last = messages[messages.length - 1];
-  if (
-    !forceNewSegment &&
-    last &&
-    last.role === "agent" &&
-    "kind" in last &&
-    last.kind === "reasoning"
-  ) {
-    return [
-      ...messages.slice(0, -1),
-      {
-        ...last,
-        text: last.text + chunk,
-      },
-    ];
+  // Merge into the LAST reasoning row of the current turn, even when it is
+  // not the trailing row (ANSWER deltas interleave while thinking is still
+  // streaming). Appending a fresh row per delta remounts the reasoning
+  // container and replays its entry animation (a visible blink per chunk),
+  // and stacks thinking below the answer.
+  //
+  // A TOOL row is a hard boundary: the model finished thinking, ran a tool,
+  // and a later thinking chunk is a NEW segment. Stopping the backward scan
+  // at tool rows keeps interleaved-answer merges while preserving that.
+  if (!forceNewSegment) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role === "user") break;
+      if (isToolRow(msg)) break;
+      if (msg.role === "agent" && "kind" in msg && msg.kind === "reasoning") {
+        return [
+          ...messages.slice(0, i),
+          {
+            ...msg,
+            text: msg.text + chunk,
+          },
+          ...messages.slice(i + 1),
+        ];
+      }
+    }
   }
 
+  // Late reasoning (delivered after the answer started streaming) must land
+  // ABOVE the answer bubble it belongs to — appending below stacks thinking
+  // under the answer and pops the row in with a visible entry-animation
+  // blink. Mirror the legacy `liveReasoningEvents` insert logic, scoped to
+  // the current turn so a trailing bubble from a previous turn isn't
+  // mistaken for the current answer.
+  const last = messages[messages.length - 1];
+  const turnStart = findLastUserIndex(messages) + 1;
+  const insertAt =
+    messages.length > turnStart && last && isAssistantBubble(last)
+      ? messages.length - 1
+      : messages.length;
+
   return [
-    ...messages,
+    ...messages.slice(0, insertAt),
     {
       id: `reasoning-dashboard-${now}-${messages.length}`,
       kind: "reasoning",
       role: "agent",
       text: chunk,
     },
+    ...messages.slice(insertAt),
   ];
 }
 

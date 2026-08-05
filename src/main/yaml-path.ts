@@ -33,7 +33,8 @@ export function getYamlPath(content: string, dottedKey: string): string | null {
   const stack: { indent: number; key: string }[] = [];
   let pathIdx = 0;
 
-  for (const raw of lines) {
+  for (let li = 0; li < lines.length; li++) {
+    const raw = lines[li];
     const trimmed = raw.trimStart();
     if (!trimmed || trimmed.startsWith("#")) continue;
 
@@ -61,7 +62,13 @@ export function getYamlPath(content: string, dottedKey: string): string | null {
     if (pathIdx < parts.length && key === parts[pathIdx]) {
       const isLeaf = pathIdx === parts.length - 1;
       if (isLeaf) {
-        return parseScalar(remainder);
+        const scalar = parseScalar(remainder);
+        if (scalar !== null) return scalar;
+        // Empty inline value → could be a block list (`key:` followed by
+        // `- item` lines at deeper indent). Collect them into a JSON array
+        // string so the renderer can JSON.parse the value like any scalar.
+        const items = collectBlockList(lines, li + 1, indent);
+        return items === null ? null : JSON.stringify(items);
       }
       // Intermediate key — push onto the stack and look for the next part
       // among its children.
@@ -70,6 +77,37 @@ export function getYamlPath(content: string, dottedKey: string): string | null {
     }
   }
   return null;
+}
+
+/**
+ * Collect `- item` lines that belong to a block-list key whose inline value
+ * is empty. Lines must be indented deeper than `keyIndent` and start with
+ * `- `. Stops at the first non-list, non-blank line (a child map, or a dedent
+ * back to the key's level). Returns null when no list items follow.
+ */
+function collectBlockList(
+  lines: string[],
+  start: number,
+  keyIndent: number,
+): string[] | null {
+  const items: string[] = [];
+  let sawItem = false;
+  for (let li = start; li < lines.length; li++) {
+    const raw = lines[li];
+    const trimmed = raw.trimStart();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const indent = raw.length - trimmed.length;
+    if (indent <= keyIndent) break; // dedent → list block ended
+    if (!trimmed.startsWith("- ")) {
+      // A deeper non-list line means this key is a child MAP, not a list.
+      return sawItem ? items : null;
+    }
+    const item = parseScalar(trimmed.slice(2));
+    if (item === null) return sawItem ? items : null;
+    sawItem = true;
+    items.push(item);
+  }
+  return sawItem ? items : null;
 }
 
 function stripQuotes(s: string): string {

@@ -208,4 +208,116 @@ describe("applyDashboardStreamEvent — message.complete text reconciliation", (
     expect(bubble).toBeDefined();
     expect((bubble as { content: string }).content).toBe("Remote answer");
   });
+
+  it("keeps ONE reasoning row when thinking interleaves with the answer", () => {
+    // DeepSeek-style stream: thinking chunks arrive, the answer starts, then
+    // MORE thinking chunks arrive. Each interleaved chunk must merge into the
+    // existing reasoning row — a fresh row per chunk remounts the container
+    // (replaying its entry animation = visible blink) and stacks thinking
+    // below the answer.
+    let state: DashboardEventState = {
+      messages: [userTurn()],
+      reasoningSegmentClosed: false,
+    };
+
+    state = applyDashboardStreamEvent(state, {
+      type: "thinking.delta",
+      payload: { text: "Let me think" },
+    });
+    state = applyDashboardStreamEvent(state, {
+      type: "thinking.delta",
+      payload: { text: " about it." },
+    });
+    state = applyDashboardStreamEvent(state, {
+      type: "message.delta",
+      payload: { text: "The answer" },
+    });
+    state = applyDashboardStreamEvent(state, {
+      type: "thinking.delta",
+      payload: { text: " Careful now," },
+    });
+    state = applyDashboardStreamEvent(state, {
+      type: "message.delta",
+      payload: { text: " is 42." },
+    });
+
+    const reasoning = state.messages.filter(
+      (m) => m.role === "agent" && "kind" in m && m.kind === "reasoning",
+    );
+    expect(reasoning).toHaveLength(1);
+    expect((reasoning[0] as { text: string }).text).toBe(
+      "Let me think about it. Careful now,",
+    );
+
+    const bubbles = state.messages.filter(
+      (m) => m.role === "agent" && !("kind" in m),
+    );
+    expect(bubbles).toHaveLength(1);
+    expect((bubbles[0] as { content: string }).content).toBe(
+      "The answer is 42.",
+    );
+
+    // Reasoning stays ABOVE the answer — no swap.
+    const reasoningIdx = state.messages.indexOf(reasoning[0]);
+    const bubbleIdx = state.messages.indexOf(bubbles[0]);
+    expect(reasoningIdx).toBeLessThan(bubbleIdx);
+  });
+
+  it("inserts late reasoning ABOVE the trailing answer bubble", () => {
+    // The answer starts streaming before any thinking delta arrives (the
+    // model "thinks" silently, then late reasoning.delta chunks arrive).
+    // Appending the reasoning row below the answer stacks thinking under
+    // the answer and pops the row in with a visible entry-animation blink.
+    let state: DashboardEventState = {
+      messages: [userTurn()],
+      reasoningSegmentClosed: false,
+    };
+    state = applyDashboardStreamEvent(state, {
+      type: "message.delta",
+      payload: { text: "The answer" },
+    });
+    state = applyDashboardStreamEvent(state, {
+      type: "thinking.delta",
+      payload: { text: "Late thought" },
+    });
+
+    const reasoningIdx = state.messages.findIndex(
+      (m) => m.role === "agent" && "kind" in m && m.kind === "reasoning",
+    );
+    const bubbleIdx = state.messages.findIndex(
+      (m) => m.role === "agent" && !("kind" in m),
+    );
+    expect(reasoningIdx).toBeGreaterThanOrEqual(0);
+    expect(reasoningIdx).toBeLessThan(bubbleIdx);
+  });
+
+  it("continues the SAME answer bubble across tool rows", () => {
+    // The model answers, runs a tool, then answers again. Each post-tool
+    // delta must merge into the existing bubble — a fresh bubble per delta
+    // remounts the row and replays its entry animation (a visible blink).
+    let state: DashboardEventState = {
+      messages: [userTurn()],
+      reasoningSegmentClosed: false,
+    };
+    state = applyDashboardStreamEvent(state, {
+      type: "message.delta",
+      payload: { text: "Let me check" },
+    });
+    state = applyDashboardStreamEvent(state, {
+      type: "tool.start",
+      payload: { tool_id: "t1", name: "read_file", context: "config" },
+    });
+    state = applyDashboardStreamEvent(state, {
+      type: "message.delta",
+      payload: { text: " the config." },
+    });
+
+    const bubbles = state.messages.filter(
+      (m) => m.role === "agent" && !("kind" in m),
+    );
+    expect(bubbles).toHaveLength(1);
+    expect((bubbles[0] as { content: string }).content).toBe(
+      "Let me check the config.",
+    );
+  });
 });

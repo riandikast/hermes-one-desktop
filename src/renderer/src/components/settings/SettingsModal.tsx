@@ -4,6 +4,7 @@ import {
   FileText,
   Info,
   Languages,
+  Lock,
   Palette,
   Plug,
   ShieldCheck,
@@ -16,6 +17,7 @@ import { useSettingsData } from "./useSettingsData";
 import { SettingsDataContext } from "./SettingsDataContext";
 import AppearancePane from "./AppearancePane";
 import LanguagePane from "./LanguagePane";
+import SecurityPane from "./SecurityPane";
 import PrivacyPane from "./PrivacyPane";
 import ConnectionPane from "./ConnectionPane";
 import DataPane from "./DataPane";
@@ -26,6 +28,7 @@ import LogsPane from "./LogsPane";
 export type SettingsSection =
   | "appearance"
   | "language"
+  | "security"
   | "privacy"
   | "connection"
   | "data"
@@ -53,6 +56,12 @@ const SETTINGS_NAV: ReadonlyArray<{
     id: "language",
     labelKey: "settings.nav.language",
     Icon: Languages,
+  },
+  {
+    group: "general",
+    id: "security",
+    labelKey: "settings.nav.security",
+    Icon: Lock,
   },
   {
     group: "general",
@@ -194,6 +203,7 @@ export default function SettingsModal({
           <SettingsDataContext.Provider value={data}>
             {section === "appearance" && <AppearancePane />}
             {section === "language" && <LanguagePane />}
+            {section === "security" && <SecurityPane />}
             {section === "privacy" && <PrivacyPane />}
             {section === "connection" && <ConnectionPane />}
             {section === "data" && <DataPane />}

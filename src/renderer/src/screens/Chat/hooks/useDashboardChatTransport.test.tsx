@@ -322,6 +322,60 @@ describe("useDashboardChatTransport recovery", () => {
     );
   });
 
+  it("sends when model.options lags behind an accepted slash switch", async () => {
+    // @lat: [[model-selection#Session model override#Non-blocking switch validation]]
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      requests.push({ method, params });
+      if (method === "session.create") {
+        return { session_id: "live-stale", stored_session_id: "stored-stale" };
+      }
+      if (method === "session.resume") {
+        return { session_id: "live-stale", resumed: "stored-stale" };
+      }
+      if (method === "slash.exec") {
+        return { output: "✓ Model switched: good-model Provider: good-provider" };
+      }
+      if (method === "model.options") {
+        return { model: "old-model", provider: "custom", providers: [] };
+      }
+      return {};
+    });
+
+    const api: HarnessApi = {};
+    render(<Harness api={api} />);
+
+    const initialSend = api.send;
+    await act(async () => {
+      api.setProvider?.("good-provider");
+      api.setModel?.("good-model");
+    });
+    await waitFor(() => expect(api.send).not.toBe(initialSend));
+
+    let handled: boolean | undefined;
+    await act(async () => {
+      handled = await api.send?.("hello");
+    });
+
+    expect(handled).toBe(true);
+    expect(requests).toContainEqual({
+      method: "slash.exec",
+      params: {
+        command: "/model good-model --provider good-provider",
+        session_id: "live-stale",
+      },
+    });
+    expect(requests.some((request) => request.method === "prompt.submit")).toBe(
+      true,
+    );
+    expect(
+      warnSpy.mock.calls.some(([message]) =>
+        String(message).includes("did not report good-provider/good-model"),
+      ),
+    ).toBe(true);
+  });
+
   it("discards an in-flight dashboard client after the connection mode changes", async () => {
     let releaseFirstConnect: (() => void) | null = null;
     const requests: Array<{ method: string; params: unknown }> = [];

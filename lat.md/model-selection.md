@@ -41,3 +41,9 @@ The upstream desktop model applies the session switch on the active gateway sess
 Attachment turns must not be forced through the CLI override fallback because the CLI path cannot carry multimodal input.
 
 [[src/main/hermes.ts#sendMessageViaCli]] can inline text-file attachments but ignores images, while the gateway/API path preserves image parts and path refs through [[src/main/hermes.ts#buildUserContent]]. When a session override is active and the user sends attachments, [[src/main/hermes.ts#shouldForceCliForSessionOverride]] leaves the turn eligible for the dashboard/gateway or API transport instead of silently dropping media.
+
+## Non-blocking switch validation
+
+The dashboard transport applies the session override with `/model <model> --provider <provider>` on the gateway session and then cross-checks `model.options` — but a mismatch must not block the turn.
+
+Two real-world cases fail that check even though the send works: a **resumed (old) session** keeps reporting its creation model in `model.options` after a session-only `/model` switch (the slash output says `✓ Model switched`, yet `live model is custom/…`), and a **custom provider model absent from the gateway's auto-detected inventory** never appears in `model.options` even though the custom endpoint accepts the request. `ensureSelectedModel` in [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#ensureSelectedModel]] treats a mismatch after an accepted slash response as a warning (`console.warn` with the slash output and custom inventory) and proceeds with the send on that session, instead of throwing and failing the turn. The applied-model key is not cached on mismatch, so the next send retries the switch until the gateway reports it. A slash that throws (or a slash-worker exit) still fails or recovers as before.

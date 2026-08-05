@@ -158,7 +158,9 @@ export function setConnectionConfig(config: ConnectionConfig): void {
     config.remoteChatTransport,
   );
   data.sshChatTransport = normalizeRemoteChatTransport(config.sshChatTransport);
-  data.localChatTransport = normalizeRemoteChatTransport(config.localChatTransport);
+  data.localChatTransport = normalizeRemoteChatTransport(
+    config.localChatTransport,
+  );
   if (config.mode === "ssh") {
     data.sshConfig = config.ssh;
   }
@@ -571,6 +573,15 @@ export function setConfigValue(
   const { configFile } = profilePaths(profile);
   if (!existsSync(configFile)) return;
 
+  // JSON-array values (e.g. `approvals.deny`, `command_allowlist`) are YAML
+  // block lists. Route them through the list writer - the scalar splice below
+  // would quote the whole array into a string, which the agent backend reads
+  // back as a single malformed element.
+  const trimmed = value.trim();
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    if (setConfigListValue(configFile, key, trimmed)) return;
+  }
+
   let content = readFileSync(configFile, "utf-8");
   const segments = key.split(".").filter(Boolean);
   if (segments.length === 0) return;
@@ -606,6 +617,167 @@ export function setConfigValue(
   if (nextContent !== null) {
     safeWriteFile(configFile, nextContent);
   }
+}
+/**
+ * Write a JSON-array value as a YAML block list under `key` (e.g.
+ * `approvals.deny`, `command_allowlist`). Handles three shapes:
+ *
+ *  - key exists with a block list  -> replace the whole list block in place
+ *  - key exists as an inline list  -> replace the inline `[...]`
+ *  - key missing                   -> append the block (top-level key, or
+ *    nested under an existing parent block)
+ *
+ * Returns false when the value is not a parseable JSON array (callers fall
+ * back to the scalar path).
+ */
+function setConfigListValue(
+  configFile: string,
+  key: string,
+  value: string,
+): boolean {
+  let items: unknown[];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return false;
+    items = parsed;
+  } catch {
+    return false;
+  }
+
+  let content = readFileSync(configFile, "utf-8");
+  const segments = key.split(".").filter(Boolean);
+  if (segments.length === 0) return false;
+
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+
+  // Build the block-list lines for a key indented by `keyIndent`. Items sit
+  // one level deeper than the key (key at 0 -> items at 2; nested key at 2
+  // -> items at 4). Writing them at a fixed 2-space indent produced invalid
+  // YAML for nested keys like approvals.deny.
+  const listLinesFor = (keyIndent: string): string[] =>
+    items.map((item) => `${keyIndent}  - ${quoteYamlScalar(String(item))}`);
+
+  // Locate the key line. findYamlPath resolves the full dotted path; for a
+  // block list the hit's value span is empty (the value lives on the lines
+  // below), so we extend the replacement region to cover the whole block.
+  const hit =
+    segments.length === 1
+      ? findTopLevelKey(content, segments[0])
+      : findYamlPath(content, key);
+
+  if (hit) {
+    // Expand to the full key line: valueStart may sit mid-line (inline
+    // `deny: []`), so back up to the start of the line.
+    const lineStart = content.lastIndexOf("\n", hit.valueStart - 1) + 1;
+    // The key line itself, including its indent.
+    const keyLineEnd = content.indexOf("\n", lineStart);
+    const keyLineEndExclusive =
+      keyLineEnd === -1 ? content.length : keyLineEnd + 1;
+    const keyLine = content.slice(lineStart, keyLineEndExclusive);
+    const indentMatch = keyLine.match(/^(\s*)/);
+    const indent = indentMatch ? indentMatch[1] : "";
+    const listLines = listLinesFor(indent);
+    const listBlock = listLines.join(newline);
+
+    // Block end: everything after the key line that is indented deeper than
+    // the key (the list items), up to the next line at the key's indent.
+    let blockEnd = keyLineEndExclusive;
+    let cursor = blockEnd;
+    while (cursor < content.length) {
+      const lineEnd = content.indexOf("\n", cursor);
+      const lineEndExclusive = lineEnd === -1 ? content.length : lineEnd + 1;
+      const line = content.slice(cursor, lineEndExclusive);
+      if (line.trim() === "" || line.startsWith("#")) {
+        // Blank/comment lines stay part of the block only if the block
+        // continues below; peek at the next non-blank line's indent.
+        let peek = lineEndExclusive;
+        let nextIndent = -1;
+        while (peek < content.length) {
+          const peekEnd = content.indexOf("\n", peek);
+          const peekEndExclusive =
+            peekEnd === -1 ? content.length : peekEnd + 1;
+          const peekLine = content.slice(peek, peekEndExclusive);
+          if (peekLine.trim() === "" || peekLine.startsWith("#")) {
+            peek = peekEndExclusive;
+            continue;
+          }
+          nextIndent = peekLine.length - peekLine.trimStart().length;
+          break;
+        }
+        if (nextIndent === -1 || nextIndent <= indent.length) break;
+        cursor = lineEndExclusive;
+        blockEnd = cursor;
+        continue;
+      }
+      if (line.length - line.trimStart().length <= indent.length) break;
+      cursor = lineEndExclusive;
+      blockEnd = cursor;
+    }
+
+    const replacement =
+      listLines.length > 0
+        ? `${indent}${segments[segments.length - 1]}:${newline}${listBlock}${newline}`
+        : `${indent}${segments[segments.length - 1]}: []${newline}`;
+    content = `${content.slice(0, lineStart)}${replacement}${content.slice(blockEnd)}`;
+    safeWriteFile(configFile, content);
+    return true;
+  }
+
+  // Key missing. Two-segment paths nest under a parent block; one-segment
+  // paths (command_allowlist) append at the top level.
+  if (segments.length === 1) {
+    const sep = content.endsWith("\n") || content === "" ? "" : newline;
+    const listBlock = listLinesFor("").join(newline);
+    const block =
+      listBlock.length > 0
+        ? `${key}:${newline}${listBlock}${newline}`
+        : `${key}: []${newline}`;
+    safeWriteFile(configFile, `${content}${sep}${block}`);
+    return true;
+  }
+
+  // Nested: append under the parent block if it exists, else create it.
+  const parent = segments[0];
+  const child = segments[1];
+  const parentRe = new RegExp(
+    `^${escapeRegex(parent)}:[ \t]*(#.*)?(?:\r?\n|$)`,
+    "m",
+  );
+  const parentMatch = parentRe.exec(content);
+  const listBlock = listLinesFor("  ").join(newline);
+  const childBlock =
+    listBlock.length > 0
+      ? `  ${child}:${newline}${listBlock}${newline}`
+      : `  ${child}: []${newline}`;
+
+  if (!parentMatch || parentMatch.index === undefined) {
+    const sep = content === "" || content.endsWith("\n") ? "" : newline;
+    safeWriteFile(
+      configFile,
+      `${content}${sep}${parent}:${newline}${childBlock}`,
+    );
+    return true;
+  }
+
+  const blockStart = parentMatch.index + parentMatch[0].length;
+  let blockEnd = blockStart;
+  let cursor = blockStart;
+  while (cursor < content.length) {
+    const lineEnd = content.indexOf("\n", cursor);
+    const lineEndExclusive = lineEnd === -1 ? content.length : lineEnd;
+    const line = content.slice(cursor, lineEndExclusive);
+    if (line.trim() !== "" && !/^[ \t]/.test(line)) break;
+    blockEnd =
+      lineEndExclusive === content.length
+        ? content.length
+        : lineEndExclusive + 1;
+    cursor = blockEnd;
+  }
+  safeWriteFile(
+    configFile,
+    `${content.slice(0, blockEnd)}${childBlock}${content.slice(blockEnd)}`,
+  );
+  return true;
 }
 
 /**

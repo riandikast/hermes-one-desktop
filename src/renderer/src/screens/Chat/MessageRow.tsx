@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, useCallback } from "react";
+import { memo, useState, useCallback } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
 import { Copy, Check, Undo2, RotateCcw, FilePlus2 } from "lucide-react";
 import ProfileAvatar from "../../components/common/ProfileAvatar";
@@ -6,12 +6,21 @@ import { OrbLoader } from "../../components/OrbLoader";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { AttachmentChip } from "../../components/AttachmentChip";
 import { MediaSegmentView } from "../../components/MediaImage";
+import { TypeAnimation } from "../../components/TypeAnimation";
 import { useI18n } from "../../components/useI18n";
 import { parseMediaTokens, cleanLeakedToolTags } from "./mediaUtils";
+import { useReasoningGate } from "./useReasoningGate";
 import type { ChatBubbleMessage, ChatMessage, FileChange } from "./types";
 
 export const APPROVAL_RE =
   /⚠️.*dangerous|requires? (your )?approval|\/approve.*\/deny|do you want (me )?to (proceed|continue|run|execute)/i;
+
+// The answer bubble does NOT use a typewriter. The accumulated/streamed
+// response text appears instantly (gated behind the turn's thought, then
+// faded in by the .chat-message `messageIn` entrance). Typing a long
+// streamed answer either strobes in chunky frames or is still mid-typewriter
+// when the next thought row lands below — which reads as a stalled response.
+// Late deltas simply grow the text in place (streaming paste), no typewriter.
 
 /**
  * Coerce any DB, stream, or IPC timestamp value to valid epoch milliseconds.
@@ -180,6 +189,10 @@ interface MessageRowProps {
   isLastUser?: boolean;
   /** Open the file-changes dialog for this bubble (dashboard transport). */
   onOpenFileChanges?: (changes: FileChange[]) => void;
+  /** Id of the last reasoning row of THIS turn (or undefined when the turn
+   *  has no thinking). The answer's reveal holds until that thought settles,
+   *  so the response never leaks out while the thought is still typing. */
+  waitForReasoningId?: string;
 }
 
 export const MessageRow = memo(function MessageRow({
@@ -194,6 +207,7 @@ export const MessageRow = memo(function MessageRow({
   onUnsendLastUser,
   isLastUser = false,
   onOpenFileChanges,
+  waitForReasoningId,
 }: MessageRowProps): React.JSX.Element {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -208,14 +222,44 @@ export const MessageRow = memo(function MessageRow({
   const bubbleContent = isChatBubbleMessage(msg)
     ? (msg as ChatBubbleMessage).content
     : null;
-  const segments = useMemo(
-    () =>
-      msg.role === "agent" && bubbleContent
-        ? // Recover any tool/skill call the model leaked as text (e.g. a raw
-          // `<skill_view>{"answer": …}</skill_view>` tag) before tokenizing.
-          parseMediaTokens(cleanLeakedToolTags(bubbleContent))
-        : null,
-    [msg.role, bubbleContent],
+
+  // Answer reveal. Gated behind the turn's thought: the bubble stays hidden
+  // (`waiting`) until the most recent preceding reasoning row has finished
+  // typing ([[useReasoningGate]]), so the response can't leak out mid-thought
+  // ("partial thought -> partial response"). When the gate opens the whole
+  // accumulated answer fades in via the .chat-message `messageIn` entrance —
+  // the answer is NOT typed (see the constants above for why). Deltas that
+  // arrive after the gate open simply grow the text in place (streaming
+  // paste), so a later thought row landing below never finds the response
+  // mid-typewriter (which would read as a stalled response).
+  const { waiting } = useReasoningGate({
+    waitForReasoningId,
+    hasContent: Boolean(bubbleContent),
+  });
+
+  const renderStreamingContent = useCallback(
+    (visible: string): React.ReactNode => {
+      const visibleSegments = parseMediaTokens(
+        cleanLeakedToolTags(visible),
+      );
+      return visibleSegments.map((segment) =>
+        segment.type === "text" ? (
+          segment.value.trim() ? (
+            <AgentMarkdown key={`t-${segment.start}`}>
+              {segment.value}
+            </AgentMarkdown>
+          ) : null
+        ) : (
+          <MediaSegmentView
+            key={`m-${segment.start}`}
+            token={segment.token}
+            raw={segment.raw}
+            source={segment.source}
+          />
+        ),
+      );
+    },
+    [],
   );
 
   const handleCopy = useCallback(async () => {
@@ -260,7 +304,7 @@ export const MessageRow = memo(function MessageRow({
     <div
       className={`chat-message chat-message-${msg.role}${
         showAvatar ? "" : " chat-message--grouped"
-      }`}
+      }${waiting ? " chat-message--hidden" : ""}`}
     >
       {/* User messages stand alone (right-aligned bubble, no avatar). Only the
           agent turn carries an avatar; its continuation rows get a spacer. */}
@@ -325,29 +369,29 @@ export const MessageRow = memo(function MessageRow({
           </div>
         ) : (
           msg.content &&
-          (msg.role === "agent" && segments
-            ? segments.map((segment) =>
-                segment.type === "text" ? (
-                  segment.value.trim() ? (
-                    // Keyed on the segment's character offset rather than its
-                    // array index — a MEDIA: token appearing mid-stream shifts
-                    // every subsequent index, which would otherwise re-mount
-                    // each downstream MediaSegmentView and re-fire its
-                    // `mediaFileExists` probe.
-                    <AgentMarkdown key={`t-${segment.start}`}>
-                      {segment.value}
-                    </AgentMarkdown>
-                  ) : null
-                ) : (
-                  <MediaSegmentView
-                    key={`m-${segment.start}`}
-                    token={segment.token}
-                    raw={segment.raw}
-                    source={segment.source}
-                  />
-                ),
-              )
-            : msg.content)
+          (msg.role === "agent" ? (
+            waiting ? (
+              // Hidden row waiting for the turn's thought to finish typing —
+              // render a caret so the row has a stable mount while hidden by
+              // .chat-message--hidden. When the gate opens the full text
+              // fades in via .chat-message messageIn (no typewriter).
+              <span className="type-animation-caret" aria-hidden="true">
+                ▍
+              </span>
+            ) : (
+              <TypeAnimation
+                text={msg.content}
+                // active=false: the answer is never typed. It always renders
+                // its full text (gated + faded in above; deltas paste in).
+                active={false}
+                showCaret={false}
+              >
+                {renderStreamingContent}
+              </TypeAnimation>
+            )
+          ) : (
+            msg.content
+          ))
         )}
         {(msg as ChatBubbleMessage).fileChanges &&
           (msg as ChatBubbleMessage).fileChanges!.length > 0 && (

@@ -20,31 +20,45 @@ export function upsertLiveReasoningChunk(
 ): ChatMessage[] {
   if (!chunk) return [...messages];
 
+  if (!forceNewSegment) {
+    // Merge into the LAST reasoning row of the current turn, wherever it
+    // sits — thinking deltas interleave with ANSWER rows, and a fresh row
+    // per chunk remounts the reasoning container (replaying its entry
+    // animation = visible blink). Keeping the row in place also preserves
+    // reasoning-above-answer ordering.
+    //
+    // A TOOL row is a hard boundary: the model finished thinking, ran a
+    // tool, and a later thinking chunk is a NEW segment. Stopping the
+    // backward scan at tool rows keeps interleaved-answer merges while
+    // preserving that.
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role === "user") break;
+      const kind = (msg as { kind?: string }).kind;
+      if (kind === "tool_call" || kind === "tool_result") break;
+      if (msg.role === "agent" && kind === "reasoning") {
+        const reasoning = msg as ReasoningMessage;
+        const updated: ReasoningMessage = {
+          ...reasoning,
+          text: reasoning.text + chunk,
+        };
+        return [
+          ...messages.slice(0, i),
+          updated,
+          ...messages.slice(i + 1),
+        ];
+      }
+    }
+  }
+
+  // New reasoning segment: insert BEFORE the trailing assistant bubble so
+  // thinking stays above the answer it belongs to.
   const turnStart = latestUserIndex(messages) + 1;
   const last = messages[messages.length - 1];
   const insertAt =
     messages.length > turnStart && last && isAssistantBubble(last)
       ? messages.length - 1
       : messages.length;
-  const previous = messages[insertAt - 1];
-
-  if (
-    !forceNewSegment &&
-    previous &&
-    previous.role === "agent" &&
-    "kind" in previous &&
-    previous.kind === "reasoning"
-  ) {
-    const updated: ReasoningMessage = {
-      ...previous,
-      text: previous.text + chunk,
-    };
-    return [
-      ...messages.slice(0, insertAt - 1),
-      updated,
-      ...messages.slice(insertAt),
-    ];
-  }
 
   const row: ReasoningMessage = {
     id: `reasoning-${now}-${messages.length}`,

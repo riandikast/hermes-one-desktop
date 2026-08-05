@@ -12,6 +12,7 @@ import { randomBytes } from "crypto";
 import type { SshConfig } from "./ssh-tunnel";
 import type { KanbanTask } from "./kanban";
 import { buildSshControlOptions } from "./ssh-options";
+import { getYamlPath } from "./yaml-path";
 import {
   classifySkillCliOutput,
   type InstalledSkill,
@@ -1202,8 +1203,132 @@ export async function sshGetConfigValue(
 ): Promise<string | null> {
   const content = await sshReadFile(config, remoteConfigPath(profile));
   if (!content) return null;
-  const hit = locateInYaml(content, key);
-  return hit ? hit.value : null;
+  // getYamlPath (not locateInYaml) also collects block-list values
+  // (`deny:` followed by `- item` lines) into a JSON array string, so
+  // list-valued security settings round-trip in SSH mode too.
+  return getYamlPath(content, key);
+}
+
+/**
+ * Exported for unit testing. Serializes `items` into a YAML block list at
+ * `dottedKey`, mirroring the local writer in config.ts: an existing key line
+ * (and its deeper block) is replaced in place with items one level deeper;
+ * a missing flat key is appended at top level; a missing nested key is
+ * appended under an existing top-level parent block (or creates it). Returns
+ * the full updated document.
+ */
+export function buildYamlListContent(
+  content: string,
+  dottedKey: string,
+  items: unknown[],
+): string {
+  const segments = dottedKey.split(".").filter(Boolean);
+  const leaf = segments[segments.length - 1] || dottedKey;
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+  const quote = (item: unknown): string => JSON.stringify(String(item));
+  const blockFor = (keyIndent: string): string =>
+    items.length > 0
+      ? `${keyIndent}${leaf}:${newline}${items
+          .map((item) => `${keyIndent}  - ${quote(item)}`)
+          .join(newline)}${newline}`
+      : `${keyIndent}${leaf}: []${newline}`;
+
+  const hit = locateInYaml(content, dottedKey);
+  if (hit) {
+    // Expand to the full key line: valueStart may sit mid-line (inline
+    // `deny: []`), so back up to the start of the line.
+    const lineStart = content.lastIndexOf("\n", hit.valueStart - 1) + 1;
+    const keyLineEnd = content.indexOf("\n", lineStart);
+    const keyLineEndExclusive =
+      keyLineEnd === -1 ? content.length : keyLineEnd + 1;
+    const keyLine = content.slice(lineStart, keyLineEndExclusive);
+    const indent = (keyLine.match(/^(\s*)/) || [""])[1];
+
+    // Block end: everything after the key line that is indented deeper than
+    // the key (the list items), up to the next line at the key's indent.
+    let blockEnd = keyLineEndExclusive;
+    let cursor = blockEnd;
+    while (cursor < content.length) {
+      const lineEnd = content.indexOf("\n", cursor);
+      const lineEndExclusive =
+        lineEnd === -1 ? content.length : lineEnd + 1;
+      const line = content.slice(cursor, lineEndExclusive);
+      if (line.trim() === "" || line.startsWith("#")) {
+        // Blank/comment lines stay part of the block only if the block
+        // continues below; peek at the next non-blank line's indent.
+        let peek = lineEndExclusive;
+        let nextIndent = -1;
+        while (peek < content.length) {
+          const peekEnd = content.indexOf("\n", peek);
+          const peekEndExclusive =
+            peekEnd === -1 ? content.length : peekEnd + 1;
+          const peekLine = content.slice(peek, peekEndExclusive);
+          if (peekLine.trim() === "" || peekLine.startsWith("#")) {
+            peek = peekEndExclusive;
+            continue;
+          }
+          nextIndent = peekLine.length - peekLine.trimStart().length;
+          break;
+        }
+        if (nextIndent === -1 || nextIndent <= indent.length) break;
+        cursor = lineEndExclusive;
+        blockEnd = cursor;
+        continue;
+      }
+      if (line.length - line.trimStart().length <= indent.length) break;
+      cursor = lineEndExclusive;
+      blockEnd = cursor;
+    }
+
+    return `${content.slice(0, lineStart)}${blockFor(indent)}${content.slice(blockEnd)}`;
+  }
+
+  // Flat key missing → append at top level.
+  if (segments.length === 1) {
+    const sep = content.endsWith("\n") || content === "" ? "" : newline;
+    return `${content}${sep}${blockFor("")}`;
+  }
+
+  // Nested key missing → append under an existing top-level parent block,
+  // else create the parent.
+  const parent = segments[0];
+  const parentRe = new RegExp(
+    `^${escapeRegex(parent)}:[ \t]*(#.*)?(?:\r?\n|$)`,
+    "m",
+  );
+  const parentMatch = parentRe.exec(content);
+  const childBlock = blockFor("  ");
+
+  if (!parentMatch || parentMatch.index === undefined) {
+    const sep = content === "" || content.endsWith("\n") ? "" : newline;
+    return `${content}${sep}${parent}:${newline}${childBlock}`;
+  }
+
+  const blockStart = parentMatch.index + parentMatch[0].length;
+  let blockEnd = blockStart;
+  let cursor = blockStart;
+  while (cursor < content.length) {
+    const lineEnd = content.indexOf("\n", cursor);
+    const lineEndExclusive = lineEnd === -1 ? content.length : lineEnd;
+    const line = content.slice(cursor, lineEndExclusive);
+    if (line.trim() !== "" && !/^[ \t]/.test(line)) break;
+    blockEnd =
+      lineEndExclusive === content.length ? content.length : lineEndExclusive + 1;
+    cursor = blockEnd;
+  }
+  return `${content.slice(0, blockEnd)}${childBlock}${content.slice(blockEnd)}`;
+}
+
+/** JSON-array shape detection for list-valued config keys (e.g. approvals.deny). */
+function parseJsonArray(value: string): unknown[] | null {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function sshSetConfigValue(
@@ -1212,6 +1337,22 @@ export async function sshSetConfigValue(
   value: string,
   profile?: string,
 ): Promise<void> {
+  // JSON-array values are YAML block lists — route them through the list
+  // writer BEFORE the illegal-character guard (JSON always contains quotes,
+  // which the scalar path would reject).
+  const listItems = parseJsonArray(value);
+  if (listItems !== null) {
+    const configPath = remoteConfigPath(profile);
+    const content = await sshReadFile(config, configPath);
+    if (!content) return;
+    await sshWriteFile(
+      config,
+      configPath,
+      buildYamlListContent(content, key, listItems),
+    );
+    return;
+  }
+
   if (/["\\\n\r]/.test(value)) {
     throw new Error(
       'Config value contains illegal characters: ", \\, or newline',

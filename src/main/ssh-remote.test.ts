@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildGatewayStartCommand,
+  buildYamlListContent,
   upsertEnvLine,
   buildGatewayStatusCommand,
   buildGatewayStopCommand,
@@ -140,5 +141,61 @@ describe("remote .env upsert", () => {
       "new",
     );
     expect(out).toBe("API_SERVER_KEY_BACKUP=keep\nAPI_SERVER_KEY=new");
+  });
+});
+
+describe("SSH config list values (security pane deny/allowlist)", () => {
+  it("appends a nested list under an existing parent block", () => {
+    const updated = buildYamlListContent(
+      "approvals:\n  mode: manual\n",
+      "approvals.deny",
+      ["rm -rf *", "git push --force"],
+    );
+    expect(updated).toBe(
+      'approvals:\n  mode: manual\n  deny:\n    - "rm -rf *"\n    - "git push --force"\n',
+    );
+  });
+
+  it("rewrites an existing nested block in place, leaving siblings intact", () => {
+    const updated = buildYamlListContent(
+      'approvals:\n  mode: manual\n  deny:\n    - "old rule"\n',
+      "approvals.deny",
+      ["new rule"],
+    );
+    expect(updated).toBe(
+      'approvals:\n  mode: manual\n  deny:\n    - "new rule"\n',
+    );
+  });
+
+  it("replaces an inline empty list", () => {
+    const updated = buildYamlListContent(
+      "approvals:\n  deny: []\n",
+      "approvals.deny",
+      ["git push --force"],
+    );
+    expect(updated).toBe(
+      'approvals:\n  deny:\n    - "git push --force"\n',
+    );
+  });
+
+  it("appends a flat top-level list key", () => {
+    const updated = buildYamlListContent(
+      "terminal:\n  cwd: .\n",
+      "command_allowlist",
+      ["git status"],
+    );
+    expect(updated).toBe(
+      'terminal:\n  cwd: .\ncommand_allowlist:\n  - "git status"\n',
+    );
+  });
+
+  it("clears a list by writing an empty array", () => {
+    expect(
+      buildYamlListContent(
+        'command_allowlist:\n  - "git status"\n',
+        "command_allowlist",
+        [],
+      ),
+    ).toBe("command_allowlist: []\n");
   });
 });

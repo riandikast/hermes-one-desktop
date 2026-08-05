@@ -1769,6 +1769,14 @@ export function useDashboardChatTransport({
           },
         );
         if (!dashboardModelMatches(dashboardProvider, model, live)) {
+          // The gateway may not reflect a session-only `/model` switch in
+          // `model.options`: a resumed (old) session keeps reporting its
+          // creation model, and custom providers outside the gateway's
+          // auto-detected inventory never appear. The slash was accepted (a
+          // non-thrown response) and the custom endpoint accepts the model,
+          // so a mismatch here must not block the turn — warn and send on the
+          // session instead, and drop the applied key so the next send retries
+          // the switch until the gateway reports it.
           appliedModelRef.current = null;
           const warning = slashResponse?.warning
             ? `; /model warning: ${slashResponse.warning}`
@@ -1776,9 +1784,10 @@ export function useDashboardChatTransport({
           const output = slashResponse?.output
             ? `; /model output: ${slashResponse.output}`
             : "";
-          throw new Error(
-            `Hermes dashboard did not switch to ${dashboardProvider}/${model}; live model is ${live.provider || "unknown"}/${live.model || "unknown"}${warning}${output}; custom inventory: ${modelOptionsSummary(before)}`,
+          console.warn(
+            `Hermes dashboard did not report ${dashboardProvider}/${model}; live model is ${live.provider || "unknown"}/${live.model || "unknown"}${warning}${output}; custom inventory: ${modelOptionsSummary(before)}; continuing on ${targetSessionId}`,
           );
+          return targetSessionId;
         }
         appliedModelRef.current = key;
         return targetSessionId;

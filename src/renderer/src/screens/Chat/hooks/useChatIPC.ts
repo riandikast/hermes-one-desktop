@@ -130,29 +130,39 @@ export function useChatIPC({
     const cleanupChunk = window.hermesAPI.onChatChunk((eventRunId, chunk) => {
       if (!eventMatchesRun(eventRunId, runId)) return;
       if (!activeTurnRef.current) return;
+      // @lat: [[chat-commands#Delta chunks merge into the last same-kind row]]
       setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (
-          last &&
-          last.role === "agent" &&
-          isBubbleMessage(last) &&
-          !last.error
-        ) {
-          return [
-            ...prev.slice(0, -1),
-            {
-              ...last,
-              content: last.content + chunk,
-              pending: true,
-              turnId: last.turnId || activeTurnRef.current?.turnId,
-            },
-          ];
+        if (!chunk) return prev;
+        // Merge into the LAST assistant bubble of the current turn, wherever
+        // it sits — thinking/tool deltas interleave after the answer started
+        // (a tool event closes the reasoning segment, forcing the next
+        // thinking chunk into a NEW trailing row). Appending a fresh bubble
+        // per chunk would remount the row and replay its entry animation —
+        // a visible blink on every chunk.
+        for (let i = prev.length - 1; i >= 0; i--) {
+          const msg = prev[i];
+          if (msg.role === "user") break;
+          if (isBubbleMessage(msg) && msg.role === "agent" && !msg.error) {
+            return [
+              ...prev.slice(0, i),
+              {
+                ...msg,
+                content: msg.content + chunk,
+                pending: true,
+                turnId: msg.turnId || activeTurnRef.current?.turnId,
+              },
+              ...prev.slice(i + 1),
+            ];
+          }
         }
-        if (!chunk || !chunk.trim()) return prev;
+        if (!chunk.trim()) return prev;
         return [
           ...prev,
           {
-            id: `agent-${Date.now()}`,
+            // Counter suffix keeps the key unique across chunks landing in
+            // the same millisecond — a shared key would let React reuse the
+            // element and REPLACE the accumulated text with just this chunk.
+            id: `agent-ipc-${Date.now()}-${prev.length}`,
             role: "agent",
             content: chunk,
             pending: true,

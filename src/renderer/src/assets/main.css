@@ -5811,6 +5811,15 @@ body:has(.shell-vibrant),
   }
 }
 
+/* The answer bubble stays hidden while its turn's thought is still typing
+   (see MessageRow's reasoning-settle gate). display:none keeps the row
+   mounted (stable key → no remount blink) but invisible; when the gate opens
+   the row reappears and messageIn plays once — the response "enters" after
+   the thought finished instead of leaking out mid-thought. */
+.chat-message--hidden {
+  display: none;
+}
+
 .chat-message-user {
   /* Right-align in block flow (replaces the flex-column `align-self: flex-end`).
      `row-reverse` keeps the bubble on the outer edge with the avatar inside. */
@@ -12149,6 +12158,129 @@ body:has(.shell-vibrant),
    section chrome (it lived in the old full-page Settings layout). */
 .settings-modal-pane .settings-field {
   margin: 0;
+}
+
+/* ── Security pane ─────────────────────────────────────────────────────── */
+
+/* Deny/allowlist rule editors. */
+.settings-security-textarea {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.16));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-secondary, rgba(127, 127, 127, 0.05));
+  color: var(--text-primary, currentColor);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 64px;
+}
+
+.settings-security-textarea:focus {
+  outline: none;
+  border-color: var(--accent, #4c8dff);
+}
+
+.settings-security-textarea:disabled {
+  opacity: 0.55;
+}
+
+.settings-security-save {
+  align-self: flex-start;
+  margin-top: 8px;
+  padding: 5px 14px;
+  border: 1px solid var(--border-bright, rgba(127, 127, 127, 0.3));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-tertiary, rgba(127, 127, 127, 0.08));
+  color: var(--text-secondary, currentColor);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+
+.settings-security-save:hover:not(:disabled) {
+  background: var(--accent-subtle, rgba(76, 141, 255, 0.15));
+  color: var(--accent-text, #4c8dff);
+}
+
+.settings-security-save:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Write-gate toggles — label left, switch right. */
+.settings-security-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--text-secondary, currentColor);
+}
+
+/* Working-folder picker row. */
+.settings-security-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.settings-security-folder-icon {
+  flex-shrink: 0;
+  color: var(--text-muted, currentColor);
+}
+
+.settings-security-folder-input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.16));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-secondary, rgba(127, 127, 127, 0.05));
+  color: var(--text-primary, currentColor);
+  font-size: 12.5px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+}
+
+.settings-security-folder-input:focus {
+  outline: none;
+  border-color: var(--accent, #4c8dff);
+}
+
+.settings-security-folder-input:disabled {
+  opacity: 0.55;
+}
+
+.settings-security-browse {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border: 1px solid var(--border-bright, rgba(127, 127, 127, 0.3));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-tertiary, rgba(127, 127, 127, 0.08));
+  color: var(--text-secondary, currentColor);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+
+.settings-security-browse:hover:not(:disabled) {
+  background: var(--accent-subtle, rgba(76, 141, 255, 0.15));
+  color: var(--accent-text, #4c8dff);
+}
+
+.settings-security-browse:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* Cards — visually separate distinct concerns within a pane (e.g. the Hermes

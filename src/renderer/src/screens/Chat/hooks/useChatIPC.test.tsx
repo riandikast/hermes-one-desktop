@@ -75,15 +75,17 @@ function installHermesApi(callbacks: ChatIpcCallbacks): {
 
 function Harness({
   sessionScopeId,
+  initialActiveTurn = null,
 }: {
   sessionScopeId: string | null;
+  initialActiveTurn?: ActiveTurn | null;
 }): React.JSX.Element {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [, setHermesSessionId] = useState<string | null>(sessionScopeId);
   const [, setToolProgress] = useState<string | null>(null);
   const [, setIsLoading] = useState(false);
   const [, setUsage] = useState<UsageState | null>(null);
-  const activeTurnRef = useRef<ActiveTurn | null>(null);
+  const activeTurnRef = useRef<ActiveTurn | null>(initialActiveTurn);
 
   useChatIPC({
     runId: "run-1",
@@ -97,9 +99,21 @@ function Harness({
   });
 
   return (
-    <output data-testid="ids">
-      {JSON.stringify(messages.map((message) => message.id))}
-    </output>
+    <>
+      <output data-testid="ids">
+        {JSON.stringify(messages.map((message) => message.id))}
+      </output>
+      <output data-testid="snapshot">
+        {JSON.stringify(
+          messages.map((m) => {
+            const kind = "kind" in m ? m.kind : undefined;
+            const content = "content" in m ? m.content : undefined;
+            const text = "text" in m ? m.text : undefined;
+            return { id: m.id, role: m.role, kind, content, text };
+          }),
+        )}
+      </output>
+    </>
   );
 }
 
@@ -137,5 +151,61 @@ describe("useChatIPC session scoping", () => {
     expect(screen.getByTestId("ids")).toHaveTextContent(
       JSON.stringify(["db-1", "db-2"]),
     );
+  });
+});
+
+describe("useChatIPC interleaved streaming", () => {
+  const activeTurn: ActiveTurn = {
+    turnId: "t1",
+    userId: "u1",
+    startIndex: 0,
+    status: "running",
+  };
+
+  it("keeps ONE answer bubble when thinking chunks interleave after tool events", async () => {
+    const callbacks: ChatIpcCallbacks = {};
+    installHermesApi(callbacks);
+    render(
+      <Harness
+        sessionScopeId="s1"
+        initialActiveTurn={activeTurn}
+      />,
+    );
+
+    // DeepSeek-style stream: thinking chunks, the answer starts, a tool runs,
+    // then MORE thinking + answer chunks interleave. Each tool event marks
+    // the reasoning segment closed, so the next thinking chunk forces a new
+    // segment row — a fresh answer bubble per chunk would remount the row and
+    // replay its entry animation (a visible blink on every chunk).
+    await act(async () => {
+      callbacks.reasoning?.("run-1", "First thought");
+      callbacks.chunk?.("run-1", "Start of answer");
+      callbacks.toolProgress?.("run-1", "read_file");
+      callbacks.reasoning?.("run-1", "Interleaved thought");
+      callbacks.chunk?.("run-1", " more answer");
+      callbacks.reasoning?.("run-1", " continued.");
+      callbacks.chunk?.("run-1", " final.");
+    });
+
+    const snapshot = JSON.parse(
+      screen.getByTestId("snapshot").textContent ?? "[]",
+    ) as {
+      id: string;
+      role: string;
+      kind?: string;
+      content?: string;
+      text?: string;
+    }[];
+
+    const bubbles = snapshot.filter(
+      (m) => m.role === "agent" && !m.kind,
+    );
+    const reasoning = snapshot.filter((m) => m.kind === "reasoning");
+
+    expect(bubbles).toHaveLength(1);
+    expect(bubbles[0].content).toBe("Start of answer more answer final.");
+    expect(reasoning).toHaveLength(2);
+    expect(reasoning[0].text).toBe("First thought");
+    expect(reasoning[1].text).toBe("Interleaved thought continued.");
   });
 });

@@ -114,8 +114,13 @@ export const MessageList = memo(function MessageList({
   // contiguous run of tool_call/tool_result rows folds into a single
   // ToolActivityGroup (collapsed by default) instead of one bubble per call.
   const rows: React.JSX.Element[] = [];
+  // Last reasoning row id within the current turn — reset at each user row.
+  // The turn's answer bubble waits for this thought to settle before its
+  // typewriter reveal starts (the response must not leak out mid-thought).
+  let turnLastReasoningId: string | undefined;
   for (let i = 0; i < visibleMessages.length; i++) {
     const msg = visibleMessages[i];
+    if (msg.role === "user") turnLastReasoningId = undefined;
     // One avatar per turn: show it only on the first row of a contiguous run
     // of same-role rows. The agent turn's thinking/tool rows + answer bubble
     // share one avatar; the continuation rows render a spacer.
@@ -142,6 +147,9 @@ export const MessageList = memo(function MessageList({
             visibleMessages[start - 1].role !== "agent"
           }
           agent={agentAvatar}
+          // Hold the run hidden until the most recent preceding thought has
+          // finished typing, so tools don't appear mid-thought.
+          waitForReasoningId={turnLastReasoningId}
         />,
       );
       continue;
@@ -149,6 +157,7 @@ export const MessageList = memo(function MessageList({
 
     const k = (msg as { kind?: string }).kind;
     if (k === "reasoning") {
+      turnLastReasoningId = msg.id;
       rows.push(
         <ReasoningRow
           key={msg.id}
@@ -190,6 +199,9 @@ export const MessageList = memo(function MessageList({
         onUnsendLastUser={onUnsendLastUser}
         isLastUser={i === lastUserBubbleIdx}
         onOpenFileChanges={onOpenFileChanges}
+        waitForReasoningId={
+          msg.role === "agent" ? turnLastReasoningId : undefined
+        }
       />,
     );
   }
