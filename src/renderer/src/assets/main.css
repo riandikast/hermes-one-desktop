@@ -3812,6 +3812,13 @@ body:has(.shell-vibrant),
   background: none;
 }
 
+/* File-editor chips (standalone file tabs) show a file icon instead of a
+   profile avatar. */
+.active-session-chip-file {
+  background: none;
+  color: var(--text-secondary);
+}
+
 .active-session-chip-title {
   flex: 1;
   min-width: 0;
@@ -4793,31 +4800,35 @@ body:has(.shell-vibrant),
 }
 
 /* File viewer modal */
-.file-viewer-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 40px;
-}
-
-.file-viewer-modal {
-  background: #1e1e1e;
-  border: 1px solid #333;
-  border-radius: 8px;
-  width: 100%;
-  max-width: 900px;
-  height: 85vh;
+/* File editor — rendered full-content-area in the "file" pane of the app
+   layout (Layout.tsx). Tabs live in the top strip (ActiveSessionsBar) as
+   standalone session-like tabs; each open file's editor stays mounted and
+   only the active one is displayed. */
+.file-editor-body {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  flex: 1;
+  min-height: 0;
+}
+.file-editor-body--hidden {
+  display: none;
+}
+.file-editor-body .file-viewer-content {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Slim footer row under the editor: filename, size, save state, open-external. */
+.file-viewer-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-top: 1px solid var(--border-color, rgba(127, 127, 127, 0.16));
+  font-size: 11px;
+  color: var(--text-muted);
+  background: #16161a;
 }
 
 .file-viewer-header {

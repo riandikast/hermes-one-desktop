@@ -22,11 +22,15 @@ export interface ChatRun {
   initialContextFolders?: string[];
   /** Target view if this tab represents a pinned tool or destination page (e.g. "kanban", "knowledge"). */
   targetView?: string;
+  /** When set, this tab is a standalone file editor (VS Code style): the top
+   *  strip shows the filename like a session tab, the content pane renders the
+   *  editor, and `targetView` is "file". */
+  filePath?: string;
 }
 
 /** A blank chat that can be reassigned to another profile without losing work. */
 export function isScratchRun(r: ChatRun): boolean {
-  return !r.sessionId && !r.loading && !r.title && !r.targetView;
+  return !r.sessionId && !r.loading && !r.title && !r.targetView && !r.filePath;
 }
 
 /** Mint a fresh, empty run under the given profile. */

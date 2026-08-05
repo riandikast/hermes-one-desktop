@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, memo, useCallback } from "react";
-import { X, FileCode, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { basicSetup } from "codemirror";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
@@ -13,6 +13,10 @@ import { useI18n } from "../../components/useI18n";
 
 interface FileViewerProps {
   filePath: string;
+  /** True while this file is the active tab. Inactive tabs stay mounted
+   *  (their CodeMirror editor and unsaved edits survive switching) but are
+   *  hidden with `display: none`. */
+  active: boolean;
   onClose: () => void;
 }
 
@@ -116,6 +120,7 @@ async function resolveLanguage(filename: string): Promise<Extension | null> {
 
 export const FileViewer = memo(function FileViewer({
   filePath,
+  active,
   onClose,
 }: FileViewerProps): React.JSX.Element {
   const { t } = useI18n();
@@ -258,25 +263,29 @@ export const FileViewer = memo(function FileViewer({
       editorViewRef.current = view;
       // Store the view so the cleanup below can destroy it even though it's
       // created asynchronously (language resolution).
-      (editorHostRef.current as HTMLDivElement & { _cmView?: EditorView })._cmView =
-        view;
+      (
+        editorHostRef.current as HTMLDivElement & { _cmView?: EditorView }
+      )._cmView = view;
     });
 
     return () => {
       disposed = true;
       editorViewRef.current = null;
-      const hostView = (editorHostRef.current as
-        | (HTMLDivElement & { _cmView?: EditorView })
-        | null)?._cmView;
+      const hostView = (
+        editorHostRef.current as
+          | (HTMLDivElement & { _cmView?: EditorView })
+          | null
+      )?._cmView;
       hostView?.destroy();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filePath, content === null]);
 
-  // Escape closes the viewer, unless the CodeMirror search panel is open —
-  // in that case CM's own Escape handler closes the panel first and stops
-  // propagation, so the viewer stays open.
+  // Escape closes the editor panel, unless the CodeMirror search panel is
+  // open — in that case CM's own Escape handler closes the panel first and
+  // stops propagation, so the editor stays open.
   useEffect(() => {
+    if (!active) return;
     const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key === "Escape") {
         const searchOpen = document.querySelector(
@@ -289,96 +298,77 @@ export const FileViewer = memo(function FileViewer({
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose]);
+  }, [active, onClose]);
 
   return (
-    <div className="file-viewer-overlay" onClick={onClose}>
-      <div className="file-viewer-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="file-viewer-header">
-          <div className="file-viewer-title">
-            <FileCode size={16} className="file-viewer-icon" />
-            <span className="file-viewer-filename" title={filePath}>
-              {fileName}
-            </span>
-            {(content || imageUrl) && (
-              <span className="file-viewer-size">
-                {content ? formatFileSize(content) : imageUrl ? "Image" : ""}
-                {truncated && content && ` (${t("worktree.fileTruncated")})`}
-              </span>
-            )}
-            {content !== null && (
-              <span
-                className={`file-viewer-save-state file-viewer-save-state--${saving}`}
-              >
-                {saving === "saving"
-                  ? "Saving…"
-                  : saving === "saved"
-                    ? "Saved"
-                    : saving === "error"
-                      ? "Save failed"
-                      : ""}
-              </span>
-            )}
+    <div
+      className={`file-editor-body${active ? "" : " file-editor-body--hidden"}`}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="file-viewer-content">
+        {isLoading ? (
+          <div className="file-viewer-loading">{t("worktree.loading")}...</div>
+        ) : error ? (
+          <div className="file-viewer-error">{error}</div>
+        ) : imageUrl ? (
+          <div className="file-viewer-image-container">
+            <img src={imageUrl} alt={fileName} className="file-viewer-image" />
           </div>
-          <div className="file-viewer-actions">
-            <button
-              className="btn-ghost file-viewer-open"
-              onClick={() => window.hermesAPI.openFileInEditor(filePath)}
-              title={t("worktree.openInEditor")}
-            >
-              <ExternalLink size={14} />
-              <span className="file-viewer-open-text">Open</span>
-            </button>
-            <button
-              className="btn-ghost file-viewer-close"
-              onClick={onClose}
-              title={t("worktree.closeFile")}
-            >
-              <X size={16} />
-            </button>
+        ) : content === null ? (
+          <div className="file-viewer-error">{t("worktree.errorLoading")}</div>
+        ) : isBinaryFile(fileName) ? (
+          <div className="file-viewer-binary">
+            <div className="file-viewer-binary-icon">📄</div>
+            <div className="file-viewer-binary-text">
+              Binary file cannot be previewed
+            </div>
+            <div className="file-viewer-binary-hint">
+              Click Open to view in default application
+            </div>
           </div>
-        </div>
-
-        <div className="file-viewer-content">
-          {isLoading ? (
-            <div className="file-viewer-loading">
-              {t("worktree.loading")}...
-            </div>
-          ) : error ? (
-            <div className="file-viewer-error">{error}</div>
-          ) : imageUrl ? (
-            <div className="file-viewer-image-container">
-              <img
-                src={imageUrl}
-                alt={fileName}
-                className="file-viewer-image"
-              />
-            </div>
-          ) : content === null ? (
-            <div className="file-viewer-error">
-              {t("worktree.errorLoading")}
-            </div>
-          ) : isBinaryFile(fileName) ? (
-            <div className="file-viewer-binary">
-              <div className="file-viewer-binary-icon">📄</div>
-              <div className="file-viewer-binary-text">
-                Binary file cannot be previewed
+        ) : (
+          <>
+            {truncated && (
+              <div className="file-viewer-truncated">
+                {t("worktree.fileTruncatedWarning")}
               </div>
-              <div className="file-viewer-binary-hint">
-                Click Open to view in default application
-              </div>
-            </div>
-          ) : (
-            <>
-              {truncated && (
-                <div className="file-viewer-truncated">
-                  {t("worktree.fileTruncatedWarning")}
-                </div>
-              )}
-              <div className="file-viewer-cm-host" ref={editorHostRef} />
-            </>
-          )}
-        </div>
+            )}
+            <div className="file-viewer-cm-host" ref={editorHostRef} />
+          </>
+        )}
+      </div>
+      <div className="file-viewer-statusbar">
+        <span className="file-viewer-filename" title={filePath}>
+          {fileName}
+        </span>
+        {(content || imageUrl) && (
+          <span className="file-viewer-size">
+            {content ? formatFileSize(content) : imageUrl ? "Image" : ""}
+            {truncated && content && ` (${t("worktree.fileTruncated")})`}
+          </span>
+        )}
+        {content !== null && (
+          <span
+            className={`file-viewer-save-state file-viewer-save-state--${saving}`}
+          >
+            {saving === "saving"
+              ? "Saving…"
+              : saving === "saved"
+                ? "Saved"
+                : saving === "error"
+                  ? "Save failed"
+                  : ""}
+          </span>
+        )}
+        <button
+          type="button"
+          className="btn-ghost file-viewer-open"
+          onClick={() => window.hermesAPI.openFileInEditor(filePath)}
+          title={t("worktree.openInEditor")}
+        >
+          <ExternalLink size={13} />
+          <span className="file-viewer-open-text">Open</span>
+        </button>
       </div>
     </div>
   );

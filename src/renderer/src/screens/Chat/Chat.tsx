@@ -213,7 +213,9 @@ function Chat({
   const [contextFolders, setContextFolders] = useState<string[]>(
     initialContextFolders ?? [],
   );
-  const [attachedKnowledgeBundles, setAttachedKnowledgeBundles] = useState<string[]>([]);
+  const [attachedKnowledgeBundles, setAttachedKnowledgeBundles] = useState<
+    string[]
+  >([]);
   // PLAN / BUILD mode toggle. Persisted per session so a re-opened
   // conversation restores its mode. When PLAN, the agent is instructed (via a
   // system message) to never mutate files.
@@ -268,7 +270,9 @@ function Chat({
       return;
     }
     try {
-      const raw = localStorage.getItem(`hermes.session.knowledge.${hermesSessionId}`);
+      const raw = localStorage.getItem(
+        `hermes.session.knowledge.${hermesSessionId}`,
+      );
       if (raw) {
         setAttachedKnowledgeBundles(JSON.parse(raw));
       } else {
@@ -457,12 +461,7 @@ function Chat({
     });
     // Reset the throttle on session/profile change so a new session isn't
     // suppressed by an old throttle window.
-  }, [
-    usage,
-    chatCurrentProvider,
-    chatCurrentModel,
-    recordUsage,
-  ]);
+  }, [usage, chatCurrentProvider, chatCurrentModel, recordUsage]);
 
   // Restore the model/provider linked to a resumed session. The saved value is
   // applied only to this chat's local picker state (`persist:false`) so it never
@@ -976,9 +975,7 @@ function Chat({
   );
 
   const handleSelectRecentFolder = useCallback((path: string) => {
-    setContextFolders((prev) =>
-      prev.includes(path) ? prev : [...prev, path],
-    );
+    setContextFolders((prev) => (prev.includes(path) ? prev : [...prev, path]));
   }, []);
 
   const handleToggleWorktree = useCallback(() => {

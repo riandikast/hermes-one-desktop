@@ -150,6 +150,7 @@ export default {
     emptyFolder: "Empty folder",
     errorLoading: "Failed to load folder contents",
     closeFile: "Close",
+    closeAllFiles: "Close all files",
     open: "Open",
     openInEditor: "Open in default editor",
     openTerminal: "Open terminal here",

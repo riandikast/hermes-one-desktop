@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { X, Plus } from "../../assets/icons";
+import { X, Plus, FileCode } from "../../assets/icons";
 import { OrbLoader } from "../../components/OrbLoader";
 import { useI18n } from "../../components/useI18n";
 import ProfileAvatar from "../../components/common/ProfileAvatar";
@@ -71,7 +71,9 @@ export const ActiveSessionsBar = memo(function ActiveSessionsBar({
   }, [contextMenu]);
 
   const anyLoading = runs.some((r) => r.loading);
-  const hasRealSession = runs.some((r) => r.sessionId || r.title || r.targetView);
+  const hasRealSession = runs.some(
+    (r) => r.sessionId || r.title || r.targetView,
+  );
   // Nothing real to switch to yet → leave the strip empty (pure drag area).
   const showChips = runs.length > 1 || anyLoading || hasRealSession;
 
@@ -119,7 +121,11 @@ export const ActiveSessionsBar = memo(function ActiveSessionsBar({
               }}
               title={`${run.profile} — ${label}`}
             >
-              {run.loading ? (
+              {run.filePath ? (
+                <span className="active-session-chip-avatar active-session-chip-file">
+                  <FileCode size={14} />
+                </span>
+              ) : run.loading ? (
                 <span
                   className="active-session-chip-avatar active-session-chip-orb"
                   aria-label={run.profile}

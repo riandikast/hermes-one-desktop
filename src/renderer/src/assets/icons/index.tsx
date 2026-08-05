@@ -16,6 +16,7 @@ export {
   Edit3,
   Eye,
   FileText,
+  FileCode,
   Pencil,
   Plug,
   Workflow,

@@ -11,7 +11,6 @@ import {
   Tag,
 } from "lucide-react";
 import { getIconForFile, getSVGStringFromFileType } from "@wesbos/code-icons";
-import { FileViewer } from "./FileViewer";
 import { useI18n } from "../../components/useI18n";
 import { searchFiles, type FileSearchEntry } from "./fileSearch";
 
@@ -27,6 +26,7 @@ interface WorktreePanelProps {
 
 const MIN_PANEL_WIDTH = 220;
 const WIDTH_STORAGE_KEY = "hermes:worktreePanelWidth";
+
 const maxPanelWidth = (): number =>
   Math.max(MIN_PANEL_WIDTH, window.innerWidth - 360);
 
@@ -258,11 +258,7 @@ function RootSection({
         title={folderPath}
       >
         <span className="worktree-chevron">
-          {isExpanded ? (
-            <ChevronDown size={14} />
-          ) : (
-            <ChevronRight size={14} />
-          )}
+          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
         <Folder size={14} className="worktree-icon worktree-folder-icon" />
         <span className="worktree-root-name">{folderName}</span>
@@ -330,7 +326,6 @@ export const WorktreePanel = memo(function WorktreePanel({
   folderPaths,
 }: WorktreePanelProps): React.JSX.Element {
   const { t } = useI18n();
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [width, setWidth] = useState<number>(() => {
@@ -384,7 +379,8 @@ export const WorktreePanel = memo(function WorktreePanel({
   // --- Search across all roots (flat ranked list, top 50) ---
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<FileSearchEntry[] | null>(
-    null);
+    null,
+  );
   const [searching, setSearching] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -412,7 +408,10 @@ export const WorktreePanel = memo(function WorktreePanel({
             all.push(e);
           }
           try {
-            const evResults = await window.hermesAPI.everythingSearch(trimmed, folder);
+            const evResults = await window.hermesAPI.everythingSearch(
+              trimmed,
+              folder,
+            );
             if (!cancelled && evResults && evResults.length > 0) {
               for (const e of evResults) {
                 if (!e.path || seen.has(e.path)) continue;
@@ -545,16 +544,21 @@ export const WorktreePanel = memo(function WorktreePanel({
               {t("chat.worktree.searching")}...
             </div>
           ) : searchResults.length === 0 ? (
-            <div className="worktree-empty">
-              {t("chat.worktree.noResults")}
-            </div>
+            <div className="worktree-empty">{t("chat.worktree.noResults")}</div>
           ) : (
             searchResults.map((entry) => (
               <div
                 key={entry.path}
                 className="worktree-row worktree-row-file worktree-search-result"
                 onClick={() => {
-                  if (!entry.isDirectory) setSelectedFile(entry.path);
+                  if (!entry.isDirectory) {
+                    // Opens a standalone top-strip tab (Layout listens).
+                    window.dispatchEvent(
+                      new CustomEvent("hermes-open-file", {
+                        detail: entry.path,
+                      }),
+                    );
+                  }
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
@@ -596,7 +600,11 @@ export const WorktreePanel = memo(function WorktreePanel({
             <RootSection
               key={folder}
               folderPath={folder}
-              onFileClick={setSelectedFile}
+              onFileClick={(path) => {
+                window.dispatchEvent(
+                  new CustomEvent("hermes-open-file", { detail: path }),
+                );
+              }}
               onRowContextMenu={handleRowContextMenu}
               onOpenTerminal={handleOpenTerminal}
               refreshVersion={refreshVersion}
@@ -636,12 +644,6 @@ export const WorktreePanel = memo(function WorktreePanel({
             <span>{t("chat.worktree.tag")}</span>
           </button>
         </div>
-      )}
-      {selectedFile && (
-        <FileViewer
-          filePath={selectedFile}
-          onClose={() => setSelectedFile(null)}
-        />
       )}
     </div>
   );

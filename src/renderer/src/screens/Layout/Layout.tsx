@@ -30,6 +30,7 @@ import Memory from "../Memory/Memory";
 import Tools from "../Tools/Tools";
 import Gateway from "../Gateway/Gateway";
 import Office from "../Office/Office";
+import { FileViewer } from "../Chat/FileViewer";
 import Providers from "../Providers/Providers";
 import Schedules from "../Schedules/Schedules";
 import Kanban from "../Kanban/Kanban";
@@ -65,6 +66,7 @@ import { useI18n } from "../../components/useI18n";
 
 type View =
   | "chat"
+  | "file"
   | "discover"
   | "agents"
   | "office"
@@ -323,7 +325,9 @@ function Layout({
       window.removeEventListener("hermes-sidebar-subagents-changed", onChange);
   }, []);
 
-  const onSidebarResizeStart = (e: React.PointerEvent<HTMLDivElement>): void => {
+  const onSidebarResizeStart = (
+    e: React.PointerEvent<HTMLDivElement>,
+  ): void => {
     sidebarResizeRef.current = {
       startX: e.clientX,
       startWidth: sidebarWidth,
@@ -351,7 +355,7 @@ function Layout({
     setSidebarResizing(false);
     e.currentTarget.releasePointerCapture(e.pointerId);
   };
-  
+
   // NEW: Top menu collapse state
   const [topMenuCollapsed, setTopMenuCollapsed] = useState(() => {
     try {
@@ -361,8 +365,6 @@ function Layout({
     }
   });
 
-
-  
   // NEW: Toggle top menu collapse
   const toggleTopMenuCollapsed = useCallback(() => {
     setTopMenuCollapsed((prev) => {
@@ -416,6 +418,7 @@ function Layout({
   const VIEW_LABEL_KEYS: Record<View, string> = useMemo(
     () => ({
       chat: "navigation.chat",
+      file: "navigation.file",
       discover: "navigation.discover",
       office: "navigation.office",
       kanban: "navigation.kanban",
@@ -477,6 +480,50 @@ function Layout({
     return () =>
       window.removeEventListener("navigation:goto", handleNavigation);
   }, [goTo]);
+
+  // Open a file as a STANDALONE top-strip tab (VS Code style): one tab per
+  // open file, like a session tab — not a child of the chat page. Clicking a
+  // file in any worktree sidebar dispatches this event; the content pane then
+  // shows the file's editor (all open files stay mounted so unsaved edits
+  // survive tab switching).
+  const handleOpenFile = useCallback(
+    (filePath: string) => {
+      const existing = runs.find((r) => r.filePath === filePath);
+      if (existing) {
+        setActiveRunId(existing.runId);
+        setActiveProfile(existing.profile);
+      } else {
+        const fileName = filePath.split(/[\\/]/).pop() || filePath;
+        const fileRun: ChatRun = {
+          runId: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          profile: activeProfile,
+          sessionId: null,
+          loading: false,
+          title: fileName,
+          targetView: "file",
+          filePath,
+        };
+        setRuns((prev) => [...prev, fileRun]);
+        setActiveRunId(fileRun.runId);
+        setActiveProfile(activeProfile);
+      }
+      setVisitedViews((prev) =>
+        prev.has("file") ? prev : new Set(prev).add("file"),
+      );
+      setView("file");
+    },
+    [runs, activeProfile],
+  );
+
+  useEffect(() => {
+    const handleOpenFileEvent = (e: Event): void => {
+      const path = (e as CustomEvent<string>).detail;
+      if (path) handleOpenFile(path);
+    };
+    window.addEventListener("hermes-open-file", handleOpenFileEvent);
+    return () =>
+      window.removeEventListener("hermes-open-file", handleOpenFileEvent);
+  }, [handleOpenFile]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent): void => {
@@ -595,7 +642,13 @@ function Layout({
 
   const handleNewChat = useCallback(() => {
     const active = runs.find((r) => r.runId === activeRunId);
-    if (active && !active.sessionId && !active.loading && !active.title && !active.targetView) {
+    if (
+      active &&
+      !active.sessionId &&
+      !active.loading &&
+      !active.title &&
+      !active.targetView
+    ) {
       setView("chat");
       return;
     }
@@ -675,7 +728,9 @@ function Layout({
       setActiveProfile(run.profile);
       if (run.targetView) {
         const tv = run.targetView as View;
-        setVisitedViews((prev) => (prev.has(tv) ? prev : new Set(prev).add(tv)));
+        setVisitedViews((prev) =>
+          prev.has(tv) ? prev : new Set(prev).add(tv),
+        );
         setView(tv);
       } else {
         setView("chat");
@@ -703,7 +758,9 @@ function Layout({
         setActiveProfile(neighbour.profile);
         if (neighbour.targetView) {
           const tv = neighbour.targetView as View;
-          setVisitedViews((prev) => (prev.has(tv) ? prev : new Set(prev).add(tv)));
+          setVisitedViews((prev) =>
+            prev.has(tv) ? prev : new Set(prev).add(tv),
+          );
           setView(tv);
         } else {
           setView("chat");
@@ -939,8 +996,16 @@ function Layout({
                 type="button"
                 className={`sidebar-pinned-toggle ${pinnedNavCollapsed ? "collapsed" : ""}`}
                 onClick={togglePinnedNavCollapsed}
-                title={pinnedNavCollapsed ? "Expand navigation menu" : "Collapse navigation menu"}
-                aria-label={pinnedNavCollapsed ? "Expand navigation menu" : "Collapse navigation menu"}
+                title={
+                  pinnedNavCollapsed
+                    ? "Expand navigation menu"
+                    : "Collapse navigation menu"
+                }
+                aria-label={
+                  pinnedNavCollapsed
+                    ? "Expand navigation menu"
+                    : "Collapse navigation menu"
+                }
               >
                 <ChevronDown
                   size={14}
@@ -948,7 +1013,9 @@ function Layout({
                 />
               </button>
             </div>
-            <div className={`sidebar-pinned-items ${pinnedNavCollapsed ? "sidebar-pinned-items--collapsed" : ""}`}>
+            <div
+              className={`sidebar-pinned-items ${pinnedNavCollapsed ? "sidebar-pinned-items--collapsed" : ""}`}
+            >
               {PINNED_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => {
                 return (
                   <button
@@ -1093,7 +1160,9 @@ function Layout({
         <main className="content">
           {/* Top menu wrapper with collapse toggle */}
           <div className="top-menu-wrapper">
-            <div className={`top-menu-container ${topMenuCollapsed ? "top-menu-collapsed" : ""}`}>
+            <div
+              className={`top-menu-container ${topMenuCollapsed ? "top-menu-collapsed" : ""}`}
+            >
               <ActiveSessionsBar
                 runs={runs}
                 activeRunId={activeRunId}
@@ -1162,6 +1231,33 @@ function Layout({
               </div>
             ))}
           </div>
+
+          {visitedViews.has("file") && (
+            <div style={paneStyle("file")}>
+              {runs
+                .filter((r) => r.filePath)
+                .map((run) => (
+                  <div
+                    key={run.runId}
+                    style={{
+                      display:
+                        view === "file" && run.runId === activeRunId
+                          ? "flex"
+                          : "none",
+                      flex: 1,
+                      flexDirection: "column",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <FileViewer
+                      filePath={run.filePath!}
+                      active={run.runId === activeRunId}
+                      onClose={() => handleCloseRun(run.runId)}
+                    />
+                  </div>
+                ))}
+            </div>
+          )}
 
           {sessionsModalOpen && (
             <div
