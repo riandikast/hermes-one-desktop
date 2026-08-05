@@ -67,9 +67,11 @@ describe("knowledge store", () => {
     const index = await buildKnowledgeIndex(["ui-rules"], tempDir);
 
     expect(index).toContain("## ui-rules");
-    expect(index).toContain("- style.md — # Style Guide");
-    expect(index).toContain("- naming.md — Naming conventions");
+    expect(index).toContain(`- ${join(tempDir, "knowledge", "ui-rules", "style.md")} — # Style Guide — Colors!`);
+    expect(index).toContain(`- ${join(tempDir, "knowledge", "ui-rules", "naming.md")} — Naming conventions`);
     expect(index).toContain("Read files with the file tools");
+    expect(index).toContain("AUTHORITATIVE");
+    expect(index).toContain("open the file to see its full content");
   });
 
   it("returns empty index for no bundles", async () => {
@@ -101,8 +103,35 @@ describe("knowledge store", () => {
 
     const index = await buildKnowledgeIndex(["long"], tempDir);
 
-    expect(index).toContain("- b.md — ");
+    expect(index).toContain(`- ${join(tempDir, "knowledge", "long", "b.md")} — `);
     expect(index).not.toContain("second line");
     expect(index.length).toBeLessThan(2000);
+  });
+
+  it("enriches a short heading hint with the next non-empty line", async () => {
+    await createKnowledgeBundle("proj", tempDir);
+    await writeKnowledgeFile(
+      "proj",
+      "readme.md",
+      "# Project Notes\nThis describes the build system.",
+      tempDir,
+    );
+    await writeKnowledgeFile(
+      "proj",
+      "plain.md",
+      "Just a prose sentence that is long enough to not be a heading.",
+      tempDir,
+    );
+
+    const index = await buildKnowledgeIndex(["proj"], tempDir);
+
+    // A short heading alone is cryptic; the next non-empty line is appended so
+    // the model can judge relevance without opening every file.
+    expect(index).toContain("# Project Notes — This describes the build system.");
+    // A long prose first line already carries meaning, so no second line is
+    // pulled (keeps the hint a pointer, not a content dump).
+    expect(index).toContain(
+      "- " + join(tempDir, "knowledge", "proj", "plain.md") + " — Just a prose sentence that is long enough to not be a heading.",
+    );
   });
 });

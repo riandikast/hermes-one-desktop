@@ -182,14 +182,39 @@ export async function importKnowledgeFolder(
  *  near the plan's ~300-500 token budget. */
 const KNOWLEDGE_INDEX_MAX_CHARS = 2000;
 /** Per-file hint length: first line of the file, truncated. */
-const KNOWLEDGE_INDEX_HINT_CHARS = 90;
+const KNOWLEDGE_INDEX_HINT_CHARS = 140;
+
+/**
+ * Extract a one-line content hint from a knowledge file's text for the system
+ * index. The first non-empty line is the primary cue (usually a markdown
+ * heading or a title). When that line is a SHORT heading, the title alone is
+ * too cryptic for the model to judge relevance, so the start of the next
+ * non-empty line is appended. A long first line already carries meaning, so we
+ * don't pull a second line in that case (keeps the hint within budget and
+ * avoids leaking content past the pointer).
+ */
+function extractKnowledgeHint(content: string): string {
+  const lines = content.split(/\r?\n/).map((l) => l.trim());
+  let firstIdx = 0;
+  while (firstIdx < lines.length && lines[firstIdx].length === 0) firstIdx++;
+  const first = lines[firstIdx] ?? "";
+  const hint = first.slice(0, KNOWLEDGE_INDEX_HINT_CHARS);
+  if (/^#{1,6}\s+\S/.test(first) && first.length <= 60) {
+    for (let j = firstIdx + 1; j < lines.length; j++) {
+      if (lines[j].length > 0) {
+        return `${hint} — ${lines[j].slice(0, 80)}`;
+      }
+    }
+  }
+  return hint;
+}
 
 /**
  * Build a lightweight text index of the given knowledge bundles for system
- * prompt injection. Lists each bundle's files with a one-line content hint
- * (first line, truncated) so the model knows what each file covers and can
- * read/update the full file with its file tools when relevant. Returns "" when
- * no bundles are named (callers can skip injection entirely).
+ * prompt injection. Lists each bundle's files with a one-line content hint so
+ * the model can judge relevance and read/update the full file with its file
+ * tools when relevant. Returns "" when no bundles are named (callers can skip
+ * injection entirely).
  */
 export async function buildKnowledgeIndex(
   bundleNames: string[],
@@ -221,8 +246,7 @@ export async function buildKnowledgeIndex(
       let hint = "";
       try {
         const content = await readFile(join(bundlePath, fileName), "utf8");
-        const firstLine = content.split(/\r?\n/)[0] || "";
-        hint = firstLine.trim().slice(0, KNOWLEDGE_INDEX_HINT_CHARS);
+        hint = extractKnowledgeHint(content);
       } catch {
         /* hint optional */
       }
@@ -242,7 +266,7 @@ export async function buildKnowledgeIndex(
   if (sections.length === 0) return "";
 
   return [
-    "The user attached the following knowledge bundles. Read files with the file tools when relevant to the request; do not dump their contents into the conversation unless asked.",
+    "The user maintains the knowledge bundles below as AUTHORITATIVE context for this conversation. Read files with the file tools when any listed file could be relevant to the request — the hint line is only a pointer, so open the file to see its full content before deciding it is not relevant. Do not dump file contents into the conversation unless the user explicitly asks.",
     ...sections,
   ].join("\n\n");
 }
