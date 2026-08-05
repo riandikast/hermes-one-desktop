@@ -419,7 +419,7 @@ function Chat({
     };
   }, []);
 
-  const { containerRef, bottomRef } = useChatScroll(messages);
+  const { containerRef, bottomRef, jumpToPresent } = useChatScroll(messages);
   const modelConfig = useModelConfig(profile);
   const chatCurrentModel =
     sessionModelOverride?.model ?? modelConfig.currentModel;
@@ -586,6 +586,22 @@ function Chat({
   // instance. A new chat is a fresh mount, and switching sessions just flips
   // which mounted instance is shown — local state (session id, context folder,
   // queue) belongs to this run and persists while it streams in the background.
+
+  // When this run becomes the active tab, jump to the present (latest message).
+  // Each run's <Chat> stays mounted while hidden, so the one-time mount snap in
+  // useChatScroll does NOT re-fire on tab switch — without this a conversation
+  // opened in the background lands wherever it was scrolled, not at the bottom.
+  const wasActiveRef = useRef(active);
+  useEffect(() => {
+    const wasActive = wasActiveRef.current;
+    wasActiveRef.current = active;
+    if (active && !wasActive) {
+      // The pane flips `display:none → flex` on activation; jumpToPresent's
+      // own rAF/timeout retrials let the browser lay it out so scrollHeight
+      // is real before snapping, and re-snap after late layout settles.
+      return jumpToPresent();
+    }
+  }, [active, jumpToPresent]);
 
   // Cmd/Ctrl+N → new chat. Only the active (visible) run handles it; otherwise
   // every mounted background Chat would fire onNewChat in parallel.
