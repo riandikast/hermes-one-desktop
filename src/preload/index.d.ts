@@ -47,6 +47,32 @@ interface ElectronAPI {
   };
 }
 
+interface GitFileEntry {
+  index: string;
+  worktree: string;
+  path: string;
+}
+
+interface GitStatusResult {
+  repo: boolean;
+  root: string | null;
+  branch: string | null;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  conflicted: GitFileEntry[];
+  staged: GitFileEntry[];
+  unstaged: GitFileEntry[];
+  untracked: string[];
+  error?: string;
+}
+
+interface GitActionResult {
+  ok: boolean;
+  output?: string;
+  error?: string;
+}
+
 interface InstallStatus {
   installed: boolean;
   configured: boolean;
@@ -1123,6 +1149,26 @@ interface HermesAPI {
   ) => Promise<{ ok: boolean; error?: string }>;
   openFileInEditor: (filePath: string) => Promise<boolean>;
   openTerminal: (dirPath: string) => Promise<boolean>;
+  gitRepoStatus: (dir: string) => Promise<GitStatusResult>;
+  gitRemoteHost: (dir: string) => Promise<string | null>;
+  gitSetToken: (host: string, token: string) => Promise<boolean>;
+  gitGetToken: (host: string) => Promise<string | null>;
+  gitDiff: (
+    dir: string,
+    path: string,
+    staged: boolean,
+  ) => Promise<GitActionResult>;
+  gitStage: (dir: string, paths: string[]) => Promise<GitActionResult>;
+  gitUnstage: (dir: string, paths: string[]) => Promise<GitActionResult>;
+  gitCommit: (dir: string, message: string) => Promise<GitActionResult>;
+  gitPull: (dir: string) => Promise<GitActionResult>;
+  gitPush: (dir: string) => Promise<GitActionResult>;
+  gitFetch: (dir: string) => Promise<GitActionResult>;
+  gitResolveConflict: (
+    dir: string,
+    path: string,
+    side: "ours" | "theirs",
+  ) => Promise<GitActionResult>;
   everythingSearch: (
     query: string,
     rootPath?: string,
@@ -1131,12 +1177,22 @@ interface HermesAPI {
     {
       name: string;
       path: string;
-      files: { name: string; relativePath: string; path: string; size: number }[];
+      files: {
+        name: string;
+        relativePath: string;
+        path: string;
+        size: number;
+      }[];
     }[]
   >;
-  createKnowledgeBundle: (name: string) => Promise<{ name: string; path: string }>;
+  createKnowledgeBundle: (
+    name: string,
+  ) => Promise<{ name: string; path: string }>;
   deleteKnowledgeBundle: (name: string) => Promise<boolean>;
-  readKnowledgeFile: (bundleName: string, fileName: string) => Promise<string | null>;
+  readKnowledgeFile: (
+    bundleName: string,
+    fileName: string,
+  ) => Promise<string | null>;
   writeKnowledgeFile: (
     bundleName: string,
     fileName: string,
@@ -1147,7 +1203,10 @@ interface HermesAPI {
     oldFileName: string,
     newFileName: string,
   ) => Promise<boolean>;
-  deleteKnowledgeFile: (bundleName: string, fileName: string) => Promise<boolean>;
+  deleteKnowledgeFile: (
+    bundleName: string,
+    fileName: string,
+  ) => Promise<boolean>;
   importKnowledgeFolder: (
     sourceFolderPath: string,
     bundleName: string,
@@ -1173,15 +1232,45 @@ interface HermesAPI {
     folder: string;
     createdAt: number;
     updatedAt: number;
-  }) => Promise<{ id: string; name: string; command: string; description: string; cwd: string; folder: string; createdAt: number; updatedAt: number }>;
+  }) => Promise<{
+    id: string;
+    name: string;
+    command: string;
+    description: string;
+    cwd: string;
+    folder: string;
+    createdAt: number;
+    updatedAt: number;
+  }>;
   deleteCommand: (id: string) => Promise<boolean>;
-  terminalCreate: (payload: { cwd: string; cols: number; rows: number }) => Promise<{ id: string; shell: string }>;
-  terminalWrite: (payload: { id: string; data: string }) => Promise<{ ok: boolean }>;
-  terminalResize: (payload: { id: string; cols: number; rows: number }) => Promise<{ ok: boolean }>;
+  terminalCreate: (payload: {
+    cwd: string;
+    cols: number;
+    rows: number;
+  }) => Promise<{ id: string; shell: string }>;
+  terminalWrite: (payload: {
+    id: string;
+    data: string;
+  }) => Promise<{ ok: boolean }>;
+  terminalResize: (payload: {
+    id: string;
+    cols: number;
+    rows: number;
+  }) => Promise<{ ok: boolean }>;
   terminalKill: (id: string) => Promise<{ ok: boolean }>;
-  commandRun: (payload: { commandId: string; cwd: string; command: string }) => Promise<{ id: string; shell: string }>;
-  commandRunOs: (payload: { commandId: string; cwd: string; command: string }) => Promise<{ ok: boolean; error?: string }>;
-  onTerminalData: (callback: (payload: { id: string; data: string }) => void) => () => void;
+  commandRun: (payload: {
+    commandId: string;
+    cwd: string;
+    command: string;
+  }) => Promise<{ id: string; shell: string }>;
+  commandRunOs: (payload: {
+    commandId: string;
+    cwd: string;
+    command: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
+  onTerminalData: (
+    callback: (payload: { id: string; data: string }) => void,
+  ) => () => void;
   onTerminalExit: (callback: (payload: { id: string }) => void) => () => void;
   readImageFile: (filePath: string) => Promise<string | null>;
   kanbanAssignTask: (

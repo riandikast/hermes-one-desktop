@@ -253,7 +253,10 @@ const hermesAPI = {
     return ipcRenderer.invoke("zoom-apply", level);
   },
   onUiZoomChanged: (callback: (level: number) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, level: unknown): void => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      level: unknown,
+    ): void => {
       const numLevel = Number(level);
       webFrame.setZoomLevel(numLevel);
       callback(numLevel);
@@ -1538,9 +1541,10 @@ const hermesAPI = {
     },
     profile?: string,
   ) => ipcRenderer.invoke("kanban-create-task", input, profile),
-  selectFolder: (
-    options?: { multiple?: boolean; includeFiles?: boolean },
-  ): Promise<string | string[] | null> =>
+  selectFolder: (options?: {
+    multiple?: boolean;
+    includeFiles?: boolean;
+  }): Promise<string | string[] | null> =>
     ipcRenderer.invoke("select-folder", options),
   revealInExplorer: (folderPath: string): Promise<boolean> =>
     ipcRenderer.invoke("reveal-in-explorer", folderPath),
@@ -1578,6 +1582,24 @@ const hermesAPI = {
     ipcRenderer.invoke("open-file-in-editor", filePath),
   openTerminal: (dirPath: string): Promise<boolean> =>
     ipcRenderer.invoke("open-terminal", dirPath),
+  gitRepoStatus: (dir: string) => ipcRenderer.invoke("git-repo-status", dir),
+  gitRemoteHost: (dir: string) => ipcRenderer.invoke("git-remote-host", dir),
+  gitSetToken: (host: string, token: string) =>
+    ipcRenderer.invoke("git-set-token", host, token),
+  gitGetToken: (host: string) => ipcRenderer.invoke("git-get-token", host),
+  gitDiff: (dir: string, path: string, staged: boolean) =>
+    ipcRenderer.invoke("git-diff", dir, path, staged),
+  gitStage: (dir: string, paths: string[]) =>
+    ipcRenderer.invoke("git-stage", dir, paths),
+  gitUnstage: (dir: string, paths: string[]) =>
+    ipcRenderer.invoke("git-unstage", dir, paths),
+  gitCommit: (dir: string, message: string) =>
+    ipcRenderer.invoke("git-commit", dir, message),
+  gitPull: (dir: string) => ipcRenderer.invoke("git-pull", dir),
+  gitPush: (dir: string) => ipcRenderer.invoke("git-push", dir),
+  gitFetch: (dir: string) => ipcRenderer.invoke("git-fetch", dir),
+  gitResolveConflict: (dir: string, path: string, side: "ours" | "theirs") =>
+    ipcRenderer.invoke("git-conflict-resolve", dir, path, side),
   everythingSearch: (
     query: string,
     rootPath?: string,
@@ -1628,11 +1650,18 @@ const hermesAPI = {
   terminalKill: (id: string) => ipcRenderer.invoke("terminal:kill", id),
   commandRun: (payload: { commandId: string; cwd: string; command: string }) =>
     ipcRenderer.invoke("command:run", payload),
-  commandRunOs: (payload: { commandId: string; cwd: string; command: string }) =>
-    ipcRenderer.invoke("command:run-os", payload),
-  onTerminalData: (callback: (payload: { id: string; data: string }) => void) => {
-    const listener = (_e: unknown, payload: { id: string; data: string }): void =>
-      callback(payload);
+  commandRunOs: (payload: {
+    commandId: string;
+    cwd: string;
+    command: string;
+  }) => ipcRenderer.invoke("command:run-os", payload),
+  onTerminalData: (
+    callback: (payload: { id: string; data: string }) => void,
+  ) => {
+    const listener = (
+      _e: unknown,
+      payload: { id: string; data: string },
+    ): void => callback(payload);
     ipcRenderer.on("terminal:data", listener);
     return () => ipcRenderer.removeListener("terminal:data", listener);
   },

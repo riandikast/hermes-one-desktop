@@ -9,10 +9,12 @@ import {
   ExternalLink,
   Terminal,
   Tag,
+  GitPullRequest,
 } from "lucide-react";
 import { getIconForFile, getSVGStringFromFileType } from "@wesbos/code-icons";
 import { useI18n } from "../../components/useI18n";
 import { searchFiles, type FileSearchEntry } from "./fileSearch";
+import { SourceControlDialog } from "./SourceControlDialog";
 
 interface FileEntry {
   name: string;
@@ -326,6 +328,7 @@ export const WorktreePanel = memo(function WorktreePanel({
   folderPaths,
 }: WorktreePanelProps): React.JSX.Element {
   const { t } = useI18n();
+  const [sourceControlDir, setSourceControlDir] = useState<string | null>(null);
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [width, setWidth] = useState<number>(() => {
@@ -643,7 +646,26 @@ export const WorktreePanel = memo(function WorktreePanel({
             <Tag size={14} />
             <span>{t("chat.worktree.tag")}</span>
           </button>
+          {folderPaths.includes(contextMenu.path) && (
+            <button
+              type="button"
+              className="worktree-context-menu-item"
+              onClick={() => {
+                setSourceControlDir(contextMenu.path);
+                setContextMenu(null);
+              }}
+            >
+              <GitPullRequest size={14} />
+              <span>Source Control</span>
+            </button>
+          )}
         </div>
+      )}
+      {sourceControlDir && (
+        <SourceControlDialog
+          dir={sourceControlDir}
+          onClose={() => setSourceControlDir(null)}
+        />
       )}
     </div>
   );

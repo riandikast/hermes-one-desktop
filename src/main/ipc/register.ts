@@ -8,8 +8,9 @@ import {
   nativeTheme,
   dialog,
   clipboard,
+  safeStorage,
 } from "electron";
-import { extname } from "path";
+import { extname, join } from "path";
 import { randomUUID } from "crypto";
 import { readdir, readFile, stat, writeFile } from "fs/promises";
 import { watch } from "fs";
@@ -49,6 +50,24 @@ import {
   mediaFileExists,
 } from "../media";
 import { openTerminalInDirectory } from "../terminal-launcher";
+import {
+  gitRepoStatus,
+  gitDiff,
+  gitStage,
+  gitUnstage,
+  gitCommit,
+  gitPull,
+  gitPush,
+  gitFetch,
+  gitResolveConflict,
+  gitRemoteHost,
+  setGitTokenProvider,
+} from "../git";
+import {
+  loadGitTokens,
+  saveGitTokens,
+  type TokenCipher,
+} from "../git-credentials";
 import { queryEverything } from "../everything-search";
 import {
   listKnowledgeBundles,
@@ -2899,13 +2918,11 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
   ipcMain.handle(
     "select-folder",
-    async (
-      event,
-      options?: { multiple?: boolean; includeFiles?: boolean },
-    ) => {
+    async (event, options?: { multiple?: boolean; includeFiles?: boolean }) => {
       const win = BrowserWindow.fromWebContents(event.sender);
-      const properties: Array<"openDirectory" | "openFile" | "multiSelections"> =
-        [];
+      const properties: Array<
+        "openDirectory" | "openFile" | "multiSelections"
+      > = [];
       if (options?.includeFiles) properties.push("openFile");
       else properties.push("openDirectory");
       if (options?.multiple) properties.push("multiSelections");
@@ -2936,7 +2953,10 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("watch-context-folder", (event, folder: string) => {
     const id = event.sender.id;
     folderWatchers.get(id)?.watcher?.close();
-    const rec = { watcher: null as FSWatcher | null, timer: null as NodeJS.Timeout | null };
+    const rec = {
+      watcher: null as FSWatcher | null,
+      timer: null as NodeJS.Timeout | null,
+    };
     folderWatchers.set(id, rec);
     try {
       rec.watcher = watch(folder, { recursive: true }, () => {
@@ -3036,12 +3056,7 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(
     "write-knowledge-file",
-    async (
-      _event,
-      bundleName: string,
-      fileName: string,
-      content: string,
-    ) => {
+    async (_event, bundleName: string, fileName: string, content: string) => {
       return writeKnowledgeFile(bundleName, fileName, content);
     },
   );
@@ -3085,12 +3100,9 @@ export function registerIpcHandlers(context: IpcContext): void {
     return listCommands();
   });
 
-  ipcMain.handle(
-    "commands:save",
-    async (_event, record: CommandRecord) => {
-      return saveCommand(record);
-    },
-  );
+  ipcMain.handle("commands:save", async (_event, record: CommandRecord) => {
+    return saveCommand(record);
+  });
 
   ipcMain.handle("commands:delete", async (_event, id: string) => {
     return deleteCommand(id);
@@ -3099,10 +3111,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   // ── Built-in terminal sessions ─────────────────────────────────────
   ipcMain.handle(
     "terminal:create",
-    async (
-      _event,
-      payload: { cwd: string; cols: number; rows: number },
-    ) => {
+    async (_event, payload: { cwd: string; cols: number; rows: number }) => {
       const shell = resolveShellExecutable();
       const id = createTerminalSession(
         shell,
@@ -3266,7 +3275,10 @@ export function registerIpcHandlers(context: IpcContext): void {
         await writeFile(filePath, content, "utf-8");
         return { ok: true };
       } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
       }
     },
   );
@@ -3293,6 +3305,72 @@ export function registerIpcHandlers(context: IpcContext): void {
       return false;
     }
   });
+
+  // ── Source Control (git) ─────────────────────────────────────────────
+  const gitTokensFile = join(app.getPath("userData"), "git-tokens.json");
+  const gitCipher: TokenCipher = {
+    encrypt: (plain: string) =>
+      safeStorage.isEncryptionAvailable()
+        ? safeStorage.encryptString(plain).toString("base64")
+        : Buffer.from(plain, "utf8").toString("base64"),
+    decrypt: (encrypted: string) =>
+      safeStorage.isEncryptionAvailable()
+        ? safeStorage.decryptString(Buffer.from(encrypted, "base64"))
+        : Buffer.from(encrypted, "base64").toString("utf8"),
+  };
+  let gitTokens: Map<string, string> = new Map();
+  void loadGitTokens(gitTokensFile, gitCipher).then((loaded) => {
+    gitTokens = loaded;
+    setGitTokenProvider((host) => gitTokens.get(host) ?? null);
+  });
+
+  ipcMain.handle(
+    "git-set-token",
+    async (_event, host: string, token: string): Promise<boolean> => {
+      const cleanHost = (host || "").trim().toLowerCase();
+      const cleanToken = (token || "").trim();
+      if (!cleanHost) return false;
+      if (cleanToken) gitTokens.set(cleanHost, cleanToken);
+      else gitTokens.delete(cleanHost);
+      await saveGitTokens(gitTokensFile, gitTokens, gitCipher).catch(() => {
+        /* best-effort persistence */
+      });
+      return true;
+    },
+  );
+  ipcMain.handle(
+    "git-get-token",
+    (_event, host: string): string | null =>
+      gitTokens.get((host || "").trim().toLowerCase()) ?? null,
+  );
+  ipcMain.handle("git-remote-host", async (_event, dir: string) =>
+    gitRemoteHost(dir),
+  );
+  ipcMain.handle("git-repo-status", async (_event, dir: string) =>
+    gitRepoStatus(dir),
+  );
+  ipcMain.handle(
+    "git-diff",
+    async (_event, dir: string, path: string, staged: boolean) =>
+      gitDiff(dir, path, staged),
+  );
+  ipcMain.handle("git-stage", async (_event, dir: string, paths: string[]) =>
+    gitStage(dir, paths),
+  );
+  ipcMain.handle("git-unstage", async (_event, dir: string, paths: string[]) =>
+    gitUnstage(dir, paths),
+  );
+  ipcMain.handle("git-commit", async (_event, dir: string, message: string) =>
+    gitCommit(dir, message),
+  );
+  ipcMain.handle("git-pull", async (_event, dir: string) => gitPull(dir));
+  ipcMain.handle("git-push", async (_event, dir: string) => gitPush(dir));
+  ipcMain.handle("git-fetch", async (_event, dir: string) => gitFetch(dir));
+  ipcMain.handle(
+    "git-conflict-resolve",
+    async (_event, dir: string, path: string, side: "ours" | "theirs") =>
+      gitResolveConflict(dir, path, side),
+  );
 
   // Read image file as data URL for preview
   ipcMain.handle(
