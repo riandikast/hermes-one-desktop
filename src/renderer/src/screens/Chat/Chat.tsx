@@ -12,6 +12,7 @@ import { WorktreePanel } from "./WorktreePanel";
 import { RemoteFolderPicker } from "./RemoteFolderPicker";
 import { WebPreviewPanel } from "./WebPreviewPanel";
 import { useChatScroll } from "./hooks/useChatScroll";
+import { ChatNavArrow, JumpToLatest } from "./ChatNavArrows";
 import { useChatIPC } from "./hooks/useChatIPC";
 import { useChatActions, parseBackgroundCommand } from "./hooks/useChatActions";
 import {
@@ -1203,6 +1204,11 @@ function Chat({
 
       <div className="chat-body">
         <div className="chat-messages" ref={containerRef}>
+          <ChatNavArrow
+            position="top"
+            messages={messages}
+            containerRef={containerRef}
+          />
           {messages.length === 0 ? (
             <ChatEmptyState onSelectSuggestion={handleSuggestion} />
           ) : (
@@ -1220,6 +1226,12 @@ function Chat({
             />
           )}
           <div ref={bottomRef} />
+          <ChatNavArrow
+            position="bottom"
+            messages={messages}
+            containerRef={containerRef}
+          />
+          <JumpToLatest containerRef={containerRef} />
         </div>
 
         {contextFolders.length > 0 && worktreeVisible && (

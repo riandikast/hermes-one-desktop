@@ -302,6 +302,7 @@ export const MessageRow = memo(function MessageRow({
 
   return (
     <div
+      id={msg.role === "user" ? `chat-msg-${msg.id}` : undefined}
       className={`chat-message chat-message-${msg.role}${
         showAvatar ? "" : " chat-message--grouped"
       }${waiting ? " chat-message--hidden" : ""}`}
