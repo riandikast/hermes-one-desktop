@@ -640,7 +640,7 @@ interface DashboardEventSummary {
   reasoningLength: number;
   renderedLength: number;
   runtimeSessionId: string | null;
-  status: "accepted" | "dropped";
+  status: "accepted" | "adopted" | "dropped";
   textLength: number;
   timestamp: string;
   type: string;
@@ -654,7 +654,7 @@ declare global {
 
 function logDashboardEvent(
   event: DashboardStreamEvent,
-  status: "accepted" | "dropped",
+  status: "accepted" | "adopted" | "dropped",
   runtimeSessionId: string | null,
 ): void {
   if (import.meta.env.VITE_HERMES_DESKTOP_DASHBOARD_EVENT_LOG !== "1") return;
@@ -1215,8 +1215,18 @@ export function useDashboardChatTransport({
         runtimeSessionId &&
         event.session_id !== runtimeSessionId
       ) {
-        logDashboardEvent(event, "dropped", runtimeSessionId);
-        return;
+        // Auto-compact (or another gateway-initiated session switch) can move
+        // the conversation to a NEW runtime session mid-turn while keeping the
+        // same STORED (canonical) session id. Adopt it so the live view keeps
+        // streaming — otherwise every post-switch event is dropped and the
+        // turn freezes until a session reopen shows the progress from state.db.
+        if (event.session_id === storedSessionIdRef.current) {
+          logDashboardEvent(event, "adopted", runtimeSessionId);
+          runtimeSessionIdRef.current = event.session_id;
+        } else {
+          logDashboardEvent(event, "dropped", runtimeSessionId);
+          return;
+        }
       }
       logDashboardEvent(event, "accepted", runtimeSessionId);
       // Any accepted event = the turn is alive; push the stall deadline out.

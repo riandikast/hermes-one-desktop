@@ -124,12 +124,10 @@ export function useChatScroll(messages: ChatMessage[]): {
       return jumpToPresent();
     }
     if (userScrolledUpRef.current) return;
-    // Batch the snap to the next frame and cancel it if another delta lands
-    // first — reading `scrollHeight` forces a synchronous layout, so doing it
-    // per delta janks the renderer on fast streams (laggy thinking/tool
-    // animation). One snap per frame at most, still reaches the present.
-    const raf = requestAnimationFrame(snapToBottom);
-    return () => cancelAnimationFrame(raf);
+    // One synchronous snap per delta. (An earlier rAF-batched version forced
+    // layout inside the frame callback — double layout passes per frame,
+    // making streaming jank constant instead of occasional.)
+    snapToBottom();
   }, [messages, jumpToPresent, snapToBottom]);
 
   return { containerRef, bottomRef, jumpToPresent };
