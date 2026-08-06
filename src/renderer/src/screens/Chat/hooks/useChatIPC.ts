@@ -219,6 +219,14 @@ export function useChatIPC({
             sessionId,
           )) as DbHistoryItem[];
           const dbMessages = dbItemsToChatMessages(items);
+          console.info("[gate-diag] legacy chat-done", {
+            dbMessages: dbMessages.length,
+            lastRoles: dbMessages
+              .slice(-4)
+              .map((m) =>
+                "kind" in m ? m.kind : `${m.role}(${String(m.content).length})`,
+              ),
+          });
           if (dbMessages.length > 0) {
             setMessages((prev) =>
               reconcileAfterDbRefresh(prev, dbMessages, { activeTurn }),

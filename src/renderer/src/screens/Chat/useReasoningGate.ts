@@ -12,13 +12,27 @@ import {
  * bubble and tool groups gate their appearance on this so a turn reads
  * "full thought -> tools -> response" instead of overlapping — the thought
  * finishes typing before anything later in the turn appears.
+ *
+ * Safety net: a thought that has been quiet for [[REASONING_FORCE_REVEAL_MS]]
+ * (5s) is treated as done even if its typewriter never reported completion —
+ * the reasoning row may have been dropped by the end-of-stream reconciliation
+ * mid-reveal, or the turn's `message.complete` (which sets the settled marker
+ * AND flips `isLoading` false) may never arrive. Without this the answer stays
+ * hidden forever, and nothing but a full app restart clears the stale module
+ * state — the "last response only appears after restarting the app" report.
  */
+const REASONING_FORCE_REVEAL_MS = 5000;
+
 function isReasoningDone(reasoningId: string | undefined): boolean {
   if (!reasoningId) return true;
-  return (
-    reasoningStalledMs(reasoningId) >= REASONING_SETTLE_MS &&
+  const stalledMs = reasoningStalledMs(reasoningId);
+  if (
+    stalledMs >= REASONING_SETTLE_MS &&
     reasoningRevealComplete(reasoningId)
-  );
+  ) {
+    return true;
+  }
+  return stalledMs >= REASONING_FORCE_REVEAL_MS;
 }
 
 /**

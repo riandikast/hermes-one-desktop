@@ -25,7 +25,10 @@ import type { DesktopSessionContinuationItem } from "../../../../../shared/sessi
 
 /** First non-empty string field among the given keys (mirrors the adapter's
  *  canonical payload keys — gateway events vary between them). */
-function payloadText(payload: Record<string, unknown>, ...keys: string[]): string {
+function payloadText(
+  payload: Record<string, unknown>,
+  ...keys: string[]
+): string {
   for (const key of keys) {
     const value = payload[key];
     if (typeof value === "string" && value) return value;
@@ -1138,26 +1141,43 @@ export function useDashboardChatTransport({
       ) {
         const toolName = String(
           (event.payload as { name?: string; tool_name?: string }).name ||
-          (event.payload as { tool_name?: string }).tool_name || "",
+            (event.payload as { tool_name?: string }).tool_name ||
+            "",
         ).toLowerCase();
         const WRITE_TOOLS = [
-          "write_file", "edit_file", "patch_file", "delete_file",
-          "create_file", "move_file", "copy_file", "rename_file",
-          "run_command", "execute_code", "shell", "terminal",
-          "apply_patch", "str_replace", "save_file", "create_directory",
-          "remove_directory", "git_commit", "git_push", "git_checkout",
-          "mkdir", "rm", "delete",
+          "write_file",
+          "edit_file",
+          "patch_file",
+          "delete_file",
+          "create_file",
+          "move_file",
+          "copy_file",
+          "rename_file",
+          "run_command",
+          "execute_code",
+          "shell",
+          "terminal",
+          "apply_patch",
+          "str_replace",
+          "save_file",
+          "create_directory",
+          "remove_directory",
+          "git_commit",
+          "git_push",
+          "git_checkout",
+          "mkdir",
+          "rm",
+          "delete",
         ];
-        if (
-          WRITE_TOOLS.some((w) => toolName.includes(w))
-        ) {
+        if (WRITE_TOOLS.some((w) => toolName.includes(w))) {
           // Inject a tool error result so the model knows it was blocked.
           const blockedEvent: DashboardStreamEvent = {
             type: "tool.complete",
             payload: {
               tool_id: (event.payload as { tool_id?: string }).tool_id || "",
               name: toolName,
-              result: "BLOCKED: Plan mode is active. File mutations are not allowed. Switch to BUILD mode to make changes.",
+              result:
+                "BLOCKED: Plan mode is active. File mutations are not allowed. Switch to BUILD mode to make changes.",
               error: "Plan mode: write tool blocked",
             },
             session_id: event.session_id,
@@ -1267,8 +1287,10 @@ export function useDashboardChatTransport({
             toolPayload.args !== null &&
             !Array.isArray(toolPayload.args)
           ) {
-            const oldString = (toolPayload.args as Record<string, unknown>).old_string;
-            const newString = (toolPayload.args as Record<string, unknown>).new_string;
+            const oldString = (toolPayload.args as Record<string, unknown>)
+              .old_string;
+            const newString = (toolPayload.args as Record<string, unknown>)
+              .new_string;
             if (typeof oldString === "string") {
               removed = oldString === "" ? [] : oldString.split("\n");
             }
@@ -1330,6 +1352,29 @@ export function useDashboardChatTransport({
       setMessages(nextMessages);
 
       if (event.type === "message.complete") {
+        const payloadRecord =
+          event.payload && typeof event.payload === "object"
+            ? (event.payload as Record<string, unknown>)
+            : {};
+        const rawFinal =
+          typeof payloadRecord.text === "string"
+            ? payloadRecord.text
+            : typeof payloadRecord.rendered === "string"
+              ? payloadRecord.rendered
+              : "";
+        console.info("[gate-diag] message.complete", {
+          finalTextLen: rawFinal.length,
+          finalTextHead: rawFinal.slice(0, 60),
+          payloadKeys: Object.keys(payloadRecord),
+          lastRows: nextMessages
+            .slice(-4)
+            .map((m) =>
+              "kind" in m ? m.kind : `${m.role}(${String(m.content).length})`,
+            ),
+          pendingBubbles: nextMessages.filter(
+            (m) => !("kind" in m) && m.role === "agent" && m.pending,
+          ).length,
+        });
         if (failed) {
           appliedModelRef.current = null;
           recreateRuntimeSessionRef.current = true;

@@ -73,6 +73,31 @@ describe("useReasoningGate", () => {
     expect(getByTestId("row").textContent).toBe("shown");
   });
 
+  it("force-reveals after 5s of thought quiet even if the typewriter never completes", () => {
+    // The reasoning row was dropped mid-reveal (or message.complete never
+    // arrived), so revealComplete stays false forever and isLoading stays
+    // true. A long quiet period must still open the gate — otherwise only a
+    // full app restart would ever show the answer.
+    markReasoningGrowth("reasoning-quiet"); // stalledMs starts at 0
+    markReasoningReveal("reasoning-quiet", 10, 100); // typewriter far behind
+    const { getByTestId } = render(
+      <Gate waitForReasoningId="reasoning-quiet" hasContent isLoading={true} />,
+    );
+    expect(getByTestId("row").textContent).toBe("hidden");
+
+    // 4s quiet: still hidden (below the 5s force-reveal).
+    act(() => {
+      vi.advanceTimersByTime(4200);
+    });
+    expect(getByTestId("row").textContent).toBe("hidden");
+
+    // Past 5s: forced open even though the typewriter never caught up.
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(getByTestId("row").textContent).toBe("shown");
+  });
+
   it("never re-hides once the gate has opened", () => {
     markReasoningGrowth("reasoning-once", Date.now() - 2000); // already settled
     markReasoningReveal("reasoning-once", 50, 50); // already complete
