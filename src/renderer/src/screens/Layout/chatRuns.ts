@@ -26,6 +26,8 @@ export interface ChatRun {
    *  strip shows the filename like a session tab, the content pane renders the
    *  editor, and `targetView` is "file". */
   filePath?: string;
+  /** 1-based line to jump to when this file tab opens (Find in Files). */
+  fileLine?: number;
 }
 
 /** A blank chat that can be reassigned to another profile without losing work. */

@@ -24,6 +24,7 @@ import type {
   DesktopSessionLocalError,
 } from "../../shared/session-continuation";
 import { stageAttachment, clearStagedAttachments } from "../attachment-staging";
+import { searchFileContents } from "../file-content-search";
 import { zoomBy, zoomApply } from "../zoom";
 import { persistPromptImageAttachments } from "../session-attachment-store";
 import {
@@ -3037,6 +3038,20 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
     return out;
   });
+
+  ipcMain.handle(
+    "search-in-files",
+    async (
+      _event,
+      roots: string[],
+      query: string,
+      opts?: { maxFiles?: number; maxMatchesPerFile?: number },
+    ) => {
+      const conn = getConnectionConfig();
+      if (conn.mode === "ssh" || conn.mode === "remote") return [];
+      return searchFileContents(Array.isArray(roots) ? roots : [], query, opts);
+    },
+  );
 
   ipcMain.handle(
     "everything-search",

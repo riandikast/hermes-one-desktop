@@ -5,6 +5,7 @@ import {
   ChevronDown,
   SquareTerminal,
   FolderSearch,
+  Search,
   FileText,
   ExternalLink,
   Terminal,
@@ -15,6 +16,7 @@ import { getIconForFile, getSVGStringFromFileType } from "@wesbos/code-icons";
 import { useI18n } from "../../components/useI18n";
 import { searchFiles, type FileSearchEntry } from "./fileSearch";
 import { SourceControlDialog } from "./SourceControlDialog";
+import { FindInFilesDialog } from "./FindInFilesDialog";
 
 interface FileEntry {
   name: string;
@@ -329,6 +331,7 @@ export const WorktreePanel = memo(function WorktreePanel({
 }: WorktreePanelProps): React.JSX.Element {
   const { t } = useI18n();
   const [sourceControlDir, setSourceControlDir] = useState<string | null>(null);
+  const [findInFilesOpen, setFindInFilesOpen] = useState(false);
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [width, setWidth] = useState<number>(() => {
@@ -527,6 +530,15 @@ export const WorktreePanel = memo(function WorktreePanel({
         <span className="worktree-header-title">
           {t("chat.worktree.title")}
         </span>
+        <button
+          type="button"
+          className="worktree-header-action"
+          onClick={() => setFindInFilesOpen(true)}
+          aria-label="Find in Files"
+          title="Find in Files (string search)"
+        >
+          <Search size={15} />
+        </button>
       </div>
       <div className="worktree-search">
         <input
@@ -665,6 +677,20 @@ export const WorktreePanel = memo(function WorktreePanel({
         <SourceControlDialog
           dir={sourceControlDir}
           onClose={() => setSourceControlDir(null)}
+        />
+      )}
+      {findInFilesOpen && (
+        <FindInFilesDialog
+          folders={folderPaths}
+          onClose={() => setFindInFilesOpen(false)}
+          onOpenFile={(path, line) => {
+            window.dispatchEvent(
+              new CustomEvent("hermes-open-file", {
+                detail: { path, line },
+              }),
+            );
+            setFindInFilesOpen(false);
+          }}
         />
       )}
     </div>

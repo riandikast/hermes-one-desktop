@@ -1177,6 +1177,11 @@ interface HermesAPI {
     query: string,
     rootPath?: string,
   ) => Promise<{ name: string; isDirectory: boolean; path: string }[] | null>;
+  searchInFiles: (
+    roots: string[],
+    query: string,
+    opts?: { maxFiles?: number; maxMatchesPerFile?: number },
+  ) => Promise<{ path: string; matches: { line: number; text: string }[] }[]>;
   listKnowledgeBundles: () => Promise<
     {
       name: string;

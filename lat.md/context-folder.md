@@ -26,6 +26,12 @@ The context-folder tree panel uses a compact header and can be resized from its 
 
 [[src/renderer/src/screens/Chat/WorktreePanel.tsx#WorktreePanel]] stores its width in `localStorage` under `hermes:worktreePanelWidth`, clamps it between a usable minimum and the available chat width, and updates it through a pointer-drag handle styled by `.worktree-resize-handle`.
 
+## Find in Files (string search)
+
+A Search button in the panel header opens a full-screen dialog that searches file CONTENTS across all context folders — Android-Studio Ctrl+Shift+F style.
+
+[[src/renderer/src/screens/Chat/FindInFilesDialog.tsx#FindInFilesDialog]] debounces the query (250ms, Enter re-searches immediately) and calls the `search-in-files` IPC, backed by [[src/main/file-content-search.ts#searchFileContents]]: a recursive walk that skips vcs/build dirs (`node_modules`, `.git`, `dist`, …), hidden entries, binary files (NUL-byte probe), and files over 2MB, capped at 200 files / 200 matches per file. Results group per file (name, path, match count) with expandable 1-based line snippets where the matched text is highlighted. Clicking a match opens the file as a standalone tab AND jumps the CodeMirror editor to that line: the dialog dispatches `hermes-open-file` with `{ path, line }`, [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] stores `fileLine` on the `ChatRun`, and [[src/renderer/src/screens/Chat/FileViewer.tsx#FileViewer]] scrolls the selection to it once the editor mounts (retried after 120ms to cover async language resolution).
+
 ## Remote folder picker
 
 Remote and SSH chats use an in-app picker so users do not accidentally select a local macOS folder for a remote session.

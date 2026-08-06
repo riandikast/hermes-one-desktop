@@ -17,6 +17,8 @@ interface FileViewerProps {
    *  (their CodeMirror editor and unsaved edits survive switching) but are
    *  hidden with `display: none`. */
   active: boolean;
+  /** 1-based line to jump to once the file loads (Find in Files). */
+  initialLine?: number;
   onClose: () => void;
 }
 
@@ -121,6 +123,7 @@ async function resolveLanguage(filename: string): Promise<Extension | null> {
 export const FileViewer = memo(function FileViewer({
   filePath,
   active,
+  initialLine,
   onClose,
 }: FileViewerProps): React.JSX.Element {
   const { t } = useI18n();
@@ -280,6 +283,27 @@ export const FileViewer = memo(function FileViewer({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filePath, content === null]);
+
+  // Jump to a line (Find in Files result) once the editor is ready. Runs when
+  // the line changes or the file finishes loading; guards against the editor
+  // still being created (language resolution is async).
+  useEffect(() => {
+    if (!initialLine) return;
+    const tryJump = (): void => {
+      const view = editorViewRef.current;
+      if (!view) return;
+      const line = Math.max(1, Math.min(initialLine, view.state.doc.lines));
+      const pos = view.state.doc.line(line).from;
+      view.dispatch({
+        selection: { anchor: pos },
+        effects: EditorView.scrollIntoView(pos, { y: "center" }),
+      });
+      view.focus();
+    };
+    tryJump();
+    const t = window.setTimeout(tryJump, 120);
+    return () => window.clearTimeout(t);
+  }, [initialLine, content === null]);
 
   // Escape closes the editor panel, unless the CodeMirror search panel is
   // open — in that case CM's own Escape handler closes the panel first and

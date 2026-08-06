@@ -1611,6 +1611,12 @@ const hermesAPI = {
     rootPath?: string,
   ): Promise<{ name: string; isDirectory: boolean; path: string }[] | null> =>
     ipcRenderer.invoke("everything-search", query, rootPath),
+  searchInFiles: (
+    roots: string[],
+    query: string,
+    opts?: { maxFiles?: number; maxMatchesPerFile?: number },
+  ): Promise<{ path: string; matches: { line: number; text: string }[] }[]> =>
+    ipcRenderer.invoke("search-in-files", roots, query, opts),
   listKnowledgeBundles: () => ipcRenderer.invoke("list-knowledge-bundles"),
   createKnowledgeBundle: (name: string) =>
     ipcRenderer.invoke("create-knowledge-bundle", name),

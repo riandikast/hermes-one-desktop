@@ -485,13 +485,16 @@ function Layout({
   // open file, like a session tab — not a child of the chat page. Clicking a
   // file in any worktree sidebar dispatches this event; the content pane then
   // shows the file's editor (all open files stay mounted so unsaved edits
-  // survive tab switching).
+  // survive tab switching). `line` (1-based) jumps the editor to that line.
   const handleOpenFile = useCallback(
-    (filePath: string) => {
+    (filePath: string, line?: number) => {
       const existing = runs.find((r) => r.filePath === filePath);
       if (existing) {
         setActiveRunId(existing.runId);
         setActiveProfile(existing.profile);
+        if (line) {
+          setRuns((prev) => patchRun(prev, existing.runId, { fileLine: line }));
+        }
       } else {
         const fileName = filePath.split(/[\\/]/).pop() || filePath;
         const fileRun: ChatRun = {
@@ -502,6 +505,7 @@ function Layout({
           title: fileName,
           targetView: "file",
           filePath,
+          ...(line ? { fileLine: line } : {}),
         };
         setRuns((prev) => [...prev, fileRun]);
         setActiveRunId(fileRun.runId);
@@ -517,8 +521,10 @@ function Layout({
 
   useEffect(() => {
     const handleOpenFileEvent = (e: Event): void => {
-      const path = (e as CustomEvent<string>).detail;
-      if (path) handleOpenFile(path);
+      const detail = (e as CustomEvent<{ path: string; line?: number }>).detail;
+      if (detail && typeof detail === "object" && detail.path) {
+        handleOpenFile(detail.path, detail.line);
+      }
     };
     window.addEventListener("hermes-open-file", handleOpenFileEvent);
     return () =>
@@ -1252,6 +1258,7 @@ function Layout({
                     <FileViewer
                       filePath={run.filePath!}
                       active={run.runId === activeRunId}
+                      initialLine={run.fileLine}
                       onClose={() => handleCloseRun(run.runId)}
                     />
                   </div>
