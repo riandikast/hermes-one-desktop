@@ -6,19 +6,20 @@ import {
 } from "./reasoningStall";
 
 /**
- * True when the referenced reasoning row is done animating: no deltas for at
- * least [[reasoningStall#REASONING_SETTLE_MS]] AND the typewriter has caught up
- * to the full text ([[reasoningStall#reasoningRevealComplete]]). The answer
- * bubble and tool groups gate their appearance on this so a turn reads
- * "full thought -> tools -> response" instead of overlapping — the thought
- * finishes typing before anything later in the turn appears.
+ * True when the referenced reasoning row has finished GROWING — no deltas for
+ * at least [[reasoningStall#REASONING_SETTLE_MS]]. The typewriter's reveal
+ * progress is deliberately NOT checked here: the cosmetic animation catching up
+ * must not keep the answer hidden behind the gate (a long thought's typewriter
+ * can lag seconds behind its final text, which made the answer "stuck" until
+ * the typewriter finished — or forever when the completion event was lost and
+ * `isLoading` never flipped). The thought keeps typing cosmetically above
+ * while the answer reveals below. A settled row (tool / clarify /
+ * message.complete boundary) short-circuits this via [[reasoningStalledMs]]
+ * returning MAX.
  */
 function isReasoningDone(reasoningId: string | undefined): boolean {
   if (!reasoningId) return true;
-  return (
-    reasoningStalledMs(reasoningId) >= REASONING_SETTLE_MS &&
-    reasoningRevealComplete(reasoningId)
-  );
+  return reasoningStalledMs(reasoningId) >= REASONING_SETTLE_MS;
 }
 
 /**

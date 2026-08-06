@@ -21,7 +21,7 @@ const revealByReasoningId = new Map<
  *  genuinely resumes (alternating-tag streams). */
 const settledReasoningIds = new Set<string>();
 
-export const REASONING_SETTLE_MS = 1200;
+export const REASONING_SETTLE_MS = 600;
 
 export function markReasoningGrowth(
   reasoningId: string | undefined,

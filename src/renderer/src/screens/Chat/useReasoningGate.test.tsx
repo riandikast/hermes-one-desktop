@@ -49,7 +49,7 @@ describe("useReasoningGate", () => {
     expect(getByTestId("row").textContent).toBe("shown");
   });
 
-  it("hides until the preceding thought stops growing and fully reveals, then shows", () => {
+  it("hides until the preceding thought stops growing, then shows (typewriter state irrelevant)", () => {
     // Unique id so module-scope state can't leak between tests.
     markReasoningGrowth("reasoning-active"); // stalledMs starts at 0
     markReasoningReveal("reasoning-active", 0, 100); // typewriter behind
@@ -62,11 +62,11 @@ describe("useReasoningGate", () => {
     );
     expect(getByTestId("row").textContent).toBe("hidden");
 
-    // Thought stops growing (>1200ms ago) and the typewriter catches up.
+    // Thought stops growing for >REASONING_SETTLE_MS (600ms) — the answer
+    // opens even though the typewriter is still behind (reveal NOT required).
     act(() => {
-      vi.advanceTimersByTime(1300);
+      vi.advanceTimersByTime(700);
     });
-    markReasoningReveal("reasoning-active", 100, 100);
     act(() => {
       vi.advanceTimersByTime(300); // let the 250ms poll fire
     });
