@@ -521,8 +521,14 @@ function Layout({
 
   useEffect(() => {
     const handleOpenFileEvent = (e: Event): void => {
-      const detail = (e as CustomEvent<{ path: string; line?: number }>).detail;
-      if (detail && typeof detail === "object" && detail.path) {
+      const detail = (
+        e as CustomEvent<string | { path: string; line?: number }>
+      ).detail;
+      if (typeof detail === "string") {
+        // Legacy payload: the worktree sidebar dispatches a bare path.
+        handleOpenFile(detail);
+      } else if (detail && typeof detail === "object" && detail.path) {
+        // Find-in-Files payload: path + optional 1-based line.
         handleOpenFile(detail.path, detail.line);
       }
     };

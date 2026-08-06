@@ -11,6 +11,11 @@ import {
   WRITE_TOOL_NAMES,
 } from "../dashboardEventAdapter";
 import { extractToolPath } from "../fileChanges";
+import {
+  dbItemsToChatMessages,
+  reconcileAfterDbRefresh,
+  type DbHistoryItem,
+} from "../sessionHistory";
 import { DashboardGatewayClient } from "../dashboardGatewayClient";
 import { executeSlash, type SlashExecOutcome } from "../slashExec";
 import type { AgentCommandsCatalogResponse } from "../slash/types";
@@ -1088,6 +1093,82 @@ export function useDashboardChatTransport({
 
   useEffect(() => clearStallTimer, [clearStallTimer]);
 
+  // Quiet-finalize fallback: the gateway sometimes completes a turn WITHOUT
+  // delivering `message.complete` (the renderer then never materializes the
+  // final answer — with renderAssistantDeltas:false there is no streamed
+  // partial either, so the answer only appears after a tab reopen re-reads
+  // state.db). If the turn goes quiet for 10s while loading, pull the
+  // canonical rows from state.db and reconcile them in — the same recovery
+  // the legacy transport performs on `chat-done`. Only finalizes when the DB
+  // actually shows a completed answer for the last turn; otherwise it re-arms
+  // (a long-running tool or a slow model just pauses >10s).
+  const quietFinalizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const QUIET_FINALIZE_MS = 10_000;
+
+  const clearQuietFinalize = useCallback((): void => {
+    if (quietFinalizeTimerRef.current !== null) {
+      clearTimeout(quietFinalizeTimerRef.current);
+      quietFinalizeTimerRef.current = null;
+    }
+  }, []);
+
+  const resetQuietFinalize = useCallback((): void => {
+    clearQuietFinalize();
+    quietFinalizeTimerRef.current = setTimeout(() => {
+      quietFinalizeTimerRef.current = null;
+      const activeTurn = activeTurnRef.current;
+      const storedSessionId = storedSessionIdRef.current;
+      if (!activeTurn || !storedSessionId) return;
+      void (async () => {
+        try {
+          const items = (await window.hermesAPI.getSessionMessages(
+            storedSessionId,
+          )) as DbHistoryItem[];
+          const dbMessages = dbItemsToChatMessages(items);
+          // Completed = the last user turn is followed by an assistant bubble
+          // with non-empty content.
+          let lastUserIdx = -1;
+          for (let i = dbMessages.length - 1; i >= 0; i--) {
+            if (dbMessages[i].role === "user") {
+              lastUserIdx = i;
+              break;
+            }
+          }
+          const hasAnswer =
+            lastUserIdx >= 0 &&
+            dbMessages
+              .slice(lastUserIdx + 1)
+              .some(
+                (m) =>
+                  m.role === "agent" &&
+                  !("kind" in m) &&
+                  String(m.content).trim().length > 0,
+              );
+          if (!hasAnswer) {
+            // Turn still in flight (or never persisted) — keep waiting.
+            resetQuietFinalize();
+            return;
+          }
+          messagesRef.current = reconcileAfterDbRefresh(
+            messagesRef.current,
+            dbMessages,
+            { activeTurn },
+          );
+          setMessages(messagesRef.current);
+          activeTurnRef.current = null;
+          setToolProgress(null);
+          setIsLoading(false);
+        } catch {
+          resetQuietFinalize();
+        }
+      })();
+    }, QUIET_FINALIZE_MS);
+  }, [clearQuietFinalize, setMessages, setToolProgress, setIsLoading]);
+
+  useEffect(() => clearQuietFinalize, [clearQuietFinalize]);
+
   const handleGatewayEvent = useCallback(
     (event: DashboardStreamEvent): void => {
       const runtimeSessionId = runtimeSessionIdRef.current;
@@ -1102,6 +1183,9 @@ export function useDashboardChatTransport({
       logDashboardEvent(event, "accepted", runtimeSessionId);
       // Any accepted event = the turn is alive; push the stall deadline out.
       resetStallTimer();
+      // Also re-arm the quiet-finalize fallback (fires if NO further events
+      // arrive for 10s — a lost message.complete).
+      resetQuietFinalize();
       // Background (`/btw`) prompts run on a separate agent and report back via
       // `background.complete` — outside the main turn lifecycle, so render the
       // answer as a standalone agent message without touching isLoading or the
@@ -1414,6 +1498,7 @@ export function useDashboardChatTransport({
         const activeTurn = activeTurnRef.current;
         if (activeTurn) activeTurn.status = failed ? "failed" : "completed";
         activeTurnRef.current = null;
+        clearQuietFinalize();
         setToolProgress(null);
         setIsLoading(false);
         // FILE-CHANGES: attach the accumulated changes to the finished bubble.
@@ -1533,7 +1618,9 @@ export function useDashboardChatTransport({
     },
     [
       activeTurnRef,
+      clearQuietFinalize,
       connectionMode,
+      resetQuietFinalize,
       resetStallTimer,
       setIsLoading,
       setMessages,
