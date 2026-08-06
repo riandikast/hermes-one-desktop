@@ -22,11 +22,34 @@ export function useChatScroll(messages: ChatMessage[]): {
   const mountedRef = useRef(false);
   /** One pending streaming snap (macrotask) at a time. */
   const pendingSnapRef = useRef(false);
+  /**
+   * Cached `scrollHeight - clientHeight` so the scroll listener can decide
+   * pinned-vs-scrolled-up WITHOUT reading `scrollHeight` — that read forces a
+   * synchronous layout, and during streaming the layout is dirty every frame
+   * (typewriter growth), making wheel scrolling janky. Refreshed by every
+   * snap and by a ResizeObserver (whose callback runs after layout, so the
+   * read there is cheap).
+   */
+  const maxScrollTopRef = useRef(0);
 
   const snapToBottom = useCallback((): void => {
     const container = containerRef.current;
     if (!container) return;
-    container.scrollTop = container.scrollHeight;
+    const max = container.scrollHeight - container.clientHeight;
+    maxScrollTopRef.current = max;
+    container.scrollTop = max;
+  }, []);
+
+  // Keep the cached max scroll position fresh when the container resizes
+  // (layout is clean at ResizeObserver callback time, so the read is cheap).
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      maxScrollTopRef.current = container.scrollHeight - container.clientHeight;
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
   }, []);
 
   // Force an instant bottom snap regardless of the user's scroll state, plus a
@@ -67,12 +90,16 @@ export function useChatScroll(messages: ChatMessage[]): {
   // is harmless (they report atBottom → stays pinned). A wheel / touch scroll
   // up past the threshold flips the ref and pauses auto-scroll until the user
   // sends a message or switches tabs back (jumpToPresent resets it).
+  // Layout-free: uses the CACHED max scroll position (refreshed by snaps and
+  // the ResizeObserver) instead of reading `scrollHeight` per scroll event —
+  // that read forces a synchronous layout while the stream is dirtying layout
+  // every frame, which made wheel scrolling janky mid-stream.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     function handleScroll(): void {
       const el = container!;
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+      const atBottom = el.scrollTop >= maxScrollTopRef.current - 60;
       userScrolledUpRef.current = !atBottom;
     }
     container.addEventListener("scroll", handleScroll, { passive: true });
