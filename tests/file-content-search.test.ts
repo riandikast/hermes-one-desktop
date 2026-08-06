@@ -102,6 +102,14 @@ describe("searchFileContents", () => {
     expect(results.some((r) => r.path.endsWith("bin.dat"))).toBe(false);
   });
 
+  it("skips known-binary extensions without reading them", async () => {
+    // A small PNG-ish file whose bytes happen to contain the query text —
+    // skipped by extension, never read/matched.
+    await writeFile(join(root, "logo.png"), "hello in a fake png", "utf8");
+    const results = await searchFileContents([root], "hello");
+    expect(results.some((r) => r.path.endsWith("logo.png"))).toBe(false);
+  });
+
   it("reports line numbers and text per match", async () => {
     const results = await searchFileContents([root], "hello");
     const a = results.find((r) => r.path.endsWith("a.txt"));
