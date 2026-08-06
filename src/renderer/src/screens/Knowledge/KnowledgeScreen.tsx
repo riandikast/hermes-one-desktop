@@ -40,6 +40,11 @@ export interface KnowledgeBundleItem {
   files: KnowledgeFileItem[];
 }
 
+/** Escape a literal string for use inside a RegExp constructor. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export function KnowledgeScreen(): React.JSX.Element {
   const [bundles, setBundles] = useState<KnowledgeBundleItem[]>([]);
   const [selectedFile, setSelectedFile] = useState<{
@@ -56,14 +61,44 @@ export function KnowledgeScreen(): React.JSX.Element {
   const [showNewBundleInput, setShowNewBundleInput] = useState(false);
   const [newFileName, setNewFileName] = useState("");
   const [addingFileBundle, setAddingFileBundle] = useState<string | null>(null);
+  const newBundleInputRef = useRef<HTMLInputElement | null>(null);
+  const addFileInputRef = useRef<HTMLInputElement | null>(null);
   const [renamingFile, setRenamingFile] = useState<{
     bundleName: string;
     oldFileName: string;
   } | null>(null);
   const [renamingValue, setRenamingValue] = useState("");
+  const [renamingBundle, setRenamingBundle] = useState<string | null>(null);
+  const [renamingBundleValue, setRenamingBundleValue] = useState("");
+
+  // Drag & drop: which bundle the pointer is hovering over while a knowledge
+  // file is dragged (visual drop-target highlight), plus the dragged file.
+  const [dragOverBundle, setDragOverBundle] = useState<string | null>(null);
+  const [draggedFile, setDraggedFile] = useState<{
+    bundleName: string;
+    fileName: string;
+  } | null>(null);
 
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
-  const [expandedBundles, setExpandedBundles] = useState<Record<string, boolean>>({});
+  const [expandedBundles, setExpandedBundles] = useState<
+    Record<string, boolean>
+  >({});
+
+  // Focus + select the transient name inputs as soon as their bars appear, so
+  // typing works immediately after clicking "New Bundle" / the add-file "+"
+  // button (autoFocus alone misses cases where the input mounts while the
+  // click is still in flight and the clicked button keeps focus).
+  useEffect(() => {
+    if (!showNewBundleInput) return;
+    newBundleInputRef.current?.focus();
+    newBundleInputRef.current?.select();
+  }, [showNewBundleInput]);
+
+  useEffect(() => {
+    if (!addingFileBundle) return;
+    addFileInputRef.current?.focus();
+    addFileInputRef.current?.select();
+  }, [addingFileBundle]);
 
   // Draggable bundle-list sidebar width (persisted) so the editor can get more
   // room. 320px default; clamps so the editor never starves.
@@ -102,10 +137,7 @@ export function KnowledgeScreen(): React.JSX.Element {
     setKnowledgeSidebarCollapsed((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem(
-          "hermes.knowledge.sidebarCollapsed",
-          String(next),
-        );
+        localStorage.setItem("hermes.knowledge.sidebarCollapsed", String(next));
       } catch {
         /* ignore */
       }
@@ -151,14 +183,16 @@ export function KnowledgeScreen(): React.JSX.Element {
   // @ mention autocomplete state (CodeMirror-driven)
   const editorHostRef = useRef<HTMLDivElement | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
-  const [mentionCustomFolders, setMentionCustomFolders] = useState<string[]>(() => {
-    try {
-      const raw = localStorage.getItem("hermes.knowledge.custom_folders");
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [mentionCustomFolders, setMentionCustomFolders] = useState<string[]>(
+    () => {
+      try {
+        const raw = localStorage.getItem("hermes.knowledge.custom_folders");
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    },
+  );
 
   useEffect(() => {
     try {
@@ -197,7 +231,9 @@ export function KnowledgeScreen(): React.JSX.Element {
     Record<string, Record<string, boolean>>
   >(() => {
     try {
-      const raw = localStorage.getItem("hermes.knowledge.file_custom_folder_state");
+      const raw = localStorage.getItem(
+        "hermes.knowledge.file_custom_folder_state",
+      );
       return raw ? JSON.parse(raw) : {};
     } catch {
       return {};
@@ -214,8 +250,11 @@ export function KnowledgeScreen(): React.JSX.Element {
       /* ignore */
     }
   }, [fileCustomFolderState]);
-  const [disabledBundles, setDisabledBundles] = useState<Record<string, boolean>>({});
-  const [showMentionSourcesPopover, setShowMentionSourcesPopover] = useState(false);
+  const [disabledBundles, setDisabledBundles] = useState<
+    Record<string, boolean>
+  >({});
+  const [showMentionSourcesPopover, setShowMentionSourcesPopover] =
+    useState(false);
 
   const activeFileKey = selectedFile
     ? `${selectedFile.bundleName}/${selectedFile.fileName}`
@@ -307,7 +346,7 @@ export function KnowledgeScreen(): React.JSX.Element {
       // 2. Add files from custom picked folders (global + per-file, filtered
       // by per-file checkbox state — unchecked folders are hidden from @ mention).
       const activeFileFolders = activeFileKey
-        ? fileCustomFolders[activeFileKey] ?? []
+        ? (fileCustomFolders[activeFileKey] ?? [])
         : [];
       const searchFolders = [
         ...new Set([...mentionCustomFolders, ...activeFileFolders]),
@@ -321,7 +360,11 @@ export function KnowledgeScreen(): React.JSX.Element {
           const entries = await window.hermesAPI.listFilesRecursive(folder);
           if (entries && Array.isArray(entries)) {
             for (const en of entries) {
-              if (!q || en.name.toLowerCase().includes(q) || en.path.toLowerCase().includes(q)) {
+              if (
+                !q ||
+                en.name.toLowerCase().includes(q) ||
+                en.path.toLowerCase().includes(q)
+              ) {
                 matches.push({
                   name: en.name,
                   path: en.path,
@@ -359,7 +402,8 @@ export function KnowledgeScreen(): React.JSX.Element {
 
       if (matches.length === 0) {
         try {
-          const recent = await window.hermesAPI.listRecentSessionContextFolders(10);
+          const recent =
+            await window.hermesAPI.listRecentSessionContextFolders(10);
           if (recent && Array.isArray(recent)) {
             const seen = new Set(matches.map((m) => m.path));
             for (const p of recent) {
@@ -410,7 +454,12 @@ export function KnowledgeScreen(): React.JSX.Element {
         label: item.name,
         detail: item.path,
         type: item.isDirectory ? "folder" : "file",
-        apply: (view: EditorView, _completion: unknown, from: number, to: number) => {
+        apply: (
+          view: EditorView,
+          _completion: unknown,
+          from: number,
+          to: number,
+        ) => {
           view.dispatch({
             changes: { from, to, insert: item.path + " " },
             selection: { anchor: from + item.path.length + 1 },
@@ -427,12 +476,9 @@ export function KnowledgeScreen(): React.JSX.Element {
 
   // Keep the current file's content mirrored into `fileContent` state (the
   // save path reads it) and sync doc replacements when a new file is opened.
-  const onEditorChange = useCallback(
-    (content: string) => {
-      setFileContent(content);
-    },
-    [],
-  );
+  const onEditorChange = useCallback((content: string) => {
+    setFileContent(content);
+  }, []);
 
   useEffect(() => {
     const host = editorHostRef.current;
@@ -447,7 +493,9 @@ export function KnowledgeScreen(): React.JSX.Element {
           search({ top: true }),
           markdown({ codeLanguages: languages }),
           autocompletion({
-            override: [(ctx: CompletionContext) => mentionSourceRef.current(ctx)],
+            override: [
+              (ctx: CompletionContext) => mentionSourceRef.current(ctx),
+            ],
           }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
@@ -522,11 +570,18 @@ export function KnowledgeScreen(): React.JSX.Element {
     }));
   };
 
-  const handleSelectFile = async (bundleName: string, fileName: string, path: string) => {
+  const handleSelectFile = async (
+    bundleName: string,
+    fileName: string,
+    path: string,
+  ) => {
     setLoading(true);
     setSelectedFile({ bundleName, fileName, path });
     try {
-      const content = await window.hermesAPI.readKnowledgeFile(bundleName, fileName);
+      const content = await window.hermesAPI.readKnowledgeFile(
+        bundleName,
+        fileName,
+      );
       setFileContent(content ?? "");
     } catch {
       setFileContent("");
@@ -566,9 +621,13 @@ export function KnowledgeScreen(): React.JSX.Element {
     }
   };
 
-  const handleDeleteBundle = async (bundleName: string, e: React.MouseEvent) => {
+  const handleDeleteBundle = async (
+    bundleName: string,
+    e: React.MouseEvent,
+  ) => {
     e.stopPropagation();
-    if (!confirm(`Delete knowledge bundle "${bundleName}" and all its files?`)) return;
+    if (!confirm(`Delete knowledge bundle "${bundleName}" and all its files?`))
+      return;
     try {
       await window.hermesAPI.deleteKnowledgeBundle(bundleName);
       if (selectedFile?.bundleName === bundleName) {
@@ -584,9 +643,16 @@ export function KnowledgeScreen(): React.JSX.Element {
   const handleAddFile = async (bundleName: string) => {
     const trimmed = newFileName.trim();
     if (!trimmed) return;
-    const finalName = trimmed.endsWith(".md") || trimmed.includes(".") ? trimmed : `${trimmed}.md`;
+    const finalName =
+      trimmed.endsWith(".md") || trimmed.includes(".")
+        ? trimmed
+        : `${trimmed}.md`;
     try {
-      await window.hermesAPI.writeKnowledgeFile(bundleName, finalName, `# ${finalName}\n\n`);
+      await window.hermesAPI.writeKnowledgeFile(
+        bundleName,
+        finalName,
+        `# ${finalName}\n\n`,
+      );
       setNewFileName("");
       setAddingFileBundle(null);
       await reloadBundles();
@@ -649,12 +715,136 @@ export function KnowledgeScreen(): React.JSX.Element {
     }
   };
 
-  const handleDeleteFile = async (bundleName: string, fileName: string, e: React.MouseEvent) => {
+  const startRenameBundle = (bundleName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRenamingBundle(bundleName);
+    setRenamingBundleValue(bundleName);
+  };
+
+  const submitRenameBundle = async () => {
+    if (!renamingBundle) return;
+    const oldName = renamingBundle;
+    const trimmed = renamingBundleValue.trim();
+    if (!trimmed) {
+      setRenamingBundle(null);
+      return;
+    }
+    if (trimmed === oldName) {
+      setRenamingBundle(null);
+      return;
+    }
+    try {
+      const ok = await window.hermesAPI.renameKnowledgeBundle(oldName, trimmed);
+      if (ok) {
+        // Re-key per-bundle UI state (expansion, @ mention enablement) so the
+        // renamed bundle keeps its previous settings.
+        setExpandedBundles((prev) => {
+          const next = { ...prev };
+          if (prev[oldName] !== undefined) next[trimmed] = prev[oldName];
+          return next;
+        });
+        setDisabledBundles((prev) => {
+          const next = { ...prev };
+          if (prev[oldName] !== undefined) next[trimmed] = prev[oldName];
+          return next;
+        });
+        if (selectedFile?.bundleName === oldName) {
+          const re = new RegExp(`[\\\\/]${escapeRegExp(oldName)}(?=[\\\\/]|$)`);
+          setSelectedFile({
+            bundleName: trimmed,
+            fileName: selectedFile.fileName,
+            path: selectedFile.path.replace(re, (m) =>
+              m.replace(oldName, trimmed),
+            ),
+          });
+        }
+        await reloadBundles();
+      }
+    } catch {
+      /* ignore error */
+    } finally {
+      setRenamingBundle(null);
+    }
+  };
+
+  const handleDragFileStart = (
+    e: React.DragEvent<HTMLDivElement>,
+    bundleName: string,
+    fileName: string,
+  ) => {
+    setDraggedFile({ bundleName, fileName });
+    e.dataTransfer.setData("application/x-knowledge-file", fileName);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragEndFile = () => {
+    setDraggedFile(null);
+    setDragOverBundle(null);
+  };
+
+  const handleDragOverBundle = (
+    e: React.DragEvent<HTMLDivElement>,
+    bundleName: string,
+  ) => {
+    if (!draggedFile) return;
+    if (draggedFile.bundleName === bundleName) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverBundle(bundleName);
+  };
+
+  const handleDropOnBundle = async (
+    e: React.DragEvent<HTMLDivElement>,
+    bundleName: string,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverBundle(null);
+    const file = draggedFile;
+    if (!file || file.bundleName === bundleName) return;
+    try {
+      const ok = await window.hermesAPI.moveKnowledgeFile(
+        file.bundleName,
+        file.fileName,
+        bundleName,
+      );
+      if (ok) {
+        if (
+          selectedFile?.bundleName === file.bundleName &&
+          selectedFile?.fileName === file.fileName
+        ) {
+          const target = bundles.find((b) => b.name === bundleName);
+          if (target) {
+            const sep = target.path.includes("\\") ? "\\" : "/";
+            setSelectedFile({
+              bundleName,
+              fileName: file.fileName,
+              path: `${target.path}${sep}${file.fileName}`,
+            });
+          }
+        }
+        await reloadBundles();
+      }
+    } catch {
+      /* ignore error */
+    } finally {
+      setDraggedFile(null);
+    }
+  };
+
+  const handleDeleteFile = async (
+    bundleName: string,
+    fileName: string,
+    e: React.MouseEvent,
+  ) => {
     e.stopPropagation();
     if (!confirm(`Delete file "${fileName}"?`)) return;
     try {
       await window.hermesAPI.deleteKnowledgeFile(bundleName, fileName);
-      if (selectedFile?.bundleName === bundleName && selectedFile?.fileName === fileName) {
+      if (
+        selectedFile?.bundleName === bundleName &&
+        selectedFile?.fileName === fileName
+      ) {
         setSelectedFile(null);
         setFileContent("");
       }
@@ -699,7 +889,11 @@ export function KnowledgeScreen(): React.JSX.Element {
             <Plus size={14} />
             <span>New Bundle</span>
           </button>
-          <button type="button" className="btn btn-secondary" onClick={handleImportFolder}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleImportFolder}
+          >
             <Upload size={14} />
             <span>Import Folder</span>
           </button>
@@ -709,13 +903,19 @@ export function KnowledgeScreen(): React.JSX.Element {
       {showNewBundleInput && (
         <div className="knowledge-new-bundle-bar">
           <input
+            ref={newBundleInputRef}
             type="text"
+            autoFocus
             placeholder="Bundle name (e.g. ui-guidelines)..."
             value={newBundleName}
             onChange={(e) => setNewBundleName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && void handleCreateBundle()}
           />
-          <button type="button" className="btn btn-primary" onClick={handleCreateBundle}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleCreateBundle}
+          >
             Create
           </button>
           <button
@@ -728,14 +928,18 @@ export function KnowledgeScreen(): React.JSX.Element {
         </div>
       )}
 
-      <div className={bundles.length === 0 ? "knowledge-body knowledge-body--empty" : "knowledge-body"}>
+      <div
+        className={
+          bundles.length === 0
+            ? "knowledge-body knowledge-body--empty"
+            : "knowledge-body"
+        }
+      >
         {/* Left Tree Pane */}
         <div
           className={`knowledge-sidebar ${
             knowledgeSidebarResizing ? "knowledge-sidebar--resizing" : ""
-          } ${
-            knowledgeSidebarCollapsed ? "knowledge-sidebar--collapsed" : ""
-          }`}
+          } ${knowledgeSidebarCollapsed ? "knowledge-sidebar--collapsed" : ""}`}
           style={
             knowledgeSidebarCollapsed
               ? { width: 44 }
@@ -757,10 +961,14 @@ export function KnowledgeScreen(): React.JSX.Element {
             }`}
             onClick={toggleKnowledgeSidebar}
             aria-label={
-              knowledgeSidebarCollapsed ? "Expand bundle list" : "Collapse bundle list"
+              knowledgeSidebarCollapsed
+                ? "Expand bundle list"
+                : "Collapse bundle list"
             }
             title={
-              knowledgeSidebarCollapsed ? "Expand bundle list" : "Collapse bundle list"
+              knowledgeSidebarCollapsed
+                ? "Expand bundle list"
+                : "Collapse bundle list"
             }
           >
             {knowledgeSidebarCollapsed ? (
@@ -770,22 +978,80 @@ export function KnowledgeScreen(): React.JSX.Element {
             )}
           </button>
           {!knowledgeSidebarCollapsed && (
-            <div className="knowledge-sidebar-title">Global Knowledge Bundles</div>
+            <div className="knowledge-sidebar-title">
+              Global Knowledge Bundles
+            </div>
           )}
           {!knowledgeSidebarCollapsed && (
             <div className="knowledge-bundle-list">
               {bundles.map((bundle) => {
                 const isExpanded = expandedBundles[bundle.name] ?? true;
+                const isRenamingBundle = renamingBundle === bundle.name;
                 return (
-                  <div key={bundle.name} className="knowledge-bundle-item">
+                  <div
+                    key={bundle.name}
+                    className={`knowledge-bundle-item ${
+                      dragOverBundle === bundle.name
+                        ? "knowledge-bundle-item--drag-over"
+                        : ""
+                    }`}
+                    onDragOver={(e) => handleDragOverBundle(e, bundle.name)}
+                    onDragLeave={(e) => {
+                      if (
+                        dragOverBundle === bundle.name &&
+                        !(
+                          e.relatedTarget instanceof Node &&
+                          e.currentTarget.contains(e.relatedTarget)
+                        )
+                      ) {
+                        setDragOverBundle(null);
+                      }
+                    }}
+                    onDrop={(e) => void handleDropOnBundle(e, bundle.name)}
+                  >
                     <div
                       className="knowledge-bundle-header"
                       onClick={() => toggleBundleExpand(bundle.name)}
                     >
-                      {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      {isExpanded ? (
+                        <ChevronDown size={14} />
+                      ) : (
+                        <ChevronRight size={14} />
+                      )}
                       <Folder size={14} className="folder-icon" />
-                      <span className="bundle-name">{bundle.name}</span>
+                      {isRenamingBundle ? (
+                        <input
+                          type="text"
+                          className="knowledge-inline-rename-input knowledge-bundle-rename-input"
+                          autoFocus
+                          value={renamingBundleValue}
+                          onChange={(e) =>
+                            setRenamingBundleValue(e.target.value)
+                          }
+                          onClick={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void submitRenameBundle();
+                            } else if (e.key === "Escape") {
+                              setRenamingBundle(null);
+                            }
+                          }}
+                          onBlur={() => void submitRenameBundle()}
+                        />
+                      ) : (
+                        <span className="bundle-name">{bundle.name}</span>
+                      )}
                       <div className="bundle-hover-actions">
+                        <button
+                          type="button"
+                          className="btn-ghost btn-xs"
+                          title="Rename Bundle"
+                          onClick={(e) => startRenameBundle(bundle.name, e)}
+                        >
+                          <Pencil size={12} />
+                        </button>
                         <button
                           type="button"
                           className="btn-ghost btn-xs"
@@ -793,7 +1059,9 @@ export function KnowledgeScreen(): React.JSX.Element {
                           onClick={(e) => {
                             e.stopPropagation();
                             setAddingFileBundle(
-                              addingFileBundle === bundle.name ? null : bundle.name,
+                              addingFileBundle === bundle.name
+                                ? null
+                                : bundle.name,
                             );
                           }}
                         >
@@ -803,7 +1071,9 @@ export function KnowledgeScreen(): React.JSX.Element {
                           type="button"
                           className="btn-ghost btn-xs danger"
                           title="Delete Bundle"
-                          onClick={(e) => void handleDeleteBundle(bundle.name, e)}
+                          onClick={(e) =>
+                            void handleDeleteBundle(bundle.name, e)
+                          }
                         >
                           <Trash2 size={12} />
                         </button>
@@ -811,9 +1081,14 @@ export function KnowledgeScreen(): React.JSX.Element {
                     </div>
 
                     {addingFileBundle === bundle.name && (
-                      <div className="knowledge-add-file-bar" onClick={(e) => e.stopPropagation()}>
+                      <div
+                        className="knowledge-add-file-bar"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <input
+                          ref={addFileInputRef}
                           type="text"
+                          autoFocus
                           placeholder="File name (e.g. style.md)..."
                           value={newFileName}
                           onChange={(e) => setNewFileName(e.target.value)}
@@ -846,10 +1121,26 @@ export function KnowledgeScreen(): React.JSX.Element {
                             return (
                               <div
                                 key={file.name}
-                                className={`knowledge-file-item ${isSelected ? "selected" : ""}`}
+                                className={`knowledge-file-item ${
+                                  isSelected ? "selected" : ""
+                                } ${
+                                  draggedFile?.bundleName === bundle.name &&
+                                  draggedFile?.fileName === file.name
+                                    ? "dragging"
+                                    : ""
+                                }`}
+                                draggable
+                                onDragStart={(e) =>
+                                  handleDragFileStart(e, bundle.name, file.name)
+                                }
+                                onDragEnd={handleDragEndFile}
                                 onClick={() =>
                                   !isRenamingThis &&
-                                  void handleSelectFile(bundle.name, file.name, file.path)
+                                  void handleSelectFile(
+                                    bundle.name,
+                                    file.name,
+                                    file.path,
+                                  )
                                 }
                               >
                                 <FileText size={13} />
@@ -859,7 +1150,9 @@ export function KnowledgeScreen(): React.JSX.Element {
                                     className="knowledge-inline-rename-input"
                                     autoFocus
                                     value={renamingValue}
-                                    onChange={(e) => setRenamingValue(e.target.value)}
+                                    onChange={(e) =>
+                                      setRenamingValue(e.target.value)
+                                    }
                                     onClick={(e) => e.stopPropagation()}
                                     onKeyDown={(e) => {
                                       if (e.key === "Enter") {
@@ -881,7 +1174,10 @@ export function KnowledgeScreen(): React.JSX.Element {
                                     title="Copy Disk Path"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      copyToClipboard(file.path, `path:${file.path}`);
+                                      copyToClipboard(
+                                        file.path,
+                                        `path:${file.path}`,
+                                      );
                                     }}
                                   >
                                     {copiedPath === `path:${file.path}` ? (
@@ -905,7 +1201,11 @@ export function KnowledgeScreen(): React.JSX.Element {
                                     className="btn-ghost btn-xs danger"
                                     title="Delete File"
                                     onClick={(e) =>
-                                      void handleDeleteFile(bundle.name, file.name, e)
+                                      void handleDeleteFile(
+                                        bundle.name,
+                                        file.name,
+                                        e,
+                                      )
                                     }
                                   >
                                     <Trash2 size={12} />
@@ -921,7 +1221,7 @@ export function KnowledgeScreen(): React.JSX.Element {
                 );
               })}
             </div>
-            )}
+          )}
         </div>
 
         {/* Right Editor Pane */}
@@ -935,7 +1235,10 @@ export function KnowledgeScreen(): React.JSX.Element {
                     {selectedFile.bundleName} / {selectedFile.fileName}
                   </span>
                 </div>
-                <div className="toolbar-controls" style={{ position: "relative" }}>
+                <div
+                  className="toolbar-controls"
+                  style={{ position: "relative" }}
+                >
                   <button
                     type="button"
                     className={`btn btn-secondary btn-sm ${
@@ -965,7 +1268,9 @@ export function KnowledgeScreen(): React.JSX.Element {
                           Imported Knowledge Bundles
                         </div>
                         {bundles.length === 0 ? (
-                          <div className="popover-empty">No bundles imported</div>
+                          <div className="popover-empty">
+                            No bundles imported
+                          </div>
                         ) : (
                           bundles.map((bundle) => {
                             const isEnabled = !disabledBundles[bundle.name];
@@ -990,11 +1295,13 @@ export function KnowledgeScreen(): React.JSX.Element {
                           Custom Picked Disk Folders
                         </div>
                         {mentionCustomFolders.length === 0 ? (
-                          <div className="popover-empty">No custom folders added</div>
+                          <div className="popover-empty">
+                            No custom folders added
+                          </div>
                         ) : (
                           mentionCustomFolders.map((folderPath) => {
                             const fileMap = activeFileKey
-                              ? fileCustomFolderState[activeFileKey] ?? {}
+                              ? (fileCustomFolderState[activeFileKey] ?? {})
                               : {};
                             const isFolderChecked =
                               fileMap[folderPath] !== false; // default true
@@ -1009,9 +1316,7 @@ export function KnowledgeScreen(): React.JSX.Element {
                                   checked={isFolderChecked}
                                   disabled={!activeFileKey}
                                   onChange={() =>
-                                    handleToggleCustomFolderForFile(
-                                      folderPath,
-                                    )
+                                    handleToggleCustomFolderForFile(folderPath)
                                   }
                                 />
                                 <span>
@@ -1047,7 +1352,7 @@ export function KnowledgeScreen(): React.JSX.Element {
                       </button>
                     </div>
                   )}
-                
+
                   <button
                     type="button"
                     className="btn btn-primary btn-sm ml-2"
@@ -1060,14 +1365,14 @@ export function KnowledgeScreen(): React.JSX.Element {
                 </div>
               </div>
 
-              <div className="knowledge-editor-body" style={{ position: "relative" }}>
+              <div
+                className="knowledge-editor-body"
+                style={{ position: "relative" }}
+              >
                 {loading ? (
                   <div className="editor-loading">Loading content...</div>
                 ) : isEditing ? (
-                  <div
-                    className="knowledge-cm-host"
-                    ref={editorHostRef}
-                  />
+                  <div className="knowledge-cm-host" ref={editorHostRef} />
                 ) : (
                   <div className="knowledge-markdown-preview">
                     <pre>{fileContent}</pre>

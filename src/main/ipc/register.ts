@@ -73,6 +73,8 @@ import {
   listKnowledgeBundles,
   createKnowledgeBundle,
   deleteKnowledgeBundle,
+  renameKnowledgeBundle,
+  moveKnowledgeFile,
   readKnowledgeFile,
   writeKnowledgeFile,
   renameKnowledgeFile,
@@ -3046,6 +3048,25 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("delete-knowledge-bundle", async (_event, name: string) => {
     return deleteKnowledgeBundle(name);
   });
+
+  ipcMain.handle(
+    "rename-knowledge-bundle",
+    async (_event, bundleName: string, newBundleName: string) => {
+      return renameKnowledgeBundle(bundleName, newBundleName);
+    },
+  );
+
+  ipcMain.handle(
+    "move-knowledge-file",
+    async (
+      _event,
+      bundleName: string,
+      fileName: string,
+      targetBundleName: string,
+    ) => {
+      return moveKnowledgeFile(bundleName, fileName, targetBundleName);
+    },
+  );
 
   ipcMain.handle(
     "read-knowledge-file",

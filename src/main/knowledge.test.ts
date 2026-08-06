@@ -10,7 +10,9 @@ import {
   deleteKnowledgeBundle,
   deleteKnowledgeFile,
   listKnowledgeBundles,
+  moveKnowledgeFile,
   readKnowledgeFile,
+  renameKnowledgeBundle,
   writeKnowledgeFile,
 } from "./knowledge";
 
@@ -59,16 +61,75 @@ describe("knowledge store", () => {
     expect(bundles).toHaveLength(0);
   });
 
+  it("renames a bundle and keeps its files", async () => {
+    await createKnowledgeBundle("old-name", tempDir);
+    await writeKnowledgeFile("old-name", "style.md", "# Style", tempDir);
+
+    const ok = await renameKnowledgeBundle("old-name", "new-name", tempDir);
+    expect(ok).toBe(true);
+
+    const bundles = await listKnowledgeBundles(tempDir);
+    expect(bundles).toHaveLength(1);
+    expect(bundles[0].name).toBe("new-name");
+    expect(bundles[0].files).toHaveLength(1);
+    expect(bundles[0].files[0].name).toBe("style.md");
+  });
+
+  it("rejects renaming a bundle to the same or invalid name", async () => {
+    await createKnowledgeBundle("same", tempDir);
+
+    expect(await renameKnowledgeBundle("same", "same", tempDir)).toBe(false);
+    expect(await renameKnowledgeBundle("same", "   ", tempDir)).toBe(false);
+    const bundles = await listKnowledgeBundles(tempDir);
+    expect(bundles).toHaveLength(1);
+    expect(bundles[0].name).toBe("same");
+  });
+
+  it("moves a file between bundles", async () => {
+    await createKnowledgeBundle("from", tempDir);
+    await createKnowledgeBundle("to", tempDir);
+    await writeKnowledgeFile("from", "note.md", "content", tempDir);
+
+    const ok = await moveKnowledgeFile("from", "note.md", "to", tempDir);
+    expect(ok).toBe(true);
+
+    expect(await readKnowledgeFile("from", "note.md", tempDir)).toBeNull();
+    expect(await readKnowledgeFile("to", "note.md", tempDir)).toBe("content");
+  });
+
+  it("rejects moving a file to its own bundle", async () => {
+    await createKnowledgeBundle("only", tempDir);
+    await writeKnowledgeFile("only", "note.md", "content", tempDir);
+
+    const ok = await moveKnowledgeFile("only", "note.md", "only", tempDir);
+    expect(ok).toBe(false);
+    expect(await readKnowledgeFile("only", "note.md", tempDir)).toBe("content");
+  });
+
   it("builds a knowledge index with file hints", async () => {
     await createKnowledgeBundle("ui-rules", tempDir);
-    await writeKnowledgeFile("ui-rules", "style.md", "# Style Guide\nColors!", tempDir);
-    await writeKnowledgeFile("ui-rules", "naming.md", "Naming conventions", tempDir);
+    await writeKnowledgeFile(
+      "ui-rules",
+      "style.md",
+      "# Style Guide\nColors!",
+      tempDir,
+    );
+    await writeKnowledgeFile(
+      "ui-rules",
+      "naming.md",
+      "Naming conventions",
+      tempDir,
+    );
 
     const index = await buildKnowledgeIndex(["ui-rules"], tempDir);
 
     expect(index).toContain("## ui-rules");
-    expect(index).toContain(`- ${join(tempDir, "knowledge", "ui-rules", "style.md")} — # Style Guide — Colors!`);
-    expect(index).toContain(`- ${join(tempDir, "knowledge", "ui-rules", "naming.md")} — Naming conventions`);
+    expect(index).toContain(
+      `- ${join(tempDir, "knowledge", "ui-rules", "style.md")} — # Style Guide — Colors!`,
+    );
+    expect(index).toContain(
+      `- ${join(tempDir, "knowledge", "ui-rules", "naming.md")} — Naming conventions`,
+    );
     expect(index).toContain("Read files with the file tools");
     expect(index).toContain("AUTHORITATIVE");
     expect(index).toContain("open the file to see its full content");
@@ -103,7 +164,9 @@ describe("knowledge store", () => {
 
     const index = await buildKnowledgeIndex(["long"], tempDir);
 
-    expect(index).toContain(`- ${join(tempDir, "knowledge", "long", "b.md")} — `);
+    expect(index).toContain(
+      `- ${join(tempDir, "knowledge", "long", "b.md")} — `,
+    );
     expect(index).not.toContain("second line");
     expect(index.length).toBeLessThan(2000);
   });
@@ -127,11 +190,15 @@ describe("knowledge store", () => {
 
     // A short heading alone is cryptic; the next non-empty line is appended so
     // the model can judge relevance without opening every file.
-    expect(index).toContain("# Project Notes — This describes the build system.");
+    expect(index).toContain(
+      "# Project Notes — This describes the build system.",
+    );
     // A long prose first line already carries meaning, so no second line is
     // pulled (keeps the hint a pointer, not a content dump).
     expect(index).toContain(
-      "- " + join(tempDir, "knowledge", "proj", "plain.md") + " — Just a prose sentence that is long enough to not be a heading.",
+      "- " +
+        join(tempDir, "knowledge", "proj", "plain.md") +
+        " — Just a prose sentence that is long enough to not be a heading.",
     );
   });
 });

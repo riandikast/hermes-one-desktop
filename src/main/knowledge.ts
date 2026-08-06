@@ -1,4 +1,13 @@
-import { cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "fs/promises";
+import {
+  cp,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
 
@@ -16,17 +25,22 @@ export interface KnowledgeBundle {
 }
 
 export function getKnowledgeDir(homeOverride?: string): string {
-  const base = homeOverride || process.env.HERMES_HOME || join(homedir(), ".hermes");
+  const base =
+    homeOverride || process.env.HERMES_HOME || join(homedir(), ".hermes");
   return join(base, "knowledge");
 }
 
-export async function ensureKnowledgeDir(homeOverride?: string): Promise<string> {
+export async function ensureKnowledgeDir(
+  homeOverride?: string,
+): Promise<string> {
   const dir = getKnowledgeDir(homeOverride);
   await mkdir(dir, { recursive: true });
   return dir;
 }
 
-export async function listKnowledgeBundles(homeOverride?: string): Promise<KnowledgeBundle[]> {
+export async function listKnowledgeBundles(
+  homeOverride?: string,
+): Promise<KnowledgeBundle[]> {
   const root = await ensureKnowledgeDir(homeOverride);
   let entries;
   try {
@@ -99,6 +113,25 @@ export async function deleteKnowledgeBundle(
   }
 }
 
+export async function renameKnowledgeBundle(
+  bundleName: string,
+  newBundleName: string,
+  homeOverride?: string,
+): Promise<boolean> {
+  const safeName = newBundleName.trim().replace(/[^a-zA-Z0-9_\-\.]/g, "-");
+  if (!safeName || safeName === bundleName) return false;
+  const root = await ensureKnowledgeDir(homeOverride);
+  const oldPath = join(root, bundleName);
+  const newPath = join(root, safeName);
+  if (oldPath === newPath) return false;
+  try {
+    await rename(oldPath, newPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function readKnowledgeFile(
   bundleName: string,
   fileName: string,
@@ -163,6 +196,26 @@ export async function deleteKnowledgeFile(
   }
 }
 
+export async function moveKnowledgeFile(
+  bundleName: string,
+  fileName: string,
+  targetBundleName: string,
+  homeOverride?: string,
+): Promise<boolean> {
+  if (!targetBundleName || targetBundleName === bundleName) return false;
+  const root = await ensureKnowledgeDir(homeOverride);
+  const oldPath = join(root, bundleName, fileName);
+  const targetDir = join(root, targetBundleName);
+  const newPath = join(targetDir, fileName);
+  try {
+    await mkdir(targetDir, { recursive: true });
+    await rename(oldPath, newPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function importKnowledgeFolder(
   sourceFolderPath: string,
   bundleName: string,
@@ -220,7 +273,9 @@ export async function buildKnowledgeIndex(
   bundleNames: string[],
   homeOverride?: string,
 ): Promise<string> {
-  const names = [...new Set((bundleNames || []).map((n) => n.trim()).filter(Boolean))];
+  const names = [
+    ...new Set((bundleNames || []).map((n) => n.trim()).filter(Boolean)),
+  ];
   if (names.length === 0) return "";
 
   const root = await ensureKnowledgeDir(homeOverride);
@@ -251,9 +306,7 @@ export async function buildKnowledgeIndex(
         /* hint optional */
       }
       const fullPath = join(bundlePath, fileName);
-      const line = hint
-        ? `- ${fullPath} — ${hint}`
-        : `- ${fullPath}`;
+      const line = hint ? `- ${fullPath} — ${hint}` : `- ${fullPath}`;
       lines.push(line);
       budget -= line.length;
     }

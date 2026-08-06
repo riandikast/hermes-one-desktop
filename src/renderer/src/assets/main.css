@@ -2696,6 +2696,23 @@ body:has(.shell-vibrant),
   background: var(--bg-hover);
 }
 
+/* Drop-target highlight while dragging a knowledge file over a bundle. */
+.knowledge-bundle-item--drag-over .knowledge-bundle-header {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* The dragged file itself — dimmed to signal it is leaving its bundle. */
+.knowledge-file-item.dragging {
+  opacity: 0.45;
+}
+
+/* Bundle rename input stretches across the header like the name it replaces. */
+.knowledge-bundle-rename-input {
+  max-width: none;
+  flex: 1;
+}
+
 .bundle-hover-actions {
   margin-left: auto;
   display: flex;
