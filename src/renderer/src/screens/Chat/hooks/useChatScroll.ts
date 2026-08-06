@@ -77,6 +77,31 @@ export function useChatScroll(messages: ChatMessage[]): {
     return () => container.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // When the window becomes visible again (minimize/restore, alt-tab back),
+  // re-jump to the present IF the user was pinned to the bottom. While
+  // minimized Chromium freezes rAF and throttles timers, so the auto-scroll
+  // settle retries never ran and the scroll position went stale — the answer
+  // that streamed while hidden sits at the bottom, skipped by
+  // `content-visibility: auto` (looks like "the last answer never appeared
+  // until the session was reopened"). A pinned user expects to land on the
+  // latest; a user who scrolled up keeps their place.
+  useEffect(() => {
+    const onVisible = (): void => {
+      if (
+        document.visibilityState === "visible" &&
+        !userScrolledUpRef.current
+      ) {
+        jumpToPresent();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [jumpToPresent]);
+
   // Auto-scroll on incoming messages; force-scroll when the user sends a new
   // one. Streaming deltas (same length, content grew) keep the latest in view
   // ONLY while the user is pinned to the bottom — a single instant
