@@ -1123,10 +1123,24 @@ export function useDashboardChatTransport({
       if (!activeTurn || !storedSessionId) return;
       void (async () => {
         try {
+          console.info("[quiet-finalize] firing", {
+            storedSessionId,
+            isLoading: true,
+          });
           const items = (await window.hermesAPI.getSessionMessages(
             storedSessionId,
           )) as DbHistoryItem[];
           const dbMessages = dbItemsToChatMessages(items);
+          console.info("[quiet-finalize] db rows", {
+            dbMessages: dbMessages.length,
+            lastRoles: dbMessages
+              .slice(-4)
+              .map((m) =>
+                "kind" in m
+                  ? m.kind
+                  : `${m.role}(len ${String(m.content).length})`,
+              ),
+          });
           // Completed = the last user turn is followed by an assistant bubble
           // with non-empty content.
           let lastUserIdx = -1;
@@ -1146,6 +1160,7 @@ export function useDashboardChatTransport({
                   !("kind" in m) &&
                   String(m.content).trim().length > 0,
               );
+          console.info("[quiet-finalize] hasAnswer", { hasAnswer });
           if (!hasAnswer) {
             // Turn still in flight (or never persisted) — keep waiting.
             resetQuietFinalize();
