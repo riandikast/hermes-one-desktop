@@ -1141,6 +1141,29 @@ export function useDashboardChatTransport({
                   : `${m.role}(len ${String(m.content).length})`,
               ),
           });
+          // Guard: only finalize when state.db has CAUGHT UP to the live
+          // transcript's last user message. If the user has already sent the
+          // next message but it isn't persisted yet, reconciling now would
+          // delete that message and resurrect the previous turn's canonical
+          // answer — the "sent message vanished, old answer got fuller" bug.
+          const liveLastUser = [...messagesRef.current]
+            .reverse()
+            .find((m) => m.role === "user");
+          const dbLastUser = [...dbMessages]
+            .reverse()
+            .find((m) => m.role === "user");
+          const dbCaughtUp =
+            !!liveLastUser &&
+            !!dbLastUser &&
+            String(liveLastUser.content).replace(/\s+/g, " ").trim() ===
+              String(dbLastUser.content).replace(/\s+/g, " ").trim();
+          console.info("[quiet-finalize] dbCaughtUp", { dbCaughtUp });
+          if (!dbCaughtUp) {
+            // DB is behind the live transcript — keep waiting, do NOT touch
+            // the messages.
+            resetQuietFinalize();
+            return;
+          }
           // Completed = the last user turn is followed by an assistant bubble
           // with non-empty content.
           let lastUserIdx = -1;
@@ -1996,6 +2019,11 @@ export function useDashboardChatTransport({
       if (!enabled) return false;
       // FILE-CHANGES: a new user turn starts a fresh accumulator.
       fileChangesRef.current = new Map();
+      // A new turn invalidates the PREVIOUS turn's quiet-finalize timer — a
+      // stale timer firing mid-new-turn would reconcile the live transcript
+      // against a state.db that hasn't persisted the new user message yet,
+      // deleting it and resurrecting the previous (fuller, canonical) answer.
+      resetQuietFinalize();
       const pendingClarifyRequestId = pendingClarifyRequestIdRef.current;
       if (pendingClarifyRequestId) {
         pendingClarifyRequestIdRef.current = null;
@@ -2200,6 +2228,7 @@ export function useDashboardChatTransport({
       ensureClient,
       ensureRuntimeSession,
       ensureSelectedModel,
+      resetQuietFinalize,
       syncDashboardAttachments,
       setIsLoading,
       setMessages,
@@ -2291,9 +2320,10 @@ export function useDashboardChatTransport({
     }
     // Clear loading immediately — don't wait for the gateway to confirm.
     activeTurnRef.current = null;
+    clearQuietFinalize();
     setIsLoading(false);
     setToolProgress(null);
-  }, [enabled, setIsLoading, setToolProgress]);
+  }, [clearQuietFinalize, enabled, setIsLoading, setToolProgress]);
 
   useEffect(
     () => () => {
