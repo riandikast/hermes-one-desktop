@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, useRef } from "react";
 import { HermesAvatar, MessageRow } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
 import { ReasoningRow, ToolActivityGroup } from "./HistoryRow";
@@ -75,6 +75,144 @@ function isBubble(m: ChatMessage): m is import("./types").ChatBubbleMessage {
   return !k || k === "user" || k === "assistant";
 }
 
+/**
+ * Build the rows array for a slice of visible messages.
+ *
+ * @param slice          The subset of visible messages to render.
+ * @param sliceStart     The index of slice[0] inside the FULL visible array —
+ *                       used for `isLast` / `active` checks against totalLen.
+ * @param totalLen       Length of the FULL visible array.
+ * @param lastUserIdx    Index of the last user bubble in the FULL visible array.
+ * @param prevRole       Role of the row immediately before slice[0] (for showAvatar).
+ * @param initReasonId   turnLastReasoningId to start with (usually undefined when
+ *                       slice starts right after a user row).
+ * @param isLoading      Whether the agent turn is still streaming.
+ * @param callbacks      Stable callbacks passed through from the parent.
+ */
+function buildRows(
+  slice: ChatMessage[],
+  sliceStart: number,
+  totalLen: number,
+  lastUserIdx: number,
+  prevRole: string | undefined,
+  initReasonId: string | undefined,
+  isLoading: boolean,
+  callbacks: {
+    agentAvatar?: AgentAvatarInfo;
+    onApprove: () => void;
+    onDeny: () => void;
+    onClarifyResolved: (requestId: string, answer: string) => void;
+    onRevertCheckpoint?: (msgId: string) => void;
+    onUnsendLastUser?: (msgId: string, content: string) => void;
+    onOpenFileChanges?: (changes: FileChange[]) => void;
+  },
+): {
+  rows: React.JSX.Element[];
+  lastRole: string | undefined;
+  turnLastReasoningId: string | undefined;
+} {
+  const rows: React.JSX.Element[] = [];
+  let turnLastReasoningId = initReasonId;
+  let lastRole: string | undefined = prevRole;
+
+  for (let si = 0; si < slice.length; si++) {
+    const i = sliceStart + si; // index in the full visible array
+    const msg = slice[si];
+    if (msg.role === "user") turnLastReasoningId = undefined;
+
+    const prev = lastRole;
+    lastRole = msg.role;
+    const showAvatar = !prev || prev !== msg.role;
+
+    if (isToolRow(msg)) {
+      const group: (ToolCallMessage | ToolResultMessage)[] = [];
+      const start = si;
+      while (si < slice.length && isToolRow(slice[si])) {
+        group.push(slice[si] as ToolCallMessage | ToolResultMessage);
+        si++;
+      }
+      si--;
+      const globalEnd = sliceStart + si;
+      lastRole = "agent";
+      rows.push(
+        <ToolActivityGroup
+          key={`${group[0].id}-${sliceStart + start}`}
+          items={group}
+          active={isLoading && globalEnd === totalLen - 1}
+          isLoading={isLoading}
+          showAvatar={
+            !slice[start - 1]
+              ? !prev || prev !== "agent"
+              : slice[start - 1].role !== "agent"
+          }
+          agent={callbacks.agentAvatar}
+          waitForReasoningId={turnLastReasoningId}
+        />,
+      );
+      continue;
+    }
+
+    const k = (msg as { kind?: string }).kind;
+    if (k === "reasoning") {
+      turnLastReasoningId = msg.id;
+      rows.push(
+        <ReasoningRow
+          key={msg.id}
+          msg={msg as Extract<ChatMessage, { kind: "reasoning" }>}
+          active={isLoading && i === totalLen - 1}
+          showAvatar={showAvatar}
+          agent={callbacks.agentAvatar}
+        />,
+      );
+      continue;
+    }
+
+    if (k === "clarify") {
+      rows.push(
+        <ClarifyCard
+          key={msg.id}
+          msg={msg as ClarifyMessage}
+          onResolved={callbacks.onClarifyResolved}
+        />,
+      );
+      continue;
+    }
+
+    const bubble = msg as Extract<ChatMessage, { role: "user" | "agent" }>;
+    rows.push(
+      <MessageRow
+        key={msg.id}
+        msg={bubble}
+        isLast={i === totalLen - 1}
+        isLoading={isLoading}
+        onApprove={callbacks.onApprove}
+        onDeny={callbacks.onDeny}
+        showAvatar={showAvatar}
+        agent={callbacks.agentAvatar}
+        onRevertCheckpoint={callbacks.onRevertCheckpoint}
+        onUnsendLastUser={callbacks.onUnsendLastUser}
+        isLastUser={i === lastUserIdx}
+        onOpenFileChanges={callbacks.onOpenFileChanges}
+        waitForReasoningId={
+          msg.role === "agent" ? turnLastReasoningId : undefined
+        }
+      />,
+    );
+  }
+
+  return { rows, lastRole, turnLastReasoningId };
+}
+
+/** Stable wrapper — only re-renders when `rows` identity changes (i.e. when
+ *  the history changes, NOT on every streaming delta). */
+const StableHistory = memo(function StableHistory({
+  rows,
+}: {
+  rows: React.JSX.Element[];
+}): React.JSX.Element {
+  return <>{rows}</>;
+});
+
 export const MessageList = memo(function MessageList({
   messages,
   isLoading,
@@ -107,6 +245,10 @@ export const MessageList = memo(function MessageList({
 
   const lastBubble = [...visibleMessages].reverse().find(isBubble);
   const lastMessageIsAgent = !!lastBubble && lastBubble.role === "agent";
+
+  // Find the last user bubble — this is the boundary between stable history
+  // (all prior turns, never changes per delta) and the streaming turn (the
+  // current agent turn, re-built on every delta but tiny: ~3–10 rows).
   const lastUserBubbleIdx = (() => {
     for (let j = visibleMessages.length - 1; j >= 0; j--) {
       const m = visibleMessages[j];
@@ -115,106 +257,104 @@ export const MessageList = memo(function MessageList({
     return -1;
   })();
 
-  // Render plan: bubble/reasoning rows pass through one-to-one, but a
-  // contiguous run of tool_call/tool_result rows folds into a single
-  // ToolActivityGroup (collapsed by default) instead of one bubble per call.
-  const rows: React.JSX.Element[] = [];
-  // Last reasoning row id within the current turn — reset at each user row.
-  // The turn's answer bubble waits for this thought to settle before its
-  // typewriter reveal starts (the response must not leak out mid-thought).
-  let turnLastReasoningId: string | undefined;
-  for (let i = 0; i < visibleMessages.length; i++) {
-    const msg = visibleMessages[i];
-    if (msg.role === "user") turnLastReasoningId = undefined;
-    // One avatar per turn: show it only on the first row of a contiguous run
-    // of same-role rows. The agent turn's thinking/tool rows + answer bubble
-    // share one avatar; the continuation rows render a spacer.
-    const prev = visibleMessages[i - 1];
-    const showAvatar = !prev || prev.role !== msg.role;
+  // Split: stable = [0, splitAt); streaming = [splitAt, end).
+  // The split is AFTER the last user message so the user row is stable too.
+  const splitAt = lastUserBubbleIdx >= 0 ? lastUserBubbleIdx + 1 : 0;
+  const stableSlice = visibleMessages.slice(0, splitAt);
+  const streamingSlice = visibleMessages.slice(splitAt);
 
-    if (isToolRow(msg)) {
-      // Collect the whole run of consecutive tool rows.
-      const group: (ToolCallMessage | ToolResultMessage)[] = [];
-      const start = i;
-      while (i < visibleMessages.length && isToolRow(visibleMessages[i])) {
-        group.push(visibleMessages[i] as ToolCallMessage | ToolResultMessage);
-        i++;
-      }
-      i--; // step back: the for-loop's i++ advances past the run
-      rows.push(
-        <ToolActivityGroup
-          key={`${group[0].id}-${start}`}
-          items={group}
-          // Active (spinner) only while streaming and this run is trailing.
-          active={isLoading && i === visibleMessages.length - 1}
-          isLoading={isLoading}
-          showAvatar={
-            !visibleMessages[start - 1] ||
-            visibleMessages[start - 1].role !== "agent"
-          }
-          agent={agentAvatar}
-          // Hold the run hidden until the most recent preceding thought has
-          // finished typing, so tools don't appear mid-thought.
-          waitForReasoningId={turnLastReasoningId}
-        />,
-      );
-      continue;
-    }
+  // ── Stable history rows ────────────────────────────────────────────────────
+  // Cached so they rebuild only when the history changes (user sends, revert,
+  // unsend, end-of-stream reconcile) — NOT on every streaming delta. This
+  // turns the per-delta O(n_total) element-creation cost into O(n_turn).
+  // The cache check is O(1): every message update is immutable (state updates
+  // spread/replace objects), so the LAST stable message's object reference is
+  // identical across streaming deltas and only changes when the history
+  // actually changed (a reconcile recreates every row object, so mid-history
+  // edits are caught too). agentAvatar identity is also part of the key: it
+  // can change (appearance / profile switch) without any message changing.
+  const stableCacheRef = useRef<{
+    tail: ChatMessage | undefined;
+    len: number;
+    avatarKey: string;
+    rows: React.JSX.Element[];
+    lastRole: string | undefined;
+    turnLastReasoningId: string | undefined;
+  }>({
+    tail: undefined,
+    len: 0,
+    avatarKey: "",
+    rows: [],
+    lastRole: undefined,
+    turnLastReasoningId: undefined,
+  });
 
-    const k = (msg as { kind?: string }).kind;
-    if (k === "reasoning") {
-      turnLastReasoningId = msg.id;
-      rows.push(
-        <ReasoningRow
-          key={msg.id}
-          msg={msg as Extract<ChatMessage, { kind: "reasoning" }>}
-          // Still "Thinking…" only while this is the last row and the turn is
-          // streaming; once the answer arrives (or history loads) it becomes
-          // a completed "Thought".
-          active={isLoading && i === visibleMessages.length - 1}
-          showAvatar={showAvatar}
-          agent={agentAvatar}
-        />,
-      );
-      continue;
-    }
-
-    if (k === "clarify") {
-      rows.push(
-        <ClarifyCard
-          key={msg.id}
-          msg={msg as ClarifyMessage}
-          onResolved={onClarifyResolved}
-        />,
-      );
-      continue;
-    }
-
-    const bubble = msg as Extract<ChatMessage, { role: "user" | "agent" }>;
-    rows.push(
-      <MessageRow
-        key={msg.id}
-        msg={bubble}
-        isLast={i === visibleMessages.length - 1}
-        isLoading={isLoading}
-        onApprove={onApprove}
-        onDeny={onDeny}
-        showAvatar={showAvatar}
-        agent={agentAvatar}
-        onRevertCheckpoint={onRevertCheckpoint}
-        onUnsendLastUser={onUnsendLastUser}
-        isLastUser={i === lastUserBubbleIdx}
-        onOpenFileChanges={onOpenFileChanges}
-        waitForReasoningId={
-          msg.role === "agent" ? turnLastReasoningId : undefined
-        }
-      />,
+  const stableTail =
+    stableSlice.length > 0 ? stableSlice[stableSlice.length - 1] : undefined;
+  const avatarKey = agentAvatar ? "a" : "n";
+  if (
+    stableCacheRef.current.tail !== stableTail ||
+    stableCacheRef.current.len !== stableSlice.length ||
+    stableCacheRef.current.avatarKey !== avatarKey
+  ) {
+    // Stable history changed — rebuild. Stable rows are NEVER streaming-active.
+    const callbacks = {
+      agentAvatar,
+      onApprove,
+      onDeny,
+      onClarifyResolved,
+      onRevertCheckpoint,
+      onUnsendLastUser,
+      onOpenFileChanges,
+    };
+    const result = buildRows(
+      stableSlice,
+      0,
+      visibleMessages.length,
+      lastUserBubbleIdx,
+      undefined,
+      undefined,
+      false, // stable rows are never "loading-active"
+      callbacks,
     );
+    stableCacheRef.current = {
+      tail: stableTail,
+      len: stableSlice.length,
+      avatarKey,
+      rows: result.rows,
+      lastRole: result.lastRole,
+      turnLastReasoningId: result.turnLastReasoningId,
+    };
   }
+  const { rows: stableRows, lastRole: stableLastRole } = stableCacheRef.current;
+
+  // ── Streaming turn rows ────────────────────────────────────────────────────
+  // Re-built on every delta, but the slice is tiny (the current agent turn).
+  const callbacks = {
+    agentAvatar,
+    onApprove,
+    onDeny,
+    onClarifyResolved,
+    onRevertCheckpoint,
+    onUnsendLastUser,
+    onOpenFileChanges,
+  };
+  const { rows: streamingRows } = buildRows(
+    streamingSlice,
+    splitAt,
+    visibleMessages.length,
+    lastUserBubbleIdx,
+    stableLastRole,
+    // turnLastReasoningId resets at the user row (last stable row), so start fresh.
+    undefined,
+    isLoading,
+    callbacks,
+  );
 
   return (
     <>
-      {rows}
+      <StableHistory rows={stableRows} />
+      {streamingRows}
 
       {isLoading && !lastMessageIsAgent && (
         <TypingIndicator
