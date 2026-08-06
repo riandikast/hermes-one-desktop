@@ -3049,7 +3049,20 @@ export function registerIpcHandlers(context: IpcContext): void {
     ) => {
       const conn = getConnectionConfig();
       if (conn.mode === "ssh" || conn.mode === "remote") return [];
-      return searchFileContents(Array.isArray(roots) ? roots : [], query, opts);
+      const t0 = Date.now();
+      console.info("[find-in-files] start", { roots, query });
+      const result = await searchFileContents(
+        Array.isArray(roots) ? roots : [],
+        query,
+        opts,
+      );
+      console.info(
+        `[find-in-files] done ${((Date.now() - t0) / 1000).toFixed(1)}s`,
+        {
+          files: result.length,
+        },
+      );
+      return result;
     },
   );
 

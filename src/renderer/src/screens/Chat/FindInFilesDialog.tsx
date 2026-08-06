@@ -83,15 +83,35 @@ export function FindInFilesDialog({
       const seq = ++searchSeqRef.current;
       setSearching(true);
       setError(null);
+      if (typeof window.hermesAPI.searchInFiles !== "function") {
+        console.error(
+          "[find-in-files] window.hermesAPI.searchInFiles missing — restart the app (main/preload changes need a full restart)",
+        );
+        setError(
+          "Search API missing — restart the app to load the new main process.",
+        );
+        setSearching(false);
+        return;
+      }
+      console.info("[find-in-files] renderer search start", {
+        needle,
+        folders: folders.length,
+      });
+      const t0 = performance.now();
       void window.hermesAPI
         .searchInFiles(folders, needle)
         .then((res) => {
           if (searchSeqRef.current !== seq) return;
+          console.info(
+            `[find-in-files] renderer done ${((performance.now() - t0) / 1000).toFixed(1)}s`,
+            { files: res?.length ?? 0 },
+          );
           setResults(res ?? []);
           setSearching(false);
         })
-        .catch(() => {
+        .catch((err) => {
           if (searchSeqRef.current !== seq) return;
+          console.error("[find-in-files] renderer error", err);
           setError("Search failed");
           setResults(null);
           setSearching(false);
