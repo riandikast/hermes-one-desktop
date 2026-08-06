@@ -1337,7 +1337,15 @@ export function useDashboardChatTransport({
         event,
         {
           activeTurn: activeTurnRef.current,
-          renderAssistantDeltas: true,
+          // Do NOT render streamed answer deltas. The gateway emits answer
+          // text, THEN tools, THEN a trailing thought; rendering the deltas
+          // live puts a partial answer mid-transcript above the tools and the
+          // trailing thought (reads as "cut" / "last response missing", and
+          // no amount of gating/merging/reordering fully fixes it). Instead
+          // the thought streams live and `message.complete` materializes the
+          // final answer ONCE, from the final text, at the end of the turn —
+          // same shape as the (working) reopened-from-DB view.
+          renderAssistantDeltas: false,
         },
       );
       reasoningSegmentClosedRef.current = next.reasoningSegmentClosed;
