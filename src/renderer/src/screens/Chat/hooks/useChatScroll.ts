@@ -79,10 +79,16 @@ export function useChatScroll(messages: ChatMessage[]): {
 
   // Auto-scroll on incoming messages; force-scroll when the user sends a new
   // one. Streaming deltas (same length, content grew) keep the latest in view
-  // ONLY while the user is pinned to the bottom — instant (not smooth) so the
-  // tail never lags behind a moving target. Late layout is caught by the
-  // settle retry; the effect cleanup cancels the pending retry when the next
-  // delta arrives, so only the last delta in a burst runs its retrial.
+  // ONLY while the user is pinned to the bottom — a single instant
+  // `scrollTop = scrollHeight` per delta. We deliberately do NOT retry here:
+  // rows carry `content-visibility: auto` + the `messageIn` entrance
+  // animation, and repeated scroll writes per delta jolt rows across the
+  // viewport skip boundary, restarting that animation (a visible fade-in
+  // flicker on the thought row). One snap reaches the present exactly (the
+  // prior smooth `scrollIntoView` landed short); late layout is only a
+  // concern for the one-time mount/tab-switch jump, which uses `jumpToPresent`'
+  // retries. `jumpToPresent` returns its own cleanup, so returning it lets the
+  // next delta cancel any pending retrials from a user-sent force-jump.
   useEffect(() => {
     const prevCount = prevMessageCountRef.current;
     prevMessageCountRef.current = messages.length;
@@ -90,17 +96,10 @@ export function useChatScroll(messages: ChatMessage[]): {
       messages.length > prevCount &&
       messages[messages.length - 1]?.role === "user";
     if (userJustSent) {
-      jumpToPresent();
-      return;
+      return jumpToPresent();
     }
     if (userScrolledUpRef.current) return;
     snapToBottom();
-    const raf = requestAnimationFrame(snapToBottom);
-    const t = window.setTimeout(snapToBottom, 120);
-    return (): void => {
-      cancelAnimationFrame(raf);
-      window.clearTimeout(t);
-    };
   }, [messages, jumpToPresent, snapToBottom]);
 
   return { containerRef, bottomRef, jumpToPresent };
