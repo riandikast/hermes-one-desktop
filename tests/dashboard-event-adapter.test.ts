@@ -322,6 +322,63 @@ describe("applyDashboardStreamEvent", () => {
     expect(agent).toMatchObject({ pending: false });
   });
 
+  it("moves the completed final answer to the END after trailing tool/reasoning rows", () => {
+    // The gateway streamed: answer text → tools → trailing thought. The final
+    // text must not stay merged mid-transcript (answer "cut" above the tools);
+    // the completed bubble moves after the trailing rows so the turn reads
+    // "…tools → thought → final answer".
+    let state: DashboardEventState = {
+      messages: [{ id: "u-1", role: "user", content: "deploy" }],
+      reasoningSegmentClosed: false,
+    };
+    state = applyDashboardStreamEvent(
+      state,
+      { type: "message.delta", payload: { text: "Done. " } },
+      { now: 400 },
+    );
+    state = applyDashboardStreamEvent(
+      state,
+      {
+        type: "tool.start",
+        payload: { tool_id: "t1", name: "terminal", args: "swap" },
+      },
+      { now: 401 },
+    );
+    state = applyDashboardStreamEvent(
+      state,
+      {
+        type: "tool.complete",
+        payload: { tool_id: "t1", name: "terminal", result: "ok" },
+      },
+      { now: 402 },
+    );
+    state = applyDashboardStreamEvent(
+      state,
+      { type: "reasoning.delta", payload: { text: "Verify the swap." } },
+      { now: 403 },
+    );
+    state = applyDashboardStreamEvent(
+      state,
+      {
+        type: "message.complete",
+        payload: { text: "Done. The stock swap is complete." },
+      },
+      { now: 404 },
+    );
+
+    const kinds = state.messages.map((m) => ("kind" in m ? m.kind : m.role));
+    // Answer moved to the END, after the tool rows and the trailing thought.
+    expect(kinds).toEqual([
+      "user",
+      "tool_call",
+      "tool_result",
+      "reasoning",
+      "agent",
+    ]);
+    const last = state.messages[4] as ChatMessage & { content: string };
+    expect(last.content).toBe("Done. The stock swap is complete.");
+  });
+
   it("replaces mismatched streamed deltas with the final completion text", () => {
     let state: DashboardEventState = {
       messages: [{ id: "u-1", role: "user", content: "korean" }],

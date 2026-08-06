@@ -673,16 +673,28 @@ function completeAssistantWithFinalText(
     // final_response (#746).
     const merged = mergeStreamedWithFinal(msg.content, finalText);
 
-    return [
-      ...messagesWithoutDuplicateReasoning.slice(0, i),
-      {
-        ...msg,
-        content: merged,
-        pending: false,
-        turnId: msg.turnId || activeTurn?.turnId,
-      },
-      ...messagesWithoutDuplicateReasoning.slice(i + 1),
-    ];
+    const completedBubble = {
+      ...msg,
+      content: merged,
+      pending: false,
+      turnId: msg.turnId || activeTurn?.turnId,
+    };
+
+    // The streamed answer often lands BEFORE trailing tool/reasoning rows
+    // (the gateway emitted answer text, then tools, then a trailing thought).
+    // Merging the final text in place would leave the finished response cut
+    // mid-transcript, above the tools and the trailing thought — reading as
+    // "answer cut, then tools + thought" and "last response missing" (the
+    // auto-scroll pins to the trailing thought at the bottom). Move the
+    // completed bubble to the END of the turn (after trailing tool/reasoning
+    // rows) so the transcript reads "…tools → thought → final answer" and the
+    // file-changes badge (attached to the last assistant bubble) lands on it.
+    const before = messagesWithoutDuplicateReasoning.slice(0, i);
+    const after = messagesWithoutDuplicateReasoning.slice(i + 1);
+    if (after.length > 0) {
+      return [...before, ...after, completedBubble];
+    }
+    return [...before, completedBubble];
   }
 
   return [
