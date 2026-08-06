@@ -20,6 +20,8 @@ export function useChatScroll(messages: ChatMessage[]): {
   const userScrolledUpRef = useRef(false);
   const prevMessageCountRef = useRef(messages.length);
   const mountedRef = useRef(false);
+  /** One pending streaming snap (macrotask) at a time. */
+  const pendingSnapRef = useRef(false);
 
   const snapToBottom = useCallback((): void => {
     const container = containerRef.current;
@@ -104,16 +106,16 @@ export function useChatScroll(messages: ChatMessage[]): {
 
   // Auto-scroll on incoming messages; force-scroll when the user sends a new
   // one. Streaming deltas (same length, content grew) keep the latest in view
-  // ONLY while the user is pinned to the bottom — a single instant
-  // `scrollTop = scrollHeight` per delta. We deliberately do NOT retry here:
-  // rows carry `content-visibility: auto` + the `messageIn` entrance
-  // animation, and repeated scroll writes per delta jolt rows across the
-  // viewport skip boundary, restarting that animation (a visible fade-in
-  // flicker on the thought row). One snap reaches the present exactly (the
-  // prior smooth `scrollIntoView` landed short); late layout is only a
-  // concern for the one-time mount/tab-switch jump, which uses `jumpToPresent`'
-  // retries. `jumpToPresent` returns its own cleanup, so returning it lets the
-  // next delta cancel any pending retrials from a user-sent force-jump.
+  // ONLY while the user is pinned to the bottom. The snap itself runs in a
+  // MACROTASK (setTimeout 0), not synchronously in the React commit: reading
+  // `scrollHeight` forces a synchronous layout, and doing that per delta
+  // inside the commit janked streaming (laggy thinking/tool animation). By
+  // the time the macrotask runs, the browser has already painted the grown
+  // row, so the layout is clean and the snap costs only a scroll-position
+  // change. A pending flag collapses deltas that land in the same frame into
+  // one snap, and the ref is re-checked so a wheel scroll between the delta
+  // and the task is never overridden. rAF was NOT used: forcing layout inside
+  // the frame callback double-layouts every frame (constant jank).
   useEffect(() => {
     const prevCount = prevMessageCountRef.current;
     prevMessageCountRef.current = messages.length;
@@ -124,10 +126,17 @@ export function useChatScroll(messages: ChatMessage[]): {
       return jumpToPresent();
     }
     if (userScrolledUpRef.current) return;
-    // One synchronous snap per delta. (An earlier rAF-batched version forced
-    // layout inside the frame callback — double layout passes per frame,
-    // making streaming jank constant instead of occasional.)
-    snapToBottom();
+    // Collapse deltas landing in the same frame into ONE snap: the first
+    // delta schedules the task, the rest see the pending flag and skip. The
+    // task resets the flag itself; an unmounted container is a guarded no-op.
+    if (pendingSnapRef.current) return;
+    pendingSnapRef.current = true;
+    window.setTimeout(() => {
+      pendingSnapRef.current = false;
+      // The user may have scrolled up since this snap was scheduled.
+      if (userScrolledUpRef.current) return;
+      snapToBottom();
+    }, 0);
   }, [messages, jumpToPresent, snapToBottom]);
 
   return { containerRef, bottomRef, jumpToPresent };
