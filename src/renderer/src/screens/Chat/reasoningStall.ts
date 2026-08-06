@@ -21,6 +21,20 @@ const revealByReasoningId = new Map<
  *  genuinely resumes (alternating-tag streams). */
 const settledReasoningIds = new Set<string>();
 
+/** Final safety net: once the turn is provably over (isLoading flipped false
+ *  — the agent-finish chime), every gate releases unconditionally. Set at
+ *  turn end, cleared at the next turn start (sendMessage), so it never
+ *  permanently disables the thought→response sequencing. */
+let forceReleased = false;
+
+export function forceReleaseAllReasoning(): void {
+  forceReleased = true;
+}
+
+export function resetReasoningGate(): void {
+  forceReleased = false;
+}
+
 export const REASONING_SETTLE_MS = 1200;
 
 export function markReasoningGrowth(
@@ -44,13 +58,14 @@ export function markReasoningSettled(reasoningId: string | undefined): void {
 }
 
 /** Milliseconds since the reasoning row last grew; MAX when unknown/absent/
- *  settled, so a row with no reasoning (or a fully settled one) is immediately
- *  ready. */
+ *  settled/force-released, so a row with no reasoning (or a fully settled one)
+ *  is immediately ready. */
 export function reasoningStalledMs(
   reasoningId: string | undefined,
   now = Date.now(),
 ): number {
   if (!reasoningId) return Number.MAX_SAFE_INTEGER;
+  if (forceReleased) return Number.MAX_SAFE_INTEGER;
   if (settledReasoningIds.has(reasoningId)) return Number.MAX_SAFE_INTEGER;
   const last = lastGrowthByReasoningId.get(reasoningId);
   if (last === undefined) return Number.MAX_SAFE_INTEGER;
@@ -82,6 +97,7 @@ export function reasoningRevealComplete(
   reasoningId: string | undefined,
 ): boolean {
   if (!reasoningId) return true;
+  if (forceReleased) return true;
   if (settledReasoningIds.has(reasoningId)) return true;
   const reveal = revealByReasoningId.get(reasoningId);
   return reveal !== undefined && reveal.revealedLen >= reveal.fullLen;

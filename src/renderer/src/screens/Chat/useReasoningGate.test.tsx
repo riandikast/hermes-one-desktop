@@ -1,9 +1,11 @@
 import { act, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  forceReleaseAllReasoning,
   markReasoningGrowth,
   markReasoningReveal,
   markReasoningSettled,
+  resetReasoningGate,
 } from "./reasoningStall";
 import { useReasoningGate } from "./useReasoningGate";
 
@@ -165,5 +167,31 @@ describe("useReasoningGate", () => {
       <Gate waitForReasoningId="reasoning-alt" hasContent isLoading={true} />,
     );
     expect(getByTestId("row").textContent).toBe("hidden");
+  });
+
+  it("force-release opens every gate at turn end, reset re-arms for the next turn", () => {
+    // Turn is still "loading" with a growing thought and a behind typewriter —
+    // normally hidden forever. The turn-end force release must open it anyway.
+    markReasoningGrowth("reasoning-force");
+    markReasoningReveal("reasoning-force", 0, 100);
+    forceReleaseAllReasoning();
+    const first = render(
+      <Gate waitForReasoningId="reasoning-force" hasContent isLoading={true} />,
+    );
+    expect(first.getByTestId("row").textContent).toBe("shown");
+
+    // A new turn starts → reset re-arms the gate. An already-shown row stays
+    // shown (never re-hides — would blink), but a NEW row for the new turn is
+    // hidden again while its thought is still growing.
+    resetReasoningGate();
+    markReasoningGrowth("reasoning-force");
+    markReasoningReveal("reasoning-force", 0, 100);
+    const second = render(
+      <Gate waitForReasoningId="reasoning-force" hasContent isLoading={true} />,
+    );
+    const secondRow = second.container.querySelector(
+      '[data-testid="row"]',
+    ) as HTMLElement | null;
+    expect(secondRow?.textContent).toBe("hidden");
   });
 });
