@@ -3,6 +3,10 @@ import {
   applyDashboardStreamEvent,
   type DashboardEventState,
 } from "../src/renderer/src/screens/Chat/dashboardEventAdapter";
+import {
+  markReasoningGrowth,
+  reasoningStalledMs,
+} from "../src/renderer/src/screens/Chat/reasoningStall";
 import type { ChatMessage } from "../src/renderer/src/screens/Chat/types";
 
 function reduceEvents(
@@ -474,5 +478,49 @@ describe("applyDashboardStreamEvent", () => {
       "reasoning",
     ]);
     expect(messages[1]).toMatchObject({ text: "Actual reasoning." });
+  });
+
+  it("marks the trailing thought settled at message.complete so the answer gate does not wait the full settle", () => {
+    // A turn that ends on a trailing thought (last growth just now) without a
+    // tool boundary after it: the gate would otherwise wait REASONING_SETTLE_MS
+    // (1200ms) for the thought to "settle". message.complete must mark it
+    // settled so the gate opens on the next poll without the stall wait.
+    // Unique `now` baseline keeps the reasoning id isolated from other tests'
+    // module-scope state.
+    let state: DashboardEventState = {
+      messages: [{ id: "u-settle", role: "user", content: "go" }],
+      reasoningSegmentClosed: false,
+    };
+    state = applyDashboardStreamEvent(
+      state,
+      { type: "reasoning.delta", payload: { text: "Let me think. " } },
+      { now: 7000 },
+    );
+    const reasoning = state.messages.find(
+      (m) => "kind" in m && m.kind === "reasoning",
+    ) as { id: string } | undefined;
+    expect(reasoning).toBeDefined();
+    if (!reasoning) return;
+    // Simulate the ReasoningRow stamping its last delta (just now) and confirm
+    // the row is NOT yet settled (stalledMs is small, not MAX).
+    markReasoningGrowth(reasoning.id);
+    expect(reasoningStalledMs(reasoning.id)).toBeLessThan(
+      Number.MAX_SAFE_INTEGER,
+    );
+
+    // A trailing answer + a late thought, then the turn completes.
+    state = applyDashboardStreamEvent(
+      state,
+      { type: "message.delta", payload: { text: "partial answer. " } },
+      { now: 7001 },
+    );
+    state = applyDashboardStreamEvent(
+      state,
+      { type: "message.complete", payload: { text: "partial answer. " } },
+      { now: 7002 },
+    );
+    // message.complete marked the trailing thought settled → the gate treats it
+    // as immediately ready, skipping the 1.2s stall.
+    expect(reasoningStalledMs(reasoning.id)).toBe(Number.MAX_SAFE_INTEGER);
   });
 });

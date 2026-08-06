@@ -1,5 +1,6 @@
 import type { ChatToolEvent } from "../../../../shared/chat-stream";
 import { isLossyChunkCopy } from "./lossyText";
+import { markReasoningSettled } from "./reasoningStall";
 import type { ActiveTurn, ChatBubbleMessage, ChatMessage } from "./types";
 
 export interface DashboardStreamEvent<T = unknown> {
@@ -17,11 +18,34 @@ export interface DashboardEventState {
  *  Includes command-executors (terminal/process/bash/…) because write tools
  *  vary by gateway; the real filter is the absolute path found in args. */
 export const WRITE_TOOL_NAMES = [
-  "write_file", "edit_file", "patch_file", "create_file", "delete_file",
-  "move_file", "copy_file", "rename_file", "apply_patch", "str_replace",
-  "save_file", "patch", "edit", "replace", "remove", "update",
-  "terminal", "process", "bash", "shell", "exec",
-  "run_command", "execute_code", "execute", "mkdir", "rm", "mv", "cp",
+  "write_file",
+  "edit_file",
+  "patch_file",
+  "create_file",
+  "delete_file",
+  "move_file",
+  "copy_file",
+  "rename_file",
+  "apply_patch",
+  "str_replace",
+  "save_file",
+  "patch",
+  "edit",
+  "replace",
+  "remove",
+  "update",
+  "terminal",
+  "process",
+  "bash",
+  "shell",
+  "exec",
+  "run_command",
+  "execute_code",
+  "execute",
+  "mkdir",
+  "rm",
+  "mv",
+  "cp",
 ];
 
 interface ApplyDashboardEventOptions {
@@ -326,6 +350,27 @@ function appendReasoningDelta(
     },
     ...messages.slice(insertAt),
   ];
+}
+
+/** A tool/clarify event is a hard boundary: the model finished thinking, so
+ *  the last reasoning row of the in-progress turn will receive no more deltas
+ *  (the next thinking.delta opens a NEW segment). Mark it settled so the
+ *  answer gate does not wait the full REASONING_SETTLE_MS stall after it —
+ *  otherwise a quick thought→answer→tool succession hides the already-streamed
+ *  answer behind the gate for the whole settle window ("unfinished response
+ *  get cut"). The typewriter reveal check still applies, so the thought still
+ *  fully types before the answer reveals. */
+function markTurnLastReasoningSettled(
+  messages: ReadonlyArray<ChatMessage>,
+): void {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role === "user") break;
+    if ("kind" in msg && msg.kind === "reasoning") {
+      markReasoningSettled(msg.id);
+      return;
+    }
+  }
 }
 
 function findToolCallIndex(
@@ -709,8 +754,10 @@ export function applyDashboardStreamEvent(
     case "tool.generating":
     case "tool.complete":
       if (isClarifyToolEvent(event)) {
+        markTurnLastReasoningSettled(state.messages);
         return { ...state, reasoningSegmentClosed: true };
       }
+      markTurnLastReasoningSettled(state.messages);
       return {
         messages: appendToolEvent(
           state.messages,
@@ -719,11 +766,22 @@ export function applyDashboardStreamEvent(
         reasoningSegmentClosed: true,
       };
     case "clarify.request":
+      markTurnLastReasoningSettled(state.messages);
       return {
         messages: appendClarifyRequest(state.messages, event.payload, now),
         reasoningSegmentClosed: true,
       };
     case "message.complete": {
+      // The turn is done — no more deltas will land, so the last reasoning row
+      // of the in-progress turn will receive no further growth. Mark it settled
+      // so the answer gate does not wait the full REASONING_SETTLE_MS stall for
+      // it (a turn that ends on a trailing thought, or whose message.complete
+      // lands a beat before setIsLoading(false) reaches the gate, would
+      // otherwise hide the already-streamed answer behind the gate for the
+      // whole settle window — "unfinished response get cut"). The typewriter
+      // reveal check still applies, so a long trailing thought still fully
+      // types before the answer reveals.
+      markTurnLastReasoningSettled(state.messages);
       const finalText = textFromPayload(event.payload, "text", "rendered");
       const finalReasoning = thinkingTextFromPayload(
         event.payload,
