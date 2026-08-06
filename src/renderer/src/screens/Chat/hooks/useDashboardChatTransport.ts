@@ -1367,10 +1367,13 @@ export function useDashboardChatTransport({
           finalTextHead: rawFinal.slice(0, 60),
           payloadKeys: Object.keys(payloadRecord),
           lastRows: nextMessages
-            .slice(-4)
+            .slice(-5)
             .map((m) =>
-              "kind" in m ? m.kind : `${m.role}(${String(m.content).length})`,
-            ),
+              "kind" in m
+                ? `kind:${m.kind}`
+                : `${m.role}(len ${String(m.content).length}, pending ${!!m.pending})`,
+            )
+            .join(" | "),
           pendingBubbles: nextMessages.filter(
             (m) => !("kind" in m) && m.role === "agent" && m.pending,
           ).length,

@@ -103,5 +103,20 @@ export function useReasoningGate({
     };
   }, [waitForReasoningId, hasContent, isLoading]);
 
+  // Smoking-gun diagnostic: a row that is STILL hidden while the turn has
+  // ended (isLoading false) can only be hidden by a bug — the !isLoading
+  // bypass above must open it. If this fires, dump the gate's inputs so we
+  // can see exactly which condition is stuck.
+  useEffect(() => {
+    if (isLoading || !waiting) return;
+    console.info("[gate-diag] row hidden after turn ended", {
+      waitForReasoningId,
+      hasContent,
+      stalledMs: reasoningStalledMs(waitForReasoningId),
+      revealComplete: reasoningRevealComplete(waitForReasoningId),
+      settleMs: REASONING_SETTLE_MS,
+    });
+  }, [isLoading, waiting, waitForReasoningId, hasContent]);
+
   return { waiting };
 }
