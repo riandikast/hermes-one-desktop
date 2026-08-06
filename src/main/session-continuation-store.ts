@@ -9,8 +9,20 @@ import type { HistoryItem } from "./sessions";
 
 const TABLE = "desktop_session_continuations";
 const ERROR_TABLE = "desktop_session_local_errors";
+const FILE_CHANGES_TABLE = "desktop_session_file_changes";
 const SYNTHETIC_ID_BASE = -900_000_000;
 const ERROR_SYNTHETIC_ID_BASE = -800_000_000;
+
+/** Shape of a persisted per-turn file change (mirrors the renderer's
+ *  `FileChange` in `src/renderer/src/screens/Chat/types.ts`). */
+export interface StoredFileChange {
+  path: string;
+  before: string | null;
+  after: string | null;
+  beforeKnown?: boolean;
+  removed?: string[];
+  added?: string[];
+}
 
 interface StoredContinuationRow {
   prefix_json: string;
@@ -39,6 +51,11 @@ function ensureTable(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_${ERROR_TABLE}_session
       ON ${ERROR_TABLE}(session_id);
+    CREATE TABLE IF NOT EXISTS ${FILE_CHANGES_TABLE} (
+      session_id TEXT PRIMARY KEY,
+      changes_json TEXT NOT NULL,
+      updated_at REAL NOT NULL DEFAULT (strftime('%s', 'now'))
+    );
   `);
 }
 
@@ -283,6 +300,66 @@ export function loadSessionLocalErrors(
       error: row.error_text || "",
     }))
     .filter((row) => row.userContent.trim() && row.error.trim());
+}
+
+/** Persist the file-changes summary of a finished turn so the badge survives
+ *  a session reopen (the live attach is renderer-memory only). */
+export function persistSessionFileChanges(
+  sessionId: string,
+  changes: unknown,
+): void {
+  if (!sessionId || !Array.isArray(changes) || changes.length === 0) return;
+  const db = getDbConnection(false);
+  if (!db) return;
+  ensureTable(db);
+  db.prepare(
+    `INSERT INTO ${FILE_CHANGES_TABLE} (session_id, changes_json, updated_at)
+     VALUES (?, ?, strftime('%s', 'now'))
+     ON CONFLICT(session_id) DO UPDATE SET
+       changes_json = excluded.changes_json,
+       updated_at = excluded.updated_at`,
+  ).run(sessionId, JSON.stringify(changes));
+}
+
+/** Load the persisted file-changes summary for a session (empty when none). */
+export function loadSessionFileChanges(
+  db: Database.Database,
+  sessionId: string,
+): StoredFileChange[] {
+  if (!tableExists(db, FILE_CHANGES_TABLE)) return [];
+  const row = db
+    .prepare(
+      `SELECT changes_json FROM ${FILE_CHANGES_TABLE} WHERE session_id = ?`,
+    )
+    .get(sessionId) as { changes_json: string } | undefined;
+  if (!row?.changes_json) return [];
+  try {
+    const parsed = JSON.parse(row.changes_json);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (c): c is StoredFileChange =>
+        isRecord(c) && typeof c.path === "string" && c.path.length > 0,
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** Attach a session's persisted file changes to its LAST assistant bubble so
+ *  a reopened transcript shows the same badge as the live one. */
+export function attachSessionFileChanges(
+  items: ReadonlyArray<HistoryItem>,
+  changes: ReadonlyArray<StoredFileChange>,
+): HistoryItem[] {
+  if (changes.length === 0) return [...items];
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i];
+    if (item.kind !== "assistant") continue;
+    const output = items.slice();
+    output[i] = { ...item, fileChanges: changes as HistoryItem["fileChanges"] };
+    return output;
+  }
+  return [...items];
 }
 
 export function continuationItemsToHistory(

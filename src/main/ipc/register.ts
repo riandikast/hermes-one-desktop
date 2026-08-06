@@ -33,6 +33,7 @@ import {
 import {
   persistSessionContinuation,
   persistSessionLocalError,
+  persistSessionFileChanges,
 } from "../session-continuation-store";
 import {
   getSessionContextFoldersForSession,
@@ -2106,6 +2107,14 @@ export function registerIpcHandlers(context: IpcContext): void {
     "record-session-local-error",
     (_event, sessionId: string, error: DesktopSessionLocalError) => {
       persistSessionLocalError(sessionId, error?.error, error?.userContent);
+      return true;
+    },
+  );
+
+  ipcMain.handle(
+    "record-session-file-changes",
+    (_event, sessionId: string, changes: unknown) => {
+      persistSessionFileChanges(sessionId, changes);
       return true;
     },
   );

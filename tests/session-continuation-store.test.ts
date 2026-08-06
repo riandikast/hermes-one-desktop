@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  attachSessionFileChanges,
   continuationItemsToHistory,
   mergeSessionLocalErrors,
   normalizeContinuationItems,
@@ -114,5 +115,44 @@ describe("desktop session continuations", () => {
       "user",
       "assistant",
     ]);
+  });
+
+  it("attaches persisted file changes to the LAST assistant bubble", () => {
+    const items = [
+      { kind: "user" as const, id: 1, content: "deploy", timestamp: 1 },
+      {
+        kind: "assistant" as const,
+        id: 2,
+        content: "old answer",
+        timestamp: 2,
+      },
+      { kind: "user" as const, id: 3, content: "again", timestamp: 3 },
+      { kind: "assistant" as const, id: 4, content: "final", timestamp: 4 },
+      {
+        kind: "reasoning" as const,
+        id: 5,
+        assistantId: 4,
+        text: "…",
+        timestamp: 5,
+      },
+    ];
+    const changes = [{ path: "C:\\repo\\a.txt", before: "x", after: "y" }];
+
+    const attached = attachSessionFileChanges(items, changes);
+
+    // Badge lands on the LAST assistant bubble (id 4), not the earlier one.
+    expect(attached[3]).toMatchObject({
+      kind: "assistant",
+      content: "final",
+      fileChanges: changes,
+    });
+    expect(attached[1]).not.toHaveProperty("fileChanges");
+  });
+
+  it("leaves items unchanged when there are no persisted file changes", () => {
+    const items = [
+      { kind: "assistant" as const, id: 1, content: "ok", timestamp: 1 },
+    ];
+    expect(attachSessionFileChanges(items, [])).toEqual(items);
   });
 });

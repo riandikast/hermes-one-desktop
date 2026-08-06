@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { extractToolPath, diffLines, type DiffLine } from "./fileChanges";
 
 function text(lines: DiffLine[]): string {
-  return lines.map((l) => `${l.type === "add" ? "+" : l.type === "del" ? "-" : " "}${l.text}`).join("\n");
+  return lines
+    .map(
+      (l) =>
+        `${l.type === "add" ? "+" : l.type === "del" ? "-" : " "}${l.text}`,
+    )
+    .join("\n");
 }
 
 describe("extractToolPath", () => {
@@ -36,12 +41,17 @@ describe("extractToolPath", () => {
 
   it("prefers absolute-looking paths over relative", () => {
     expect(
-      extractToolPath({ file_path: "relative.ts", absolute_path: "/abs/rel.ts" }),
+      extractToolPath({
+        file_path: "relative.ts",
+        absolute_path: "/abs/rel.ts",
+      }),
     ).toBe("/abs/rel.ts");
   });
 
   it("extracts a path token embedded in a plain string", () => {
-    expect(extractToolPath("Write file: C:\\tmp\\a.txt")).toBe("C:\\tmp\\a.txt");
+    expect(extractToolPath("Write file: C:\\tmp\\a.txt")).toBe(
+      "C:\\tmp\\a.txt",
+    );
     expect(extractToolPath("echo hi > C:/tmp/b.txt now")).toBe("C:/tmp/b.txt");
     expect(extractToolPath("Read C:\\repo\\src\\main.ts")).toBe(
       "C:\\repo\\src\\main.ts",
@@ -49,9 +59,9 @@ describe("extractToolPath", () => {
   });
 
   it("extracts a path token embedded in a shell command arg", () => {
-    expect(
-      extractToolPath({ command: "echo hi > C:\\tmp\\a.txt" }),
-    ).toBe("C:\\tmp\\a.txt");
+    expect(extractToolPath({ command: "echo hi > C:\\tmp\\a.txt" })).toBe(
+      "C:\\tmp\\a.txt",
+    );
     expect(
       extractToolPath({
         command: "cd C:\\proj && node build.mjs && dir /x",
@@ -60,9 +70,9 @@ describe("extractToolPath", () => {
   });
 
   it("extracts a path from a JSON-encoded string arg", () => {
-    expect(
-      extractToolPath('{"command": "echo hi > C:\\\\tmp\\\\a.txt"}'),
-    ).toBe("C:\\tmp\\a.txt");
+    expect(extractToolPath('{"command": "echo hi > C:\\\\tmp\\\\a.txt"}')).toBe(
+      "C:\\tmp\\a.txt",
+    );
   });
 
   it("does not treat URLs as paths", () => {
@@ -73,6 +83,26 @@ describe("extractToolPath", () => {
   it("does not treat relative paths as absolute", () => {
     expect(extractToolPath({ command: "node src/a.js" })).toBeNull();
     expect(extractToolPath("node src/a.js")).toBeNull();
+  });
+
+  it("resolves relative path keys against the session cwd", () => {
+    expect(extractToolPath({ path: "config.yaml" }, "C:\\repo")).toBe(
+      "C:\\repo\\config.yaml",
+    );
+    expect(extractToolPath({ file: "./src/main.ts" }, "C:\\repo")).toBe(
+      "C:\\repo\\src\\main.ts",
+    );
+    expect(
+      extractToolPath({ file_path: "..\\docs\\x.md" }, "C:\\repo\\src"),
+    ).toBe("C:\\repo\\docs\\x.md");
+    expect(extractToolPath({ path: "config.yaml" }, "/repo")).toBe(
+      "/repo/config.yaml",
+    );
+  });
+
+  it("still returns null for relative paths without a baseDir", () => {
+    expect(extractToolPath({ path: "config.yaml" })).toBeNull();
+    expect(extractToolPath({ path: "src/a.js" })).toBeNull();
   });
 
   it("normalizes git-bash paths to Windows form", () => {

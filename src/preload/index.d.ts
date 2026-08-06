@@ -674,6 +674,10 @@ interface HermesAPI {
     sessionId: string,
     error: DesktopSessionLocalError,
   ) => Promise<boolean>;
+  recordSessionFileChanges: (
+    sessionId: string,
+    changes: unknown,
+  ) => Promise<boolean>;
   getSessionContextFolder: (sessionId: string) => Promise<string[]>;
   watchContextFolder: (folder: string) => Promise<void>;
   onContextFolderChanged: (callback: () => void) => () => void;

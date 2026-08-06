@@ -24,9 +24,35 @@ function looksLikeAbsolutePath(candidate: string): boolean {
   const trimmed = candidate.trim();
   if (!trimmed) return false;
   // Windows drive letter (C:\...) or POSIX absolute (/...). Reject
-  // whitespace/quotes so "my file path" or JSON noise don't match.
+  // whitespace/quotes so "my file path" or JSON noise don't match. The
+  // POSIX branch is ANCHORED (^/) — an unanchored /(?!\/) matched any slash
+  // anywhere, so "src/a.js" was wrongly treated as absolute.
   if (/[\s"']/.test(trimmed)) return false;
-  return /^[A-Za-z]:[\\/]|\/(?!\/)/.test(trimmed);
+  return /^[A-Za-z]:[\\/]|^\//.test(trimmed);
+}
+
+/** A relative file-ish path: no whitespace/quotes, not absolute, and shaped
+ *  like a path (contains a separator, or starts with ./ ..\ ../ etc.) or a
+ *  bare filename (has an extension, or the key was an explicit path key). */
+function looksLikeRelativePath(candidate: string): boolean {
+  const trimmed = candidate.trim();
+  if (!trimmed) return false;
+  if (/[\s"']/.test(trimmed)) return false;
+  if (looksLikeAbsolutePath(trimmed)) return false;
+  if (/^\.{1,2}[\\/]/.test(trimmed)) return true;
+  if (/[\\/]/.test(trimmed)) return true;
+  return /\.[^\\/]+$/.test(trimmed);
+}
+
+function joinPath(base: string, rel: string): string {
+  const sep = base.includes("\\") ? "\\" : "/";
+  const parts = base.split(/[\\/]/);
+  for (const seg of rel.split(/[\\/]/)) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") parts.pop();
+    else parts.push(seg);
+  }
+  return parts.join(sep);
 }
 
 /** Find the first absolute-path token embedded in arbitrary text (e.g. a
@@ -39,11 +65,7 @@ function findAbsolutePathToken(text: string): string | null {
   const winRe = /[A-Za-z]:[\\/][^\s"'`<>|]*/g;
   const posixRe = /[\\/][^\s"'`<>|]+/g;
   let best: { index: number; token: string; fileLike: boolean } | null = null;
-  const consider = (
-    index: number,
-    raw: string,
-    fileLike: boolean,
-  ): void => {
+  const consider = (index: number, raw: string, fileLike: boolean): void => {
     const token = raw.replace(/\\\\/g, "\\");
     if (
       !best ||
@@ -87,17 +109,27 @@ function normalizePath(path: string): string {
 /**
  * Best-effort extraction of the file path a tool operates on. Accepts an
  * args object, a JSON-encoded args string, or a plain description string
- * (the gateway's `tool.start.context`). Returns null when no absolute path
- * can be found.
+ * (the gateway's `tool.start.context`). Returns null when no path can be
+ * found. `baseDir` (the session cwd) additionally resolves RELATIVE paths —
+ * many tools are invoked with `path: "config.yaml"` against the session
+ * working directory, which the old absolute-only matcher silently missed.
  */
-export function extractToolPath(args: unknown): string | null {
+export function extractToolPath(
+  args: unknown,
+  baseDir?: string | null,
+): string | null {
   let text = "";
   if (isRecord(args)) {
     // 1. Direct keys.
     for (const key of PATH_KEYS) {
       const value = args[key];
-      if (typeof value === "string" && looksLikeAbsolutePath(value)) {
-        return normalizePath(value.trim());
+      if (typeof value !== "string") continue;
+      const trimmed = value.trim();
+      if (looksLikeAbsolutePath(trimmed)) {
+        return normalizePath(trimmed);
+      }
+      if (baseDir && looksLikeRelativePath(trimmed)) {
+        return normalizePath(joinPath(baseDir, trimmed));
       }
     }
     try {

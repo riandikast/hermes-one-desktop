@@ -1220,6 +1220,7 @@ export function useDashboardChatTransport({
               (toolPayload.args as unknown) ??
               toolPayload.input ??
               toolPayload.arguments,
+            lastSyncedCwdRef.current ?? contextFolder,
           );
           if (path && !fileChangesRef.current.has(path)) {
             fileChangesRef.current.set(path, {
@@ -1275,7 +1276,10 @@ export function useDashboardChatTransport({
           (toolPayload.args as unknown) ??
           toolPayload.input ??
           toolPayload.arguments;
-        const path = extractToolPath(args);
+        const path = extractToolPath(
+          args,
+          lastSyncedCwdRef.current ?? contextFolder,
+        );
         if (matched && path) {
           // Patch-style tools carry the exact hunk — capture it so the diff
           // view renders git-style even without the full before content.
@@ -1417,6 +1421,18 @@ export function useDashboardChatTransport({
           const changes = Array.from(fileChangesRef.current.values()).filter(
             (c) => c.after !== null || c.before !== null,
           );
+          const persistChanges = (list: FileChange[]): void => {
+            const storedSessionId = storedSessionIdRef.current;
+            const record = window.hermesAPI.recordSessionFileChanges;
+            if (
+              dashboardShouldPersistLocalOverlays(connectionMode) &&
+              storedSessionId &&
+              list.length > 0 &&
+              typeof record === "function"
+            ) {
+              void record(storedSessionId, list).catch(() => undefined);
+            }
+          };
           const attachChanges = (list: FileChange[]): void => {
             // The bubble is not necessarily the last row — tool rows are
             // appended after it. Scan backwards for the last assistant
@@ -1440,6 +1456,7 @@ export function useDashboardChatTransport({
               next[idx] = { ...last, fileChanges: list } as ChatMessage;
               messagesRef.current = next;
               setMessages(next);
+              persistChanges(list);
               console.info(`[file-changes] badge attached (${list.length})`);
               return;
             }

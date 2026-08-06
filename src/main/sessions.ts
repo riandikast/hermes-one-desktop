@@ -6,11 +6,7 @@ import { isImageMime } from "../shared/attachments";
 import { clearStagedAttachments } from "./attachment-staging";
 import { removeSessionFromCache } from "./session-cache";
 import { getDbConnection } from "./db";
-import {
-  getActiveProfileNameSync,
-  profileHome,
-  safeWriteFile,
-} from "./utils";
+import { getActiveProfileNameSync, profileHome, safeWriteFile } from "./utils";
 import {
   attachmentFromLocalVisionImagePath,
   deletePromptImageAttachmentsForSession,
@@ -19,8 +15,10 @@ import {
   stripTrailingImagePlaceholders,
 } from "./session-attachment-store";
 import {
+  attachSessionFileChanges,
   deleteSessionContinuationForSession,
   loadSessionContinuationItems,
+  loadSessionFileChanges,
   loadSessionLocalErrors,
   mergeSessionLocalErrors,
 } from "./session-continuation-store";
@@ -78,6 +76,15 @@ export type HistoryItem =
       timestamp: number;
       error?: string;
       attachments?: Attachment[];
+      /** Per-turn file-changes badge (desktop-persisted local overlay). */
+      fileChanges?: Array<{
+        path: string;
+        before: string | null;
+        after: string | null;
+        beforeKnown?: boolean;
+        removed?: string[];
+        added?: string[];
+      }>;
     }
   | {
       kind: "reasoning";
@@ -718,7 +725,11 @@ export function applySessionLocalOverlays(
     canonical,
     loadSessionLocalErrors(db, sessionId),
   );
-  return [...loadSessionContinuationItems(db, sessionId), ...withLocalErrors];
+  const withFileChanges = attachSessionFileChanges(
+    withLocalErrors,
+    loadSessionFileChanges(db, sessionId),
+  );
+  return [...loadSessionContinuationItems(db, sessionId), ...withFileChanges];
 }
 
 export interface DeleteSessionsResult {
@@ -775,9 +786,7 @@ function deleteSessionRows(db: Database.Database, sessionId: string): number {
 function directChildIds(db: Database.Database, sessionId: string): string[] {
   if (!hasParentSessionColumn(db)) return [];
   const rows = db
-    .prepare(
-      "SELECT id FROM sessions WHERE parent_session_id = ?",
-    )
+    .prepare("SELECT id FROM sessions WHERE parent_session_id = ?")
     .all(sessionId) as Array<{ id: string }>;
   return rows.map((r) => r.id);
 }
@@ -787,7 +796,10 @@ function directChildIds(db: Database.Database, sessionId: string): string[] {
  * are throwaway by definition — deleting the parent conversation must not
  * leave orphaned child rows eating state.db storage.
  */
-function deleteSessionSubtree(db: Database.Database, sessionId: string): number {
+function deleteSessionSubtree(
+  db: Database.Database,
+  sessionId: string,
+): number {
   const order = collectSubtreeOrder(sessionId, (id) => directChildIds(db, id));
   let deleted = 0;
   for (const id of order) deleted += deleteSessionRows(db, id);
@@ -870,10 +882,7 @@ export function getSubagentGcDays(): number {
 export function setSubagentGcDays(days: number): void {
   const normalized = Math.max(0, Math.floor(days));
   try {
-    safeWriteFile(
-      subagentGcFilePath(),
-      JSON.stringify({ days: normalized }),
-    );
+    safeWriteFile(subagentGcFilePath(), JSON.stringify({ days: normalized }));
   } catch {
     // non-fatal
   }

@@ -13,5 +13,21 @@ on `tool.complete` the after-content is read. The accumulated
 renders the badge; [[src/renderer/src/screens/Chat/FileChangesDialog.tsx]]
 shows the list + side-by-side read-only CodeMirror panes.
 
+[[src/renderer/src/screens/Chat/fileChanges.ts#extractToolPath]] also resolves
+RELATIVE path keys (`path: "config.yaml"`) against the session cwd
+(`lastSyncedCwdRef` / context folder) — many tools invoke write tools with
+relative paths, which the old absolute-only matcher silently missed. The
+absolute-check regex is anchored (`^/`), so `src/a.js`-style values are no
+longer misread as absolute.
+
+The summary is PERSISTED so it survives reopen: at `message.complete` the
+transport calls `recordSessionFileChanges` (preload → main
+`persistSessionFileChanges` in [[src/main/session-continuation-store.ts]]),
+stored per session in the local `desktop_session_file_changes` table.
+[[src/main/sessions.ts#applySessionLocalOverlays]] re-attaches the stored
+changes to the LAST assistant `HistoryItem` of the session on load, and
+`dbItemsToChatMessages` copies them onto the reopened bubble — same badge,
+live or reopened.
+
 Capture is dashboard-transport only — the legacy transport's progress strings
 don't carry reliable paths. Reads are best-effort; failures are swallowed.

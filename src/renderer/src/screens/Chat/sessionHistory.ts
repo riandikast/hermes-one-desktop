@@ -5,7 +5,12 @@ import {
   normalizeMessageText,
 } from "./chatMessages";
 import { isLossyChunkCopy } from "./lossyText";
-import type { ActiveTurn, ChatMessage, ChatBubbleMessage } from "./types";
+import type {
+  ActiveTurn,
+  ChatMessage,
+  ChatBubbleMessage,
+  FileChange,
+} from "./types";
 
 /**
  * Shape of one row from the main process's `getSessionMessages` IPC.
@@ -23,6 +28,8 @@ export interface DbHistoryItem {
   args?: string;
   timestamp?: number;
   attachments?: Attachment[];
+  /** Desktop-persisted per-turn file-changes badge (local overlay). */
+  fileChanges?: FileChange[];
 }
 
 /**
@@ -98,6 +105,9 @@ export function dbItemsToChatMessages(
             ...(it.error ? { error: it.error, localOnly: true } : {}),
             ...(it.attachments && it.attachments.length > 0
               ? { attachments: it.attachments }
+              : {}),
+            ...(it.fileChanges && it.fileChanges.length > 0
+              ? { fileChanges: it.fileChanges }
               : {}),
           };
         case "reasoning":
