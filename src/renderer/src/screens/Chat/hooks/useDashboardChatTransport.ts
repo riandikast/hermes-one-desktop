@@ -1495,7 +1495,13 @@ export function useDashboardChatTransport({
             ? payloadRecord.text
             : typeof payloadRecord.rendered === "string"
               ? payloadRecord.rendered
-              : "";
+              : typeof payloadRecord.final_response === "string"
+                ? payloadRecord.final_response
+                : typeof payloadRecord.output_text === "string"
+                  ? payloadRecord.output_text
+                  : typeof payloadRecord.content === "string"
+                    ? payloadRecord.content
+                    : "";
         console.info("[gate-diag] message.complete", {
           finalTextLen: rawFinal.length,
           finalTextHead: rawFinal.slice(0, 60),

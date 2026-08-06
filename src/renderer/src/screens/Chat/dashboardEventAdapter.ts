@@ -794,7 +794,21 @@ export function applyDashboardStreamEvent(
       // reveal check still applies, so a long trailing thought still fully
       // types before the answer reveals.
       markTurnLastReasoningSettled(state.messages);
-      const finalText = textFromPayload(event.payload, "text", "rendered");
+      // The gateway can deliver the final text under several keys depending
+      // on transport/version: "text"/"rendered" (streaming completion) or
+      // "final_response"/"output_text"/"content" (RPC-style completion).
+      // Missing one shape made finalText empty → completeAssistantWithFinalText
+      // early-returned → NO answer bubble while isLoading still flipped false
+      // (chime fires, answer never appears — the intermittent "last answer
+      // missing on live" bug).
+      const finalText = textFromPayload(
+        event.payload,
+        "text",
+        "rendered",
+        "final_response",
+        "output_text",
+        "content",
+      );
       const finalReasoning = thinkingTextFromPayload(
         event.payload,
         "reasoning",

@@ -322,6 +322,34 @@ describe("applyDashboardStreamEvent", () => {
     expect(agent).toMatchObject({ pending: false });
   });
 
+  it("materializes the answer from final_response when the payload has no text key", () => {
+    // Some gateway transports deliver the completion text under
+    // `final_response` instead of `text` — without this fallback the answer
+    // bubble was never created while isLoading still flipped false (the
+    // intermittent "last answer missing even though the chime fired" bug).
+    let state: DashboardEventState = {
+      messages: [
+        { id: "u-1", role: "user", content: "time" },
+        { id: "r-1", kind: "reasoning", role: "agent", text: "Let me check." },
+      ],
+      reasoningSegmentClosed: false,
+    };
+    state = applyDashboardStreamEvent(
+      state,
+      {
+        type: "message.complete",
+        payload: { status: "completed", final_response: "It is 6:51 PM." },
+      },
+      { now: 301 },
+    );
+
+    const kinds = state.messages.map((m) => ("kind" in m ? m.kind : m.role));
+    expect(kinds).toEqual(["user", "reasoning", "agent"]);
+    const agent = state.messages[2] as ChatMessage & { content: string };
+    expect(agent.content).toBe("It is 6:51 PM.");
+    expect(agent).toMatchObject({ pending: false });
+  });
+
   it("moves the completed final answer to the END after trailing tool/reasoning rows", () => {
     // The gateway streamed: answer text → tools → trailing thought. The final
     // text must not stay merged mid-transcript (answer "cut" above the tools);
