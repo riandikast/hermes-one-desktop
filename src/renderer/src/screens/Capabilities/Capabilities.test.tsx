@@ -166,3 +166,28 @@ describe("Capabilities — Toolsets tab", () => {
     expect(setToolset).toHaveBeenCalledWith("vision", true, "default");
   });
 });
+
+const MOCK_MCP = [
+  {
+    name: "github",
+    type: "http" as const,
+    transport: "http" as const,
+    enabled: true,
+    detail: "https://example.com/mcp",
+    url: "https://example.com/mcp",
+    args: [],
+    env: {},
+  },
+];
+
+describe("Capabilities — MCP tab", () => {
+  it("renders the MCP server table from listMcpServers", async () => {
+    const view = mountWith({ listMcpServers: vi.fn().mockResolvedValue(MOCK_MCP) });
+    await waitFor(() => expect(view.getByText("capabilities.title")).toBeTruthy());
+    const tabs = view.container.querySelectorAll(".cap-tab");
+    await act(async () => {
+      fireEvent.click(tabs[2] as HTMLButtonElement);
+    });
+    await waitFor(() => expect(view.getByText("github")).toBeTruthy());
+  });
+});
