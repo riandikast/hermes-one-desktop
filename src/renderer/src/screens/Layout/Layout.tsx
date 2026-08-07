@@ -20,14 +20,11 @@ import { ActiveSessionsBar } from "./ActiveSessionsBar";
 import { StatusBar } from "./StatusBar";
 import Sessions from "../Sessions/Sessions";
 import Agents from "../Agents/Agents";
-import Discover from "../Discover/Discover";
 import ProfileSwitcher from "./ProfileSwitcher";
 import SidebarRecentSessions, {
   SHOW_SUBAGENT_RUNS_KEY,
 } from "./SidebarRecentSessions";
-import Skills from "../Skills/Skills";
 import Memory from "../Memory/Memory";
-import Tools from "../Tools/Tools";
 import Gateway from "../Gateway/Gateway";
 import Office from "../Office/Office";
 import { FileViewer } from "../Chat/FileViewer";
@@ -37,6 +34,7 @@ import Kanban from "../Kanban/Kanban";
 import KnowledgeScreen from "../Knowledge/KnowledgeScreen";
 import Usage from "../Usage/Usage";
 import { CommandScreen } from "../Command/CommandScreen";
+import Capabilities from "../Capabilities/Capabilities";
 import RemoteNotice from "../../components/RemoteNotice";
 import VerifyWarningBanner from "../../components/VerifyWarningBanner";
 import { useSettingsModal } from "../../components/settings/SettingsModalContext";
@@ -44,7 +42,6 @@ import {
   Compass,
   Settings as SettingsIcon,
   Brain,
-  Workflow,
   Signal,
   Building,
   KeyRound,
@@ -67,13 +64,11 @@ import { useI18n } from "../../components/useI18n";
 type View =
   | "chat"
   | "file"
-  | "discover"
+  | "capabilities"
   | "agents"
   | "office"
   | "providers"
-  | "skills"
   | "memory"
-  | "tools"
   | "schedules"
   | "knowledge"
   | "commands"
@@ -82,7 +77,7 @@ type View =
   | "usage";
 
 const PINNED_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
-  { view: "discover", icon: Compass, labelKey: "navigation.discover" },
+  { view: "capabilities", icon: Compass, labelKey: "navigation.tools" },
   { view: "office", icon: Building, labelKey: "navigation.office" },
   { view: "kanban", icon: KanbanIcon, labelKey: "navigation.kanban" },
   { view: "schedules", icon: Timer, labelKey: "navigation.schedules" },
@@ -93,7 +88,6 @@ const PINNED_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
 const FOOTER_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "providers", icon: KeyRound, labelKey: "navigation.providers" },
   { view: "gateway", icon: Signal, labelKey: "navigation.gateway" },
-  { view: "tools", icon: Workflow, labelKey: "navigation.tools" },
   { view: "memory", icon: Brain, labelKey: "navigation.memory" },
   { view: "usage", icon: BarChart3, labelKey: "navigation.usage" },
 ];
@@ -403,10 +397,6 @@ function Layout({
     () => new Set<View>(["chat"]),
   );
   const [remoteMode, setRemoteMode] = useState(false);
-  const [discoverFocus, setDiscoverFocus] = useState<{
-    kind: "skills" | "mcps";
-    nonce: number;
-  } | null>(null);
 
   const paneStyle = (target: View): React.CSSProperties => ({
     display: view === target ? "flex" : "none",
@@ -419,7 +409,7 @@ function Layout({
     () => ({
       chat: "navigation.chat",
       file: "navigation.file",
-      discover: "navigation.discover",
+      capabilities: "navigation.tools",
       office: "navigation.office",
       kanban: "navigation.kanban",
       schedules: "navigation.schedules",
@@ -427,11 +417,9 @@ function Layout({
       commands: "navigation.commands",
       providers: "navigation.providers",
       gateway: "navigation.gateway",
-      tools: "navigation.tools",
       memory: "navigation.memory",
       usage: "navigation.usage",
       agents: "navigation.agents",
-      skills: "navigation.skills",
     }),
     [],
   );
@@ -547,14 +535,6 @@ function Layout({
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [openSettings, activeProfile]);
-
-  const focusDiscover = useCallback(
-    (kind: "skills" | "mcps") => {
-      setDiscoverFocus((prev) => ({ kind, nonce: (prev?.nonce ?? 0) + 1 }));
-      goTo("discover");
-    },
-    [goTo],
-  );
 
   useEffect(() => {
     window.hermesAPI.isRemoteOnlyMode().then(setRemoteMode);
@@ -1297,17 +1277,12 @@ function Layout({
             </div>
           )}
 
-          {visitedViews.has("discover") && (
-            <div style={paneStyle("discover")}>
-              {remoteMode ? (
-                <RemoteNotice feature="Discover" />
-              ) : (
-                <Discover
-                  profile={activeProfile}
-                  visible={view === "discover"}
-                  focusKind={discoverFocus ?? undefined}
-                />
-              )}
+          {visitedViews.has("capabilities") && (
+            <div style={paneStyle("capabilities")}>
+              <Capabilities
+                profile={activeProfile}
+                visible={view === "capabilities"}
+              />
             </div>
           )}
 
@@ -1344,16 +1319,6 @@ function Layout({
             </div>
           )}
 
-          {visitedViews.has("skills") && (
-            <div style={paneStyle("skills")}>
-              {remoteMode ? (
-                <RemoteNotice feature="Skills" />
-              ) : (
-                <Skills profile={activeProfile} />
-              )}
-            </div>
-          )}
-
           {visitedViews.has("memory") && (
             <div style={paneStyle("memory")}>
               {remoteMode ? (
@@ -1361,19 +1326,6 @@ function Layout({
               ) : (
                 <Memory profile={activeProfile} />
               )}
-            </div>
-          )}
-
-          {visitedViews.has("tools") && (
-            <div style={paneStyle("tools")}>
-              <Tools
-                profile={activeProfile}
-                showPlatformToolsets={!remoteMode}
-                remoteMode={remoteMode}
-                visible={view === "tools"}
-                onBrowseSkills={() => focusDiscover("skills")}
-                onBrowseMcps={() => focusDiscover("mcps")}
-              />
             </div>
           )}
 
