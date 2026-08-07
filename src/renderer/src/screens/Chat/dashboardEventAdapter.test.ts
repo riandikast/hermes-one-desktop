@@ -397,6 +397,39 @@ describe("mergeFinalAssistantText — official stability contract", () => {
     expect((out[0] as ChatBubbleMessage).content).toBe("streamed");
     expect((out[0] as ChatBubbleMessage).pending).toBe(true);
   });
+
+  it("does NOT merge previous turns' answers (no turnId on old bubbles)", () => {
+    // Reopened/resumed sessions load older turns from state.db — those
+    // bubbles carry NO turnId. A later live turn's message.complete must not
+    // concatenate the whole session into its bubble (the "every answer merged
+    // / re-answered" bug): the merge scope is the CURRENT turn only.
+    const oldDbAnswer: ChatMessage = {
+      id: "db-1",
+      role: "agent",
+      content: "Earlier turn answer. ",
+    };
+    const messages: ChatMessage[] = [
+      { id: "db-u1", role: "user", content: "first question" },
+      oldDbAnswer,
+      { id: "u2", role: "user", content: "second question" },
+      streamedBubble("Second turn partial ", "a2"),
+    ];
+    const out = mergeFinalAssistantText(
+      messages,
+      "Second turn partial answer.",
+      "t2",
+    );
+    const bubbles = out.filter((m) => m.role === "agent" && !("kind" in m));
+    expect(bubbles).toHaveLength(2); // old answer + new answer, NOT one blob
+    const contents = bubbles.map((b) =>
+      String((b as ChatBubbleMessage).content),
+    );
+    expect(contents).toContain("Earlier turn answer. ");
+    expect(contents).toContain("Second turn partial answer.");
+    // The old answer must not be concatenated into the new bubble.
+    const newAnswer = contents.find((c) => c.includes("Second turn"));
+    expect(newAnswer).toBe("Second turn partial answer.");
+  });
 });
 
 describe("finalizeInterruptedMessages — session.info running:false settle", () => {
