@@ -83,6 +83,7 @@ import {
   deleteKnowledgeFile,
   importKnowledgeFolder,
   buildKnowledgeIndex,
+  buildFolderIndex,
 } from "../knowledge";
 import {
   deleteCommand,
@@ -3152,6 +3153,11 @@ export function registerIpcHandlers(context: IpcContext): void {
       return buildKnowledgeIndex(bundleNames).catch(() => "");
     },
   );
+
+  ipcMain.handle("get-folder-index", async (_event, folders: string[]) => {
+    if (!Array.isArray(folders) || folders.length === 0) return "";
+    return buildFolderIndex(folders).catch(() => "");
+  });
 
   // ── Commands store ─────────────────────────────────────────────────
   ipcMain.handle("commands:list", async () => {

@@ -323,3 +323,103 @@ export async function buildKnowledgeIndex(
     ...sections,
   ].join("\n\n");
 }
+
+/** Directories skipped when indexing a workspace folder (vcs, build, deps). */
+const FOLDER_INDEX_EXCLUDED_DIRS = new Set([
+  "node_modules",
+  ".git",
+  ".hg",
+  ".svn",
+  "dist",
+  "build",
+  "out",
+  ".cache",
+  ".next",
+  "__pycache__",
+  ".venv",
+  "venv",
+  "target",
+  ".idea",
+  ".vscode",
+  "coverage",
+  ".turbo",
+  ".parcel-cache",
+  ".dart_tool",
+  "Pods",
+]);
+
+/** Cap on the number of lines listed per folder (bounds the walk). */
+const FOLDER_INDEX_MAX_LINES_PER_FOLDER = 40;
+
+/**
+ * Build a lightweight index of the attached workspace folder(s) for system
+ * prompt injection — the same shape as [[buildKnowledgeIndex]] but for
+ * arbitrary absolute folder paths. The model learns the folder's structure by
+ * DEFAULT (no @mention required), matching how harnesses surface attached
+ * workspaces: a file map with one-line hints, read on demand with file tools.
+ */
+export async function buildFolderIndex(folders: string[]): Promise<string> {
+  const roots = [
+    ...new Set((folders || []).map((f) => f.trim()).filter(Boolean)),
+  ];
+  if (roots.length === 0) return "";
+
+  const sections: string[] = [];
+  let budget = KNOWLEDGE_INDEX_MAX_CHARS;
+
+  for (const root of roots) {
+    if (budget <= 0) break;
+    const lines: string[] = [];
+    const queue: string[] = [root];
+    while (
+      queue.length > 0 &&
+      lines.length < FOLDER_INDEX_MAX_LINES_PER_FOLDER
+    ) {
+      const dir = queue.shift()!;
+      let entries;
+      try {
+        entries = await readdir(dir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      entries.sort((a, b) => a.name.localeCompare(b.name));
+      for (const e of entries) {
+        if (lines.length >= FOLDER_INDEX_MAX_LINES_PER_FOLDER) break;
+        if (budget <= 0) break;
+        if (e.isDirectory()) {
+          if (
+            !FOLDER_INDEX_EXCLUDED_DIRS.has(e.name) &&
+            !e.name.startsWith(".")
+          ) {
+            queue.push(join(dir, e.name));
+          }
+          continue;
+        }
+        if (e.name.startsWith(".")) continue;
+        const full = join(dir, e.name);
+        let hint = "";
+        try {
+          const st = await stat(full);
+          if (!st.isFile() || st.size > 256 * 1024) continue;
+          const content = await readFile(full, "utf8");
+          hint = extractKnowledgeHint(content);
+        } catch {
+          /* hint optional — file may be unreadable/binary */
+        }
+        const line = hint ? `- ${full} — ${hint}` : `- ${full}`;
+        lines.push(line);
+        budget -= line.length;
+      }
+    }
+    if (lines.length === 0) continue;
+    const name = root.split(/[\\/]/).filter(Boolean).pop() || root;
+    sections.push(`## ${name}\n${lines.join("\n")}`);
+  }
+
+  if (sections.length === 0) return "";
+
+  return [
+    "The user attached the following workspace folders as context. Read files with the file tools when any listed file could be relevant to the request — the hint line is only a pointer, so open the file to see its full content before deciding it is not relevant. Do not dump file contents into the conversation unless the user explicitly asks.",
+    ...sections,
+  ].join("\n\n");
+}

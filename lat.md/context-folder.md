@@ -26,6 +26,10 @@ The context-folder tree panel uses a compact header and can be resized from its 
 
 [[src/renderer/src/screens/Chat/WorktreePanel.tsx#WorktreePanel]] stores its width in `localStorage` under `hermes:worktreePanelWidth`, clamps it between a usable minimum and the available chat width, and updates it through a pointer-drag handle styled by `.worktree-resize-handle`.
 
+## Folder index in the system prompt
+
+Binding a context folder used to only pass it as the gateway cwd — the model had read tools but was never TOLD what the folder contains unless the user wrote an @mention tag. Now the transport builds a folder index via `get-folder-index` IPC ([[src/main/knowledge.ts#buildFolderIndex]] — same shape as the knowledge-bundle index: `## <folder>` sections listing file paths with one-line content hints, skipping vcs/deps dirs, capped at 2000 chars / 40 files per folder) and injects it into the system prompt at session creation alongside [[src/main/knowledge.ts#buildKnowledgeIndex]]. The model learns the attached workspace by default — read the file when a listed path looks relevant. Single-shot limitation shared with the knowledge index: the prompt is fixed at session creation (a folder change mid-session updates the cwd but not the injected index).
+
 ## Find in Files (string search)
 
 A Search button in the panel header opens a full-screen dialog that searches file CONTENTS across all context folders — Android-Studio Ctrl+Shift+F style.

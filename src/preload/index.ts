@@ -556,6 +556,8 @@ const hermesAPI = {
 
   getKnowledgeIndex: (bundleNames: string[]): Promise<string> =>
     ipcRenderer.invoke("get-knowledge-index", bundleNames),
+  getFolderIndex: (folders: string[]): Promise<string> =>
+    ipcRenderer.invoke("get-folder-index", folders),
 
   abortChat: (runId?: string): Promise<void> =>
     ipcRenderer.invoke("abort-chat", runId),

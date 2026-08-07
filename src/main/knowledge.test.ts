@@ -1,10 +1,11 @@
 // @vitest-environment node
 
-import { mkdtemp, rm } from "fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  buildFolderIndex,
   buildKnowledgeIndex,
   createKnowledgeBundle,
   deleteKnowledgeBundle,
@@ -200,5 +201,50 @@ describe("knowledge store", () => {
         join(tempDir, "knowledge", "proj", "plain.md") +
         " — Just a prose sentence that is long enough to not be a heading.",
     );
+  });
+
+  describe("buildFolderIndex", () => {
+    let workspace: string;
+
+    beforeEach(async () => {
+      workspace = join(tempDir, "workspace");
+      await mkdir(join(workspace, "src"), { recursive: true });
+      await mkdir(join(workspace, "node_modules", "pkg"), { recursive: true });
+      await mkdir(join(workspace, ".git"), { recursive: true });
+      await writeFile(
+        join(workspace, "readme.md"),
+        "# Workspace\nBuild docs.",
+        "utf8",
+      );
+      await writeFile(
+        join(workspace, "src", "main.ts"),
+        "export const x = 1;",
+        "utf8",
+      );
+      await writeFile(
+        join(workspace, "node_modules", "pkg", "index.js"),
+        "hidden",
+        "utf8",
+      );
+      await writeFile(join(workspace, ".git", "config"), "hidden", "utf8");
+    });
+
+    it("indexes workspace files with hints, skipping vcs/deps dirs", async () => {
+      const index = await buildFolderIndex([workspace]);
+
+      expect(index).toContain("## workspace");
+      expect(index).toContain(
+        `- ${join(workspace, "readme.md")} — # Workspace — Build docs.`,
+      );
+      expect(index).toContain(`- ${join(workspace, "src", "main.ts")}`);
+      expect(index).not.toContain("node_modules");
+      expect(index).not.toContain("pkg");
+      expect(index).not.toContain(".git");
+    });
+
+    it("returns an empty string for no folders", async () => {
+      expect(await buildFolderIndex([])).toBe("");
+      expect(await buildFolderIndex(["   "])).toBe("");
+    });
   });
 });

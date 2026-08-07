@@ -480,6 +480,7 @@ interface HermesAPI {
     planMode?: boolean,
   ) => Promise<{ response: string; sessionId?: string }>;
   getKnowledgeIndex: (bundleNames: string[]) => Promise<string>;
+  getFolderIndex: (folders: string[]) => Promise<string>;
   abortChat: (runId?: string) => Promise<void>;
   transcribeAudio: (
     audio: Uint8Array,

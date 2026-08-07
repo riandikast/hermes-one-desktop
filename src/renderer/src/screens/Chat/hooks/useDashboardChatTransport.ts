@@ -1004,6 +1004,31 @@ export function useDashboardChatTransport({
     };
   }, [enabled, knowledgeBundles]);
 
+  // Attached workspace folder → system-prompt index (like the knowledge
+  // bundles): the model learns the folder's structure by DEFAULT, without
+  // requiring an @mention tag in the message. Built once per session creation
+  // (same single-shot limitation as the knowledge index).
+  const folderIndexRef = useRef<string>("");
+  useEffect(() => {
+    let cancelled = false;
+    const folder = contextFolder?.trim();
+    if (!enabled || !folder) {
+      folderIndexRef.current = "";
+      return;
+    }
+    void window.hermesAPI
+      .getFolderIndex([folder])
+      .then((index) => {
+        if (!cancelled) folderIndexRef.current = index ?? "";
+      })
+      .catch(() => {
+        folderIndexRef.current = "";
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, contextFolder]);
+
   useEffect(() => {
     // `messagesRef` is the synchronous source of truth for `handleGatewayEvent`:
     // it reads the ref, applies a stream delta, writes the ref back, then calls
@@ -1826,6 +1851,9 @@ export function useDashboardChatTransport({
         }
         if (knowledgeIndexRef.current) {
           systemParts.push(knowledgeIndexRef.current);
+        }
+        if (folderIndexRef.current) {
+          systemParts.push(folderIndexRef.current);
         }
         const response = await ensureDashboardRuntimeSession({
           client,
