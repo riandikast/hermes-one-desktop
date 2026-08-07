@@ -10,6 +10,10 @@ import {
   type DashboardStreamEvent,
   WRITE_TOOL_NAMES,
 } from "../dashboardEventAdapter";
+import {
+  filePathFromInlineDiff,
+  inlineDiffFromPayload,
+} from "../diffLines";
 import { extractToolPath } from "../fileChanges";
 import {
   dbItemsToChatMessages,
@@ -1005,6 +1009,9 @@ export function useDashboardChatTransport({
   // Per-turn file-change capture: path → latest before/after pair. Reset on
   // each new user turn; attached to the assistant bubble on message.complete.
   const fileChangesRef = useRef<Map<string, FileChange>>(new Map());
+  // toolCallId → unified diff string captured from tool.complete inline_diff
+  // (authoritative file-edit source; rendered in the tool result card).
+  const toolDiffsRef = useRef<Map<string, string>>(new Map());
   const pendingClarifyRequestIdRef = useRef<string | null>(null);
   const pendingRecoveredContinuationRef = useRef<
     DesktopSessionContinuationItem[]
@@ -1194,6 +1201,7 @@ export function useDashboardChatTransport({
       toolPaths: captured.map((c) => c.path),
     });
     fileChangesRef.current = new Map();
+    toolDiffsRef.current = new Map();
     if (captured.length === 0) return;
     void (async () => {
       // The tool capture reads AFTER-content asynchronously — at finalize the
@@ -1602,6 +1610,49 @@ export function useDashboardChatTransport({
           "tool_name",
         ).toLowerCase();
         const matched = WRITE_TOOL_NAMES.some((w) => toolName.includes(w));
+
+        // FILE-CHANGES: authoritative inline diff from the backend (official
+        // desktop contract — tui_gateway emits payload.inline_diff for
+        // write_file/patch/skill_manage). Captured verbatim per tool call; the
+        // per-file record prefers it over the heuristics below.
+        const inlineDiff = inlineDiffFromPayload(event.payload);
+        const diffPath = inlineDiff
+          ? filePathFromInlineDiff(inlineDiff)
+          : null;
+        if (inlineDiff) {
+          toolDiffsRef.current.set(
+            String(
+              (toolPayload.tool_id as string | undefined) ??
+                (toolPayload.tool_call_id as string | undefined) ??
+                toolName,
+            ),
+            inlineDiff,
+          );
+          const p = diffPath;
+          if (p) {
+            const existing = fileChangesRef.current.get(p);
+            fileChangesRef.current.set(p, {
+              path: p,
+              before: null,
+              after: null,
+              beforeKnown: false,
+              diff: inlineDiff,
+              ...(existing?.removed ? { removed: existing.removed } : {}),
+              ...(existing?.added ? { added: existing.added } : {}),
+            });
+            void window.hermesAPI
+              .readFile(p)
+              .then((res) => {
+                const current = fileChangesRef.current.get(p);
+                if (!current) return;
+                fileChangesRef.current.set(p, {
+                  ...current,
+                  after: res?.content ?? null,
+                });
+              })
+              .catch(() => undefined);
+          }
+        }
 
         // Patch-style tools carry the exact hunk — at the payload TOP LEVEL
         // for some gateways ({mode, path, old_string, new_string}) or nested
@@ -2189,6 +2240,7 @@ export function useDashboardChatTransport({
       if (!enabled) return false;
       // FILE-CHANGES: a new user turn starts a fresh accumulator.
       fileChangesRef.current = new Map();
+      toolDiffsRef.current = new Map();
       // Start a fresh per-turn stall window (don't inherit the previous turn's
       // deadline) and re-arm the quiet-finalize fallback.
       resetStallTimer();
