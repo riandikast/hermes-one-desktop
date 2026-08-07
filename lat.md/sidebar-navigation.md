@@ -152,6 +152,10 @@ Administrative destinations sit beside the profile switcher so the conversation 
 
 When the sidebar is collapsed, those footer actions stay in a single centered icon rail anchored to the bottom of the 64px sidebar, with the compact profile switcher below them and no divider line above the footer. The Settings gear and the subagent (Bot) button stack vertically when collapsed (`.sidebar-collapsed .sidebar-footer-actions-row` becomes a column): the 40px rail cannot hold both 40px buttons side by side, and the row layout previously pushed the bot button out of the menu and clipped it.
 
+## Skills discovery
+
+The Discover page (left menu) shows the hermes-registry CATALOG — the count badge (e.g. "352 skills") is the number of AVAILABLE registry + bundled skills, not installed ones. A card is marked "Installed" only when its name/id appears in [[src/main/skills.ts#listInstalledSkills]]. That walk now supports BOTH folder layouts: `skills/<skill>/SKILL.md` (flat — current CLI installs) and `skills/<category>/<skill>/SKILL.md` (two-level — Discover installs via [[src/main/registry.ts#installRegistryItem]]). Previously only the two-level layout was read, so flat-installed skills (the real ones on disk) never showed as installed anywhere — and a catalog card with an install button could read as "installed". Note the model never sees desktop skills: skills reach the model only through the GATEWAY's own skill mechanism; the desktop UI list and the gateway's list are unrelated (a remote gateway has its own home).
+
 ## Settings modal
 
 A single global modal (80vw × 80vh) with a grouped left nav presents every app/agent setting, opened from anywhere rather than as a sidebar tab.
