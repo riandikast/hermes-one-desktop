@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { extractToolPath, diffLines, type DiffLine } from "./fileChanges";
+import {
+  extractToolPath,
+  diffLines,
+  gitChangedDuringTurn,
+  gitSnapshotKey,
+  type DiffLine,
+} from "./fileChanges";
 
 function text(lines: DiffLine[]): string {
   return lines
@@ -166,5 +172,62 @@ describe("diffLines", () => {
     const bigA = Array.from({ length: 1200 }, (_, i) => `a${i}`).join("\n");
     const bigB = Array.from({ length: 1200 }, (_, i) => `b${i}`).join("\n");
     expect(diffLines(bigA, bigB)).toBeNull();
+  });
+});
+
+describe("gitChangedDuringTurn — read/dirty files are not attributed", () => {
+  const entry = (
+    path: string,
+    status: string,
+    after: string | null,
+  ): { path: string; status: string; after: string | null } => ({
+    path,
+    status,
+    after,
+  });
+
+  it("excludes files already dirty at turn start with unchanged content", () => {
+    const snapshot = new Map<string, string>([
+      ["/repo/AGENTS.md", "M|line1\nline2"], // dirty BEFORE the turn
+    ]);
+    const current = [
+      entry("/repo/AGENTS.md", "M", "line1\nline2"), // only READ, unchanged
+    ];
+    expect(gitChangedDuringTurn(snapshot, current)).toEqual([]);
+  });
+
+  it("reports a file whose content changed during the turn", () => {
+    const snapshot = new Map<string, string>([
+      ["/repo/a.kt", "M|old"], // dirty before, but ...
+    ]);
+    const current = [
+      entry("/repo/a.kt", "M", "old\n+new line"), // ... changed this turn
+    ];
+    expect(gitChangedDuringTurn(snapshot, current)).toEqual(["/repo/a.kt"]);
+  });
+
+  it("reports files that appeared during the turn (untracked created)", () => {
+    const snapshot = new Map<string, string>([]);
+    const current = [entry("/repo/plan.md", "??", "new content")];
+    expect(gitChangedDuringTurn(snapshot, current)).toEqual(["/repo/plan.md"]);
+  });
+
+  it("reports a status change even if content is identical (deleted/added)", () => {
+    const snapshot = new Map<string, string>([
+      ["/repo/x.py", "M|body"],
+    ]);
+    const current = [entry("/repo/x.py", "D", null)]; // deleted this turn
+    expect(gitChangedDuringTurn(snapshot, current)).toEqual(["/repo/x.py"]);
+  });
+
+  it("returns nothing without a snapshot (race: baseline never loaded)", () => {
+    const current = [entry("/repo/a.kt", "M", "x")];
+    expect(gitChangedDuringTurn(null, current)).toEqual([]);
+    expect(gitChangedDuringTurn(undefined, current)).toEqual([]);
+  });
+
+  it("gitSnapshotKey encodes status + content", () => {
+    expect(gitSnapshotKey("M", "abc")).toBe("M|abc");
+    expect(gitSnapshotKey("??", null)).toBe("??|");
   });
 });

@@ -10,7 +10,7 @@ import {
   type DashboardStreamEvent,
   WRITE_TOOL_NAMES,
 } from "../dashboardEventAdapter";
-import { extractToolPath } from "../fileChanges";
+import { extractToolPath, gitChangedDuringTurn } from "../fileChanges";
 import {
   dbItemsToChatMessages,
   reconcileAfterDbRefresh,
@@ -1005,6 +1005,12 @@ export function useDashboardChatTransport({
   // Per-turn file-change capture: path → latest before/after pair. Reset on
   // each new user turn; attached to the assistant bubble on message.complete.
   const fileChangesRef = useRef<Map<string, FileChange>>(new Map());
+  // Working-tree snapshot taken at TURN START (path → status|after). At
+  // finalize the current tree is compared against it so ONLY files the agent
+  // actually modified THIS turn are reported — files that were already dirty
+  // before the turn (pre-existing edits, line-ending churn) or merely READ
+  // never appear as "changed by the agent".
+  const gitSnapshotRef = useRef<Map<string, string> | null>(null);
   const pendingClarifyRequestIdRef = useRef<string | null>(null);
   const pendingRecoveredContinuationRef = useRef<
     DesktopSessionContinuationItem[]
@@ -1218,16 +1224,39 @@ export function useDashboardChatTransport({
         try {
           const gitList =
             await window.hermesAPI.getGitWorkingTreeChanges(folder);
-          for (const g of gitList) {
-            const existing = byPath.get(g.path);
-            byPath.set(g.path, {
-              path: g.path,
-              before: g.before,
-              after: g.after,
-              beforeKnown: true,
-              removed: existing?.removed,
-              added: existing?.added,
-            });
+          // Only include git entries whose state CHANGED during this turn:
+          // compare against the turn-start snapshot. Files that were already
+          // dirty before the turn (pre-existing edits, line-ending churn) or
+          // only READ never appear — git status alone lists the whole dirty
+          // tree, which falsely "changed" files the agent never touched.
+          const snapshot = gitSnapshotRef.current;
+          gitSnapshotRef.current = null;
+          // No turn-start snapshot (race: turn finished before it loaded, or
+          // no git) → can't tell what changed this turn; rely on tool capture
+          // only rather than reporting the whole dirty tree.
+          if (snapshot) {
+            const changedPaths = new Set(
+              gitChangedDuringTurn(
+                snapshot,
+                gitList.map((g) => ({
+                  path: g.path,
+                  status: g.status,
+                  after: g.after,
+                })),
+              ),
+            );
+            for (const g of gitList) {
+              if (!changedPaths.has(g.path)) continue;
+              const existing = byPath.get(g.path);
+              byPath.set(g.path, {
+                path: g.path,
+                before: g.before,
+                after: g.after,
+                beforeKnown: true,
+                removed: existing?.removed,
+                added: existing?.added,
+              });
+            }
           }
         } catch {
           /* git detection optional — tool capture still applies */
@@ -2264,6 +2293,27 @@ export function useDashboardChatTransport({
         text,
         attachments,
       );
+      // FILE-CHANGES: snapshot the working tree BEFORE the agent runs, so at
+      // finalize only files it actually modified this turn are reported
+      // (pre-existing dirty files / reads never count).
+      const folder = contextFolder?.trim();
+      if (folder) {
+        gitSnapshotRef.current = null;
+        void window.hermesAPI
+          .getGitWorkingTreeChanges(folder)
+          .then((list) => {
+            const snap = new Map<string, string>();
+            for (const g of list) {
+              snap.set(g.path, `${g.status}|${g.after ?? ""}`);
+            }
+            gitSnapshotRef.current = snap;
+          })
+          .catch(() => {
+            gitSnapshotRef.current = null;
+          });
+      } else {
+        gitSnapshotRef.current = null;
+      }
       const mergePendingRecoveredContinuation = (
         existing: DesktopSessionContinuationItem[],
       ): DesktopSessionContinuationItem[] => {
@@ -2429,6 +2479,7 @@ export function useDashboardChatTransport({
       activeTurnRef,
       clearStallTimer,
       connectionMode,
+      contextFolder,
       enabled,
       fallbackOnUnavailable,
       ensureClient,

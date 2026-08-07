@@ -160,6 +160,45 @@ export interface DiffLine {
   text: string;
 }
 
+/** One working-tree entry from the git snapshot (path → status|content). */
+export type GitSnapshot = Map<string, string>;
+
+/**
+ * Build the turn-start snapshot key for a git entry: status + current content
+ * is enough to detect "changed during this turn" — a file that was already
+ * dirty before the turn has the SAME key at finalize, so it's excluded.
+ */
+export function gitSnapshotKey(
+  status: string,
+  after: string | null,
+): string {
+  return `${status}|${after ?? ""}`;
+}
+
+/**
+ * Filter a finalize-time git list against the turn-start snapshot: only
+ * entries whose status/content differs from the snapshot "changed during this
+ * turn". Entries with no snapshot entry (newly created/untracked this turn)
+ * are kept. Returns the paths that actually changed.
+ */
+export function gitChangedDuringTurn(
+  snapshot: GitSnapshot | null | undefined,
+  current: ReadonlyArray<{
+    path: string;
+    status: string;
+    after: string | null;
+  }>,
+): string[] {
+  if (!snapshot) return []; // no baseline → cannot attribute, report nothing
+  const changed: string[] = [];
+  for (const g of current) {
+    const key = gitSnapshotKey(g.status, g.after);
+    if (snapshot.get(g.path) === key) continue;
+    changed.push(g.path);
+  }
+  return changed;
+}
+
 const DIFF_CELL_BUDGET = 1_000_000;
 
 /**
