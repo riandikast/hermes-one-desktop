@@ -1189,17 +1189,30 @@ export function useDashboardChatTransport({
   // swallow the badge), and persist for reopen. Runs at message.complete and
   // the quiet-finalize recovery path.
   const finalizeFileChanges = useCallback((): void => {
-    const toolChanges = Array.from(fileChangesRef.current.values()).filter(
-      (c) => c.after !== null || c.before !== null,
-    );
+    const captured = Array.from(fileChangesRef.current.values());
     console.info("[file-changes] captured", {
-      toolPaths: Array.from(fileChangesRef.current.keys()),
-      gitPaths: [],
+      toolPaths: captured.map((c) => c.path),
     });
     fileChangesRef.current = new Map();
-    const byPath = new Map<string, FileChange>();
-    for (const c of toolChanges) byPath.set(c.path, c);
+    if (captured.length === 0) return;
     void (async () => {
+      // The tool capture reads AFTER-content asynchronously — at finalize the
+      // read may still be in flight, so re-read every path with a null after
+      // before deciding what changed (files that no longer exist stay null;
+      // deletions are kept only when the before is known).
+      const filled = await Promise.all(
+        captured.map(async (c): Promise<FileChange> => {
+          if (c.after !== null) return c;
+          try {
+            const res = await window.hermesAPI.readFile(c.path);
+            return { ...c, after: res?.content ?? null };
+          } catch {
+            return { ...c, after: null };
+          }
+        }),
+      );
+      const byPath = new Map<string, FileChange>();
+      for (const c of filled) byPath.set(c.path, c);
       const folder = contextFolder?.trim();
       if (folder) {
         try {
