@@ -16,6 +16,7 @@ vi.mock("./dashboard", () => ({
     token: "test-token",
   })),
   dashboardRequestJson: vi.fn(),
+  startDashboard: vi.fn(),
 }));
 
 vi.mock("./remote-api", () => ({
@@ -23,7 +24,11 @@ vi.mock("./remote-api", () => ({
 }));
 
 import { getConnectionConfig } from "./config";
-import { dashboardRequestJson, getDashboardConnection } from "./dashboard";
+import {
+  dashboardRequestJson,
+  getDashboardConnection,
+  startDashboard,
+} from "./dashboard";
 import { remoteDashboardRequestJson } from "./remote-api";
 import {
   getDashboardSkills,
@@ -40,6 +45,7 @@ const mockedGetConnection = vi.mocked(getConnectionConfig);
 const mockedGetDashboardConnection = vi.mocked(getDashboardConnection);
 const mockedDashboardRequest = vi.mocked(dashboardRequestJson);
 const mockedRemoteRequest = vi.mocked(remoteDashboardRequestJson);
+const mockedStartDashboard = vi.mocked(startDashboard);
 
 function testConnection(
   fields: Partial<ReturnType<typeof getConnectionConfig>> = {},
@@ -73,6 +79,7 @@ describe("dashboard-capabilities", () => {
     });
     mockedDashboardRequest.mockReset();
     mockedRemoteRequest.mockReset();
+    mockedStartDashboard.mockReset();
   });
 
   afterEach(() => {
@@ -88,7 +95,7 @@ describe("dashboard-capabilities", () => {
       "http://127.0.0.1:9123",
       "test-token",
       "/api/skills",
-      expect.objectContaining({ timeoutMs: 8_000 }),
+      expect.objectContaining({ timeoutMs: 30_000 }),
     );
     expect(skills[0]).toMatchObject({ name: "pdf", enabled: true, usage: 3, provenance: "bundled" });
   });
@@ -166,9 +173,37 @@ describe("dashboard-capabilities", () => {
     expect(out.installed.i.name).toBe("ocr");
   });
 
-  it("throws a readable error when the dashboard is not running", async () => {
+  it("throws a readable error when the dashboard is not running and cannot start", async () => {
     mockedGetDashboardConnection.mockReturnValue(null);
-    await expect(getDashboardSkills()).rejects.toThrow(/dashboard/i);
+    mockedStartDashboard.mockResolvedValue({
+      supported: true,
+      running: false,
+      error: "Timed out waiting for Hermes dashboard",
+    });
+    await expect(getDashboardSkills()).rejects.toThrow(/Timed out/);
+    expect(mockedStartDashboard).toHaveBeenCalledWith(undefined);
+  });
+
+  it("starts the dashboard when no connection exists yet", async () => {
+    mockedGetDashboardConnection.mockReturnValue(null);
+    mockedStartDashboard.mockResolvedValue({
+      supported: true,
+      running: true,
+      connection: {
+        baseUrl: "http://127.0.0.1:9123",
+        wsUrl: "ws://127.0.0.1:9123/api/ws?token=test-token",
+        token: "test-token",
+        mode: "local",
+      },
+    });
+    mockedDashboardRequest.mockResolvedValue([]);
+    await getDashboardSkills();
+    expect(mockedDashboardRequest).toHaveBeenCalledWith(
+      "http://127.0.0.1:9123",
+      "test-token",
+      "/api/skills",
+      expect.objectContaining({ timeoutMs: 30_000 }),
+    );
   });
 
   it("throws when the backend returns a non-ok status", async () => {

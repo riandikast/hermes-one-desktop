@@ -287,18 +287,31 @@ export default function Capabilities({
     setLoading(true);
     setError("");
     try {
+      // Fetch each source independently: a slow or failing endpoint (e.g.
+      // the dashboard busy mid-turn) must not blank the whole screen — the
+      // tabs that did load still render, and only the failed source reports.
       const [s, ts, mcp, hub] = await Promise.all([
-        window.hermesAPI.getDashboardSkills(profile),
-        window.hermesAPI.getDashboardToolsets(profile),
-        window.hermesAPI.listMcpServers(profile),
+        window.hermesAPI
+          .getDashboardSkills(profile)
+          .catch((err) => {
+            setError(err instanceof Error ? err.message : String(err));
+            return [] as Awaited<ReturnType<typeof window.hermesAPI.getDashboardSkills>>;
+          }),
+        window.hermesAPI
+          .getDashboardToolsets(profile)
+          .catch((err) => {
+            setError(err instanceof Error ? err.message : String(err));
+            return [] as Awaited<ReturnType<typeof window.hermesAPI.getDashboardToolsets>>;
+          }),
+        window.hermesAPI
+          .listMcpServers(profile)
+          .catch(() => [] as Awaited<ReturnType<typeof window.hermesAPI.listMcpServers>>),
         window.hermesAPI.getHubSources(profile).catch(() => null),
       ]);
       setSkills(s);
       setToolsets(ts);
       setMcpServers(mcp);
       setHubSources(hub);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }

@@ -13,15 +13,35 @@ import {
   parseHubSources,
 } from "../shared/capabilities";
 import { getConnectionConfig } from "./config";
-import { dashboardRequestJson, getDashboardConnection } from "./dashboard";
+import {
+  dashboardRequestJson,
+  getDashboardConnection,
+  startDashboard,
+} from "./dashboard";
 import { remoteDashboardRequestJson } from "./remote-api";
 
-function connectionOrThrow(profile?: string): { baseUrl: string; token: string } {
-  const local = getDashboardConnection(profile);
-  if (local) return local;
-  throw new Error(
-    "Hermes dashboard is not running. Open a chat first, then retry.",
-  );
+/**
+ * Resolve the local dashboard connection, starting the dashboard backend if
+ * it is not already running (the Capabilities screen must work standalone —
+ * it should not depend on a chat turn having warmed the backend first).
+ * `startDashboard` spawns `hermes dashboard` and waits for readiness, so a
+ * cold start is covered here.
+ */
+async function ensureDashboardConnection(
+  profile?: string,
+): Promise<{ baseUrl: string; token: string }> {
+  const existing = getDashboardConnection(profile);
+  if (existing) return existing;
+  const status = await startDashboard(profile);
+  if (!status.running || !status.connection) {
+    throw new Error(
+      status.error || "Hermes dashboard could not be started.",
+    );
+  }
+  return {
+    baseUrl: status.connection.baseUrl,
+    token: status.connection.token,
+  };
 }
 
 function isRemoteModeValue(): boolean {
@@ -78,7 +98,7 @@ async function hubSearchRequest(
       profile,
     );
   }
-  const conn = connectionOrThrow(profile);
+  const conn = await ensureDashboardConnection(profile);
   return dashboardRequestJson(conn.baseUrl, conn.token, path, options);
 }
 
@@ -92,9 +112,9 @@ export async function getDashboardSkills(profile?: string): Promise<DashboardSki
     );
     return (data ?? []).map((r) => mapSkill((r ?? {}) as Record<string, unknown>));
   }
-  const conn = connectionOrThrow(profile);
+  const conn = await ensureDashboardConnection(profile);
   const data = await dashboardRequestJson<unknown[]>(conn.baseUrl, conn.token, "/api/skills", {
-    timeoutMs: 8_000,
+    timeoutMs: 30_000,
   });
   return (data ?? []).map((r) => mapSkill((r ?? {}) as Record<string, unknown>));
 }
@@ -106,7 +126,7 @@ export async function setDashboardSkillEnabled(
 ): Promise<boolean> {
   await hubSearchRequest(
     "/api/skills/toggle",
-    { method: "PUT", body: { name, enabled }, timeoutMs: 8_000 },
+    { method: "PUT", body: { name, enabled }, timeoutMs: 30_000 },
     profile,
   );
   return true;
@@ -122,9 +142,9 @@ export async function getDashboardToolsets(profile?: string): Promise<DashboardT
     );
     return (data ?? []).map((r) => mapToolset((r ?? {}) as Record<string, unknown>));
   }
-  const conn = connectionOrThrow(profile);
+  const conn = await ensureDashboardConnection(profile);
   const data = await dashboardRequestJson<unknown[]>(conn.baseUrl, conn.token, "/api/tools/toolsets", {
-    timeoutMs: 8_000,
+    timeoutMs: 30_000,
   });
   return (data ?? []).map((r) => mapToolset((r ?? {}) as Record<string, unknown>));
 }
@@ -137,7 +157,7 @@ export async function setDashboardToolsetEnabled(
   const path = `/api/tools/toolsets/${encodeURIComponent(name)}`;
   await hubSearchRequest(
     path,
-    { method: "PUT", body: { enabled }, timeoutMs: 8_000 },
+    { method: "PUT", body: { enabled }, timeoutMs: 30_000 },
     profile,
   );
   return true;
@@ -146,7 +166,7 @@ export async function setDashboardToolsetEnabled(
 export async function getHubSources(profile?: string): Promise<HubSourcesResult> {
   const raw = await hubSearchRequest(
     "/api/skills/hub/sources",
-    { timeoutMs: 8_000 },
+    { timeoutMs: 30_000 },
     profile,
   );
   return parseHubSources(raw);
