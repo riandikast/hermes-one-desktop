@@ -80,11 +80,30 @@ export const ChatNavArrow = memo(function ChatNavArrow({
     if (!container) return;
     container.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", update);
+    // The mount-time reading may be taken before layout settles (zero-height
+    // container) — re-evaluate a couple of frames later and whenever the
+    // container resizes, so a SHORT chat (nothing scrollable) never keeps a
+    // stale "visible" state from a wrong first measurement.
+    const raf = requestAnimationFrame(() => requestAnimationFrame(update));
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(update);
+      observer.observe(container);
+    }
     return () => {
+      cancelAnimationFrame(raf);
       container.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
+      observer?.disconnect();
     };
   }, [containerRef, update]);
+
+  // Re-evaluate when messages change (a short chat crossing into scrollable
+  // territory — or shrinking — needs a visibility update without a scroll).
+  useEffect(() => {
+    const raf = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(raf);
+  }, [messages, update]);
 
   const jump = useCallback(() => {
     const container = containerRef.current;
@@ -170,9 +189,19 @@ export const JumpToLatest = memo(function JumpToLatest({
     if (!container) return;
     container.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", update);
+    // Same stale-first-measurement guard as ChatNavArrow: a short chat must
+    // not keep the button from a wrong mount-time reading.
+    const raf = requestAnimationFrame(() => requestAnimationFrame(update));
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(update);
+      observer.observe(container);
+    }
     return () => {
+      cancelAnimationFrame(raf);
       container.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
+      observer?.disconnect();
     };
   }, [containerRef, update]);
 
