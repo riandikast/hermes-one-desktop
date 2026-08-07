@@ -1488,7 +1488,7 @@ export function useDashboardChatTransport({
               reasoningSegmentClosed: reasoningSegmentClosedRef.current,
             },
             blockedEvent,
-            { activeTurn: activeTurnRef.current, renderAssistantDeltas: true },
+            { activeTurn: activeTurnRef.current },
           );
           messagesRef.current = blockedNext.messages;
           setMessages(blockedNext.messages);
@@ -1702,15 +1702,10 @@ export function useDashboardChatTransport({
         event,
         {
           activeTurn: activeTurnRef.current,
-          // Do NOT render streamed answer deltas. The gateway emits answer
-          // text, THEN tools, THEN a trailing thought; rendering the deltas
-          // live puts a partial answer mid-transcript above the tools and the
-          // trailing thought (reads as "cut" / "last response missing", and
-          // no amount of gating/merging/reordering fully fixes it). Instead
-          // the thought streams live and `message.complete` materializes the
-          // final answer ONCE, from the final text, at the end of the turn —
-          // same shape as the (working) reopened-from-DB view.
-          renderAssistantDeltas: false,
+          // Live streaming (official model): deltas render into the pending
+          // bubble as they arrive; `message.complete` replaces the streamed
+          // text with ONE authoritative final bubble (mergeFinalAssistantText
+          // in dashboardEventAdapter).
         },
       );
       reasoningSegmentClosedRef.current = next.reasoningSegmentClosed;
@@ -1725,38 +1720,6 @@ export function useDashboardChatTransport({
       setMessages(nextMessages);
 
       if (event.type === "message.complete") {
-        const payloadRecord =
-          event.payload && typeof event.payload === "object"
-            ? (event.payload as Record<string, unknown>)
-            : {};
-        const rawFinal =
-          typeof payloadRecord.text === "string"
-            ? payloadRecord.text
-            : typeof payloadRecord.rendered === "string"
-              ? payloadRecord.rendered
-              : typeof payloadRecord.final_response === "string"
-                ? payloadRecord.final_response
-                : typeof payloadRecord.output_text === "string"
-                  ? payloadRecord.output_text
-                  : typeof payloadRecord.content === "string"
-                    ? payloadRecord.content
-                    : "";
-        console.info("[gate-diag] message.complete", {
-          finalTextLen: rawFinal.length,
-          finalTextHead: rawFinal.slice(0, 60),
-          payloadKeys: Object.keys(payloadRecord),
-          lastRows: nextMessages
-            .slice(-5)
-            .map((m) =>
-              "kind" in m
-                ? `kind:${m.kind}`
-                : `${m.role}(len ${String(m.content).length}, pending ${!!m.pending})`,
-            )
-            .join(" | "),
-          pendingBubbles: nextMessages.filter(
-            (m) => !("kind" in m) && m.role === "agent" && m.pending,
-          ).length,
-        });
         if (failed) {
           appliedModelRef.current = null;
           recreateRuntimeSessionRef.current = true;

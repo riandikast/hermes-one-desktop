@@ -1,6 +1,5 @@
 import type { ChatToolEvent } from "../../../../shared/chat-stream";
 import { isLossyChunkCopy } from "./lossyText";
-import { markReasoningSettled } from "./reasoningStall";
 import type { ActiveTurn, ChatBubbleMessage, ChatMessage } from "./types";
 
 export interface DashboardStreamEvent<T = unknown> {
@@ -51,7 +50,6 @@ export const WRITE_TOOL_NAMES = [
 interface ApplyDashboardEventOptions {
   activeTurn?: ActiveTurn | null;
   now?: number;
-  renderAssistantDeltas?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -152,15 +150,6 @@ function resultFromPayload(payload: unknown): string {
   const error = stableStringify(payload.error);
   if (error && result) return `${result}\n\n${error}`;
   return error || result;
-}
-
-function payloadToolName(payload: unknown): string {
-  if (!isRecord(payload)) return "";
-  return textFromPayload(payload, "name", "tool", "function", "function_name");
-}
-
-function isClarifyToolEvent(event: DashboardStreamEvent): boolean {
-  return payloadToolName(event.payload).toLowerCase() === "clarify";
 }
 
 function appendClarifyRequest(
@@ -352,27 +341,6 @@ function appendReasoningDelta(
   ];
 }
 
-/** A tool/clarify event is a hard boundary: the model finished thinking, so
- *  the last reasoning row of the in-progress turn will receive no more deltas
- *  (the next thinking.delta opens a NEW segment). Mark it settled so the
- *  answer gate does not wait the full REASONING_SETTLE_MS stall after it —
- *  otherwise a quick thought→answer→tool succession hides the already-streamed
- *  answer behind the gate for the whole settle window ("unfinished response
- *  get cut"). The typewriter reveal check still applies, so the thought still
- *  fully types before the answer reveals. */
-function markTurnLastReasoningSettled(
-  messages: ReadonlyArray<ChatMessage>,
-): void {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg.role === "user") break;
-    if ("kind" in msg && msg.kind === "reasoning") {
-      markReasoningSettled(msg.id);
-      return;
-    }
-  }
-}
-
 function findToolCallIndex(
   messages: ReadonlyArray<ChatMessage>,
   callId: string,
@@ -454,14 +422,6 @@ function appendToolEvent(
   }
 
   return next;
-}
-
-function completeAssistantBubbles(
-  messages: ReadonlyArray<ChatMessage>,
-): ChatMessage[] {
-  return messages.map((msg) =>
-    isAssistantBubble(msg) && msg.pending ? { ...msg, pending: false } : msg,
-  );
 }
 
 function normalizeText(value: string): string {
@@ -574,35 +534,6 @@ function findLastUserIndex(messages: ReadonlyArray<ChatMessage>): number {
   return -1;
 }
 
-function removeDuplicateReasoning(
-  messages: ReadonlyArray<ChatMessage>,
-  finalText: string,
-  activeTurn?: ActiveTurn | null,
-): ChatMessage[] {
-  const final = normalizeText(finalText);
-  if (!final) return [...messages];
-
-  const lastUserIndex = findLastUserIndex(messages);
-  return messages.filter((msg, index) => {
-    if (index <= lastUserIndex) return true;
-    if (!("kind" in msg) || msg.kind !== "reasoning") return true;
-    if (
-      activeTurn &&
-      "turnId" in msg &&
-      msg.turnId &&
-      msg.turnId !== activeTurn.turnId
-    ) {
-      return true;
-    }
-
-    const reasoning = normalizeText(msg.text);
-    return !(
-      reasoning &&
-      (final.startsWith(reasoning) || reasoning.startsWith(final))
-    );
-  });
-}
-
 function hasReasoningSinceLastUser(
   messages: ReadonlyArray<ChatMessage>,
 ): boolean {
@@ -648,65 +579,112 @@ function addCompletionReasoningFallback(
   return [...messages, reasoningRow];
 }
 
-function completeAssistantWithFinalText(
+/**
+ * Official stability contract (merged from the upstream desktop's
+ * `mergeFinalAssistantText`), with one fork for OUR backend's behavior:
+ *
+ * - When the authoritative final text COVERS the turn's streamed text
+ *   (normalized includes), the official contract applies: EVERY streamed
+ *   text bubble of the turn is discarded and replaced by ONE authoritative
+ *   final bubble; reasoning rows fully covered by the final are dropped
+ *   too. This is what makes the live stream stable — the final always
+ *   wins, so dropped/garbled delta chunks can never corrupt the answer.
+ * - When the final is LAST-TURN-ONLY (a strict subset — our backend can
+ *   deliver `final_response` that omits pre-tool-call text, #746), the
+ *   streamed bubble is kept and merged with the final via the legacy
+ *   `mergeStreamedWithFinal` reconciliation instead of being erased.
+ * - An empty final leaves the streamed bubble untouched (pending stays
+ *   true — `session.info running:false` settles it).
+ */
+export function mergeFinalAssistantText(
   messages: ReadonlyArray<ChatMessage>,
   finalText: string,
-  activeTurn?: ActiveTurn | null,
+  turnId?: string | null,
   now = Date.now(),
 ): ChatMessage[] {
-  if (!finalText.trim()) return completeAssistantBubbles(messages);
+  const final = finalText.trim();
+  if (!final) return [...messages];
 
-  const messagesWithoutDuplicateReasoning = removeDuplicateReasoning(
-    messages,
-    finalText,
-    activeTurn,
+  const normFinal = normalizeText(final);
+  const turnMatches = (msg: ChatMessage): boolean =>
+    !turnId || !("turnId" in msg) || !msg.turnId || msg.turnId === turnId;
+
+  // Streamed text of this turn = concatenation of its assistant bubbles.
+  const streamedBubbles = messages.filter(
+    (msg) =>
+      turnMatches(msg) && msg.role === "agent" && isAssistantBubble(msg),
   );
+  const streamedText = streamedBubbles
+    .map((m) => (m as ChatBubbleMessage).content ?? "")
+    .join("");
+  const normStreamed = normalizeText(streamedText);
 
-  for (let i = messagesWithoutDuplicateReasoning.length - 1; i >= 0; i--) {
-    const msg = messagesWithoutDuplicateReasoning[i];
-    if (msg.role === "user") break;
-    if (!isAssistantBubble(msg) || msg.error) continue;
-    if (activeTurn && msg.turnId && msg.turnId !== activeTurn.turnId) continue;
-
-    // Merge streamed text with finalText so content streamed before tool
-    // calls is preserved rather than clobbered by a last-turn-only
-    // final_response (#746).
-    const merged = mergeStreamedWithFinal(msg.content, finalText);
-
-    const completedBubble = {
-      ...msg,
-      content: merged,
-      pending: false,
-      turnId: msg.turnId || activeTurn?.turnId,
-    };
-
-    // The streamed answer often lands BEFORE trailing tool/reasoning rows
-    // (the gateway emitted answer text, then tools, then a trailing thought).
-    // Merging the final text in place would leave the finished response cut
-    // mid-transcript, above the tools and the trailing thought — reading as
-    // "answer cut, then tools + thought" and "last response missing" (the
-    // auto-scroll pins to the trailing thought at the bottom). Move the
-    // completed bubble to the END of the turn (after trailing tool/reasoning
-    // rows) so the transcript reads "…tools → thought → final answer" and the
-    // file-changes badge (attached to the last assistant bubble) lands on it.
-    const before = messagesWithoutDuplicateReasoning.slice(0, i);
-    const after = messagesWithoutDuplicateReasoning.slice(i + 1);
-    if (after.length > 0) {
-      return [...before, ...after, completedBubble];
-    }
-    return [...before, completedBubble];
+  if (normStreamed && !normFinal.includes(normStreamed)) {
+    // Final is last-turn-only: keep the streamed bubble (pre-tool-call
+    // text) and merge the final into it (#746). Reuse the legacy
+    // reconciliation (which also handles lossy chunk-dropped streams).
+    const merged = mergeStreamedWithFinal(streamedText, final);
+    const lastBubble = streamedBubbles[streamedBubbles.length - 1];
+    const lastBubbleMsg = lastBubble as ChatBubbleMessage;
+    return messages.map((msg) =>
+      msg === lastBubble
+        ? {
+            ...msg,
+            content: merged,
+            pending: false,
+            turnId: lastBubbleMsg.turnId || (turnId ?? undefined),
+          }
+        : msg,
+    );
   }
 
+  // Official contract: drop every streamed text bubble + reasoning fully
+  // covered by the final; append ONE authoritative final bubble.
+  const filtered = messages.filter((msg) => {
+    // Keep everything before the turn boundary (user rows etc.).
+    if (!turnMatches(msg)) return true;
+    if (msg.role === "agent" && isAssistantBubble(msg)) {
+      // All streamed text bubbles of this turn are removed.
+      return false;
+    }
+    if ("kind" in msg && msg.kind === "reasoning" && turnMatches(msg)) {
+      const reasoning = normalizeText(msg.text);
+      if (reasoning && normFinal.startsWith(reasoning)) return false;
+    }
+    return true;
+  });
+
   return [
-    ...messagesWithoutDuplicateReasoning,
+    ...filtered,
     {
-      id: `agent-dashboard-${now}-${messagesWithoutDuplicateReasoning.length}`,
+      id: `agent-dashboard-${now}-${messages.length}`,
       role: "agent",
-      content: finalText,
+      content: final,
       pending: false,
-      ...(activeTurn?.turnId ? { turnId: activeTurn.turnId } : {}),
+      ...(turnId ? { turnId } : {}),
     },
   ];
+}
+
+/**
+ * Settle stranded pending bubbles when a turn ends without `message.complete`
+ * (official `finalizeInterruptedMessages` equivalent — triggered by
+ * `session.info running:false`). Empty placeholders are dropped; pending
+ * bubbles that accumulated text are un-pended and kept.
+ */
+export function finalizeInterruptedMessages(
+  messages: ReadonlyArray<ChatMessage>,
+): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  for (const msg of messages) {
+    if (msg.role === "agent" && isAssistantBubble(msg) && msg.pending) {
+      if (!(msg.content ?? "").trim()) continue; // drop empty placeholder
+      out.push({ ...msg, pending: false });
+      continue;
+    }
+    out.push(msg);
+  }
+  return out;
 }
 
 export function applyDashboardStreamEvent(
@@ -719,12 +697,6 @@ export function applyDashboardStreamEvent(
     case "message.start":
       return { ...state, reasoningSegmentClosed: false };
     case "message.delta":
-      if (options.renderAssistantDeltas === false) {
-        return {
-          ...state,
-          reasoningSegmentClosed: false,
-        };
-      }
       return {
         messages: appendAssistantDelta(
           state.messages,
@@ -765,11 +737,6 @@ export function applyDashboardStreamEvent(
     case "tool.progress":
     case "tool.generating":
     case "tool.complete":
-      if (isClarifyToolEvent(event)) {
-        markTurnLastReasoningSettled(state.messages);
-        return { ...state, reasoningSegmentClosed: true };
-      }
-      markTurnLastReasoningSettled(state.messages);
       return {
         messages: appendToolEvent(
           state.messages,
@@ -778,26 +745,15 @@ export function applyDashboardStreamEvent(
         reasoningSegmentClosed: true,
       };
     case "clarify.request":
-      markTurnLastReasoningSettled(state.messages);
       return {
         messages: appendClarifyRequest(state.messages, event.payload, now),
         reasoningSegmentClosed: true,
       };
     case "message.complete": {
-      // The turn is done — no more deltas will land, so the last reasoning row
-      // of the in-progress turn will receive no further growth. Mark it settled
-      // so the answer gate does not wait the full REASONING_SETTLE_MS stall for
-      // it (a turn that ends on a trailing thought, or whose message.complete
-      // lands a beat before setIsLoading(false) reaches the gate, would
-      // otherwise hide the already-streamed answer behind the gate for the
-      // whole settle window — "unfinished response get cut"). The typewriter
-      // reveal check still applies, so a long trailing thought still fully
-      // types before the answer reveals.
-      markTurnLastReasoningSettled(state.messages);
       // The gateway can deliver the final text under several keys depending
       // on transport/version: "text"/"rendered" (streaming completion) or
       // "final_response"/"output_text"/"content" (RPC-style completion).
-      // Missing one shape made finalText empty → completeAssistantWithFinalText
+      // Missing one shape made finalText empty → mergeFinalAssistantText
       // early-returned → NO answer bubble while isLoading still flipped false
       // (chime fires, answer never appears — the intermittent "last answer
       // missing on live" bug).
@@ -821,14 +777,24 @@ export function applyDashboardStreamEvent(
         now,
       );
       return {
-        messages: completeAssistantWithFinalText(
+        messages: mergeFinalAssistantText(
           messagesWithReasoning,
           finalText,
-          options.activeTurn,
+          options.activeTurn?.turnId ?? null,
           now,
         ),
         reasoningSegmentClosed: false,
       };
+    }
+    case "session.info": {
+      const payload = isRecord(event.payload) ? event.payload : {};
+      if (payload.running === false) {
+        return {
+          messages: finalizeInterruptedMessages(state.messages),
+          reasoningSegmentClosed: state.reasoningSegmentClosed,
+        };
+      }
+      return state;
     }
     default:
       return state;
