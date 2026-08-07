@@ -4,7 +4,7 @@
 
 **Goal:** Adopt the official Hermes desktop's stable streaming (live deltas replaced by one authoritative final at completion) and inline_diff-based file-edit tracking (per-edit +N/−M cards + per-turn "N files changed" row), keeping our chat chrome, watchdog, quiet-finalize, and git fallback.
 
-**Architecture:** The backend our fork already spawns emits `payload.inline_diff` on `tool.complete` for file-edit tools (verified: `tui_gateway/server.py:5189-5233`). Streaming: flip `renderAssistantDeltas` to always-render, add `mergeFinalAssistantText` (official stability contract) to `dashboardEventAdapter.ts`, add `finalizeInterruptedMessages` on `session.info running:false`. File tracking: capture `inline_diff` per toolCallId, port the official diff parser/counter into `diffLines.ts`, render diffs in the existing tool rows and the per-turn row (replacing the chip's message kind), persist diffs via the existing `desktop_session_file_changes` JSON (no schema change). Delete the answer-gate machinery (`useReasoningGate`, `reasoningStall`, force-reveal). `lossyText` is KEPT — `mergeStreamedWithFinal` still needs `isLossyChunkCopy` for the last-turn-only (#746) branch of `mergeFinalAssistantText`.
+**Architecture:** The backend our fork already spawns emits `payload.inline_diff` on `tool.complete` for file-edit tools (verified: `tui_gateway/server.py:5189-5233`). Streaming: flip `renderAssistantDeltas` to always-render, add `mergeFinalAssistantText` (official stability contract) to `dashboardEventAdapter.ts`, add `finalizeInterruptedMessages` on `session.info running:false`. File tracking: capture `inline_diff` per toolCallId, port the official diff parser/counter into `diffLines.ts`, render diffs in the existing tool rows and the per-turn row (replacing the chip's message kind), persist diffs via the existing `desktop_session_file_changes` JSON (no schema change). Delete the answer-gate machinery (`useReasoningGate`, `reasoningStall`, force-reveal, lossyText).
 
 **Tech Stack:** React 18 + TypeScript, vitest, Electron main (better-sqlite3), i18next.
 
@@ -18,7 +18,7 @@
 - `src/main/session-continuation-store.test.ts` — diff-field persistence test
 
 **Modified files:**
-- `src/renderer/src/screens/Chat/dashboardEventAdapter.ts` — always stream deltas; `mergeFinalAssistantText`; `finalizeInterruptedMessages`; `session.info` case; remove `renderAssistantDeltas` option, reasoningStall import (lossyText import STAYS — used by the #746 merge branch)
+- `src/renderer/src/screens/Chat/dashboardEventAdapter.ts` — always stream deltas; `mergeFinalAssistantText`; `finalizeInterruptedMessages`; `session.info` case; remove `renderAssistantDeltas`, lossyText import, reasoningStall import
 - `src/renderer/src/screens/Chat/dashboardEventAdapter.test.ts` — update delta-path tests; new merge/settle tests
 - `src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts` — inline_diff capture; diff persistence; N-files-changed row; remove force-reveal/`[gate-diag]`; `session.info` settle hook; keep watchdog/quiet-finalize
 - `src/renderer/src/screens/Chat/types.ts` — `FileChange.diff?`; `ToolResultMessage.diff/added/removed?`
@@ -33,6 +33,7 @@
 **Deleted files:**
 - `src/renderer/src/screens/Chat/useReasoningGate.ts` + `useReasoningGate.test.tsx`
 - `src/renderer/src/screens/Chat/reasoningStall.ts`
+- `src/renderer/src/screens/Chat/lossyText.ts`
 - `src/renderer/src/screens/Chat/ReasoningRow.test.tsx` (tests reasoningStall — delete; ReasoningRow component stays)
 
 ---
@@ -424,7 +425,7 @@ Expected: FAIL — `mergeFinalAssistantText is not a function` (plus the delta t
 
 In `src/renderer/src/screens/Chat/dashboardEventAdapter.ts`:
 
-1. Remove the import of `markReasoningSettled` from `./reasoningStall` (line 3) and replace `markReasoningSettled(...)` calls with nothing (the settle concept is gone; `reasoningSegmentClosed` state and its transitions remain as-is). KEEP the `isLossyChunkCopy` import from `./lossyText` (line 2) — `mergeFinalAssistantText` uses it via `mergeStreamedWithFinal` for the #746 branch.
+1. Remove the import of `isLossyChunkCopy` from `./lossyText` (line 2) and `markReasoningSettled` from `./reasoningStall` (line 3) — replace `markReasoningSettled(...)` calls with nothing (the settle concept is gone; `reasoningSegmentClosed` state and its transitions remain as-is).
 
 2. Remove `renderAssistantDeltas?: boolean` from `ApplyDashboardEventOptions` and the `if (options.renderAssistantDeltas === false)` guard in the `message.delta` case (lines 721-727) — deltas always render.
 
@@ -576,13 +577,13 @@ git commit -m "feat(chat): live delta streaming with official final-merge stabil
 ### Task 3: Delete the answer-gate machinery
 
 **Files:**
-- Delete: `src/renderer/src/screens/Chat/useReasoningGate.ts`, `useReasoningGate.test.tsx`, `reasoningStall.ts`, `ReasoningRow.test.tsx` (lossyText.ts is KEPT)
+- Delete: `src/renderer/src/screens/Chat/useReasoningGate.ts`, `useReasoningGate.test.tsx`, `reasoningStall.ts`, `lossyText.ts`, `ReasoningRow.test.tsx`
 - Modify: `src/renderer/src/screens/Chat/Chat.tsx`, `MessageRow.tsx`
 
 - [ ] **Step 1: Delete the files**
 
 ```bash
-git rm src/renderer/src/screens/Chat/useReasoningGate.ts src/renderer/src/screens/Chat/useReasoningGate.test.tsx src/renderer/src/screens/Chat/reasoningStall.ts src/renderer/src/screens/Chat/ReasoningRow.test.tsx
+git rm src/renderer/src/screens/Chat/useReasoningGate.ts src/renderer/src/screens/Chat/useReasoningGate.test.tsx src/renderer/src/screens/Chat/reasoningStall.ts src/renderer/src/screens/Chat/lossyText.ts src/renderer/src/screens/Chat/ReasoningRow.test.tsx
 ```
 
 - [ ] **Step 2: Remove gate usage in Chat.tsx**
@@ -621,7 +622,7 @@ Expected: PASS except the known pre-existing failures (useDashboardChatTransport
 
 ```bash
 git add -A && git reset HEAD tmp/
-git commit -m "chore(chat): delete answer-gate machinery (useReasoningGate, reasoningStall)"
+git commit -m "chore(chat): delete answer-gate machinery (useReasoningGate, reasoningStall, lossyText)"
 ```
 
 ---
@@ -1197,4 +1198,3 @@ git push fork custom
 - **Spec coverage:** all spec sections map to tasks — streaming (Tasks 2-3, 5), final merge (Task 2), session.info settle (Tasks 2, 4), inline_diff capture (Task 4), diff primitives (Task 1), tool-result cards + N-files-changed row (Task 7), persistence (Task 6), git fallback kept (Task 4 keeps existing capture path), cleanup (Tasks 3, 5), docs (Task 9).
 - **Placeholders:** all steps carry concrete code. Task 5 is intentionally a search-and-remove (the exact call sites were deleted with the module); Task 8 is a verification-only task.
 - **Type consistency:** `FileChange.diff` defined in Task 6, used in Tasks 4, 7; `ToolResultMessage.diff/added/removed` defined in Task 6, consumed in Task 7; `mergeFinalAssistantText`/`finalizeInterruptedMessages` exported in Task 2, tested there; `diffLines.ts` exports (`parseDiff`, `countDiffLineStats`, `stripDiffChrome`, `filePathFromInlineDiff`, `inlineDiffFromPayload`) defined in Task 1 and used in Tasks 4 and 7.
-

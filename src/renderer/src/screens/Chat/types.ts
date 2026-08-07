@@ -23,9 +23,6 @@ export interface FileChange {
   beforeKnown?: boolean;
   removed?: string[];
   added?: string[];
-  /** Unified-diff text captured from the backend's tool.complete
-   *  `inline_diff` (authoritative; renders directly without before/after). */
-  diff?: string;
 }
 
 export interface ChatBubbleMessage {
@@ -81,10 +78,6 @@ export interface ToolResultMessage {
   name: string;
   content: string;
   attachments?: Attachment[];
-  /** Unified diff from tool.complete inline_diff (authoritative). */
-  diff?: string;
-  added?: number;
-  removed?: number;
 }
 
 /**

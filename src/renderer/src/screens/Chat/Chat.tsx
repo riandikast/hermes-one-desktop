@@ -8,6 +8,7 @@ import { FileChangesDialog } from "./FileChangesDialog";
 import { ModelPicker } from "./ModelPicker";
 import { ReasoningEffortPicker } from "./ReasoningEffortPicker";
 import { ContextFolderChip } from "./ContextFolderChip";
+import { forceReleaseAllReasoning } from "./reasoningStall";
 import { WorktreePanel } from "./WorktreePanel";
 import { RemoteFolderPicker } from "./RemoteFolderPicker";
 import { WebPreviewPanel } from "./WebPreviewPanel";
@@ -180,6 +181,11 @@ function Chat({
     if (!wasLoading || isLoading) return;
     // Agent just finished — play a short notification chime (shared context).
     playFinishChime();
+    // Final safety net: the turn is PROVABLY over (isLoading flipped false),
+    // so release every answer/tool gate unconditionally — covers any path
+    // where the gate state could otherwise stay stuck. Reset on the next
+    // send so the thought→response sequencing keeps working.
+    forceReleaseAllReasoning();
   }, [isLoading]);
   const [hermesSessionId, setHermesSessionId] = useState<string | null>(
     initialSessionId ?? null,

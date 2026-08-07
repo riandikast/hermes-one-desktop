@@ -1,6 +1,5 @@
 import { memo, useMemo, useRef } from "react";
 import { FilePlus2 } from "lucide-react";
-import { countDiffLineStats } from "./diffLines";
 import { HermesAvatar, MessageRow } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
 import { ReasoningRow, ToolActivityGroup } from "./HistoryRow";
@@ -29,22 +28,6 @@ const FileChangesRow = memo(function FileChangesRow({
   onOpen?: (changes: FileChange[]) => void;
 }): React.JSX.Element {
   const count = msg.changes.length;
-  const added = msg.changes.reduce(
-    (sum, c) =>
-      sum +
-      (c.diff
-        ? countDiffLineStats(c.diff).added
-        : c.added?.length ?? 0),
-    0,
-  );
-  const removed = msg.changes.reduce(
-    (sum, c) =>
-      sum +
-      (c.diff
-        ? countDiffLineStats(c.diff).removed
-        : c.removed?.length ?? 0),
-    0,
-  );
   return (
     <button
       type="button"
@@ -55,10 +38,6 @@ const FileChangesRow = memo(function FileChangesRow({
       <FilePlus2 size={13} />
       <span>
         {count} file{count > 1 ? "s" : ""} changed
-      </span>
-      <span className="chat-file-changes-row-stats">
-        <span className="file-changes-stat-add">+{added}</span>
-        <span className="file-changes-stat-del">−{removed}</span>
       </span>
       <span className="chat-file-changes-row-arrow">▸</span>
     </button>
@@ -188,12 +167,14 @@ function buildRows(
           key={`${group[0].id}-${sliceStart + start}`}
           items={group}
           active={isLoading && globalEnd === totalLen - 1}
+          isLoading={isLoading}
           showAvatar={
             !slice[start - 1]
               ? !prev || prev !== "agent"
               : slice[start - 1].role !== "agent"
           }
           agent={callbacks.agentAvatar}
+          waitForReasoningId={turnLastReasoningId}
         />,
       );
       continue;
@@ -251,6 +232,9 @@ function buildRows(
         onUnsendLastUser={callbacks.onUnsendLastUser}
         isLastUser={i === lastUserIdx}
         onOpenFileChanges={callbacks.onOpenFileChanges}
+        waitForReasoningId={
+          msg.role === "agent" ? turnLastReasoningId : undefined
+        }
       />,
     );
   }

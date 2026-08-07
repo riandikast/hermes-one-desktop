@@ -10,10 +10,6 @@ import {
   type DashboardStreamEvent,
   WRITE_TOOL_NAMES,
 } from "../dashboardEventAdapter";
-import {
-  filePathFromInlineDiff,
-  inlineDiffFromPayload,
-} from "../diffLines";
 import { extractToolPath } from "../fileChanges";
 import {
   dbItemsToChatMessages,
@@ -1009,9 +1005,6 @@ export function useDashboardChatTransport({
   // Per-turn file-change capture: path → latest before/after pair. Reset on
   // each new user turn; attached to the assistant bubble on message.complete.
   const fileChangesRef = useRef<Map<string, FileChange>>(new Map());
-  // toolCallId → unified diff string captured from tool.complete inline_diff
-  // (authoritative file-edit source; rendered in the tool result card).
-  const toolDiffsRef = useRef<Map<string, string>>(new Map());
   const pendingClarifyRequestIdRef = useRef<string | null>(null);
   const pendingRecoveredContinuationRef = useRef<
     DesktopSessionContinuationItem[]
@@ -1201,7 +1194,6 @@ export function useDashboardChatTransport({
       toolPaths: captured.map((c) => c.path),
     });
     fileChangesRef.current = new Map();
-    toolDiffsRef.current = new Map();
     if (captured.length === 0) return;
     void (async () => {
       // The tool capture reads AFTER-content asynchronously — at finalize the
@@ -1496,7 +1488,7 @@ export function useDashboardChatTransport({
               reasoningSegmentClosed: reasoningSegmentClosedRef.current,
             },
             blockedEvent,
-            { activeTurn: activeTurnRef.current },
+            { activeTurn: activeTurnRef.current, renderAssistantDeltas: true },
           );
           messagesRef.current = blockedNext.messages;
           setMessages(blockedNext.messages);
@@ -1611,49 +1603,6 @@ export function useDashboardChatTransport({
         ).toLowerCase();
         const matched = WRITE_TOOL_NAMES.some((w) => toolName.includes(w));
 
-        // FILE-CHANGES: authoritative inline diff from the backend (official
-        // desktop contract — tui_gateway emits payload.inline_diff for
-        // write_file/patch/skill_manage). Captured verbatim per tool call; the
-        // per-file record prefers it over the heuristics below.
-        const inlineDiff = inlineDiffFromPayload(event.payload);
-        const diffPath = inlineDiff
-          ? filePathFromInlineDiff(inlineDiff)
-          : null;
-        if (inlineDiff) {
-          toolDiffsRef.current.set(
-            String(
-              (toolPayload.tool_id as string | undefined) ??
-                (toolPayload.tool_call_id as string | undefined) ??
-                toolName,
-            ),
-            inlineDiff,
-          );
-          const p = diffPath;
-          if (p) {
-            const existing = fileChangesRef.current.get(p);
-            fileChangesRef.current.set(p, {
-              path: p,
-              before: null,
-              after: null,
-              beforeKnown: false,
-              diff: inlineDiff,
-              ...(existing?.removed ? { removed: existing.removed } : {}),
-              ...(existing?.added ? { added: existing.added } : {}),
-            });
-            void window.hermesAPI
-              .readFile(p)
-              .then((res) => {
-                const current = fileChangesRef.current.get(p);
-                if (!current) return;
-                fileChangesRef.current.set(p, {
-                  ...current,
-                  after: res?.content ?? null,
-                });
-              })
-              .catch(() => undefined);
-          }
-        }
-
         // Patch-style tools carry the exact hunk — at the payload TOP LEVEL
         // for some gateways ({mode, path, old_string, new_string}) or nested
         // under `args`. Capture removed/added so the diff renders git-style
@@ -1753,10 +1702,15 @@ export function useDashboardChatTransport({
         event,
         {
           activeTurn: activeTurnRef.current,
-          // Live streaming (official model): deltas render into the pending
-          // bubble as they arrive; `message.complete` replaces the streamed
-          // text with ONE authoritative final bubble (mergeFinalAssistantText
-          // in dashboardEventAdapter).
+          // Do NOT render streamed answer deltas. The gateway emits answer
+          // text, THEN tools, THEN a trailing thought; rendering the deltas
+          // live puts a partial answer mid-transcript above the tools and the
+          // trailing thought (reads as "cut" / "last response missing", and
+          // no amount of gating/merging/reordering fully fixes it). Instead
+          // the thought streams live and `message.complete` materializes the
+          // final answer ONCE, from the final text, at the end of the turn —
+          // same shape as the (working) reopened-from-DB view.
+          renderAssistantDeltas: false,
         },
       );
       reasoningSegmentClosedRef.current = next.reasoningSegmentClosed;
@@ -1771,6 +1725,38 @@ export function useDashboardChatTransport({
       setMessages(nextMessages);
 
       if (event.type === "message.complete") {
+        const payloadRecord =
+          event.payload && typeof event.payload === "object"
+            ? (event.payload as Record<string, unknown>)
+            : {};
+        const rawFinal =
+          typeof payloadRecord.text === "string"
+            ? payloadRecord.text
+            : typeof payloadRecord.rendered === "string"
+              ? payloadRecord.rendered
+              : typeof payloadRecord.final_response === "string"
+                ? payloadRecord.final_response
+                : typeof payloadRecord.output_text === "string"
+                  ? payloadRecord.output_text
+                  : typeof payloadRecord.content === "string"
+                    ? payloadRecord.content
+                    : "";
+        console.info("[gate-diag] message.complete", {
+          finalTextLen: rawFinal.length,
+          finalTextHead: rawFinal.slice(0, 60),
+          payloadKeys: Object.keys(payloadRecord),
+          lastRows: nextMessages
+            .slice(-5)
+            .map((m) =>
+              "kind" in m
+                ? `kind:${m.kind}`
+                : `${m.role}(len ${String(m.content).length}, pending ${!!m.pending})`,
+            )
+            .join(" | "),
+          pendingBubbles: nextMessages.filter(
+            (m) => !("kind" in m) && m.role === "agent" && m.pending,
+          ).length,
+        });
         if (failed) {
           appliedModelRef.current = null;
           recreateRuntimeSessionRef.current = true;
@@ -2274,7 +2260,6 @@ export function useDashboardChatTransport({
       if (!enabled) return false;
       // FILE-CHANGES: a new user turn starts a fresh accumulator.
       fileChangesRef.current = new Map();
-      toolDiffsRef.current = new Map();
       // Start a fresh per-turn stall window (don't inherit the previous turn's
       // deadline) and re-arm the quiet-finalize fallback.
       resetStallTimer();

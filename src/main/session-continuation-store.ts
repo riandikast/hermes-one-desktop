@@ -22,8 +22,6 @@ export interface StoredFileChange {
   beforeKnown?: boolean;
   removed?: string[];
   added?: string[];
-  /** Unified diff text (backend inline_diff) — survives reopen verbatim. */
-  diff?: string;
 }
 
 interface StoredContinuationRow {
@@ -337,25 +335,14 @@ export function loadSessionFileChanges(
   if (!row?.changes_json) return [];
   try {
     const parsed = JSON.parse(row.changes_json);
-    return normalizeFileChangesWithDiff(parsed);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (c): c is StoredFileChange =>
+        isRecord(c) && typeof c.path === "string" && c.path.length > 0,
+    );
   } catch {
     return [];
   }
-}
-
-/** Validate + normalize persisted file-change records, keeping the optional
- *  diff string. */
-export function normalizeFileChangesWithDiff(
-  value: unknown,
-): StoredFileChange[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter(
-    (c): c is StoredFileChange =>
-      isRecord(c) &&
-      typeof c.path === "string" &&
-      c.path.length > 0 &&
-      (c.diff === undefined || typeof c.diff === "string"),
-  );
 }
 
 /** Attach a session's persisted file changes to its LAST assistant bubble so

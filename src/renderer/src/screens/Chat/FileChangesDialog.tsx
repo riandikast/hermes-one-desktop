@@ -4,19 +4,9 @@ import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { diffLines, type DiffLine } from "./fileChanges";
-import { countDiffLineStats, parseDiff } from "./diffLines";
 import type { FileChange } from "./types";
 
 function diffStats(change: FileChange): React.JSX.Element {
-  if (change.diff) {
-    const stats = countDiffLineStats(change.diff);
-    return (
-      <span>
-        <span className="file-changes-stat-del">-{stats.removed}</span>{" "}
-        <span className="file-changes-stat-add">+{stats.added}</span>
-      </span>
-    );
-  }
   if (change.before === null && change.after !== null && change.beforeKnown) {
     return <span>Created</span>;
   }
@@ -64,24 +54,10 @@ function ReadOnlyCode({ content }: { content: string }): React.JSX.Element {
   return <div ref={hostRef} className="file-changes-code" />;
 }
 
-/** Build the git-style diff lines for a change: the backend's unified diff
- *  when present (authoritative), else the exact hunk from the tool's
- *  old/new strings, else a computed LCS diff over full contents, else null
- *  (after-only view). */
+/** Build the git-style diff lines for a change: exact hunk when the tool
+ *  provided old/new strings, else a computed LCS diff over full contents,
+ *  else null (after-only view). */
 function diffFor(change: FileChange): DiffLine[] | null {
-  if (change.diff) {
-    // Map the unified-diff kinds (add/remove/context) onto the dialog's
-    // existing DiffLine shape (add/del/same).
-    return parseDiff(change.diff).map((line) => ({
-      type:
-        line.kind === "add"
-          ? ("add" as const)
-          : line.kind === "remove"
-            ? ("del" as const)
-            : ("same" as const),
-      text: line.text,
-    }));
-  }
   if (change.removed || change.added) {
     const lines: DiffLine[] = [];
     for (const r of change.removed ?? []) lines.push({ type: "del", text: r });

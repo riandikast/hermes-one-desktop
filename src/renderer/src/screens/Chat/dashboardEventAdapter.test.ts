@@ -2,12 +2,10 @@
 import { describe, it, expect } from "vitest";
 import {
   applyDashboardStreamEvent,
-  finalizeInterruptedMessages,
-  mergeFinalAssistantText,
   mergeStreamedWithFinal,
   type DashboardEventState,
 } from "./dashboardEventAdapter";
-import type { ChatBubbleMessage, ChatMessage } from "./types";
+import type { ChatMessage } from "./types";
 
 describe("mergeStreamedWithFinal", () => {
   it("uses final when nothing was streamed (remote / suppressed-delta path)", () => {
@@ -167,7 +165,7 @@ describe("applyDashboardStreamEvent — message.complete text reconciliation", (
     expect((bubble as { pending?: boolean }).pending).toBe(false);
   });
 
-  it("replaces streamed text with the fuller final_response (official merge)", () => {
+  it("uses the fuller final_response when it supersets the streamed text", () => {
     const state: DashboardEventState = {
       messages: [
         userTurn(),
@@ -187,30 +185,28 @@ describe("applyDashboardStreamEvent — message.complete text reconciliation", (
       payload: { text: "Hello there, friend." },
     });
 
-    // The final covers the streamed text, so the official contract applies:
-    // the streamed bubble is replaced by ONE authoritative final bubble.
-    const bubbles = next.messages.filter(
-      (m) => m.role === "agent" && !("kind" in m),
-    );
-    expect(bubbles).toHaveLength(1);
-    expect((bubbles[0] as { content: string }).content).toBe(
-      "Hello there, friend.",
-    );
+    expect(
+      (next.messages.find((m) => m.id === "a1") as { content: string }).content,
+    ).toBe("Hello there, friend.");
   });
 
-  it("renders message.delta into a pending bubble (live streaming)", () => {
-    let state: DashboardEventState = {
-      messages: [userTurn()],
-      reasoningSegmentClosed: false,
-    };
-    state = applyDashboardStreamEvent(state, {
-      type: "message.delta",
-      payload: { text: "Remote answer" },
-    });
-    const bubble = state.messages.find((m) => m.role === "agent");
+  it("falls back to final_response when deltas are suppressed (remote path)", () => {
+    const afterDelta = applyDashboardStreamEvent(
+      { messages: [userTurn()], reasoningSegmentClosed: false },
+      { type: "message.delta", payload: { text: "ignored stream" } },
+      { renderAssistantDeltas: false },
+    );
+    // No assistant bubble is created while deltas are suppressed.
+    expect(afterDelta.messages.some((m) => m.role === "agent")).toBe(false);
+
+    const next = applyDashboardStreamEvent(
+      afterDelta,
+      { type: "message.complete", payload: { text: "Remote answer" } },
+      { renderAssistantDeltas: false },
+    );
+    const bubble = next.messages.find((m) => m.role === "agent");
     expect(bubble).toBeDefined();
     expect((bubble as { content: string }).content).toBe("Remote answer");
-    expect((bubble as { pending?: boolean }).pending).toBe(true);
   });
 
   it("keeps ONE reasoning row when thinking interleaves with the answer", () => {
@@ -325,137 +321,3 @@ describe("applyDashboardStreamEvent — message.complete text reconciliation", (
     );
   });
 });
-
-describe("mergeFinalAssistantText — official stability contract", () => {
-  const streamedBubble = (content: string, id = "a1"): ChatMessage => ({
-    id,
-    role: "agent",
-    content,
-    pending: true,
-    turnId: "t1",
-  });
-
-  it("replaces every streamed text bubble with one authoritative final", () => {
-    const messages: ChatMessage[] = [
-      { id: "u1", role: "user", content: "hi" },
-      streamedBubble("The final "),
-      streamedBubble("answer is here.", "a2"),
-      { id: "r1", kind: "reasoning", role: "agent", text: "Let me think" },
-    ];
-    const out = mergeFinalAssistantText(messages, "The final answer is here.", "t1");
-    const bubbles = out.filter((m) => m.role === "agent" && !("kind" in m));
-    expect(bubbles).toHaveLength(1);
-    expect((bubbles[0] as ChatBubbleMessage).content).toBe(
-      "The final answer is here.",
-    );
-    expect((bubbles[0] as ChatBubbleMessage).pending).toBe(false);
-    expect((bubbles[0] as ChatBubbleMessage).turnId).toBe("t1");
-  });
-
-  it("drops reasoning fully covered by the final text", () => {
-    const messages: ChatMessage[] = [
-      streamedBubble("The final answer.", "a1"),
-      { id: "r1", kind: "reasoning", role: "agent", text: "The final answer." },
-      { id: "r2", kind: "reasoning", role: "agent", text: "Unrelated thought" },
-    ];
-    const out = mergeFinalAssistantText(messages, "The final answer.", "t1");
-    const reasoning = out.filter((m) => "kind" in m && m.kind === "reasoning");
-    expect(reasoning).toHaveLength(1);
-    expect(reasoning[0].text).toBe("Unrelated thought");
-  });
-
-  it("appends a fresh final bubble when no streamed text exists", () => {
-    const messages: ChatMessage[] = [
-      { id: "r1", kind: "reasoning", role: "agent", text: "thought" },
-    ];
-    const out = mergeFinalAssistantText(messages, "Final", "t1");
-    const bubbles = out.filter((m) => m.role === "agent" && !("kind" in m));
-    expect(bubbles).toHaveLength(1);
-    expect((bubbles[0] as ChatBubbleMessage).content).toBe("Final");
-  });
-
-  it("keeps streamed text when the final is a last-turn-only subset (#746)", () => {
-    const messages: ChatMessage[] = [
-      { id: "u1", role: "user", content: "weather?" },
-      streamedBubble("Let me check the weather. ", "a1"),
-      { id: "tc1", kind: "tool_call", role: "agent", callId: "c1", name: "weather", args: "" },
-      { id: "tr1", kind: "tool_result", role: "agent", callId: "c1", name: "weather", content: "sunny" },
-    ];
-    const out = mergeFinalAssistantText(messages, "Done.", "t1");
-    const bubbles = out.filter((m) => m.role === "agent" && !("kind" in m));
-    expect(bubbles).toHaveLength(1);
-    expect((bubbles[0] as ChatBubbleMessage).content).toBe(
-      "Let me check the weather.\n\nDone.",
-    );
-    expect((bubbles[0] as ChatBubbleMessage).pending).toBe(false);
-  });
-
-  it("leaves a final empty string untouched (no bubble appended)", () => {
-    const messages: ChatMessage[] = [streamedBubble("streamed", "a1")];
-    const out = mergeFinalAssistantText(messages, "", "t1");
-    expect(out).toHaveLength(1);
-    expect((out[0] as ChatBubbleMessage).content).toBe("streamed");
-    expect((out[0] as ChatBubbleMessage).pending).toBe(true);
-  });
-});
-
-describe("finalizeInterruptedMessages — session.info running:false settle", () => {
-  it("un-pends a stranded pending bubble, keeping its text", () => {
-    const messages: ChatMessage[] = [
-      { id: "u1", role: "user", content: "hi" },
-      { id: "a1", role: "agent", content: "Partial answer", pending: true, turnId: "t1" },
-    ];
-    const out = finalizeInterruptedMessages(messages);
-    const bubble = out.find((m) => m.id === "a1");
-    expect(bubble && (bubble as ChatBubbleMessage).pending).toBe(false);
-  });
-
-  it("drops an empty pending placeholder", () => {
-    const messages: ChatMessage[] = [
-      { id: "a1", role: "agent", content: "", pending: true },
-    ];
-    const out = finalizeInterruptedMessages(messages);
-    expect(out).toHaveLength(0);
-  });
-
-  it("leaves completed bubbles untouched", () => {
-    const messages: ChatMessage[] = [
-      { id: "a1", role: "agent", content: "done", pending: false },
-    ];
-    const out = finalizeInterruptedMessages(messages);
-    expect(out).toHaveLength(1);
-  });
-});
-
-describe("applyDashboardStreamEvent — session.info settle", () => {
-  it("session.info running:false settles stranded pending bubbles", () => {
-    const state = {
-      messages: [
-        { id: "a1", role: "agent" as const, content: "Partial", pending: true },
-      ],
-      reasoningSegmentClosed: false,
-    };
-    const out = applyDashboardStreamEvent(state, {
-      type: "session.info",
-      payload: { running: false },
-    });
-    const bubble = out.messages.find((m) => m.id === "a1");
-    expect((bubble as ChatBubbleMessage).pending).toBe(false);
-  });
-
-  it("session.info running:true leaves pending bubbles alone", () => {
-    const state = {
-      messages: [
-        { id: "a1", role: "agent" as const, content: "Partial", pending: true },
-      ],
-      reasoningSegmentClosed: false,
-    };
-    const out = applyDashboardStreamEvent(state, {
-      type: "session.info",
-      payload: { running: true },
-    });
-    const bubble = out.messages.find((m) => m.id === "a1");
-    expect((bubble as ChatBubbleMessage).pending).toBe(true);
-  });
-});
-
