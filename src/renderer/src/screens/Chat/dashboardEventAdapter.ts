@@ -622,29 +622,13 @@ export function mergeFinalAssistantText(
   if (!final) return [...messages];
 
   const normFinal = normalizeText(final);
-  // The turn's streamed rows are those AFTER the last user row — the
-  // positional boundary, not turnId presence: bubbles loaded from state.db
-  // (reopened/resumed sessions) carry no turnId, and a merge scoped by
-  // "no turnId matches anything" would concatenate EVERY answer in the
-  // session into the last bubble. turnId is a secondary, position-anchored
-  // filter for live bubbles that carry it.
-  let lastUserIdx = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === "user") {
-      lastUserIdx = i;
-      break;
-    }
-  }
-  const inCurrentTurn = (msg: ChatMessage): boolean =>
-    !("kind" in msg) || (msg.kind !== "file_changes" && msg.kind !== "clarify");
+  const turnMatches = (msg: ChatMessage): boolean =>
+    !turnId || !("turnId" in msg) || !msg.turnId || msg.turnId === turnId;
 
   // Streamed text of this turn = concatenation of its assistant bubbles.
   const streamedBubbles = messages.filter(
-    (msg, index) =>
-      index > lastUserIdx &&
-      inCurrentTurn(msg) &&
-      msg.role === "agent" &&
-      isAssistantBubble(msg),
+    (msg) =>
+      turnMatches(msg) && msg.role === "agent" && isAssistantBubble(msg),
   );
   const streamedText = streamedBubbles
     .map((m) => (m as ChatBubbleMessage).content ?? "")
@@ -672,14 +656,14 @@ export function mergeFinalAssistantText(
 
   // Official contract: drop every streamed text bubble + reasoning fully
   // covered by the final; append ONE authoritative final bubble.
-  const filtered = messages.filter((msg, index) => {
-    // Keep everything before the turn boundary (prior turns, user rows).
-    if (index <= lastUserIdx) return true;
+  const filtered = messages.filter((msg) => {
+    // Keep everything before the turn boundary (user rows etc.).
+    if (!turnMatches(msg)) return true;
     if (msg.role === "agent" && isAssistantBubble(msg)) {
       // All streamed text bubbles of this turn are removed.
       return false;
     }
-    if ("kind" in msg && msg.kind === "reasoning") {
+    if ("kind" in msg && msg.kind === "reasoning" && turnMatches(msg)) {
       const reasoning = normalizeText(msg.text);
       if (reasoning && normFinal.startsWith(reasoning)) return false;
     }
