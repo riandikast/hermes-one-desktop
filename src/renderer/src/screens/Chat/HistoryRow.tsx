@@ -5,8 +5,6 @@ import { TypeAnimation } from "../../components/TypeAnimation";
 import { useI18n } from "../../components/useI18n";
 import { AttachmentChip } from "../../components/AttachmentChip";
 import { ToolGlyph, humanizeToolName } from "../../components/toolMeta";
-import { markReasoningGrowth, markReasoningReveal } from "./reasoningStall";
-import { useReasoningGate } from "./useReasoningGate";
 import { HermesAvatar, AvatarSpacer } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
 import type {
@@ -76,21 +74,11 @@ export const ReasoningRow = memo(function ReasoningRow({
   // never fired in that case and the text pasted per chunk. The window
   // expires ~5s after the last delta, snapping the row to full text (the
   // paste catch-up when the next bubble arrives / thinking ends).
-  //
-  // On a LIVE (trailing `active`) row the mount IS the first growth: the
-  // typewriter starts from 0 (reveal incomplete) and markReasoningGrowth
-  // stamps a real time, so useReasoningGate holds the rows below until the
-  // thought has actually typed. Without this, the mount chunk showed
-  // full-instant (reveal "complete") with no growth stamp (stalled=MAX) and
-  // the gate opened immediately — tools/results appeared before the thought
-  // typewriter had started. History/non-trailing rows (active=false) keep
-  // prevTextRef = msg.text so they paste in whole and stamp no growth.
   const [typing, setTyping] = useState(active && Boolean(msg.text));
   const prevTextRef = useRef(active ? "" : msg.text);
   useEffect(() => {
     const grew = msg.text !== prevTextRef.current;
     prevTextRef.current = msg.text;
-    if (grew) markReasoningGrowth(msg.id);
     if (!grew) return;
     setTyping(true);
     const timer = setTimeout(() => setTyping(false), 5_000);
@@ -162,14 +150,7 @@ export const ReasoningRow = memo(function ReasoningRow({
                 maxCharsPerTick={18}
                 className="chat-reasoning-text"
               >
-                {(visible) => {
-                  // Report reveal progress so the turn's answer bubble can
-                  // hold its gate until this thought is FULLY on screen (its
-                  // deltas stopping isn't enough — a fast stream leaves the
-                  // typewriter behind for a while).
-                  markReasoningReveal(msg.id, visible.length, msg.text.length);
-                  return visible;
-                }}
+                {(visible) => visible}
               </TypeAnimation>
             </pre>
           </div>
@@ -336,8 +317,6 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
   active = false,
   showAvatar = true,
   agent,
-  isLoading,
-  waitForReasoningId,
 }: {
   items: ToolItem[];
   /** True while the turn is still streaming and this run is trailing —
@@ -346,21 +325,8 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
   showAvatar?: boolean;
   /** Appearance of the chatting agent, shown once the avatar goes idle. */
   agent?: AgentAvatarInfo;
-  /** True while the turn is streaming — passed to useReasoningGate so the
-   *  gate opens immediately when the turn ends (the answer/tools must never
-   *  stay hidden after completion). */
-  isLoading?: boolean;
-  /** Id of the most recent reasoning row that PRECEDES this tool run. The
-   *  group stays hidden until that thought has finished typing, so tool
-   *  activity never appears mid-thought ("full thought -> tools"). */
-  waitForReasoningId?: string;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
-  const { waiting } = useReasoningGate({
-    waitForReasoningId,
-    hasContent: items.length > 0,
-    isLoading: Boolean(isLoading),
-  });
   const last = items[items.length - 1];
   const detail = itemDetail(last);
   const title = toolActivityGroupTitle(items);
@@ -371,7 +337,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
     <div
       className={`chat-message chat-message-agent chat-message-history${
         showAvatar ? "" : " chat-message--grouped"
-      }${waiting ? " chat-message--hidden" : ""}`}
+      }`}
     >
       {showAvatar ? (
         <HermesAvatar active={active} agent={agent} />

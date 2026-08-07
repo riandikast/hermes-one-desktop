@@ -9,7 +9,6 @@ import { MediaSegmentView } from "../../components/MediaImage";
 import { TypeAnimation } from "../../components/TypeAnimation";
 import { useI18n } from "../../components/useI18n";
 import { parseMediaTokens, cleanLeakedToolTags } from "./mediaUtils";
-import { useReasoningGate } from "./useReasoningGate";
 import type { ChatBubbleMessage, ChatMessage, FileChange } from "./types";
 
 export const APPROVAL_RE =
@@ -189,10 +188,6 @@ interface MessageRowProps {
   isLastUser?: boolean;
   /** Open the file-changes dialog for this bubble (dashboard transport). */
   onOpenFileChanges?: (changes: FileChange[]) => void;
-  /** Id of the last reasoning row of THIS turn (or undefined when the turn
-   *  has no thinking). The answer's reveal holds until that thought settles,
-   *  so the response never leaks out while the thought is still typing. */
-  waitForReasoningId?: string;
 }
 
 export const MessageRow = memo(function MessageRow({
@@ -207,7 +202,6 @@ export const MessageRow = memo(function MessageRow({
   onUnsendLastUser,
   isLastUser = false,
   onOpenFileChanges,
-  waitForReasoningId,
 }: MessageRowProps): React.JSX.Element {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -222,21 +216,6 @@ export const MessageRow = memo(function MessageRow({
   const bubbleContent = isChatBubbleMessage(msg)
     ? (msg as ChatBubbleMessage).content
     : null;
-
-  // Answer reveal. Gated behind the turn's thought: the bubble stays hidden
-  // (`waiting`) until the most recent preceding reasoning row has finished
-  // typing ([[useReasoningGate]]), so the response can't leak out mid-thought
-  // ("partial thought -> partial response"). When the gate opens the whole
-  // accumulated answer fades in via the .chat-message `messageIn` entrance —
-  // the answer is NOT typed (see the constants above for why). Deltas that
-  // arrive after the gate open simply grow the text in place (streaming
-  // paste), so a later thought row landing below never finds the response
-  // mid-typewriter (which would read as a stalled response).
-  const { waiting } = useReasoningGate({
-    waitForReasoningId,
-    hasContent: Boolean(bubbleContent),
-    isLoading,
-  });
 
   const renderStreamingContent = useCallback(
     (visible: string): React.ReactNode => {
@@ -304,7 +283,7 @@ export const MessageRow = memo(function MessageRow({
       id={msg.role === "user" ? `chat-msg-${msg.id}` : undefined}
       className={`chat-message chat-message-${msg.role}${
         showAvatar ? "" : " chat-message--grouped"
-      }${waiting ? " chat-message--hidden" : ""}`}
+      }`}
     >
       {/* User messages stand alone (right-aligned bubble, no avatar). Only the
           agent turn carries an avatar; its continuation rows get a spacer. */}
@@ -373,25 +352,15 @@ export const MessageRow = memo(function MessageRow({
         ) : (
           msg.content &&
           (msg.role === "agent" ? (
-            waiting ? (
-              // Hidden row waiting for the turn's thought to finish typing —
-              // render a caret so the row has a stable mount while hidden by
-              // .chat-message--hidden. When the gate opens the full text
-              // fades in via .chat-message messageIn (no typewriter).
-              <span className="type-animation-caret" aria-hidden="true">
-                ▍
-              </span>
-            ) : (
-              <TypeAnimation
-                text={msg.content}
-                // active=false: the answer is never typed. It always renders
-                // its full text (gated + faded in above; deltas paste in).
-                active={false}
-                showCaret={false}
-              >
-                {renderStreamingContent}
-              </TypeAnimation>
-            )
+            <TypeAnimation
+              text={msg.content}
+              // active=false: the answer is never typed. It always renders
+              // its full text; streamed deltas paste in as they arrive.
+              active={false}
+              showCaret={false}
+            >
+              {renderStreamingContent}
+            </TypeAnimation>
           ) : (
             msg.content
           ))

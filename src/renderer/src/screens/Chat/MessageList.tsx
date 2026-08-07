@@ -167,14 +167,12 @@ function buildRows(
           key={`${group[0].id}-${sliceStart + start}`}
           items={group}
           active={isLoading && globalEnd === totalLen - 1}
-          isLoading={isLoading}
           showAvatar={
             !slice[start - 1]
               ? !prev || prev !== "agent"
               : slice[start - 1].role !== "agent"
           }
           agent={callbacks.agentAvatar}
-          waitForReasoningId={turnLastReasoningId}
         />,
       );
       continue;
@@ -232,9 +230,6 @@ function buildRows(
         onUnsendLastUser={callbacks.onUnsendLastUser}
         isLastUser={i === lastUserIdx}
         onOpenFileChanges={callbacks.onOpenFileChanges}
-        waitForReasoningId={
-          msg.role === "agent" ? turnLastReasoningId : undefined
-        }
       />,
     );
   }

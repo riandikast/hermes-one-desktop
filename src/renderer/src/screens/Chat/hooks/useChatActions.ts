@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { ChatInputHandle } from "../ChatInput";
 import { createTurn, shouldSendToAgent } from "../chatMessages";
-import { resetReasoningGate } from "../reasoningStall";
 import type { SlashExecOutcome } from "../slashExec";
 import { handleSlashCommand } from "../slash/handleSlashCommand";
 import { parseSlashCommand } from "../slash/parseSlashCommand";
@@ -256,10 +255,6 @@ export function useChatActions({
       const hasPayload = text.length > 0 || (attachments?.length ?? 0) > 0;
       if (!hasPayload) return;
       if (!skipLoadingCheck && isLoadingRef.current) return;
-
-      // A new turn starts: clear the turn-end force-release so the
-      // thought→response gates re-arm for this turn.
-      resetReasoningGate();
 
       const cmdName = text.startsWith("/")
         ? text.split(/\s+/)[0].toLowerCase()
