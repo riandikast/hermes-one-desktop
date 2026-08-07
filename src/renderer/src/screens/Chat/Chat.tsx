@@ -38,6 +38,7 @@ import type { ContextUsage } from "./ContextGauge";
 import { contextWindowForModel } from "./contextWindows";
 import { useUsageTracker } from "./hooks/useUsageTracker";
 import { QueuedMessages } from "./QueuedMessages";
+import { ChatTurnStatus } from "./ChatTurnStatus";
 import { SLASH_COMMANDS, type SlashCommand } from "./slashCommands";
 import { reconcileSlashCatalog } from "./slash/commandCatalog";
 import {
@@ -1267,6 +1268,7 @@ function Chat({
       </div>
 
       <div className="chat-input-area">
+        <ChatTurnStatus isLoading={isLoading} messages={messages} />
         <QueuedMessages
           messages={queuedMessages}
           onRemove={handleRemoveQueued}
