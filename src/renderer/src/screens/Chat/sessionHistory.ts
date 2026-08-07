@@ -222,6 +222,26 @@ function buildDbAssistantSplitSequences(
   return sequences;
 }
 
+function isCoveredByDbBubble(
+  bubble: ChatBubbleMessage,
+  db: ReadonlyArray<ChatMessage>,
+): boolean {
+  if (bubble.role !== "agent") return false;
+  const text = normalizeBubbleContentForMatch(bubble.content || "");
+  if (!text) return false;
+  for (const m of db) {
+    if ("kind" in m) continue;
+    const dbBubble = m as ChatBubbleMessage;
+    if (dbBubble.role !== "agent") continue;
+    const dbText = normalizeBubbleContentForMatch(dbBubble.content || "");
+    if (!dbText) continue;
+    // The DB bubble fully covers the streamed partial (same start, longer
+    // text) — the partial is a truncated copy of the authoritative answer.
+    if (dbText !== text && dbText.startsWith(text)) return true;
+  }
+  return false;
+}
+
 /**
  * Detect the artifact behind issue #420/#431: the live stream can append
  * several assistant DB rows into one renderer bubble because chunk events do
@@ -875,6 +895,20 @@ export function reconcileStreamedWithDb(
       if (
         bubble.role === "agent" &&
         isCoveredByDbBubbleSplit(bubble, dbAssistantSplitSequences)
+      ) {
+        return false;
+      }
+      // A PENDING streamed agent bubble is a partial answer (the live stream
+      // is lossy — chunks can drop). If any DB bubble's normalized content
+      // fully covers it (the DB has the complete text), drop the partial so
+      // the reconcile replaces it instead of stacking partial+full. This is
+      // the empty-final-completion recovery: message.complete carried no text,
+      // the turn stayed pending, and the DB reconcile now delivers the
+      // authoritative answer.
+      if (
+        bubble.role === "agent" &&
+        bubble.pending &&
+        isCoveredByDbBubble(bubble, db)
       ) {
         return false;
       }

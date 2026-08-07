@@ -1794,6 +1794,40 @@ export function useDashboardChatTransport({
         }
         const activeTurn = activeTurnRef.current;
         if (activeTurn) activeTurn.status = failed ? "failed" : "completed";
+
+        // The stream is lossy: dropped delta chunks leave the pending bubble
+        // holding only part of the answer. When message.complete carries NO
+        // usable final text (empty/whitespace on every key), mergeFinalAssistantText
+        // keeps that partial bubble — settling now would show the truncated
+        // answer until a session reopen re-reads state.db. Defer the settle:
+        // keep the turn pending so the quiet-finalize DB reconcile pulls the
+        // authoritative full text in (the exact recovery the old no-completion
+        // case used). Only applies when there IS partial streamed content —
+        // a genuinely empty turn settles immediately as before.
+        const finalText = payloadText(
+          (event.payload as Record<string, unknown>) ?? {},
+          "text",
+          "rendered",
+          "final_response",
+          "output_text",
+          "content",
+        );
+        const hasStreamedContent = nextMessages.some(
+          (m) =>
+            !("kind" in m) &&
+            m.role === "agent" &&
+            m.pending &&
+            String(m.content ?? "").trim().length > 0,
+        );
+        if (!failed && !finalText.trim() && hasStreamedContent) {
+          console.info(
+            "[quiet-finalize] empty message.complete with partial stream — deferring settle to DB reconcile",
+            { finalTextLen: finalText.length },
+          );
+          setToolProgress(null);
+          return;
+        }
+
         activeTurnRef.current = null;
         clearQuietFinalize();
         setToolProgress(null);
