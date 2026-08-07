@@ -1192,6 +1192,10 @@ export function useDashboardChatTransport({
     const toolChanges = Array.from(fileChangesRef.current.values()).filter(
       (c) => c.after !== null || c.before !== null,
     );
+    console.info("[file-changes] captured", {
+      toolPaths: Array.from(fileChangesRef.current.keys()),
+      gitPaths: [],
+    });
     fileChangesRef.current = new Map();
     const byPath = new Map<string, FileChange>();
     for (const c of toolChanges) byPath.set(c.path, c);
@@ -1509,7 +1513,30 @@ export function useDashboardChatTransport({
               toolPayload,
               lastSyncedCwdRef.current ?? contextFolder,
             );
-          if (path && !fileChangesRef.current.has(path)) {
+          // Terminal-like tools READ files too (grep/cat/log tail) — a path in
+          // the command is only a change candidate when the command WRITES
+          // (>/>>/cp/mv/sed -i/touch/git add/...). Otherwise a log the game
+          // keeps writing would show up as "edited by the model".
+          const isTerminalLike =
+            /terminal|shell|bash|exec|process|run_command|command|powershell|cmd\.exe|pwsh/.test(
+              toolName,
+            );
+          const cmdText = [
+            toolPayload.command,
+            toolPayload.cmd,
+            toolPayload.context,
+            ...(Array.isArray(toolPayload.args)
+              ? toolPayload.args
+              : [toolPayload.args]),
+          ]
+            .filter((v): v is string => typeof v === "string")
+            .join("\n");
+          const writes =
+            !isTerminalLike ||
+            /(^|[;&|])\s*(>|>>|tee|touch|mkdir|install|dd|rm\s|cp\s|mv\s|sed\s+-i|git\s+(add|commit|push|checkout|reset|mv|rm)\b|echo\s+[^>]*>)/.test(
+              cmdText,
+            );
+          if (path && writes && !fileChangesRef.current.has(path)) {
             fileChangesRef.current.set(path, {
               path,
               before: null,
