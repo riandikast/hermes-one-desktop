@@ -1181,6 +1181,66 @@ export function useDashboardChatTransport({
     }
   }, []);
 
+  // Per-turn file-changes summary: merge the tool-event capture (paths from
+  // write tools) with git working-tree detection (authoritative — catches
+  // terminal writes and missed tools; before-content from the HEAD blob),
+  // push a renderer-only `file_changes` chip row into the transcript (its own
+  // row — independent of the answer bubble, so a missing answer can never
+  // swallow the badge), and persist for reopen. Runs at message.complete and
+  // the quiet-finalize recovery path.
+  const finalizeFileChanges = useCallback((): void => {
+    const toolChanges = Array.from(fileChangesRef.current.values()).filter(
+      (c) => c.after !== null || c.before !== null,
+    );
+    fileChangesRef.current = new Map();
+    const byPath = new Map<string, FileChange>();
+    for (const c of toolChanges) byPath.set(c.path, c);
+    void (async () => {
+      const folder = contextFolder?.trim();
+      if (folder) {
+        try {
+          const gitList =
+            await window.hermesAPI.getGitWorkingTreeChanges(folder);
+          for (const g of gitList) {
+            const existing = byPath.get(g.path);
+            byPath.set(g.path, {
+              path: g.path,
+              before: g.before,
+              after: g.after,
+              beforeKnown: true,
+              removed: existing?.removed,
+              added: existing?.added,
+            });
+          }
+        } catch {
+          /* git detection optional — tool capture still applies */
+        }
+      }
+      const changes = Array.from(byPath.values()).filter(
+        (c) => c.after !== null || c.before !== null,
+      );
+      if (changes.length === 0) return;
+      const chip: ChatMessage = {
+        id: `fc-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        kind: "file_changes",
+        role: "agent",
+        changes,
+      };
+      const next = [...messagesRef.current, chip];
+      messagesRef.current = next;
+      setMessages(next);
+      const storedSessionId = storedSessionIdRef.current;
+      const record = window.hermesAPI.recordSessionFileChanges;
+      if (
+        dashboardShouldPersistLocalOverlays(connectionMode) &&
+        storedSessionId &&
+        typeof record === "function"
+      ) {
+        void record(storedSessionId, changes).catch(() => undefined);
+      }
+    })();
+  }, [connectionMode, contextFolder, setMessages]);
+
   const resetQuietFinalize = useCallback((): void => {
     clearQuietFinalize();
     quietFinalizeTimerRef.current = setTimeout(() => {
@@ -1276,12 +1336,21 @@ export function useDashboardChatTransport({
           activeTurnRef.current = null;
           setToolProgress(null);
           setIsLoading(false);
+          // FILE-CHANGES: emit the summary chip (lost message.complete must
+          // not lose the badge either).
+          finalizeFileChanges();
         } catch {
           resetQuietFinalize();
         }
       })();
     }, QUIET_FINALIZE_MS);
-  }, [clearQuietFinalize, setMessages, setToolProgress, setIsLoading]);
+  }, [
+    clearQuietFinalize,
+    finalizeFileChanges,
+    setMessages,
+    setToolProgress,
+    setIsLoading,
+  ]);
 
   useEffect(() => clearQuietFinalize, [clearQuietFinalize]);
 
@@ -1633,76 +1702,8 @@ export function useDashboardChatTransport({
         clearQuietFinalize();
         setToolProgress(null);
         setIsLoading(false);
-        // FILE-CHANGES: attach the accumulated changes to the finished bubble.
-        if (fileChangesRef.current.size > 0) {
-          const changes = Array.from(fileChangesRef.current.values()).filter(
-            (c) => c.after !== null || c.before !== null,
-          );
-          const persistChanges = (list: FileChange[]): void => {
-            const storedSessionId = storedSessionIdRef.current;
-            const record = window.hermesAPI.recordSessionFileChanges;
-            if (
-              dashboardShouldPersistLocalOverlays(connectionMode) &&
-              storedSessionId &&
-              list.length > 0 &&
-              typeof record === "function"
-            ) {
-              void record(storedSessionId, list).catch(() => undefined);
-            }
-          };
-          const attachChanges = (list: FileChange[]): void => {
-            // The bubble is not necessarily the last row — tool rows are
-            // appended after it. Scan backwards for the last assistant
-            // bubble (no kind), skipping tool/reasoning rows. Attach
-            // synchronously off messagesRef (the sync source of truth)
-            // rather than a functional updater, so the attach lands even if
-            // a later event's setMessages batches on top of it.
-            const current = messagesRef.current;
-            for (let idx = current.length - 1; idx >= 0; idx--) {
-              const last = current[idx];
-              if (!last || last.role !== "agent") break;
-              const kind = (last as { kind?: string }).kind;
-              if (
-                kind === "tool_call" ||
-                kind === "tool_result" ||
-                kind === "reasoning"
-              ) {
-                continue;
-              }
-              const next = [...current];
-              next[idx] = { ...last, fileChanges: list } as ChatMessage;
-              messagesRef.current = next;
-              setMessages(next);
-              persistChanges(list);
-              console.info(`[file-changes] badge attached (${list.length})`);
-              return;
-            }
-            console.info("[file-changes] badge NOT attached (no bubble)");
-          };
-          if (changes.length > 0) {
-            const missingAfter = changes.filter((c) => c.after === null);
-            if (missingAfter.length === 0) {
-              attachChanges(changes);
-            } else {
-              // The final tool.complete sweep may still be in flight —
-              // re-read the remaining afters before attaching.
-              void Promise.all(
-                missingAfter.map((c) =>
-                  window.hermesAPI
-                    .readFile(c.path)
-                    .then((res) => ({ ...c, after: res?.content ?? null }))
-                    .catch(() => ({ ...c, after: null })),
-                ),
-              ).then((filled) => {
-                const merged = changes.map(
-                  (c) => filled.find((f) => f.path === c.path) ?? c,
-                );
-                attachChanges(merged);
-              });
-            }
-          }
-          fileChangesRef.current = new Map();
-        }
+        // FILE-CHANGES: emit the per-turn summary chip row (git + tool merge).
+        finalizeFileChanges();
         const usage = usageFromPayload(event.payload);
         if (usage || !failed) {
           // The gauge only renders when `contextTokens` is set, so it must be
@@ -1752,6 +1753,7 @@ export function useDashboardChatTransport({
       activeTurnRef,
       clearQuietFinalize,
       connectionMode,
+      finalizeFileChanges,
       resetQuietFinalize,
       resetStallTimer,
       setIsLoading,

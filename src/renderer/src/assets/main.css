@@ -20266,3 +20266,30 @@ body:has(.shell-vibrant),
   background: var(--accent-subtle);
   color: var(--text-primary);
 }
+
+/* Per-turn file-changes chip row in the transcript (independent of the
+   answer bubble). */
+.chat-file-changes-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 6px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+.chat-file-changes-row:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--text-primary);
+}
+.chat-file-changes-row-arrow {
+  color: var(--text-tertiary);
+  font-size: 10px;
+}

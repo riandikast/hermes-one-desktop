@@ -1174,6 +1174,17 @@ interface HermesAPI {
     path: string,
     side: "ours" | "theirs",
   ) => Promise<GitActionResult>;
+  getGitWorkingTreeChanges: (
+    dir: string,
+    opts?: { maxFiles?: number },
+  ) => Promise<
+    {
+      path: string;
+      before: string | null;
+      after: string | null;
+      status: string;
+    }[]
+  >;
   everythingSearch: (
     query: string,
     rootPath?: string,

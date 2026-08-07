@@ -98,12 +98,23 @@ export interface ClarifyMessage {
   resolved?: boolean;
 }
 
+/** Per-turn file-changes summary row (renderer-only — never written to
+ *  state.db). Rendered as a chip independent of the answer bubble so it
+ *  survives turns where the final answer is missing. */
+export interface FileChangesMessage {
+  id: string;
+  kind: "file_changes";
+  role: "agent";
+  changes: FileChange[];
+}
+
 export type ChatMessage =
   | ChatBubbleMessage
   | ReasoningMessage
   | ToolCallMessage
   | ToolResultMessage
-  | ClarifyMessage;
+  | ClarifyMessage
+  | FileChangesMessage;
 
 export interface ActiveTurn {
   turnId: string;

@@ -1608,6 +1608,17 @@ const hermesAPI = {
   gitFetch: (dir: string) => ipcRenderer.invoke("git-fetch", dir),
   gitResolveConflict: (dir: string, path: string, side: "ours" | "theirs") =>
     ipcRenderer.invoke("git-conflict-resolve", dir, path, side),
+  getGitWorkingTreeChanges: (
+    dir: string,
+    opts?: { maxFiles?: number },
+  ): Promise<
+    {
+      path: string;
+      before: string | null;
+      after: string | null;
+      status: string;
+    }[]
+  > => ipcRenderer.invoke("git-working-tree-changes", dir, opts),
   everythingSearch: (
     query: string,
     rootPath?: string,

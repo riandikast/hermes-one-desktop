@@ -1,4 +1,5 @@
 import { memo, useMemo, useRef } from "react";
+import { FilePlus2 } from "lucide-react";
 import { HermesAvatar, MessageRow } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
 import { ReasoningRow, ToolActivityGroup } from "./HistoryRow";
@@ -7,6 +8,7 @@ import type {
   ChatMessage,
   ClarifyMessage,
   FileChange,
+  FileChangesMessage,
   ToolCallMessage,
   ToolResultMessage,
 } from "./types";
@@ -15,6 +17,32 @@ function isToolRow(m: ChatMessage): m is ToolCallMessage | ToolResultMessage {
   const k = (m as { kind?: string }).kind;
   return k === "tool_call" || k === "tool_result";
 }
+
+/** Per-turn file-changes chip — its own transcript row, independent of the
+ *  answer bubble so a missing final answer can never hide the badge. */
+const FileChangesRow = memo(function FileChangesRow({
+  msg,
+  onOpen,
+}: {
+  msg: FileChangesMessage;
+  onOpen?: (changes: FileChange[]) => void;
+}): React.JSX.Element {
+  const count = msg.changes.length;
+  return (
+    <button
+      type="button"
+      className="chat-file-changes-row"
+      onClick={() => onOpen?.(msg.changes)}
+      title="View file changes"
+    >
+      <FilePlus2 size={13} />
+      <span>
+        {count} file{count > 1 ? "s" : ""} changed
+      </span>
+      <span className="chat-file-changes-row-arrow">▸</span>
+    </button>
+  );
+});
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -173,6 +201,17 @@ function buildRows(
           key={msg.id}
           msg={msg as ClarifyMessage}
           onResolved={callbacks.onClarifyResolved}
+        />,
+      );
+      continue;
+    }
+
+    if (k === "file_changes") {
+      rows.push(
+        <FileChangesRow
+          key={msg.id}
+          msg={msg as FileChangesMessage}
+          onOpen={callbacks.onOpenFileChanges}
         />,
       );
       continue;

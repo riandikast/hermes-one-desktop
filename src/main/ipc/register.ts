@@ -63,6 +63,7 @@ import {
   gitFetch,
   gitResolveConflict,
   gitRemoteHost,
+  getGitWorkingTreeChanges,
   setGitTokenProvider,
 } from "../git";
 import {
@@ -3064,6 +3065,14 @@ export function registerIpcHandlers(context: IpcContext): void {
         },
       );
       return result;
+    },
+  );
+
+  ipcMain.handle(
+    "git-working-tree-changes",
+    async (_event, dir: string, opts?: { maxFiles?: number }) => {
+      if (typeof dir !== "string" || !dir.trim()) return [];
+      return getGitWorkingTreeChanges(dir, opts);
     },
   );
 

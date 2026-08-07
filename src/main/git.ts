@@ -1,4 +1,6 @@
 import { spawn } from "child_process";
+import { readFile } from "fs/promises";
+import { relative, join } from "path";
 import { extractHostFromRemoteUrl, gitTokenAuthArgs } from "./git-credentials";
 
 /**
@@ -261,6 +263,95 @@ export async function gitRemoteHost(dir: string): Promise<string | null> {
     if (host) return host;
   }
   return null;
+}
+
+/** One file the working tree changed during a turn, with before/after content
+ *  for the file-changes summary (before from the HEAD blob when tracked). */
+export interface GitWorkingTreeChange {
+  path: string;
+  before: string | null;
+  after: string | null;
+  /** Porcelain status pair, e.g. "M", "A", "D", "??", "MM". */
+  status: string;
+}
+
+/**
+ * Compute the working-tree changes via git — the authoritative detection for
+ * the per-turn file-changes summary: it catches EVERY change (including
+ * terminal/write-tool writes the tool-event capture missed) and provides the
+ * before-content from the HEAD blob. Returns [] when `dir` is not inside a
+ * git work tree (callers fall back to tool-event capture) or git fails.
+ * Only changes under `dir` are returned (the repo root may be an ancestor).
+ */
+export async function getGitWorkingTreeChanges(
+  dir: string,
+  opts: { maxFiles?: number } = {},
+): Promise<GitWorkingTreeChange[]> {
+  const maxFiles = opts.maxFiles ?? 50;
+  const inside = await runGit(dir, ["rev-parse", "--is-inside-work-tree"]);
+  if (inside.code !== 0 || inside.stdout.trim() !== "true") return [];
+
+  const rootResult = await runGit(dir, ["rev-parse", "--show-toplevel"]);
+  const repoRoot = rootResult.code === 0 ? rootResult.stdout.trim() : "";
+  if (!repoRoot) return [];
+
+  const status = await runGit(dir, [
+    "-c",
+    "core.quotepath=false",
+    "status",
+    "--porcelain=v1",
+    "-z",
+  ]);
+  if (status.code !== 0) return [];
+
+  const relPrefix = relative(repoRoot, dir).replace(/\\/g, "/");
+  const entries = parsePorcelainV1Z(status.stdout);
+  const out: GitWorkingTreeChange[] = [];
+
+  for (const entry of entries) {
+    if (out.length >= maxFiles) break;
+    // Restrict to the context folder when the repo root is an ancestor.
+    if (
+      relPrefix &&
+      !(entry.path === relPrefix || entry.path.startsWith(`${relPrefix}/`))
+    ) {
+      continue;
+    }
+    if (entry.path.endsWith("/")) continue; // untracked directory placeholder
+    const pair = (entry.index + entry.worktree).trim();
+    const isUntracked = pair === "??";
+    const isDeleted = pair.includes("D");
+    const abs = join(repoRoot, entry.path);
+
+    let before: string | null = null;
+    let after: string | null = null;
+    if (!isUntracked) {
+      // Size guard: skip loading huge blobs into the summary.
+      const sizeRes = await runGit(dir, [
+        "cat-file",
+        "-s",
+        `HEAD:${entry.path}`,
+      ]);
+      const blobBytes = Number(sizeRes.stdout.trim());
+      if (!Number.isFinite(blobBytes) || blobBytes <= 2 * 1024 * 1024) {
+        const show = await runGit(dir, ["show", `HEAD:${entry.path}`]);
+        if (show.code === 0) before = show.stdout;
+      }
+    }
+    if (!isDeleted) {
+      try {
+        const st = await import("fs/promises").then((m) => m.stat(abs));
+        if (st.isFile() && st.size <= 2 * 1024 * 1024) {
+          after = await readFile(abs, "utf8");
+        }
+      } catch {
+        after = null;
+      }
+    }
+    out.push({ path: abs, before, after, status: pair });
+  }
+
+  return out;
 }
 
 /** Auth args for the repo's remote host when a token is stored for it. */
