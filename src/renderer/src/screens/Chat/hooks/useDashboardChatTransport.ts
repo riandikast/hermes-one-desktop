@@ -1219,9 +1219,20 @@ export function useDashboardChatTransport({
           const dbLastUser = [...dbMessages]
             .reverse()
             .find((m) => m.role === "user");
+          // Content match alone has a hole: sending the SAME message twice
+          // matches while the DB only persisted the FIRST occurrence. Require
+          // an equal user-message count so the DB must actually contain the
+          // current turn's user row.
+          const liveUserCount = messagesRef.current.filter(
+            (m) => m.role === "user",
+          ).length;
+          const dbUserCount = dbMessages.filter(
+            (m) => m.role === "user",
+          ).length;
           const dbCaughtUp =
             !!liveLastUser &&
             !!dbLastUser &&
+            liveUserCount === dbUserCount &&
             String(liveLastUser.content).replace(/\s+/g, " ").trim() ===
               String(dbLastUser.content).replace(/\s+/g, " ").trim();
           console.info("[quiet-finalize] dbCaughtUp", { dbCaughtUp });

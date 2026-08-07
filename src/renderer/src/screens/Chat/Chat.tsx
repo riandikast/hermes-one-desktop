@@ -151,7 +151,24 @@ function Chat({
   const [messages, setMessages] = useState<ChatMessage[]>(
     initialMessages ?? [],
   );
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoadingRaw] = useState(false);
+  // Diagnostic: WHO flipped isLoading to false while the turn was active —
+  // several call sites can do it (message.complete, quiet-finalize, stall
+  // watchdog, clarify, legacy chat-done). The stack names the culprit for the
+  // "spinner disappeared but the chat keeps streaming" report.
+  const setIsLoading = useCallback((loading: boolean): void => {
+    if (!loading && isLoadingRef.current) {
+      console.info(
+        "[loading-diag] isLoading -> false",
+        new Error().stack?.split("\n").slice(1, 5).join("\n"),
+      );
+    }
+    setIsLoadingRaw(loading);
+  }, []);
+  const isLoadingRef = useRef(false);
+  useEffect(() => {
+    isLoadingRef.current = isLoading;
+  }, [isLoading]);
   useEffect(() => {
     onLoadingChange?.(runId, isLoading);
   }, [runId, isLoading, onLoadingChange]);
