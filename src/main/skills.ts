@@ -205,54 +205,6 @@ export function getSkillContent(skillPath: string): string {
 }
 
 /**
- * Search the skill registry via the hermes CLI.
- */
-export function searchSkills(query: string): SkillSearchResult[] {
-  try {
-    const output = execFileSync(
-      HERMES_PYTHON,
-      hermesCliArgs(["skills", "browse", "--query", query, "--json"]),
-      {
-        cwd: HERMES_REPO,
-        env: {
-          ...process.env,
-          PATH: getEnhancedPath(),
-          HOME: homedir(),
-          HERMES_HOME,
-        },
-        stdio: ["ignore", "pipe", "pipe"],
-        timeout: 30000,
-        ...HIDDEN_SUBPROCESS_OPTIONS,
-      },
-    );
-
-    const text = output.toString().trim();
-    if (!text) return [];
-
-    // Try to parse JSON output
-    try {
-      const results = JSON.parse(text);
-      if (Array.isArray(results)) {
-        return results.map((r: Record<string, string>) => ({
-          name: r.name || "",
-          description: r.description || "",
-          category: r.category || "",
-          source: r.source || "",
-          installed: false,
-        }));
-      }
-    } catch {
-      // If JSON parsing fails, the CLI may not support --json flag
-      // Fall back to listing bundled skills that match
-    }
-
-    return [];
-  } catch {
-    return [];
-  }
-}
-
-/**
  * List bundled skills from the hermes-agent repo.
  */
 export function listBundledSkills(): SkillSearchResult[] {
@@ -469,4 +421,82 @@ export function uninstallSkill(name: string, profile?: string): SkillCliResult {
   }
 
   return cliResult ?? { success: false, error: "Uninstall failed." };
+}
+
+/**
+ * Install a skill from the hub by its full identifier (e.g.
+ * "skills-sh/nousresearch/hermes-agent/ocr-and-documents").
+ */
+export function installHubSkill(
+  identifier: string,
+  profile?: string,
+): SkillCliResult {
+  try {
+    const args = hermesCliArgs(["skills", "install", identifier, "--yes"]);
+    if (profile && profile !== "default") {
+      args.splice(process.platform === "win32" ? 2 : 1, 0, "-p", profile);
+    }
+    const stdout = execFileSync(HERMES_PYTHON, args, {
+      cwd: HERMES_REPO,
+      env: {
+        ...process.env,
+        PATH: getEnhancedPath(),
+        HOME: homedir(),
+        HERMES_HOME,
+      },
+      stdio: "pipe",
+      timeout: 60_000,
+      ...HIDDEN_SUBPROCESS_OPTIONS,
+    });
+    return classifySkillCliOutput(stdout?.toString() ?? "");
+  } catch (err) {
+    const e = err as { stdout?: Buffer; stderr?: Buffer; message?: string };
+    const msg = (e.stderr?.toString() || e.message || "").trim();
+    return {
+      success: false,
+      error: msg || e.stdout?.toString()?.trim() || "Install failed.",
+    };
+  }
+}
+
+/** Alias for the hub UI — uninstalls by name via the existing path. */
+export function uninstallHubSkill(
+  name: string,
+  profile?: string,
+): SkillCliResult {
+  return uninstallSkill(name, profile);
+}
+
+/**
+ * Update all outdated hub skills. The CLI takes no --yes flag (verified
+ * against the installed CLI); failures are classified the same way as
+ * install/uninstall.
+ */
+export function updateHubSkills(profile?: string): SkillCliResult {
+  try {
+    const args = hermesCliArgs(["skills", "update"]);
+    if (profile && profile !== "default") {
+      args.splice(process.platform === "win32" ? 2 : 1, 0, "-p", profile);
+    }
+    const stdout = execFileSync(HERMES_PYTHON, args, {
+      cwd: HERMES_REPO,
+      env: {
+        ...process.env,
+        PATH: getEnhancedPath(),
+        HOME: homedir(),
+        HERMES_HOME,
+      },
+      stdio: "pipe",
+      timeout: 90_000,
+      ...HIDDEN_SUBPROCESS_OPTIONS,
+    });
+    return classifySkillCliOutput(stdout?.toString() ?? "");
+  } catch (err) {
+    const e = err as { stdout?: Buffer; stderr?: Buffer; message?: string };
+    const msg = (e.stderr?.toString() || e.message || "").trim();
+    return {
+      success: false,
+      error: msg || e.stdout?.toString()?.trim() || "Update failed.",
+    };
+  }
 }
