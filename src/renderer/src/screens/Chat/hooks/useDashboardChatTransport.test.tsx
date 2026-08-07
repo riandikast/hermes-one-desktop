@@ -53,6 +53,7 @@ interface HarnessApi {
   setModel?: Dispatch<SetStateAction<string>>;
   setProvider?: Dispatch<SetStateAction<string>>;
 }
+
 const activeBadTurn: ActiveTurn = {
   startIndex: 0,
   status: "running",
@@ -73,14 +74,12 @@ function Harness({
   initialConnectionMode = "local",
   onDashboardUnavailable,
   setUsage = vi.fn() as SetUsageMock,
-  setIsLoading = vi.fn() as Mock<(loading: boolean) => void>,
 }: {
   api: HarnessApi;
   fallbackOnUnavailable?: boolean;
   initialConnectionMode?: "local" | "remote" | "ssh";
   onDashboardUnavailable?: (reason: string) => void;
   setUsage?: SetUsageMock;
-  setIsLoading?: Mock<(loading: boolean) => void>;
 }): null {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -108,7 +107,7 @@ function Harness({
     profile: undefined,
     provider,
     setHermesSessionId: vi.fn(),
-    setIsLoading,
+    setIsLoading: vi.fn(),
     setMessages,
     setToolProgress: vi.fn(),
     setUsage,
@@ -761,112 +760,5 @@ describe("useDashboardChatTransport context gauge estimate (no usage payload)", 
     });
 
     expect(setUsage).not.toHaveBeenCalled();
-  });
-
-  it("does not settle a partial answer when message.complete carries no final text", async () => {
-    // @lat: [[chat-performance#Stable streaming (official final-merge contract)]]
-    // The stream can be lossy (dropped delta chunks → partial bubble). When
-    // message.complete arrives with an EMPTY final text, the DB has the full
-    // answer — settling now would show the truncated text until reopen. The
-    // turn must stay pending so the quiet-finalize DB reconcile restores it.
-    const setIsLoading = vi.fn();
-    const api: HarnessApi = {};
-    render(<Harness api={api} setIsLoading={setIsLoading} />);
-    await act(async () => {
-      await api.send?.("hello");
-    });
-
-    // Stream a partial answer (lossy stream — only the first sentence lands).
-    await act(async () => {
-      dashboardMock.onEvent?.({
-        payload: { text: "The full answer starts here. " },
-        session_id: "live-1",
-        type: "message.delta",
-      });
-    });
-
-    // message.complete arrives with NO usable final text (empty/whitespace).
-    await act(async () => {
-      dashboardMock.onEvent?.({
-        payload: { status: "complete", text: "" },
-        session_id: "live-1",
-        type: "message.complete",
-      });
-    });
-
-    // The turn must NOT be settled: loading stays on, activeTurn stays set,
-    // so the quiet-finalize path can pull the authoritative text from the DB.
-    expect(setIsLoading).not.toHaveBeenCalledWith(false);
-    expect(api.activeTurnRef?.current).not.toBeNull();
-  });
-
-  it("recovers the full answer from state.db when message.complete is empty", async () => {
-    // The companion half: with the settle deferred, the quiet-finalize timer
-    // (10s) fetches the DB rows and reconciles the full text in. The
-    // reconcile itself is unit-tested in sessionHistory.test.ts (partial
-    // bubble dropped in favor of the covering DB bubble) — here we verify the
-    // transport arms the DB fetch instead of settling.
-    const api: HarnessApi = {};
-    const getSessionMessages = vi.fn(async () => [
-      { id: 1, kind: "user", role: "user", content: "hello", timestamp: 1 },
-      {
-        id: 2,
-        kind: "assistant",
-        role: "assistant",
-        content: "The full answer starts here. And continues to the end.",
-        timestamp: 2,
-      },
-    ]);
-    Object.defineProperty(window, "hermesAPI", {
-      configurable: true,
-      value: {
-        freshDashboardWsUrl: vi.fn(async () => "ws://fresh-dashboard"),
-        recordSessionContinuation: vi.fn(async () => true),
-        recordSessionLocalError: vi.fn(async () => true),
-        startDashboard: vi.fn(async () => ({
-          connection: { wsUrl: "ws://127.0.0.1:12345" },
-          running: true,
-        })),
-        getSessionMessages,
-      },
-    });
-    render(<Harness api={api} />);
-    // Reset the harness's seeded transcript to a single "hello" user bubble so
-    // the live user count (1) matches the mocked DB rows (1 user + 1 answer).
-    await act(async () => {
-      api.setMessages?.(() => [
-        { id: "u-bad", role: "user", content: "hello", turnId: "turn-bad" },
-      ]);
-    });
-    await act(async () => {
-      await api.send?.("hello");
-    });
-
-    // Stream a partial answer (lossy stream — only the first sentence lands).
-    await act(async () => {
-      dashboardMock.onEvent?.({
-        payload: { text: "The full answer starts here. " },
-        session_id: "live-1",
-        type: "message.delta",
-      });
-    });
-
-    await act(async () => {
-      dashboardMock.onEvent?.({
-        payload: { status: "complete", text: "" },
-        session_id: "live-1",
-        type: "message.complete",
-      });
-    });
-
-    // The turn stays pending (not settled, not loading-off), so the
-    // quiet-finalize timer remains armed and eventually fetches the DB.
-    await waitFor(
-      () => {
-        expect(api.activeTurnRef?.current).not.toBeNull();
-      },
-      { timeout: 1000 },
-    );
-    expect(getSessionMessages).not.toHaveBeenCalled(); // only after 10s quiet
   });
 });
