@@ -646,6 +646,38 @@ interface DashboardEventSummary {
   type: string;
 }
 
+/** True when the current turn has a tool call that never received its
+ *  result — a tool is legitimately in flight (possibly for minutes), so the
+ *  stall watchdog must not fail the turn. */
+function hasUnresolvedTool(messages: ReadonlyArray<ChatMessage>): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === "user") break;
+    const kind = (m as { kind?: string }).kind;
+    if (kind === "tool_call") {
+      const call = m as unknown as { callId?: string };
+      let matched = false;
+      for (let j = i + 1; j < messages.length; j++) {
+        const n = messages[j];
+        if (
+          (n as { kind?: string }).kind === "tool_result" &&
+          (n as unknown as { callId?: string }).callId === call.callId
+        ) {
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) return true;
+      continue;
+    }
+    if (kind === "reasoning" || kind === "tool_result" || kind === "clarify") {
+      continue;
+    }
+    break;
+  }
+  return false;
+}
+
 declare global {
   interface Window {
     __HERMES_DASHBOARD_EVENTS__?: DashboardEventSummary[];
@@ -1099,6 +1131,16 @@ export function useDashboardChatTransport({
       stallTimerRef.current = null;
       const activeTurn = activeTurnRef.current;
       if (!activeTurn) return;
+      // A TOOL may be legitimately running for a long time with no stream
+      // events (multi-minute flutter build, slow network op). That is not a
+      // stall — failing the turn here would flip isLoading false (spinner
+      // disappears, interrupt→send) while the gateway is still working and
+      // the transcript keeps streaming. Extend the deadline instead; the
+      // user still has the interrupt button.
+      if (hasUnresolvedTool(messagesRef.current)) {
+        resetStallTimer();
+        return;
+      }
       const message =
         "No response from the model for 2 minutes — the provider may be " +
         "overloaded or the request was dropped. Send again to retry.";
@@ -2063,10 +2105,9 @@ export function useDashboardChatTransport({
       if (!enabled) return false;
       // FILE-CHANGES: a new user turn starts a fresh accumulator.
       fileChangesRef.current = new Map();
-      // A new turn invalidates the PREVIOUS turn's quiet-finalize timer — a
-      // stale timer firing mid-new-turn would reconcile the live transcript
-      // against a state.db that hasn't persisted the new user message yet,
-      // deleting it and resurrecting the previous (fuller, canonical) answer.
+      // Start a fresh per-turn stall window (don't inherit the previous turn's
+      // deadline) and re-arm the quiet-finalize fallback.
+      resetStallTimer();
       resetQuietFinalize();
       const pendingClarifyRequestId = pendingClarifyRequestIdRef.current;
       if (pendingClarifyRequestId) {
