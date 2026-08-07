@@ -1494,13 +1494,21 @@ export function useDashboardChatTransport({
         ).toLowerCase();
         const matched = WRITE_TOOL_NAMES.some((w) => toolName.includes(w));
         if (matched) {
-          const path = extractToolPath(
-            toolPayload.context ??
-              (toolPayload.args as unknown) ??
-              toolPayload.input ??
-              toolPayload.arguments,
-            lastSyncedCwdRef.current ?? contextFolder,
-          );
+          // The path may live in a nested args/context field, OR at the top
+          // level of the payload itself (some gateways put `path` directly on
+          // the tool payload: {mode, path, new_string, old_string}).
+          const path =
+            extractToolPath(
+              toolPayload.context ??
+                (toolPayload.args as unknown) ??
+                toolPayload.input ??
+                toolPayload.arguments,
+              lastSyncedCwdRef.current ?? contextFolder,
+            ) ??
+            extractToolPath(
+              toolPayload,
+              lastSyncedCwdRef.current ?? contextFolder,
+            );
           if (path && !fileChangesRef.current.has(path)) {
             fileChangesRef.current.set(path, {
               path,
@@ -1534,8 +1542,7 @@ export function useDashboardChatTransport({
         }
       }
 
-      // FILE-CHANGES: the authoritative path arrives on tool.complete (args).
-      // Read the after-content for the touched path.
+      // FILE-CHANGES: tool.complete carries the authoritative path info.
       if (
         event.type === "tool.complete" &&
         event.payload &&
@@ -1551,40 +1558,47 @@ export function useDashboardChatTransport({
           "tool_name",
         ).toLowerCase();
         const matched = WRITE_TOOL_NAMES.some((w) => toolName.includes(w));
-        const args =
-          (toolPayload.args as unknown) ??
-          toolPayload.input ??
-          toolPayload.arguments;
-        const path = extractToolPath(
-          args,
-          lastSyncedCwdRef.current ?? contextFolder,
-        );
-        if (matched && path) {
-          // Patch-style tools carry the exact hunk — capture it so the diff
-          // view renders git-style even without the full before content.
-          let removed: string[] | undefined;
-          let added: string[] | undefined;
-          if (
-            /patch|edit|replace|str_replace|update/.test(toolName) &&
-            typeof toolPayload.args === "object" &&
-            toolPayload.args !== null &&
-            !Array.isArray(toolPayload.args)
-          ) {
-            const oldString = (toolPayload.args as Record<string, unknown>)
-              .old_string;
-            const newString = (toolPayload.args as Record<string, unknown>)
-              .new_string;
-            if (typeof oldString === "string") {
-              removed = oldString === "" ? [] : oldString.split("\n");
-            }
-            if (typeof newString === "string") {
-              added = newString === "" ? [] : newString.split("\n");
-            }
-          }
+
+        // Patch-style tools carry the exact hunk — at the payload TOP LEVEL
+        // for some gateways ({mode, path, old_string, new_string}) or nested
+        // under `args`. Capture removed/added so the diff renders git-style
+        // even without the full before content.
+        let removed: string[] | undefined;
+        let added: string[] | undefined;
+        const argsRecord =
+          typeof toolPayload.args === "object" &&
+          toolPayload.args !== null &&
+          !Array.isArray(toolPayload.args)
+            ? (toolPayload.args as Record<string, unknown>)
+            : null;
+        const oldString =
+          typeof toolPayload.old_string === "string"
+            ? toolPayload.old_string
+            : argsRecord && typeof argsRecord.old_string === "string"
+              ? argsRecord.old_string
+              : undefined;
+        const newString =
+          typeof toolPayload.new_string === "string"
+            ? toolPayload.new_string
+            : argsRecord && typeof argsRecord.new_string === "string"
+              ? argsRecord.new_string
+              : undefined;
+        if (typeof oldString === "string") {
+          removed = oldString === "" ? [] : oldString.split("\n");
+        }
+        if (typeof newString === "string") {
+          added = newString === "" ? [] : newString.split("\n");
+        }
+
+        const capturePath = (path: string): void => {
           const existing = fileChangesRef.current.get(path);
           if (existing) {
             if (removed || added) {
-              fileChangesRef.current.set(path, { ...existing, removed, added });
+              fileChangesRef.current.set(path, {
+                ...existing,
+                removed,
+                added,
+              });
             }
           } else {
             // The before was never captured (path unknown at tool.start) —
@@ -1609,6 +1623,30 @@ export function useDashboardChatTransport({
               });
             })
             .catch(() => undefined);
+        };
+
+        // Authoritative: the tool's own files_modified list — never guesses.
+        const filesModified = Array.isArray(toolPayload.files_modified)
+          ? toolPayload.files_modified.filter(
+              (p): p is string => typeof p === "string",
+            )
+          : [];
+        for (const p of filesModified) capturePath(p);
+
+        // Fallback: name match + path extraction (nested args OR the payload
+        // top level, where some gateways put `path` directly).
+        if (matched && filesModified.length === 0) {
+          const args =
+            (toolPayload.args as unknown) ??
+            toolPayload.input ??
+            toolPayload.arguments;
+          const path =
+            extractToolPath(args, lastSyncedCwdRef.current ?? contextFolder) ??
+            extractToolPath(
+              toolPayload,
+              lastSyncedCwdRef.current ?? contextFolder,
+            );
+          if (path) capturePath(path);
         }
       }
 
