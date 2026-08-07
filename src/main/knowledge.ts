@@ -252,6 +252,9 @@ function extractKnowledgeHint(content: string): string {
   while (firstIdx < lines.length && lines[firstIdx].length === 0) firstIdx++;
   const first = lines[firstIdx] ?? "";
   const hint = first.slice(0, KNOWLEDGE_INDEX_HINT_CHARS);
+  // Append the next non-empty line when the first line is a SHORT heading —
+  // a bare title is too cryptic to distinguish files (the model then guesses
+  // the wrong file when told to write to "the knowledge file").
   if (/^#{1,6}\s+\S/.test(first) && first.length <= 60) {
     for (let j = firstIdx + 1; j < lines.length; j++) {
       if (lines[j].length > 0) {
@@ -319,7 +322,7 @@ export async function buildKnowledgeIndex(
   if (sections.length === 0) return "";
 
   return [
-    "The user maintains the knowledge bundles below as AUTHORITATIVE context for this conversation. Read files with the file tools when any listed file could be relevant to the request — the hint line is only a pointer, so open the file to see its full content before deciding it is not relevant. Do not dump file contents into the conversation unless the user explicitly asks.",
+    "The user maintains the knowledge bundles below as AUTHORITATIVE context for this conversation. This index is a SNAPSHOT taken when the conversation started — before writing to a knowledge file, use your file tools to list the knowledge directory and read the CURRENT content of the target file, and write to the EXACT absolute path listed below (never invent or guess a path or filename). The hint line is only a pointer; open the file to see its full content before deciding it is not relevant. Do not dump file contents into the conversation unless the user explicitly asks.",
     ...sections,
   ].join("\n\n");
 }
@@ -419,7 +422,7 @@ export async function buildFolderIndex(folders: string[]): Promise<string> {
   if (sections.length === 0) return "";
 
   return [
-    "The user attached the following workspace folders as context. Read files with the file tools when any listed file could be relevant to the request — the hint line is only a pointer, so open the file to see its full content before deciding it is not relevant. Do not dump file contents into the conversation unless the user explicitly asks.",
+    "The user attached the following workspace folders as context. This index is a SNAPSHOT taken when the conversation started — before writing to a file, use your file tools to list the folder and read the CURRENT content of the target file, and write to the EXACT absolute path listed below (never invent or guess a path or filename). The hint line is only a pointer, so open the file to see its full content before deciding it is not relevant. Do not dump file contents into the conversation unless the user explicitly asks.",
     ...sections,
   ].join("\n\n");
 }

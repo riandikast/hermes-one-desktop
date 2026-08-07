@@ -131,9 +131,11 @@ describe("knowledge store", () => {
     expect(index).toContain(
       `- ${join(tempDir, "knowledge", "ui-rules", "naming.md")} — Naming conventions`,
     );
-    expect(index).toContain("Read files with the file tools");
+    expect(index).toContain(
+      "use your file tools to list the knowledge directory",
+    );
     expect(index).toContain("AUTHORITATIVE");
-    expect(index).toContain("open the file to see its full content");
+    expect(index).toContain("EXACT absolute path");
   });
 
   it("returns empty index for no bundles", async () => {

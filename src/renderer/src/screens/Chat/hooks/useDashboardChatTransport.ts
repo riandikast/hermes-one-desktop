@@ -1904,9 +1904,35 @@ export function useDashboardChatTransport({
         }
         if (knowledgeIndexRef.current) {
           systemParts.push(knowledgeIndexRef.current);
+        } else if ((knowledgeBundles ?? []).length > 0) {
+          // RACE GUARD: the index loads asynchronously in an effect. If the
+          // session is created before it resolves (toggle just flipped, or a
+          // slow index build), the system prompt would be built WITHOUT the
+          // knowledge index — the model then "doesn't know the knowledge
+          // files even though the toggle is on", forever (single-shot).
+          try {
+            const index = await window.hermesAPI.getKnowledgeIndex(
+              knowledgeBundles ?? [],
+            );
+            knowledgeIndexRef.current = index ?? "";
+            if (index) systemParts.push(index);
+          } catch {
+            /* index optional */
+          }
         }
         if (folderIndexRef.current) {
           systemParts.push(folderIndexRef.current);
+        } else if (contextFolder?.trim()) {
+          // Same race guard for the attached-folder index.
+          try {
+            const index = await window.hermesAPI.getFolderIndex([
+              contextFolder.trim(),
+            ]);
+            folderIndexRef.current = index ?? "";
+            if (index) systemParts.push(index);
+          } catch {
+            /* index optional */
+          }
         }
         const response = await ensureDashboardRuntimeSession({
           client,
