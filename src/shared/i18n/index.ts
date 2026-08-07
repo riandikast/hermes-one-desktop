@@ -32,6 +32,7 @@ import installEn from "./locales/en/install";
 import constantsEn from "./locales/en/constants";
 import kanbanEn from "./locales/en/kanban";
 import diagnoseEn from "./locales/en/diagnose";
+import capabilitiesEn from "./locales/en/capabilities";
 import commonHe from "./locales/he/common";
 import navigationHe from "./locales/he/navigation";
 import discoverHe from "./locales/he/discover";
@@ -295,6 +296,7 @@ export const resources = {
       constants: constantsEn,
       kanban: kanbanEn,
       diagnose: diagnoseEn,
+      capabilities: capabilitiesEn,
     },
   },
   he: {
