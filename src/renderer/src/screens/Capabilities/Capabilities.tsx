@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, Refresh, X } from "../../assets/icons";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { useI18n } from "../../components/useI18n";
@@ -6,6 +6,10 @@ import { OrbLoader } from "../../components/OrbLoader";
 import type {
   DashboardSkill,
   DashboardToolset,
+  HubPreview,
+  HubScan,
+  HubSkill,
+  HubSourcesResult,
 } from "../../../../shared/capabilities";
 
 export type CapabilityTab = "skills" | "toolsets" | "mcp" | "hub";
@@ -260,6 +264,19 @@ export default function Capabilities({
   const [mcpJsonError, setMcpJsonError] = useState("");
   const [editingEnabled, setEditingEnabled] = useState(true);
   const [mcpSearch, setMcpSearch] = useState("");
+  // Hub tab state
+  const [hubSources, setHubSources] = useState<HubSourcesResult | null>(null);
+  const [hubResults, setHubResults] = useState<HubSkill[]>([]);
+  const [hubInstalled, setHubInstalled] = useState<
+    Record<string, { name: string }>
+  >({});
+  const [hubSearching, setHubSearching] = useState(false);
+  const [hubPreview, setHubPreview] = useState<HubPreview | null>(null);
+  const [hubScan, setHubScan] = useState<HubScan | null>(null);
+  const [hubScanning, setHubScanning] = useState(false);
+  const [hubBusy, setHubBusy] = useState<string | null>(null);
+  const [updatingAll, setUpdatingAll] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!focusTab) return;
@@ -270,14 +287,16 @@ export default function Capabilities({
     setLoading(true);
     setError("");
     try {
-      const [s, ts, mcp] = await Promise.all([
+      const [s, ts, mcp, hub] = await Promise.all([
         window.hermesAPI.getDashboardSkills(profile),
         window.hermesAPI.getDashboardToolsets(profile),
         window.hermesAPI.listMcpServers(profile),
+        window.hermesAPI.getHubSources(profile).catch(() => null),
       ]);
       setSkills(s);
       setToolsets(ts);
       setMcpServers(mcp);
+      setHubSources(hub);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -584,6 +603,117 @@ export default function Capabilities({
         );
       })
     : mcpServers;
+
+  // ── Hub search + actions ────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (tab !== "hub") return;
+    const q = query.trim();
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (!q) {
+      setHubResults([]);
+      setHubSearching(false);
+      return undefined;
+    }
+    setHubSearching(true);
+    searchTimer.current = setTimeout(() => {
+      void window.hermesAPI
+        .searchHubSkills(q, "all", 20, profile)
+        .then((data) => {
+          setHubResults(data.results);
+          setHubInstalled(data.installed);
+          setHubSearching(false);
+        })
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : String(err));
+          setHubSearching(false);
+        });
+    }, 350);
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    };
+  }, [tab, query, profile]);
+
+  const openHubPreview = useCallback(
+    async (skill: HubSkill): Promise<void> => {
+      setHubPreview(null);
+      setHubScan(null);
+      try {
+        const data = await window.hermesAPI.previewHubSkill(
+          skill.identifier,
+          profile,
+        );
+        setHubPreview(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [profile],
+  );
+
+  const runHubScan = useCallback(
+    async (identifier: string): Promise<void> => {
+      setHubScanning(true);
+      try {
+        setHubScan(await window.hermesAPI.scanHubSkill(identifier, profile));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setHubScanning(false);
+      }
+    },
+    [profile],
+  );
+
+  const handleHubInstall = useCallback(
+    async (identifier: string): Promise<void> => {
+      setHubBusy(identifier);
+      try {
+        const res = await window.hermesAPI.installHubSkill(identifier, profile);
+        if (!res.success && res.error) setError(res.error);
+        else {
+          setHubInstalled((prev) => ({
+            ...prev,
+            [identifier]: { name: identifier },
+          }));
+          setHubPreview(null);
+          void load();
+        }
+      } finally {
+        setHubBusy(null);
+      }
+    },
+    [profile, load],
+  );
+
+  const handleHubUninstall = useCallback(
+    async (name: string, identifier: string): Promise<void> => {
+      setHubBusy(identifier);
+      try {
+        const res = await window.hermesAPI.uninstallHubSkill(name, profile);
+        if (!res.success && res.error) setError(res.error);
+        else {
+          const next = { ...hubInstalled };
+          delete next[identifier];
+          setHubInstalled(next);
+          void load();
+        }
+      } finally {
+        setHubBusy(null);
+      }
+    },
+    [profile, hubInstalled, load],
+  );
+
+  const handleUpdateAll = useCallback(async (): Promise<void> => {
+    setUpdatingAll(true);
+    try {
+      const res = await window.hermesAPI.updateHubSkills(profile);
+      if (!res.success && res.error) setError(res.error);
+    } finally {
+      setUpdatingAll(false);
+    }
+  }, [profile]);
 
   const searchVisible = tab !== "mcp";
 
@@ -989,7 +1119,236 @@ export default function Capabilities({
           )}
         </div>
       ) : (
-        <div className="cap-empty">{t("capabilities.tabs.hub")}</div>
+        <div className="cap-hub">
+          <div className="cap-hub-sources">
+            <span className="cap-hub-sources-label">
+              {t("capabilities.hubSources")}
+            </span>
+            <div className="cap-hub-chips">
+              {(hubSources?.sources ?? []).map((source) => {
+                const degraded =
+                  source.available === false || source.rateLimited === true;
+                return (
+                  <span
+                    key={source.id}
+                    className={`cap-hub-chip ${
+                      degraded ? "cap-hub-chip--degraded" : ""
+                    }`}
+                  >
+                    {source.label}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="cap-hub-toolbar">
+            <span className="cap-hub-count">
+              {query.trim()
+                ? t("capabilities.resultCount", { count: hubResults.length })
+                : t("capabilities.featured")}
+              {hubSearching && (
+                <span className="cap-hub-searching">
+                  {" "}
+                  {t("capabilities.searching")}
+                </span>
+              )}
+            </span>
+            {Object.keys(hubInstalled).length > 0 && (
+              <button
+                className="btn-ghost btn-sm"
+                disabled={updatingAll}
+                onClick={() => void handleUpdateAll()}
+              >
+                {updatingAll
+                  ? t("capabilities.updating")
+                  : t("capabilities.updateAll")}
+              </button>
+            )}
+          </div>
+
+          <div className="cap-hub-list">
+            {hubSearching ? (
+              <div className="cap-state">
+                <OrbLoader state="searching" size={48} />
+              </div>
+            ) : (
+              (query.trim() ? hubResults : hubSources?.featured ?? []).map(
+                (skill) => {
+                  const installed = Boolean(hubInstalled[skill.identifier]);
+                  const busy = hubBusy === skill.identifier;
+                  return (
+                    <div key={skill.identifier} className="cap-hub-row">
+                      <div className="cap-hub-row-main">
+                        <div className="cap-hub-row-title">
+                          <span className="cap-hub-name">{skill.name}</span>
+                          <span className={trustTone(skill.trustLevel)}>
+                            {t(`capabilities.trust.${skill.trustLevel}`) ??
+                              skill.trustLevel}
+                          </span>
+                          {installed && (
+                            <span className="cap-hub-installed">
+                              {t("capabilities.installed")}
+                            </span>
+                          )}
+                        </div>
+                        <p className="cap-hub-desc">{skill.description}</p>
+                      </div>
+                      <div className="cap-hub-row-actions">
+                        <button
+                          className="btn-ghost btn-sm cap-hub-preview-btn"
+                          onClick={() => void openHubPreview(skill)}
+                        >
+                          {t("capabilities.preview")}
+                        </button>
+                        {installed ? (
+                          <button
+                            className="btn-ghost btn-sm cap-hub-uninstall-btn"
+                            disabled={busy}
+                            onClick={() =>
+                              void handleHubUninstall(
+                                hubInstalled[skill.identifier].name,
+                                skill.identifier,
+                              )
+                            }
+                          >
+                            {busy
+                              ? t("capabilities.uninstalling")
+                              : t("capabilities.uninstall")}
+                          </button>
+                        ) : (
+                          <button
+                            className="btn btn-primary btn-sm"
+                            disabled={busy}
+                            onClick={() => void handleHubInstall(skill.identifier)}
+                          >
+                            {busy
+                              ? t("capabilities.installing")
+                              : t("capabilities.install")}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                },
+              )
+            )}
+            {!hubSearching &&
+              (query.trim()
+                ? hubResults.length === 0
+                : (hubSources?.featured ?? []).length === 0) && (
+                <div className="cap-empty">
+                  {query.trim()
+                    ? t("capabilities.noHubResults")
+                    : t("capabilities.hubLanding")}
+                </div>
+              )}
+          </div>
+
+          {hubPreview && (
+            <div
+              className="models-modal-overlay"
+              onClick={() => setHubPreview(null)}
+            >
+              <div
+                className="models-modal"
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+              >
+                <div className="models-modal-header">
+                  <div className="cap-hub-preview-title">
+                    <span className="cap-hub-name">{hubPreview.name}</span>
+                    <span className={trustTone(hubPreview.trustLevel)}>
+                      {t(`capabilities.trust.${hubPreview.trustLevel}`) ??
+                        hubPreview.trustLevel}
+                    </span>
+                  </div>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => setHubPreview(null)}
+                    aria-label="Close"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="models-modal-body">
+                  <p className="cap-hub-preview-identifier">
+                    {hubPreview.identifier}
+                  </p>
+                  {hubPreview.description && (
+                    <p className="cap-detail-desc">{hubPreview.description}</p>
+                  )}
+
+                  {hubScan && (
+                    <div className="cap-hub-scan">
+                      <div
+                        className={`cap-hub-scan-verdict cap-hub-scan-verdict--${hubScan.verdict}`}
+                      >
+                        {t(`capabilities.verdict.${hubScan.verdict}`) ??
+                          hubScan.verdict}
+                        {" · "}
+                        {t(`capabilities.policy.${hubScan.policy}`) ??
+                          hubScan.policy}
+                      </div>
+                      <div className="cap-hub-scan-findings">
+                        {hubScan.findings.length === 0
+                          ? t("capabilities.noFindings")
+                          : hubScan.findings.map((f, i) => (
+                              <div key={i} className="cap-hub-scan-finding">
+                                [{f.severity}] {f.file}
+                                {f.line !== null ? `:${f.line}` : ""} —{" "}
+                                {f.description}
+                              </div>
+                            ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {hubPreview.skillMd ? (
+                    <pre className="cap-hub-preview-md">
+                      {hubPreview.skillMd}
+                    </pre>
+                  ) : (
+                    <div className="cap-empty">
+                      {t("capabilities.noReadme")}
+                    </div>
+                  )}
+                  {hubPreview.files.length > 0 && (
+                    <div className="cap-hub-preview-files">
+                      {t("capabilities.files")}: {hubPreview.files.join(", ")}
+                    </div>
+                  )}
+                </div>
+                <div className="models-modal-footer">
+                  <button
+                    className="btn btn-secondary btn-sm cap-hub-scan-btn"
+                    disabled={hubScanning}
+                    onClick={() => void runHubScan(hubPreview.identifier)}
+                  >
+                    {hubScanning
+                      ? t("capabilities.scanning")
+                      : t("capabilities.scan")}
+                  </button>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    disabled={
+                      Boolean(hubInstalled[hubPreview.identifier]) ||
+                      hubBusy === hubPreview.identifier
+                    }
+                    onClick={() => void handleHubInstall(hubPreview.identifier)}
+                  >
+                    {hubInstalled[hubPreview.identifier]
+                      ? t("capabilities.installed")
+                      : hubBusy === hubPreview.identifier
+                        ? t("capabilities.installing")
+                        : t("capabilities.install")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {showAddMcp && (

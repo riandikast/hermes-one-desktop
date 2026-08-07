@@ -96,7 +96,7 @@ function makeApi(overrides: Record<string, unknown> = {}) {
       trustLevel: "trusted",
       verdict: "safe",
       summary: "",
-      policy: "allow",
+      policy: "allow" as "allow" | "ask" | "block",
       policyReason: "",
       findings: [],
       severityCounts: { critical: 0, high: 0, medium: 0, low: 0 },
@@ -189,5 +189,99 @@ describe("Capabilities — MCP tab", () => {
       fireEvent.click(tabs[2] as HTMLButtonElement);
     });
     await waitFor(() => expect(view.getByText("github")).toBeTruthy());
+  });
+});
+
+describe("Capabilities — Hub tab", () => {
+  it("shows source chips and featured skills from getHubSources", async () => {
+    const view = mountWith();
+    const tabs = view.container.querySelectorAll(".cap-tab");
+    await act(async () => {
+      fireEvent.click(tabs[3] as HTMLButtonElement);
+    });
+    await waitFor(() => expect(view.getByText("Official")).toBeTruthy());
+    await waitFor(() => expect(view.getByText("pdf")).toBeTruthy());
+  });
+
+  it("searches via searchHubSkills with the debounced query", async () => {
+    const search = vi.fn().mockResolvedValue({
+      results: [
+        {
+          name: "ocr",
+          identifier: "skills-sh/x/ocr",
+          source: "skills.sh",
+          trustLevel: "community",
+          description: "OCR skill",
+        },
+      ],
+      installed: {},
+      timedOut: [],
+    });
+    const view = mountWith({ searchHubSkills: search });
+    const tabs = view.container.querySelectorAll(".cap-tab");
+    await act(async () => {
+      fireEvent.click(tabs[3] as HTMLButtonElement);
+    });
+    const input = view.container.querySelector(".cap-search-input") as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "ocr" } });
+    });
+    await waitFor(() => expect(search).toHaveBeenCalledWith("ocr", "all", 20, "default"), { timeout: 2000 });
+    await waitFor(() => expect(view.getByText("OCR skill")).toBeTruthy());
+  });
+
+  it("opens the preview dialog and shows the SKILL.md content", async () => {
+    const preview = vi.fn().mockResolvedValue({
+      name: "pdf",
+      description: "Create PDFs",
+      source: "official",
+      identifier: "official/productivity/pdf",
+      trustLevel: "trusted",
+      skillMd: "# PDF\nCreate and edit.",
+      files: ["SKILL.md"],
+    });
+    const view = mountWith({ previewHubSkill: preview });
+    const tabs = view.container.querySelectorAll(".cap-tab");
+    await act(async () => {
+      fireEvent.click(tabs[3] as HTMLButtonElement);
+    });
+    await waitFor(() => expect(view.getByText("pdf")).toBeTruthy());
+    const previewBtns = view.container.querySelectorAll(".cap-hub-preview-btn");
+    await act(async () => {
+      fireEvent.click(previewBtns[0] as HTMLButtonElement);
+    });
+    await waitFor(() => expect(preview).toHaveBeenCalledWith("official/productivity/pdf", "default"));
+    await waitFor(() => expect(view.getByText(/Create and edit/)).toBeTruthy());
+  });
+
+  it("scans a skill from the preview dialog", async () => {
+    const scan = vi.fn().mockResolvedValue({
+      name: "pdf",
+      identifier: "i",
+      trustLevel: "trusted",
+      verdict: "caution",
+      summary: "",
+      policy: "ask" as "allow" | "ask" | "block",
+      policyReason: "review",
+      findings: [{ severity: "high", category: "network", file: "x.sh", line: 3, description: "curl" }],
+      severityCounts: { critical: 0, high: 1, medium: 0, low: 0 },
+    });
+    const view = mountWith({ scanHubSkill: scan });
+    const tabs = view.container.querySelectorAll(".cap-tab");
+    await act(async () => {
+      fireEvent.click(tabs[3] as HTMLButtonElement);
+    });
+    await waitFor(() => expect(view.getByText("pdf")).toBeTruthy());
+    const previewBtns = view.container.querySelectorAll(".cap-hub-preview-btn");
+    await act(async () => {
+      fireEvent.click(previewBtns[0] as HTMLButtonElement);
+    });
+    await waitFor(() => expect(view.getByText("capabilities.scan")).toBeTruthy());
+    const scanBtn = view.container.querySelector(".cap-hub-scan-btn") as HTMLButtonElement;
+    await act(async () => {
+      fireEvent.click(scanBtn);
+    });
+    await waitFor(() => expect(scan).toHaveBeenCalledWith("official/productivity/pdf", "default"));
+    await waitFor(() => expect(view.getByText(/curl/)).toBeTruthy());
   });
 });

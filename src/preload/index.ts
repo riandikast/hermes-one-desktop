@@ -1212,7 +1212,7 @@ const hermesAPI = {
     trustLevel: string;
     verdict: string;
     summary: string;
-    policy: string;
+    policy: "allow" | "ask" | "block";
     policyReason: string;
     findings: Array<{
       severity: string;
