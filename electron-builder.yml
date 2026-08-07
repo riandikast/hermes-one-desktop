@@ -70,5 +70,5 @@ rpm:
 npmRebuild: false
 publish:
   provider: github
-  owner: fathah
-  repo: hermes-desktop
+  owner: riandikast
+  repo: hermes-one-desktop

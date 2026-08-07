@@ -239,7 +239,13 @@ export default function AboutPane(): React.JSX.Element {
               loading={!appVersion}
               icon={<Monitor size={13} />}
             >
-              {t("settings.version", { version: appVersion })}
+              {t("settings.version", { version: appVersion })}{" "}
+              <span
+                className="rian-fork-badge"
+                title="This build updates from riandikast/hermes-one-desktop (Rian Fork), not the upstream repository."
+              >
+                Rian Fork
+              </span>
             </Meta>
           </div>
 

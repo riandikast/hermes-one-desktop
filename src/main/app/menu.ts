@@ -126,7 +126,9 @@ export function buildMenu({ getMainWindow, openExternalUrl }: MenuDeps): void {
         {
           label: "Report an Issue",
           click: () =>
-            openExternalUrl("https://github.com/fathah/hermes-desktop/issues"),
+            openExternalUrl(
+              "https://github.com/riandikast/hermes-one-desktop/issues",
+            ),
         },
       ],
     },

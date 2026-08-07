@@ -12508,6 +12508,22 @@ body:has(.shell-vibrant),
   gap: 22px 32px;
 }
 
+/* 'Rian Fork' badge — signals this build updates from the fork, not upstream. */
+.rian-fork-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  vertical-align: 1px;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+
 .settings-meta {
   display: flex;
   flex-direction: column;
