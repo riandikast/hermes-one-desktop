@@ -356,7 +356,7 @@ export function attachSessionFileChanges(
     const item = items[i];
     if (item.kind !== "assistant") continue;
     const output = items.slice();
-    output[i] = { ...item, fileChanges: changes as HistoryItem["fileChanges"] };
+    output[i] = { ...item, fileChanges: [...changes] };
     return output;
   }
   return [...items];

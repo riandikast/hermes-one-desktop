@@ -215,23 +215,25 @@ function isPortFree(port: number): Promise<boolean> {
   });
 }
 
-function requestJson(
-  url: string,
+export function dashboardRequestJson<T = unknown>(
+  baseUrl: string,
   token: string,
-  timeoutMs = 2_000,
-): Promise<unknown> {
+  path: string,
+  options: { method?: string; body?: unknown; timeoutMs?: number } = {},
+): Promise<T> {
   return new Promise((resolve, reject) => {
-    const parsed = new URL(url);
-    const client = parsed.protocol === "https:" ? https : http;
+    const url = new URL(path, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`);
+    const client = url.protocol === "https:" ? https : http;
+    const bodyBuf =
+      options.body !== undefined ? Buffer.from(JSON.stringify(options.body)) : null;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "X-Hermes-Session-Token": token,
+    };
+    if (bodyBuf) headers["Content-Length"] = String(bodyBuf.length);
     const req = client.request(
-      parsed,
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Hermes-Session-Token": token,
-        },
-      },
+      url,
+      { method: options.method ?? "GET", headers },
       (res) => {
         const chunks: Buffer[] = [];
         res.on("error", reject);
@@ -245,11 +247,11 @@ function requestJson(
             return;
           }
           if (!text) {
-            resolve(null);
+            resolve(null as T);
             return;
           }
           try {
-            resolve(JSON.parse(text));
+            resolve(JSON.parse(text) as T);
           } catch {
             reject(
               new Error(
@@ -264,15 +266,32 @@ function requestJson(
       },
     );
     req.on("error", reject);
-    req.setTimeout(timeoutMs, () => {
+    req.setTimeout(options.timeoutMs ?? 2_000, () => {
       req.destroy(
         new Error(
-          `Timed out connecting to Hermes dashboard after ${timeoutMs}ms`,
+          `Timed out connecting to Hermes dashboard after ${
+            options.timeoutMs ?? 2_000
+          }ms`,
         ),
       );
     });
+    if (bodyBuf) req.write(bodyBuf);
     req.end();
   });
+}
+
+function requestJson(
+  url: string,
+  token: string,
+  timeoutMs = 2_000,
+): Promise<unknown> {
+  const parsed = new URL(url);
+  return dashboardRequestJson(
+    parsed.origin,
+    token,
+    `${parsed.pathname}${parsed.search}`,
+    { timeoutMs },
+  );
 }
 
 export function probeDashboardWebSocket(
@@ -721,4 +740,20 @@ export function stopAllDashboards(): void {
   for (const key of [...dashboards.keys()]) {
     stopDashboard(key === "default" ? undefined : key);
   }
+}
+
+/**
+ * Resolve the active profile's managed local dashboard connection so other
+ * modules can make authenticated REST calls against the same backend the chat
+ * transport uses. Returns null when no dashboard is running.
+ */
+export function getDashboardConnection(
+  profile?: string,
+): { baseUrl: string; token: string } | null {
+  const managed = getManagedDashboard(profile);
+  if (!managed) return null;
+  return {
+    baseUrl: managed.connection.baseUrl,
+    token: managed.connection.token,
+  };
 }
