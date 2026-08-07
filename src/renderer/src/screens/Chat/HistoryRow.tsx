@@ -1,10 +1,12 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { Brain, ChevronRight, Wrench } from "../../assets/icons";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { Brain, Wrench } from "../../assets/icons";
 import { OrbLoader } from "../../components/OrbLoader";
 import { TypeAnimation } from "../../components/TypeAnimation";
 import { useI18n } from "../../components/useI18n";
 import { AttachmentChip } from "../../components/AttachmentChip";
 import { ToolGlyph, humanizeToolName } from "../../components/toolMeta";
+import { countDiffLineStats, parseDiff } from "./diffLines";
 import { HermesAvatar, AvatarSpacer } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
 import type {
@@ -249,6 +251,59 @@ function itemDetail(msg: ToolItem): string {
   return isToolCall(msg) ? summariseArgs(msg.args) : resultMeta(msg);
 }
 
+/** Collapsible unified-diff card for a file-edit tool result (+N −M chip in
+ *  the header, diff body below). Ported presentation from the official
+ *  desktop's per-edit card. */
+const ToolResultDiffCard = memo(function ToolResultDiffCard({
+  diff,
+  added,
+  removed,
+}: {
+  diff: string;
+  added?: number;
+  removed?: number;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const stats =
+    added !== undefined && removed !== undefined
+      ? { added, removed }
+      : countDiffLineStats(diff);
+  const lines = parseDiff(diff);
+  return (
+    <div className={`tool-diff-card ${open ? "is-open" : ""}`}>
+      <button
+        type="button"
+        className="tool-diff-card-header"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        <span className="tool-diff-card-title">Diff</span>
+        <span className="tool-diff-card-stats">
+          <span className="tool-diff-add">+{stats.added}</span>
+          <span className="tool-diff-del">−{stats.removed}</span>
+        </span>
+      </button>
+      {open && (
+        <div className="tool-diff-card-body">
+          {lines.length === 0 ? (
+            <div className="tool-diff-empty">No hunks</div>
+          ) : (
+            lines.map((line, i) => (
+              <div
+                key={i}
+                className={`tool-diff-line tool-diff-line-${line.kind}`}
+              >
+                {line.text}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
 const ToolActivityItem = memo(function ToolActivityItem({
   msg,
 }: {
@@ -305,6 +360,13 @@ const ToolActivityItem = memo(function ToolActivityItem({
             >
               {call ? msg.args || "(no arguments)" : msg.content || "(empty)"}
             </pre>
+            {!call && msg.diff && (
+              <ToolResultDiffCard
+                diff={msg.diff}
+                added={msg.added}
+                removed={msg.removed}
+              />
+            )}
           </div>
         </div>
       </div>

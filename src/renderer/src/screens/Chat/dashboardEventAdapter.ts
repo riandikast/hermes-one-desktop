@@ -1,4 +1,5 @@
 import type { ChatToolEvent } from "../../../../shared/chat-stream";
+import { countDiffLineStats, inlineDiffFromPayload } from "./diffLines";
 import { isLossyChunkCopy } from "./lossyText";
 import type { ActiveTurn, ChatBubbleMessage, ChatMessage } from "./types";
 
@@ -206,6 +207,20 @@ function toolEventFromGatewayEvent(event: DashboardStreamEvent): ChatToolEvent {
   const label = previewFromPayload(payload);
   const result = complete ? resultFromPayload(payload) : "";
 
+  // Authoritative file-edit diff from the backend (tool.complete
+  // inline_diff) — attached to the result row so the UI can render the
+  // per-edit card with +N −M counts.
+  const inlineDiff = complete ? inlineDiffFromPayload(payload) : null;
+  let diff: string | undefined;
+  let added: number | undefined;
+  let removed: number | undefined;
+  if (inlineDiff) {
+    diff = inlineDiff;
+    const stats = countDiffLineStats(inlineDiff);
+    added = stats.added;
+    removed = stats.removed;
+  }
+
   return {
     callId,
     hasStableCallId: !!textFromPayload(
@@ -219,6 +234,7 @@ function toolEventFromGatewayEvent(event: DashboardStreamEvent): ChatToolEvent {
     status,
     ...(label ? { label, preview: label } : {}),
     ...(result ? { result } : {}),
+    ...(diff ? { diff, added, removed } : {}),
   };
 }
 
