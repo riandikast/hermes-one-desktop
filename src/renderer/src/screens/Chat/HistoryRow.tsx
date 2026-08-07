@@ -87,6 +87,16 @@ export const ReasoningRow = memo(function ReasoningRow({
     return () => clearTimeout(timer);
   }, [msg.text]);
 
+  // Snap to full text the instant this row stops being the active trailing
+  // row (the answer arrived / the turn ended) — a thought still typing after
+  // the answer is complete reads as stuck. Safe: a late delta re-arms typing
+  // via the growth effect above.
+  const wasActiveRef = useRef(active);
+  useEffect(() => {
+    if (wasActiveRef.current && !active) setTyping(false);
+    wasActiveRef.current = active;
+  }, [active]);
+
   return (
     <div
       className={`chat-message chat-message-agent chat-message-history${
