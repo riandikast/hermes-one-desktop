@@ -151,4 +151,66 @@ describe("ChatInput - mention chip citation badges", () => {
     expect(badges).toHaveLength(1);
     expect(badges[0].textContent).toBe("1");
   });
+
+  describe("interrupt confirmation", () => {
+    it("requires a second click before aborting, with Esc to cancel", () => {
+      const onAbort = vi.fn();
+      render(
+        <ChatInput
+          isLoading={true}
+          hasSession={true}
+          onSubmit={vi.fn()}
+          onQuickAsk={vi.fn()}
+          onAbort={onAbort}
+          slashCommands={[]}
+        />,
+      );
+
+      const stop = screen.getByTitle("common.stop");
+      const textarea = screen.getByPlaceholderText(
+        "chat.typeMessage",
+      ) as HTMLTextAreaElement;
+      // First click only arms the confirmation.
+      fireEvent.click(stop);
+      expect(onAbort).not.toHaveBeenCalled();
+      expect(screen.getByText(/Press again to interrupt/)).toBeTruthy();
+
+      // Esc cancels without aborting (textarea-bound, like the send gate).
+      fireEvent.keyDown(textarea, { key: "Escape" });
+      expect(onAbort).not.toHaveBeenCalled();
+      expect(screen.queryByText(/Press again to interrupt/)).toBeNull();
+
+      // Arm again, then confirm with the second click.
+      fireEvent.click(stop);
+      fireEvent.click(stop);
+      expect(onAbort).toHaveBeenCalledTimes(1);
+    });
+
+    it("resets the armed state when the turn ends", () => {
+      const { rerender } = render(
+        <ChatInput
+          isLoading={true}
+          hasSession={true}
+          onSubmit={vi.fn()}
+          onQuickAsk={vi.fn()}
+          onAbort={vi.fn()}
+          slashCommands={[]}
+        />,
+      );
+      fireEvent.click(screen.getByTitle("common.stop"));
+      expect(screen.getByText(/Press again to interrupt/)).toBeTruthy();
+
+      rerender(
+        <ChatInput
+          isLoading={false}
+          hasSession={true}
+          onSubmit={vi.fn()}
+          onQuickAsk={vi.fn()}
+          onAbort={vi.fn()}
+          slashCommands={[]}
+        />,
+      );
+      expect(screen.queryByText(/Press again to interrupt/)).toBeNull();
+    });
+  });
 });

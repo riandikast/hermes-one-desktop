@@ -102,6 +102,10 @@ Bubbles reveal copy / revert / unsend buttons on hover, and the bubble keeps a f
 
 [[src/renderer/src/screens/Chat/MessageRow.tsx#MessageRow]] renders `.chat-bubble-actions` (copy for every message; revert-to-checkpoint and unsend for user bubbles) absolutely at the bubble's top-right, hidden until `.chat-bubble:hover`. Because `.chat-bubble` is a scroll container (`overflow-x: auto` for wide content), an absolutely-positioned action row that sticks out of a narrow bubble would be cut at the bubble's edge — so `.chat-bubble` has `min-width: 108px` (the 92px action row + 8px right offset plus margin), keeping the buttons inside even for a one-word "ok" bubble.
 
+## Interrupt confirmation
+
+The stop (interrupt) button uses the same double-action gate as the send prompt ([[src/renderer/src/screens/Chat/ChatInput.tsx]]): the first click only ARMS the confirmation (banner "Press again to interrupt, Esc to cancel" + a pulsing outlined stop button), the second click aborts, and Escape cancels. Aborting is destructive (the streamed turn is cut), so an accidental single click must not kill a long run. The armed state auto-resets when the turn ends.
+
 ## Renderer-native commands
 
 A few non-local commands have dedicated desktop handling and must NOT be diverted to the gateway slash pipeline, or they'd lose their behaviour.

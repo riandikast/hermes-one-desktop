@@ -8,7 +8,16 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { Square as Stop, Search, Paperclip, Mic, ArrowUp, FileText, FolderOpen, X } from "lucide-react";
+import {
+  Square as Stop,
+  Search,
+  Paperclip,
+  Mic,
+  ArrowUp,
+  FileText,
+  FolderOpen,
+  X,
+} from "lucide-react";
 import { isImeComposing } from "./keyboard";
 import { useI18n } from "../../components/useI18n";
 import { SLASH_COMMANDS, type SlashCommand } from "./slashCommands";
@@ -116,6 +125,15 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const displayValue = useMemo(() => displayText(input), [input]);
     const [mentionOpen, setMentionOpen] = useState(false);
     const [confirmPending, setConfirmPending] = useState<string | null>(null);
+    // Interrupt (stop) confirmation — same double-action pattern as the send
+    // prompt: first click arms, second fires, Esc cancels. Prevents
+    // accidental aborts of a long turn (an abort is destructive — the
+    // streaming turn is cut and the transcript may be left mid-turn).
+    const [interruptConfirm, setInterruptConfirm] = useState(false);
+    // Turn ended (or never started) → an armed confirmation is stale.
+    useEffect(() => {
+      if (!isLoading) setInterruptConfirm(false);
+    }, [isLoading]);
     const [mentionEntries, setMentionEntries] = useState<MentionEntry[]>([]);
     const [mentionQuery, setMentionQuery] = useState("");
     const [mentionSelected, setMentionSelected] = useState(0);
@@ -392,6 +410,15 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       }
     }
 
+    function handleInterrupt(): void {
+      if (!interruptConfirm) {
+        setInterruptConfirm(true);
+        return;
+      }
+      setInterruptConfirm(false);
+      onAbort();
+    }
+
     function clearAfterSend(text: string): void {
       history.push(text);
       setInput("");
@@ -490,7 +517,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       const inserted = newValue.slice(p, newValue.length - s);
       const next = input.slice(0, rStart) + inserted + input.slice(rEnd);
       setInput(next);
-      if (confirmPending !== null && expandTags(next).trim() !== confirmPending) {
+      if (
+        confirmPending !== null &&
+        expandTags(next).trim() !== confirmPending
+      ) {
         setConfirmPending(null);
       }
       updateMentionFor(next, rStart + inserted.length);
@@ -573,7 +603,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         }
         if (e.key === "ArrowUp") {
           e.preventDefault();
-          setMentionSelected((i) => (i - 1 + visibleRankedMentions.length) % visibleRankedMentions.length);
+          setMentionSelected(
+            (i) =>
+              (i - 1 + visibleRankedMentions.length) %
+              visibleRankedMentions.length,
+          );
           return;
         }
         if (e.key === "Enter" || e.key === "Tab") {
@@ -610,6 +644,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         setConfirmPending(null);
         return;
       }
+      if (e.key === "Escape" && interruptConfirm) {
+        e.preventDefault();
+        setInterruptConfirm(false);
+        return;
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
@@ -622,13 +661,17 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         return;
       }
       try {
-        let folders = (contextFolders && contextFolders.length > 0)
-          ? contextFolders
-          : (sessionId ? await window.hermesAPI.getSessionContextFolder(sessionId) : null);
+        let folders =
+          contextFolders && contextFolders.length > 0
+            ? contextFolders
+            : sessionId
+              ? await window.hermesAPI.getSessionContextFolder(sessionId)
+              : null;
         if (!folders || folders.length === 0) {
           // New session (no sessionId yet): fall back to the most recent
           // context folder so @ works out of the box.
-          const recent = await window.hermesAPI.listRecentSessionContextFolders(5);
+          const recent =
+            await window.hermesAPI.listRecentSessionContextFolders(5);
           folders = recent.length > 0 ? recent : null;
         }
         if (!folders || folders.length === 0) {
@@ -677,14 +720,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     function insertMention(entry: MentionEntry): void {
       if (!entry.path) return; // hint rows are not insertable
       const el = inputRef.current;
-      const caret = displayToRawPos(
-        input,
-        el?.selectionStart ?? input.length,
-      );
+      const caret = displayToRawPos(input, el?.selectionStart ?? input.length);
       const tag =
         MENTION_START + entry.name + MENTION_SEP + entry.path + MENTION_END;
       const next =
-        input.slice(0, mentionStartRef.current) + tag + " " + input.slice(caret);
+        input.slice(0, mentionStartRef.current) +
+        tag +
+        " " +
+        input.slice(caret);
       setInput(next);
       setMentionOpen(false);
       setMentionEntries([]);
@@ -693,7 +736,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       requestAnimationFrame(() => {
         if (el) {
           el.focus();
-          const pos = rawToDisplayPos(next, mentionStartRef.current + tag.length + 1);
+          const pos = rawToDisplayPos(
+            next,
+            mentionStartRef.current + tag.length + 1,
+          );
           el.setSelectionRange(pos, pos);
         }
       });
@@ -709,8 +755,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         const caret = displayToRawPos(prev, el?.selectionStart ?? prev.length);
         const tag =
           MENTION_START + entry.name + MENTION_SEP + entry.path + MENTION_END;
-        const next =
-          prev.slice(0, caret) + tag + " " + prev.slice(caret);
+        const next = prev.slice(0, caret) + tag + " " + prev.slice(caret);
         requestAnimationFrame(() => {
           if (el) {
             el.focus();
@@ -744,16 +789,17 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     // Memoized and gated on mentionOpen so normal typing never triggers search.
     const rankedMentions = useMemo(() => {
       if (!mentionOpen) return [];
-      return searchFiles(
-        mentionEntries,
-        mentionQuery,
-        "all",
-      );
+      return searchFiles(mentionEntries, mentionQuery, "all");
     }, [mentionEntries, mentionQuery, mentionOpen]);
 
     // Query Voidtools Everything when mention menu is active and query is >= 2 chars
     useEffect(() => {
-      if (!mentionOpen || !mentionQuery.trim() || mentionQuery.trim().length < 2) return;
+      if (
+        !mentionOpen ||
+        !mentionQuery.trim() ||
+        mentionQuery.trim().length < 2
+      )
+        return;
       const q = mentionQuery.trim();
       let active = true;
       const timer = setTimeout(() => {
@@ -767,7 +813,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                 for (const r of results) {
                   if (r.path && !seen.has(r.path)) {
                     seen.add(r.path);
-                    added.push({ name: r.name, isDirectory: r.isDirectory, path: r.path });
+                    added.push({
+                      name: r.name,
+                      isDirectory: r.isDirectory,
+                      path: r.path,
+                    });
                   }
                 }
                 return added.length > 0 ? [...added, ...prev] : prev;
@@ -990,92 +1040,94 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             multiple
             style={{ display: "none" }}
             onChange={handleFileInputChange}
-            />
-            {parseTags(input).length > 0 && (
-              <div className="chat-mention-tag-row">
-            {parseTags(input).map((tag, idx) => (
-              <div
-                key={`${tag.path}@${tag.start}`}
-                className="chat-mention-tag"
-                title={tag.path}
-              >
-                <span className="chat-mention-tag-num">{idx + 1}</span>
-                <FileText size={12} className="chat-mention-tag-icon" />
-                    <span className="chat-mention-tag-name">
-                      {truncatePath(tag.name, 16, 40)}
-                    </span>
-                    <button
-                      type="button"
-                      className="chat-mention-tag-remove"
-                      onClick={() => {
-                        const next =
-                          input.slice(0, tag.start) + input.slice(tag.end);
-                        setInput(next);
-                        setMentionOpen(false);
-                      }}
-                      aria-label="Remove file"
-                      title="Remove"
-                    >
-                      <X size={10} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {mentionOpen && visibleRankedMentions.length > 0 && (
-              <div
-                className="mention-menu-overlay"
-                onMouseDown={() => {
-                  setMentionOpen(false);
-                  mentionDismissedRef.current = true;
-                }}
-              >
+          />
+          {parseTags(input).length > 0 && (
+            <div className="chat-mention-tag-row">
+              {parseTags(input).map((tag, idx) => (
                 <div
-                  className="mention-menu"
-                  role="dialog"
-                  aria-label="Mention files"
-                  onMouseDown={(event) => event.stopPropagation()}
+                  key={`${tag.path}@${tag.start}`}
+                  className="chat-mention-tag"
+                  title={tag.path}
                 >
-                  <div className="mention-menu-list">
-                    {visibleRankedMentions.map((en, i) => (
-                        <div
-                          key={en.path}
-                          className={
-                            "mention-menu-item" +
-                            (i === mentionSelected ? " mention-menu-item-selected" : "")
-                          }
-                          title={en.path}
-                          onMouseEnter={() => setMentionSelected(i)}
-                          onMouseDown={(event) => {
-                            event.stopPropagation();
-                            insertMention(en);
-                          }}
-                        >
-                          <span className="mention-menu-icon">
-                            {en.isDirectory ? (
-                              <FolderOpen size={14} />
-                            ) : (
-                              <FileText size={14} />
-                            )}
+                  <span className="chat-mention-tag-num">{idx + 1}</span>
+                  <FileText size={12} className="chat-mention-tag-icon" />
+                  <span className="chat-mention-tag-name">
+                    {truncatePath(tag.name, 16, 40)}
+                  </span>
+                  <button
+                    type="button"
+                    className="chat-mention-tag-remove"
+                    onClick={() => {
+                      const next =
+                        input.slice(0, tag.start) + input.slice(tag.end);
+                      setInput(next);
+                      setMentionOpen(false);
+                    }}
+                    aria-label="Remove file"
+                    title="Remove"
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {mentionOpen && visibleRankedMentions.length > 0 && (
+            <div
+              className="mention-menu-overlay"
+              onMouseDown={() => {
+                setMentionOpen(false);
+                mentionDismissedRef.current = true;
+              }}
+            >
+              <div
+                className="mention-menu"
+                role="dialog"
+                aria-label="Mention files"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <div className="mention-menu-list">
+                  {visibleRankedMentions.map((en, i) => (
+                    <div
+                      key={en.path}
+                      className={
+                        "mention-menu-item" +
+                        (i === mentionSelected
+                          ? " mention-menu-item-selected"
+                          : "")
+                      }
+                      title={en.path}
+                      onMouseEnter={() => setMentionSelected(i)}
+                      onMouseDown={(event) => {
+                        event.stopPropagation();
+                        insertMention(en);
+                      }}
+                    >
+                      <span className="mention-menu-icon">
+                        {en.isDirectory ? (
+                          <FolderOpen size={14} />
+                        ) : (
+                          <FileText size={14} />
+                        )}
+                      </span>
+                      <span className="mention-menu-text">
+                        <span className="mention-menu-name">
+                          {basename(en.name)}
+                        </span>
+                        {en.path && (
+                          <span className="mention-menu-path">
+                            {truncatePath(en.name)}
                           </span>
-                          <span className="mention-menu-text">
-                            <span className="mention-menu-name">
-                              {basename(en.name)}
-                            </span>
-                            {en.path && (
-                              <span className="mention-menu-path">
-                                {truncatePath(en.name)}
-                              </span>
-                            )}
-                          </span>
-                        </div>
-                      ))}
-                  </div>
+                        )}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
-            )}
-            <textarea
-              ref={inputRef}
+            </div>
+          )}
+          <textarea
+            ref={inputRef}
             className="chat-input"
             placeholder={t("chat.typeMessage")}
             value={displayValue}
@@ -1094,7 +1146,25 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           {confirmPending !== null && (
             <div className="chat-confirm-banner">
               <span>Press Enter again to send, Esc to cancel</span>
-              <button type="button" className="btn-ghost btn-xs" onClick={() => setConfirmPending(null)}>Cancel</button>
+              <button
+                type="button"
+                className="btn-ghost btn-xs"
+                onClick={() => setConfirmPending(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+          {interruptConfirm && (
+            <div className="chat-confirm-banner">
+              <span>Press again to interrupt, Esc to cancel</span>
+              <button
+                type="button"
+                className="btn-ghost btn-xs"
+                onClick={() => setInterruptConfirm(false)}
+              >
+                Cancel
+              </button>
             </div>
           )}
           <div className="chat-input-toolbar">
@@ -1147,16 +1217,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             {contextUsage ? (
               <ContextGauge {...contextUsage} onCompact={onCompactContext} />
             ) : (
-              <ContextGauge
-                used={0}
-                window={0}
-                onCompact={onCompactContext}
-              />
+              <ContextGauge used={0} window={0} onCompact={onCompactContext} />
             )}
             {isLoading ? (
               <button
-                className="chat-send-btn chat-stop-btn"
-                onClick={onAbort}
+                className={`chat-send-btn chat-stop-btn${
+                  interruptConfirm ? " chat-stop-btn--armed" : ""
+                }`}
+                onClick={handleInterrupt}
                 title={t("common.stop")}
               >
                 <Stop size={14} />

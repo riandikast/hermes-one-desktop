@@ -6775,6 +6775,25 @@ body:has(.shell-vibrant),
   background: #dc2626;
 }
 
+/* Armed (awaiting the second click): outline + pulse so the user sees the
+   confirmation is pending, not just the banner. */
+.chat-stop-btn--armed {
+  background: var(--error-bg, rgba(239, 68, 68, 0.2));
+  color: var(--error);
+  box-shadow: inset 0 0 0 1.5px var(--error);
+  animation: chatStopArm 1s ease-in-out infinite;
+}
+
+@keyframes chatStopArm {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
 .chat-btw-btn {
   width: 34px;
   height: 34px;
