@@ -4,7 +4,7 @@ Add, edit, remove, enable, and test Model Context Protocol (MCP) servers from th
 
 ## Operations
 
-The MCP tab in [[src/renderer/src/screens/Tools/Tools.tsx]] lists servers as a table and drives every mutation through IPC into [[src/main/mcp-servers.ts]]; local mode edits `config.yaml` directly, Remote/SSH mode proxies to the gateway's `/api/mcp/servers` REST endpoints.
+The MCP tab in [[src/renderer/src/screens/Capabilities/Capabilities.tsx#Capabilities]] lists servers as a table and drives every mutation through IPC into [[src/main/mcp-servers.ts]]; local mode edits `config.yaml` directly, Remote/SSH mode proxies to the gateway's `/api/mcp/servers` REST endpoints.
 
 The columns are Server · Transport · Command/URL · Enabled.
 

@@ -2,6 +2,9 @@
 
 Date: 2026-08-07
 
+> **Status: IMPLEMENTED** (2026-08-07, commits 7f58e8b..d506bab on `custom`).
+> Implementation plan: `docs/superpowers/plans/2026-08-07-capabilities-redesign.md`.
+
 ## Goal
 
 Redesign the fork's Discover screen into a single "Capabilities" screen that matches
