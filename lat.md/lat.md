@@ -34,5 +34,5 @@ This directory defines the high-level concepts, business logic, and architecture
 - [[knowledge-editor]] - the Knowledge page's syntax-highlighted file editor: a highlighted overlay behind a transparent-text textarea, lazy-loaded highlight.js.
 - [[file-viewer]] - the chat-side file preview is a CodeMirror editor with per-extension syntax highlighting and debounced autosave to disk.
 - [[mentions]] - journal-style citation numbers on @-mention tags: [n] inline in the composer and on the chip badges, derived from tag position and renumbering on removal.
-- [[file-changes]] - per-turn file-change summary: badge on assistant bubbles, side-by-side before/after dialog, captured live from the dashboard tool stream.
+- [[file-changes]] - per-turn file-change summary: inline_diff cards with +N −M, a "N files changed" row, git fallback, and diff persistence across reopen.
 - [[capabilities]] — the single Capabilities screen (Skills | Toolsets | MCP | Hub tabs) backed by the dashboard REST API and the skill hub CLI; replaces the former Discover/Tools/Skills views.
