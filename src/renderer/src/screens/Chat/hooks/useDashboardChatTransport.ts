@@ -1290,10 +1290,14 @@ export function useDashboardChatTransport({
           // next message but it isn't persisted yet, reconciling now would
           // delete that message and resurrect the previous turn's canonical
           // answer — the "sent message vanished, old answer got fuller" bug.
-          const liveLastUser = [...messagesRef.current]
+          // The live/DB arrays are ChatMessage unions; only the user variant
+          // carries role/content, so view them through a user-shaped lens for
+          // the catch-up comparison (FileChangesMessage etc. have neither).
+          type UserShaped = { role: string; content?: unknown };
+          const liveLastUser = ([...messagesRef.current] as UserShaped[])
             .reverse()
             .find((m) => m.role === "user");
-          const dbLastUser = [...dbMessages]
+          const dbLastUser = ([...dbMessages] as UserShaped[])
             .reverse()
             .find((m) => m.role === "user");
           // Content match alone has a hole: sending the SAME message twice

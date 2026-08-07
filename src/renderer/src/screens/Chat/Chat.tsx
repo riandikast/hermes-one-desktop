@@ -625,6 +625,7 @@ function Chat({
       // is real before snapping, and re-snap after late layout settles.
       return jumpToPresent();
     }
+    return undefined;
   }, [active, jumpToPresent]);
 
   // Cmd/Ctrl+N → new chat. Only the active (visible) run handles it; otherwise

@@ -370,7 +370,20 @@ import {
   getSkillContent,
   installSkill,
   uninstallSkill,
+  installHubSkill,
+  uninstallHubSkill,
+  updateHubSkills,
 } from "../skills";
+import {
+  getDashboardSkills,
+  getDashboardToolsets,
+  getHubSources,
+  previewHubSkill,
+  scanHubSkill,
+  searchHubSkills,
+  setDashboardSkillEnabled,
+  setDashboardToolsetEnabled,
+} from "../dashboard-capabilities";
 import {
   listCronJobs,
   createCronJob,
@@ -2488,6 +2501,67 @@ export function registerIpcHandlers(context: IpcContext): void {
         return remoteUninstallSkill(name, activeSshProfile(_profile));
       return uninstallSkill(name, _profile);
     },
+  );
+
+  // Capabilities — dashboard REST + hub CLI
+  ipcMain.handle("get-dashboard-skills", (_event, profile?: string) =>
+    getDashboardSkills(profile),
+  );
+  ipcMain.handle(
+    "set-dashboard-skill-enabled",
+    (_event, name: string, enabled: boolean, profile?: string) =>
+      setDashboardSkillEnabled(name, enabled, profile),
+  );
+  ipcMain.handle("get-dashboard-toolsets", (_event, profile?: string) =>
+    getDashboardToolsets(profile),
+  );
+  ipcMain.handle(
+    "set-dashboard-toolset-enabled",
+    (_event, name: string, enabled: boolean, profile?: string) =>
+      setDashboardToolsetEnabled(name, enabled, profile),
+  );
+  ipcMain.handle("get-hub-sources", (_event, profile?: string) =>
+    getHubSources(profile),
+  );
+  ipcMain.handle(
+    "search-hub-skills",
+    (_event, query: string, source?: string, limit?: number, profile?: string) =>
+      searchHubSkills(query, source, limit, profile),
+  );
+  ipcMain.handle(
+    "preview-hub-skill",
+    (_event, identifier: string, profile?: string) =>
+      previewHubSkill(identifier, profile),
+  );
+  ipcMain.handle(
+    "scan-hub-skill",
+    (_event, identifier: string, profile?: string) =>
+      scanHubSkill(identifier, profile),
+  );
+  ipcMain.handle(
+    "install-hub-skill",
+    (_event, identifier: string, _profile?: string) => {
+      const conn = getConnectionConfig();
+      if (conn.mode === "ssh" && conn.ssh)
+        return sshInstallSkill(conn.ssh, identifier);
+      if (conn.mode === "remote")
+        return remoteInstallSkill(identifier, activeSshProfile(_profile));
+      return installHubSkill(identifier, _profile);
+    },
+  );
+  ipcMain.handle(
+    "uninstall-hub-skill",
+    (_event, name: string, _profile?: string) => {
+      const conn = getConnectionConfig();
+      if (conn.mode === "ssh" && conn.ssh)
+        return sshUninstallSkill(conn.ssh, name);
+      if (conn.mode === "remote")
+        return remoteUninstallSkill(name, activeSshProfile(_profile));
+      return uninstallHubSkill(name, _profile);
+    },
+  );
+  ipcMain.handle("update-hub-skills", (_event, profile?: string) =>
+    updateHubSkills(profile),
   );
 
   // Session cache (fast local cache with generated titles)

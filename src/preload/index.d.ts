@@ -839,6 +839,120 @@ interface HermesAPI {
     profile?: string,
   ) => Promise<{ success: boolean; error?: string }>;
 
+  // Capabilities — dashboard skills/toolsets + skill hub
+  getDashboardSkills: (profile?: string) => Promise<
+    Array<{
+      name: string;
+      enabled: boolean;
+      usage: number;
+      provenance: string;
+      category: string;
+      description: string;
+    }>
+  >;
+  setDashboardSkillEnabled: (
+    name: string,
+    enabled: boolean,
+    profile?: string,
+  ) => Promise<boolean>;
+  getDashboardToolsets: (profile?: string) => Promise<
+    Array<{
+      name: string;
+      label: string;
+      description: string;
+      platform: string;
+      enabled: boolean;
+      available: boolean;
+      configured: boolean;
+      tools: string[];
+    }>
+  >;
+  setDashboardToolsetEnabled: (
+    name: string,
+    enabled: boolean,
+    profile?: string,
+  ) => Promise<boolean>;
+  getHubSources: (profile?: string) => Promise<{
+    sources: Array<{
+      id: string;
+      label: string;
+      available?: boolean;
+      rateLimited?: boolean;
+      searchable?: boolean;
+    }>;
+    indexAvailable: boolean;
+    featured: Array<{
+      name: string;
+      identifier: string;
+      source: string;
+      trustLevel: string;
+      description: string;
+    }>;
+    installed: Record<string, { name: string }>;
+  }>;
+  searchHubSkills: (
+    query: string,
+    source?: string,
+    limit?: number,
+    profile?: string,
+  ) => Promise<{
+    results: Array<{
+      name: string;
+      identifier: string;
+      source: string;
+      trustLevel: string;
+      description: string;
+    }>;
+    installed: Record<string, { name: string }>;
+    timedOut: string[];
+  }>;
+  previewHubSkill: (
+    identifier: string,
+    profile?: string,
+  ) => Promise<{
+    name: string;
+    description: string;
+    source: string;
+    identifier: string;
+    trustLevel: string;
+    repo?: string;
+    tags: string[];
+    skillMd: string;
+    files: string[];
+  }>;
+  scanHubSkill: (
+    identifier: string,
+    profile?: string,
+  ) => Promise<{
+    name: string;
+    identifier: string;
+    source: string;
+    trustLevel: string;
+    verdict: string;
+    summary: string;
+    policy: string;
+    policyReason: string;
+    findings: Array<{
+      severity: string;
+      category: string;
+      file: string;
+      line: number | null;
+      description: string;
+    }>;
+    severityCounts: Record<string, number>;
+  }>;
+  installHubSkill: (
+    identifier: string,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  uninstallHubSkill: (
+    name: string,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  updateHubSkills: (
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+
   // Session cache
   listCachedSessions: (
     limit?: number,

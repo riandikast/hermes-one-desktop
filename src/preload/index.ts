@@ -1118,6 +1118,126 @@ const hermesAPI = {
   ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("uninstall-skill", name, profile),
 
+  // Capabilities — dashboard skills/toolsets + skill hub
+  getDashboardSkills: (profile?: string): Promise<
+    Array<{
+      name: string;
+      enabled: boolean;
+      usage: number;
+      provenance: string;
+      category: string;
+      description: string;
+    }>
+  > => ipcRenderer.invoke("get-dashboard-skills", profile),
+  setDashboardSkillEnabled: (
+    name: string,
+    enabled: boolean,
+    profile?: string,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("set-dashboard-skill-enabled", name, enabled, profile),
+  getDashboardToolsets: (profile?: string): Promise<
+    Array<{
+      name: string;
+      label: string;
+      description: string;
+      platform: string;
+      enabled: boolean;
+      available: boolean;
+      configured: boolean;
+      tools: string[];
+    }>
+  > => ipcRenderer.invoke("get-dashboard-toolsets", profile),
+  setDashboardToolsetEnabled: (
+    name: string,
+    enabled: boolean,
+    profile?: string,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("set-dashboard-toolset-enabled", name, enabled, profile),
+  getHubSources: (profile?: string): Promise<{
+    sources: Array<{
+      id: string;
+      label: string;
+      available?: boolean;
+      rateLimited?: boolean;
+      searchable?: boolean;
+    }>;
+    indexAvailable: boolean;
+    featured: Array<{
+      name: string;
+      identifier: string;
+      source: string;
+      trustLevel: string;
+      description: string;
+    }>;
+    installed: Record<string, { name: string }>;
+  }> => ipcRenderer.invoke("get-hub-sources", profile),
+  searchHubSkills: (
+    query: string,
+    source?: string,
+    limit?: number,
+    profile?: string,
+  ): Promise<{
+    results: Array<{
+      name: string;
+      identifier: string;
+      source: string;
+      trustLevel: string;
+      description: string;
+    }>;
+    installed: Record<string, { name: string }>;
+    timedOut: string[];
+  }> =>
+    ipcRenderer.invoke("search-hub-skills", query, source, limit, profile),
+  previewHubSkill: (
+    identifier: string,
+    profile?: string,
+  ): Promise<{
+    name: string;
+    description: string;
+    source: string;
+    identifier: string;
+    trustLevel: string;
+    repo?: string;
+    tags: string[];
+    skillMd: string;
+    files: string[];
+  }> => ipcRenderer.invoke("preview-hub-skill", identifier, profile),
+  scanHubSkill: (
+    identifier: string,
+    profile?: string,
+  ): Promise<{
+    name: string;
+    identifier: string;
+    source: string;
+    trustLevel: string;
+    verdict: string;
+    summary: string;
+    policy: string;
+    policyReason: string;
+    findings: Array<{
+      severity: string;
+      category: string;
+      file: string;
+      line: number | null;
+      description: string;
+    }>;
+    severityCounts: Record<string, number>;
+  }> => ipcRenderer.invoke("scan-hub-skill", identifier, profile),
+  installHubSkill: (
+    identifier: string,
+    profile?: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("install-hub-skill", identifier, profile),
+  uninstallHubSkill: (
+    name: string,
+    profile?: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("uninstall-hub-skill", name, profile),
+  updateHubSkills: (
+    profile?: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("update-hub-skills", profile),
+
   // Session cache (fast local cache with generated titles)
   listCachedSessions: (
     limit?: number,

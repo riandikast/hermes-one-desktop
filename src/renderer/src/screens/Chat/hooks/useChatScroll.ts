@@ -164,6 +164,7 @@ export function useChatScroll(messages: ChatMessage[]): {
       if (userScrolledUpRef.current) return;
       snapToBottom();
     }, 0);
+    return undefined;
   }, [messages, jumpToPresent, snapToBottom]);
 
   return { containerRef, bottomRef, jumpToPresent };
