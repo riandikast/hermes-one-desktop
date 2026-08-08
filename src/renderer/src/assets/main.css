@@ -19255,7 +19255,9 @@ body:has(.shell-vibrant),
 .file-changes-overlay {
   position: fixed;
   inset: 0;
-  z-index: 500;
+  /* Above the title bar (z 1002) and tab strip (z 1001): the Find-in-Files
+     dialog reuses this overlay, and a modal must never paint under them. */
+  z-index: 1200;
   background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;

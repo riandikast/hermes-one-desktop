@@ -134,10 +134,10 @@ describe("SearchBar", () => {
     expect(optionPaths).toHaveLength(2);
 
     // ArrowDown from no selection → 0, ArrowDown → 1, ArrowUp wraps back to 0.
-    fireEvent.keyDown(window, { key: "ArrowDown" });
-    fireEvent.keyDown(window, { key: "ArrowDown" });
-    fireEvent.keyDown(window, { key: "ArrowUp" });
-    fireEvent.keyDown(window, { key: "Enter" });
+    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    fireEvent.keyDown(document.body, { key: "ArrowUp" });
+    fireEvent.keyDown(document.body, { key: "Enter" });
     expect(onOpen.mock.calls[0][0].detail).toBe(optionPaths[0]);
     // Picking a file closes the dropdown but keeps the query.
     expect(screen.queryByText("app.ts")).toBeNull();
@@ -147,9 +147,9 @@ describe("SearchBar", () => {
     // arrow to index 1.
     fireEvent.change(input, { target: { value: "s " } });
     await screen.findByText("app.ts");
-    fireEvent.keyDown(window, { key: "ArrowDown" });
-    fireEvent.keyDown(window, { key: "ArrowDown" });
-    fireEvent.keyDown(window, { key: "Enter" });
+    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    fireEvent.keyDown(document.body, { key: "Enter" });
     expect(onOpen.mock.calls[1][0].detail).toBe(optionPaths[1]);
 
     window.removeEventListener("hermes-open-file", onOpen);

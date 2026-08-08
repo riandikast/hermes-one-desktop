@@ -98,8 +98,45 @@ export function SearchBar({
     }
   };
 
-  // Global keyboard: Ctrl+F focuses the input; ↑/↓/Enter navigate the results
-  // dropdown; Esc closes results then clears.
+  // Capture-phase navigation: ↑/↓/Enter move the results dropdown no matter
+  // where focus is (the composer included), before any target-phase handler
+  // can interfere. Enter is skipped for editable targets so the composer can
+  // still send messages; arrows pressed inside the search input itself are
+  // owned by onKeyDown.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Enter")
+        return;
+      const { results: currentResults, activeIndex: currentIndex } =
+        stateRef.current;
+      if (!currentResults || currentResults.length === 0) return;
+      if (e.target === inputRef.current) return;
+      if (e.key === "Enter") {
+        const target = e.target as HTMLElement | null;
+        if (
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement ||
+          target?.isContentEditable
+        ) {
+          return; // composer/inputs keep Enter for sending/submitting
+        }
+      }
+      e.preventDefault();
+      if (e.key === "ArrowDown") {
+        setActiveIndex((prev) => (prev + 1) % currentResults.length);
+      } else if (e.key === "ArrowUp") {
+        setActiveIndex((prev) =>
+          prev <= 0 ? currentResults.length - 1 : prev - 1,
+        );
+      } else {
+        openResultAt(currentIndex >= 0 ? currentIndex : 0);
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, []);
+
+  // Window-level: Ctrl+F focuses the input; Esc closes results then clears.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "f") {
@@ -110,36 +147,13 @@ export function SearchBar({
         return;
       }
 
-      const { results: currentResults, activeIndex: currentIndex } =
-        stateRef.current;
-
       if (e.key === "Escape") {
+        const { results: currentResults } = stateRef.current;
         if (currentResults) {
           closeResults();
         } else {
           setQuery("");
         }
-        return;
-      }
-
-      // Arrows/Enter pressed inside the input are owned by onKeyDown — skip
-      // them here so the selection doesn't advance twice.
-      if (e.target === inputRef.current) return;
-
-      if (!currentResults || currentResults.length === 0) return;
-
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setActiveIndex((prev) => (prev + 1) % currentResults.length);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setActiveIndex((prev) =>
-          prev <= 0 ? currentResults.length - 1 : prev - 1,
-        );
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        const target = currentIndex >= 0 ? currentIndex : 0;
-        openResultAt(target);
       }
     };
     window.addEventListener("keydown", onKey);
