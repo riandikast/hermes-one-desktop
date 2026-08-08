@@ -14,9 +14,13 @@ export interface DashboardEventState {
   reasoningSegmentClosed: boolean;
 }
 
-/** Tool names that mutate files — captured for the file-changes summary.
- *  Includes command-executors (terminal/process/bash/…) because write tools
- *  vary by gateway; the real filter is the absolute path found in args. */
+/** Tool names that EDIT files — captured for the file-changes summary.
+ *  Matches the official desktop's FILE_EDIT_TOOL_NAMES semantics (edit_file |
+ *  patch | write_file): only file-edit tools count as changes. Command
+ *  executors (terminal/process/bash/exec/run_command/…) are deliberately
+ *  EXCLUDED — their `files_modified` reports subprocess side effects (game
+ *  logs, build artifacts) the agent never edited, which produced the false
+ *  "godot.log edited" chips. */
 export const WRITE_TOOL_NAMES = [
   "write_file",
   "edit_file",
@@ -34,18 +38,6 @@ export const WRITE_TOOL_NAMES = [
   "replace",
   "remove",
   "update",
-  "terminal",
-  "process",
-  "bash",
-  "shell",
-  "exec",
-  "run_command",
-  "execute_code",
-  "execute",
-  "mkdir",
-  "rm",
-  "mv",
-  "cp",
 ];
 
 interface ApplyDashboardEventOptions {

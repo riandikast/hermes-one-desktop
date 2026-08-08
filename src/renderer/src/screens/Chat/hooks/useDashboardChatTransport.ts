@@ -1753,11 +1753,15 @@ export function useDashboardChatTransport({
         };
 
         // Authoritative: the tool's own files_modified list — never guesses.
-        const filesModified = Array.isArray(toolPayload.files_modified)
-          ? toolPayload.files_modified.filter(
-              (p): p is string => typeof p === "string",
-            )
-          : [];
+        // ONLY for file-edit tools (matched): terminal/process tools report
+        // files written by SUBPROCESSES (game logs, build artifacts) that the
+        // agent never edited — the "godot.log edited" false positives.
+        const filesModified =
+          matched && Array.isArray(toolPayload.files_modified)
+            ? toolPayload.files_modified.filter(
+                (p): p is string => typeof p === "string",
+              )
+            : [];
         for (const p of filesModified) capturePath(p);
 
         // Fallback: name match + path extraction (nested args OR the payload

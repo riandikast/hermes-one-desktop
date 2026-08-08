@@ -14,6 +14,10 @@ const PATH_KEYS = [
   "absolutePath",
   "dest",
   "destination",
+  // The backend's canonical post-edit result key (tool result JSON carries
+  // the concrete landed path under resolved_path) — the patch tool's args may
+  // omit `path` entirely, so the result key is what catches it.
+  "resolved_path",
 ] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
