@@ -664,16 +664,21 @@ function Layout({
     string[] | null
   >(null);
   const activeSessionId = currentSessionId;
+  // Every folder event, keyed by session id (null for sessionless tabs). An
+  // always-on listener — NOT scoped — so an event that fires while the active
+  // session is mid-transition (Chat broadcasts before Layout's scoped listener
+  // re-registers) is still captured and can be adopted retroactively.
+  const sessionFoldersRef = useRef<Map<string | null, string[]>>(new Map());
   useEffect(() => {
-    setActiveSessionFolders(null);
     const onFoldersChanged = (e: Event): void => {
       const detail = (
         e as CustomEvent<{ sessionId?: string; folders?: string[] }>
       ).detail;
-      // Strict equality: a null-session event (folder picked on a blank tab)
-      // is adopted only when the active tab also has no session yet.
-      if (!detail || detail.sessionId !== activeSessionId) return;
-      if (detail.folders) setActiveSessionFolders(detail.folders);
+      if (!detail || !detail.folders) return;
+      sessionFoldersRef.current.set(detail.sessionId ?? null, detail.folders);
+      if (detail.sessionId === activeSessionId) {
+        setActiveSessionFolders(detail.folders);
+      }
     };
     window.addEventListener(
       "hermes-session-context-folder-changed",
@@ -684,6 +689,13 @@ function Layout({
         "hermes-session-context-folder-changed",
         onFoldersChanged,
       );
+  }, [activeSessionId]);
+  useEffect(() => {
+    // Adopt the latest known folders for the new active session — this is what
+    // recovers an event that fired before the scoped listener was ready.
+    setActiveSessionFolders(
+      sessionFoldersRef.current.get(activeSessionId ?? null) ?? null,
+    );
   }, [activeSessionId]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
