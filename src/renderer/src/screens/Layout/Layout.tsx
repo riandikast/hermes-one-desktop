@@ -477,14 +477,23 @@ function Layout({
   // shows the file's editor (all open files stay mounted so unsaved edits
   // survive tab switching). `line` (1-based) jumps the editor to that line.
   const handleOpenFile = useCallback(
-    (filePath: string, line?: number) => {
+    (filePath: string, line?: number, folders?: string[]) => {
       const existing = runs.find((r) => r.filePath === filePath);
       if (existing) {
         setActiveRunId(existing.runId);
         setActiveProfile(existing.profile);
-        if (line) {
-          setRuns((prev) => patchRun(prev, existing.runId, { fileLine: line }));
-        }
+        setRuns((prev) =>
+          patchRun(prev, existing.runId, {
+            ...(line ? { fileLine: line } : {}),
+            // Carry the context folder onto the file tab: SearchBar seeds from
+            // the ACTIVE run's initialContextFolders, so without this, opening
+            // a file kills folder-scoped search until the chat tab is
+            // reactivated.
+            ...(folders && folders.length
+              ? { initialContextFolders: folders }
+              : {}),
+          }),
+        );
       } else {
         const fileName = filePath.split(/[\\/]/).pop() || filePath;
         const fileRun: ChatRun = {
@@ -496,6 +505,9 @@ function Layout({
           targetView: "file",
           filePath,
           ...(line ? { fileLine: line } : {}),
+          ...(folders && folders.length
+            ? { initialContextFolders: folders }
+            : {}),
         };
         setRuns((prev) => [...prev, fileRun]);
         setActiveRunId(fileRun.runId);
@@ -512,14 +524,15 @@ function Layout({
   useEffect(() => {
     const handleOpenFileEvent = (e: Event): void => {
       const detail = (
-        e as CustomEvent<string | { path: string; line?: number }>
+        e as CustomEvent<string | { path: string; line?: number; folders?: string[] }>
       ).detail;
       if (typeof detail === "string") {
         // Legacy payload: the worktree sidebar dispatches a bare path.
         handleOpenFile(detail);
       } else if (detail && typeof detail === "object" && detail.path) {
-        // Find-in-Files payload: path + optional 1-based line.
-        handleOpenFile(detail.path, detail.line);
+        // SearchBar / Find-in-Files payload: path + optional 1-based line +
+        // the context folders that produced the hit.
+        handleOpenFile(detail.path, detail.line, detail.folders);
       }
     };
     window.addEventListener("hermes-open-file", handleOpenFileEvent);
@@ -1257,25 +1270,31 @@ function Layout({
 
           {/* Ctrl+Shift+F content search — the worktree panel's dialog,
               re-targeted at the active tab's folders. */}
-          {findInFilesOpen && (
-            <FindInFilesDialog
-              folders={
+          {findInFilesOpen &&
+            (() => {
+              const findInFilesFolders =
                 activeSessionFolders ??
                 runs.find((run) => run.runId === activeRunId)
                   ?.initialContextFolders ??
-                []
-              }
-              onClose={() => setFindInFilesOpen(false)}
-              onOpenFile={(path, line) => {
-                window.dispatchEvent(
-                  new CustomEvent("hermes-open-file", {
-                    detail: line ? { path, line } : path,
-                  }),
-                );
-                setFindInFilesOpen(false);
-              }}
-            />
-          )}
+                [];
+              return (
+                <FindInFilesDialog
+                  folders={findInFilesFolders}
+                  onClose={() => setFindInFilesOpen(false)}
+                  onOpenFile={(path, line) => {
+                    // Carry the searched folders onto the opened file tab so
+                    // folder-scoped search survives without reactivating the
+                    // chat session.
+                    window.dispatchEvent(
+                      new CustomEvent("hermes-open-file", {
+                        detail: { path, ...(line ? { line } : {}), folders: findInFilesFolders },
+                      }),
+                    );
+                    setFindInFilesOpen(false);
+                  }}
+                />
+              );
+            })()}
 
           {verifyWarning && onReinstall && onDismissVerifyWarning && (
             <VerifyWarningBanner

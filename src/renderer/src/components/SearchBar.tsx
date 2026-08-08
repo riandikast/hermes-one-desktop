@@ -45,8 +45,8 @@ export function SearchBar({
   }
 
   // Latest values for the (once-bound) keyboard handlers.
-  const stateRef = useRef({ query, results, activeIndex });
-  stateRef.current = { query, results, activeIndex };
+  const stateRef = useRef({ query, results, activeIndex, folders });
+  stateRef.current = { query, results, activeIndex, folders };
 
   // Live folder tracking: Chat dispatches hermes-session-context-folder-changed
   // with { sessionId, folders } whenever the active session's folders change
@@ -70,10 +70,18 @@ export function SearchBar({
   };
 
   const openResultAt = (index: number): void => {
-    const { results: currentResults } = stateRef.current;
+    const { results: currentResults, folders: currentFolders } =
+      stateRef.current;
     if (!currentResults || index < 0 || index >= currentResults.length) return;
     const entry = currentResults[index] as FileSearchEntry;
-    window.dispatchEvent(new CustomEvent("hermes-open-file", { detail: entry.path }));
+    // Carry the searched folders with the file so the opened file tab stays
+    // folder-scoped for the next search (Layout stores them as the run's
+    // initialContextFolders).
+    window.dispatchEvent(
+      new CustomEvent("hermes-open-file", {
+        detail: { path: entry.path, folders: currentFolders },
+      }),
+    );
     // Drop the dropdown once a file is picked.
     closeResults();
   };
