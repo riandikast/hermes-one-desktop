@@ -640,10 +640,8 @@ body:has(.shell-vibrant),
 /* ── VS Code-style search bar (lives on the Windows title-bar row) ── */
 .search-bar-wrap {
   position: relative;
-  flex: 1;
-  max-width: 480px;
-  min-width: 0;
-  flex-shrink: 0;
+  width: min(480px, 60vw);
+  margin: 0 auto; /* center on the title row */
   -webkit-app-region: no-drag;
   /* Vertical breathing room inside the 34px title bar. */
   padding: 4px;

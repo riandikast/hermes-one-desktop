@@ -424,6 +424,10 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       setInput("");
       setAttachments([]);
       setAttachmentError(null);
+      // Close any stale mention menu — otherwise a prompt containing an "@"
+      // leaves the dropdown open over the cleared input, and arrow keys then
+      // navigate the dead mention list instead of the chat.
+      setMentionOpen(false);
       if (inputRef.current) inputRef.current.style.height = "auto";
     }
 

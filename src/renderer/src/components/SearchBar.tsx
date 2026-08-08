@@ -76,6 +76,28 @@ export function SearchBar({
     closeResults();
   };
 
+  // Direct input-level arrow handling: works even if some other capture-phase
+  // handler in the app interferes with window bubbling.
+  const handleInputKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+  ): void => {
+    const { results: currentResults, activeIndex: currentIndex } =
+      stateRef.current;
+    if (!currentResults || currentResults.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((prev) => (prev + 1) % currentResults.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((prev) =>
+        prev <= 0 ? currentResults.length - 1 : prev - 1,
+      );
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      openResultAt(currentIndex >= 0 ? currentIndex : 0);
+    }
+  };
+
   // Global keyboard: Ctrl+F focuses the input; ↑/↓/Enter navigate the results
   // dropdown; Esc closes results then clears.
   useEffect(() => {
@@ -99,6 +121,10 @@ export function SearchBar({
         }
         return;
       }
+
+      // Arrows/Enter pressed inside the input are owned by onKeyDown — skip
+      // them here so the selection doesn't advance twice.
+      if (e.target === inputRef.current) return;
 
       if (!currentResults || currentResults.length === 0) return;
 
@@ -177,6 +203,7 @@ export function SearchBar({
           ref={inputRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={handleInputKeyDown}
           placeholder={
             !canSearch ? "Open a folder to search" : "Search files…"
           }

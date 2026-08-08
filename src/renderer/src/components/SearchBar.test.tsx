@@ -155,6 +155,29 @@ describe("SearchBar", () => {
     window.removeEventListener("hermes-open-file", onOpen);
   });
 
+  it("navigates with arrows pressed directly in the input", async () => {
+    const onOpen = vi.fn();
+    window.addEventListener("hermes-open-file", onOpen);
+    render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
+
+    const input = screen.getByPlaceholderText(/Search files/);
+    fireEvent.change(input, { target: { value: "s" } });
+    await screen.findByText("app.ts");
+
+    const optionPaths = [...document.querySelectorAll('[role="option"]')].map(
+      (option) => option.getAttribute("title"),
+    );
+    expect(optionPaths).toHaveLength(2);
+
+    // Pressed on the INPUT element itself (React onKeyDown path).
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onOpen.mock.calls[0][0].detail).toBe(optionPaths[1]);
+
+    window.removeEventListener("hermes-open-file", onOpen);
+  });
+
   it("Escape closes the results dropdown before clearing the query", async () => {
     render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
 

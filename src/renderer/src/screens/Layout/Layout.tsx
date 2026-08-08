@@ -657,6 +657,34 @@ function Layout({
   // Ctrl+Shift+F opens the Find-in-Files dialog (content search) for the
   // active tab's folders — same dialog the worktree panel's button uses.
   const [findInFilesOpen, setFindInFilesOpen] = useState(false);
+  // Live folders of the ACTIVE session (updated via the folder-changed event),
+  // so the dialog searches the current context folder, not just the run's
+  // initial one. Reset when the active session changes.
+  const [activeSessionFolders, setActiveSessionFolders] = useState<
+    string[] | null
+  >(null);
+  const activeSessionId = runs.find((run) => run.runId === activeRunId)
+    ?.sessionId;
+  useEffect(() => {
+    setActiveSessionFolders(null);
+    if (!activeSessionId) return;
+    const onFoldersChanged = (e: Event): void => {
+      const detail = (
+        e as CustomEvent<{ sessionId?: string; folders?: string[] }>
+      ).detail;
+      if (!detail || detail.sessionId !== activeSessionId) return;
+      if (detail.folders) setActiveSessionFolders(detail.folders);
+    };
+    window.addEventListener(
+      "hermes-session-context-folder-changed",
+      onFoldersChanged,
+    );
+    return () =>
+      window.removeEventListener(
+        "hermes-session-context-folder-changed",
+        onFoldersChanged,
+      );
+  }, [activeSessionId]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (
@@ -1220,8 +1248,10 @@ function Layout({
           {findInFilesOpen && (
             <FindInFilesDialog
               folders={
+                activeSessionFolders ??
                 runs.find((run) => run.runId === activeRunId)
-                  ?.initialContextFolders ?? []
+                  ?.initialContextFolders ??
+                []
               }
               onClose={() => setFindInFilesOpen(false)}
               onOpenFile={(path, line) => {
