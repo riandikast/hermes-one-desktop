@@ -349,7 +349,7 @@ function Chat({
       .then(() => {
         window.dispatchEvent(
           new CustomEvent("hermes-session-context-folder-changed", {
-            detail: { sessionId: hermesSessionId },
+            detail: { sessionId: hermesSessionId, folders: contextFolders },
           }),
         );
       })

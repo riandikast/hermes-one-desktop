@@ -31,34 +31,13 @@ describe("SearchBar", () => {
     vi.clearAllMocks();
   });
 
-  it("renders nothing until Ctrl+F", () => {
-    render(<SearchBar folders={FOLDERS} />);
-    expect(screen.queryByPlaceholderText(/Search files/)).toBeNull();
+  it("is always visible (no keybind needed)", () => {
+    render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
+    expect(screen.getByPlaceholderText(/Search files/)).toBeTruthy();
   });
 
-  it("opens in files mode on Ctrl+F and dispatches hermes-open-file on a hit", async () => {
-    const onOpen = vi.fn();
-    window.addEventListener("hermes-open-file", onOpen);
-    render(<SearchBar folders={FOLDERS} />);
-
-    fireEvent.keyDown(window, { key: "f", ctrlKey: true });
-    const input = screen.getByPlaceholderText(/Search files/);
-    fireEvent.change(input, { target: { value: "app" } });
-
-    await waitFor(() => {
-      expect(hermesAPIMock.listFilesRecursive).toHaveBeenCalledWith("C:/proj");
-    });
-    const row = await screen.findByText("app.ts");
-    fireEvent.click(row);
-
-    expect(onOpen).toHaveBeenCalledTimes(1);
-    const detail = onOpen.mock.calls[0][0].detail;
-    expect(detail).toBe("C:/proj/app.ts");
-    window.removeEventListener("hermes-open-file", onOpen);
-  });
-
-  it("opens in content mode on Ctrl+Shift+F and searches file contents", async () => {
-    render(<SearchBar folders={FOLDERS} />);
+  it("switches to content mode on Ctrl+Shift+F and searches file contents", async () => {
+    render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
 
     fireEvent.keyDown(window, { key: "f", ctrlKey: true, shiftKey: true });
     const input = screen.getByPlaceholderText(/Search inside files/);
@@ -74,13 +53,70 @@ describe("SearchBar", () => {
     expect(screen.getByText("3")).toBeTruthy(); // line number
   });
 
-  it("closes on Escape", () => {
-    render(<SearchBar folders={FOLDERS} />);
+  it("searches files in files mode and dispatches hermes-open-file on a hit", async () => {
+    const onOpen = vi.fn();
+    window.addEventListener("hermes-open-file", onOpen);
+    render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
 
-    fireEvent.keyDown(window, { key: "f", ctrlKey: true });
-    expect(screen.getByPlaceholderText(/Search files/)).toBeTruthy();
+    const input = screen.getByPlaceholderText(/Search files/);
+    fireEvent.change(input, { target: { value: "app" } });
+
+    await waitFor(() => {
+      expect(hermesAPIMock.listFilesRecursive).toHaveBeenCalledWith("C:/proj");
+    });
+    const row = await screen.findByText("app.ts");
+    fireEvent.click(row);
+
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen.mock.calls[0][0].detail).toBe("C:/proj/app.ts");
+    window.removeEventListener("hermes-open-file", onOpen);
+  });
+
+  it("adopts folders from the active session's folder-changed event", async () => {
+    render(<SearchBar initialFolders={FOLDERS} sessionId="sess-1" />);
+
+    window.dispatchEvent(
+      new CustomEvent("hermes-session-context-folder-changed", {
+        detail: { sessionId: "sess-1", folders: ["C:/other"] },
+      }),
+    );
+
+    const input = screen.getByPlaceholderText(/Search files/);
+    fireEvent.change(input, { target: { value: "x" } });
+
+    await waitFor(() => {
+      expect(hermesAPIMock.listFilesRecursive).toHaveBeenCalledWith("C:/other");
+    });
+  });
+
+  it("ignores folder-changed events from other sessions", async () => {
+    render(<SearchBar initialFolders={FOLDERS} sessionId="sess-1" />);
+
+    window.dispatchEvent(
+      new CustomEvent("hermes-session-context-folder-changed", {
+        detail: { sessionId: "sess-2", folders: ["C:/other"] },
+      }),
+    );
+
+    const input = screen.getByPlaceholderText(/Search files/);
+    fireEvent.change(input, { target: { value: "x" } });
+
+    await waitFor(() => {
+      expect(hermesAPIMock.listFilesRecursive).toHaveBeenCalledWith("C:/proj");
+    });
+    expect(hermesAPIMock.listFilesRecursive).not.toHaveBeenCalledWith(
+      "C:/other",
+    );
+  });
+
+  it("clears the query on Escape", () => {
+    render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
+
+    const input = screen.getByPlaceholderText(/Search files/) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "app" } });
+    expect(input.value).toBe("app");
 
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByPlaceholderText(/Search files/)).toBeNull();
+    expect(input.value).toBe("");
   });
 });

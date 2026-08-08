@@ -1137,15 +1137,19 @@ function Layout({
         <main className="content">
           {/* Windows hidden frame: the title bar (drag + caption controls)
               spans only the content column, so the sidebar reaches the top of
-              the window. Tabs live on their own line below it. */}
-          <TitleBar />
-          {/* VS Code-style search bar (Ctrl+F files / Ctrl+Shift+F content) */}
-          <SearchBar
-            folders={
-              runs.find((run) => run.runId === activeRunId)?.initialContextFolders ??
-              []
-            }
-          />
+              the window. The always-visible search bar shares the title row;
+              tabs live on their own line below. */}
+          <TitleBar>
+            <SearchBar
+              initialFolders={
+                runs.find((run) => run.runId === activeRunId)
+                  ?.initialContextFolders ?? []
+              }
+              sessionId={
+                runs.find((run) => run.runId === activeRunId)?.sessionId ?? null
+              }
+            />
+          </TitleBar>
           {/* Top menu wrapper with collapse toggle */}
           <div className="top-menu-wrapper">
             <div

@@ -3,15 +3,16 @@ import { FileText, Folder, Search, X } from "lucide-react";
 import { searchFiles, type FileSearchEntry } from "../screens/Chat/fileSearch";
 
 /**
- * VS Code-style search bar above the tab strip.
+ * VS Code-style search input, always visible on the title-bar row (right side,
+ * next to the window controls).
  *
- * - Ctrl+F          → open in "Files" mode (file-name search over the active
- *                     run's context folders — same pipeline as the worktree
- *                     panel: listFilesRecursive + Everything + fuzzy rank)
- * - Ctrl+Shift+F    → open in "Content" mode (search inside files via
- *                     searchInFiles, same backend as Find-in-Files)
- * - Esc closes; results open files through the existing hermes-open-file
- *   event (Layout opens a file tab; line-aware payload for content matches).
+ * - Ctrl+F          → focus in "Files" mode (file-name search)
+ * - Ctrl+Shift+F    → focus in "Content" mode (search inside files)
+ * - Auto-targets the ACTIVE tab's context folders: seeded from the active run
+ *   and kept live via the hermes-session-context-folder-changed event
+ *   (scoped by session id — a background tab's folder change can't hijack it).
+ * - Results open files through the existing hermes-open-file event (Layout
+ *   opens a file tab; line-aware payload for content matches).
  */
 type SearchMode = "files" | "content";
 
@@ -23,8 +24,16 @@ interface ContentMatchRow {
 
 type Results = FileSearchEntry[] | ContentMatchRow[] | null;
 
-export function SearchBar({ folders }: { folders: string[] }): React.JSX.Element | null {
-  const [open, setOpen] = useState(false);
+export function SearchBar({
+  initialFolders,
+  sessionId,
+}: {
+  /** Folders of the active tab at mount (active run's context folders). */
+  initialFolders: string[];
+  /** Active run's gateway session id — scopes live folder updates. */
+  sessionId: string | null;
+}): React.JSX.Element {
+  const [folders, setFolders] = useState<string[]>(initialFolders);
   const [mode, setMode] = useState<SearchMode>("files");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Results>(null);
@@ -33,10 +42,29 @@ export function SearchBar({ folders }: { folders: string[] }): React.JSX.Element
   const seqRef = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const openSearch = (nextMode: SearchMode): void => {
+  // Re-seed when the active tab changes (Layout re-renders with the new run).
+  useEffect(() => {
+    setFolders(initialFolders);
+    setResults(null);
+  }, [initialFolders]);
+
+  // Live folder tracking: Chat dispatches hermes-session-context-folder-changed
+  // with { sessionId, folders } whenever the active session's folders change.
+  useEffect(() => {
+    const onFoldersChanged = (e: Event): void => {
+      const detail = (e as CustomEvent<{ sessionId?: string; folders?: string[] }>)
+        .detail;
+      if (!detail || !sessionId || detail.sessionId !== sessionId) return;
+      if (detail.folders) setFolders(detail.folders);
+    };
+    window.addEventListener("hermes-session-context-folder-changed", onFoldersChanged);
+    return () =>
+      window.removeEventListener("hermes-session-context-folder-changed", onFoldersChanged);
+  }, [sessionId]);
+
+  const focusSearch = (nextMode: SearchMode): void => {
     setMode(nextMode);
-    setOpen(true);
-    requestAnimationFrame(() => inputRef.current?.focus());
+    inputRef.current?.focus();
   };
 
   // Global keybinds: Ctrl+F → files, Ctrl+Shift+F → content. preventDefault
@@ -45,35 +73,29 @@ export function SearchBar({ folders }: { folders: string[] }): React.JSX.Element
     const onKey = (e: KeyboardEvent): void => {
       if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "f") {
         e.preventDefault();
-        openSearch(e.shiftKey ? "content" : "files");
+        focusSearch(e.shiftKey ? "content" : "files");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Esc closes and clears.
+  // Esc clears the query (and drops stale results); a second Esc blurs.
   useEffect(() => {
-    if (!open) return;
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") {
-        setOpen(false);
+      if (e.key !== "Escape") return;
+      if (query) {
         setQuery("");
         setResults(null);
+      } else if (document.activeElement === inputRef.current) {
+        inputRef.current?.blur();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
-
-  const close = (): void => {
-    setOpen(false);
-    setQuery("");
-    setResults(null);
-  };
+  }, [query]);
 
   useEffect(() => {
-    if (!open) return;
     const trimmed = query.trim();
     const seq = ++seqRef.current;
     if (!trimmed || folders.length === 0) {
@@ -138,9 +160,7 @@ export function SearchBar({ folders }: { folders: string[] }): React.JSX.Element
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [open, mode, query, folders]);
-
-  if (!open) return null;
+  }, [mode, query, folders]);
 
   const canSearch = folders.length > 0;
   const count = results?.length ?? 0;
@@ -153,48 +173,43 @@ export function SearchBar({ folders }: { folders: string[] }): React.JSX.Element
     );
   };
 
+  const toggleMode = (): void => {
+    setMode((prev) => (prev === "files" ? "content" : "files"));
+    setResults(null);
+    inputRef.current?.focus();
+  };
+
   return (
     <div className="search-bar-wrap">
       <div className="search-bar">
-        <div className="search-bar-modes">
-          <button
-            type="button"
-            className={`search-bar-mode${mode === "files" ? " active" : ""}`}
-            onClick={() => {
-              setMode("files");
-              setResults(null);
-            }}
-            title="Search files (Ctrl+F)"
-          >
-            Files
-          </button>
-          <button
-            type="button"
-            className={`search-bar-mode${mode === "content" ? " active" : ""}`}
-            onClick={() => {
-              setMode("content");
-              setResults(null);
-            }}
-            title="Search inside files (Ctrl+Shift+F)"
-          >
-            Search
-          </button>
-        </div>
-        <Search size={14} className="search-bar-icon" />
+        <Search size={13} className="search-bar-icon" />
         <input
           ref={inputRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={
             !canSearch
-              ? "Open a folder first — nothing to search"
+              ? "Open a folder to search"
               : mode === "files"
                 ? "Search files…"
                 : "Search inside files…"
           }
           disabled={!canSearch}
           spellCheck={false}
+          aria-label={mode === "files" ? "Search files" : "Search inside files"}
         />
+        <button
+          type="button"
+          className={`search-bar-mode${mode === "content" ? " active" : ""}`}
+          onClick={toggleMode}
+          title={
+            mode === "files"
+              ? "Search inside files (Ctrl+Shift+F)"
+              : "Search files (Ctrl+F)"
+          }
+        >
+          {mode === "files" ? "Files" : "Search"}
+        </button>
         {searching && <span className="search-bar-busy" aria-label="Searching" />}
         {query && (
           <button
@@ -204,21 +219,12 @@ export function SearchBar({ folders }: { folders: string[] }): React.JSX.Element
               setQuery("");
               setResults(null);
             }}
-            title="Clear"
+            title="Clear (Esc)"
             aria-label="Clear search"
           >
             <X size={13} />
           </button>
         )}
-        <button
-          type="button"
-          className="search-bar-close"
-          onClick={close}
-          title="Close (Esc)"
-          aria-label="Close search"
-        >
-          <X size={14} />
-        </button>
       </div>
       {(searching || results !== null) && (
         <div className="search-bar-results">
