@@ -638,10 +638,14 @@ body:has(.shell-vibrant),
 /* ── VS Code-style search bar (lives on the Windows title-bar row) ── */
 .search-bar-wrap {
   position: relative;
+  flex: 1;
+  max-width: 480px;
+  min-width: 0;
   flex-shrink: 0;
   margin-left: auto; /* push next to the window controls */
   -webkit-app-region: no-drag;
-  padding: 0 4px;
+  /* Vertical breathing room inside the 34px title bar. */
+  padding: 4px;
 }
 
 .search-bar {
@@ -653,8 +657,7 @@ body:has(.shell-vibrant),
   background: var(--bg-primary);
   border: 1px solid var(--border-bright);
   border-radius: 6px;
-  min-width: 200px;
-  max-width: 280px;
+  width: 100%;
 }
 
 .search-bar-icon {
@@ -767,7 +770,8 @@ body:has(.shell-vibrant),
   min-width: 0;
 }
 
-.search-bar-result:hover {
+.search-bar-result:hover,
+.search-bar-result.active {
   background: var(--bg-tertiary);
 }
 

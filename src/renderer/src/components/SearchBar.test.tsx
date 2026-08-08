@@ -119,4 +119,64 @@ describe("SearchBar", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(input.value).toBe("");
   });
+
+  it("focuses the input on Ctrl+F and switches mode on Ctrl+Shift+F", () => {
+    render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
+
+    fireEvent.keyDown(window, { key: "f", ctrlKey: true });
+    expect(document.activeElement).toBe(screen.getByPlaceholderText(/Search files/));
+
+    fireEvent.keyDown(window, { key: "f", ctrlKey: true, shiftKey: true });
+    expect(document.activeElement).toBe(
+      screen.getByPlaceholderText(/Search inside files/),
+    );
+  });
+
+  it("navigates results with ArrowDown/ArrowUp and opens on Enter", async () => {
+    const onOpen = vi.fn();
+    window.addEventListener("hermes-open-file", onOpen);
+    render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
+
+    const input = screen.getByPlaceholderText(/Search files/);
+    // "s" matches both mock entries (app.ts, styles) so the dropdown has two
+    // options to navigate between.
+    fireEvent.change(input, { target: { value: "s" } });
+    await screen.findByText("app.ts");
+
+    const optionPaths = [...document.querySelectorAll('[role="option"]')].map(
+      (option) => option.getAttribute("title"),
+    );
+    expect(optionPaths).toHaveLength(2);
+
+    // Enter with no selection opens index 0; ArrowDown 0→1; ArrowUp wraps
+    // back to 0.
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(onOpen.mock.calls[0][0].detail).toBe(optionPaths[0]);
+
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(onOpen.mock.calls[1][0].detail).toBe(optionPaths[1]);
+
+    fireEvent.keyDown(window, { key: "ArrowUp" });
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(onOpen.mock.calls[2][0].detail).toBe(optionPaths[0]);
+
+    window.removeEventListener("hermes-open-file", onOpen);
+  });
+
+  it("Escape closes the results dropdown before clearing the query", async () => {
+    render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
+
+    const input = screen.getByPlaceholderText(/Search files/) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "app" } });
+    await screen.findByText("app.ts");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByText("app.ts")).toBeNull();
+    expect(input.value).toBe("app");
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(input.value).toBe("");
+  });
 });
