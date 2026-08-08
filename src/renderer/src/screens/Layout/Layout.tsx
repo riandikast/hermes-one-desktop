@@ -18,6 +18,7 @@ import {
 } from "./chatRuns";
 import { ActiveSessionsBar } from "./ActiveSessionsBar";
 import { TitleBar } from "../../components/TitleBar";
+import { SearchBar } from "../../components/SearchBar";
 import { StatusBar } from "./StatusBar";
 import Sessions from "../Sessions/Sessions";
 import Agents from "../Agents/Agents";
@@ -1138,6 +1139,13 @@ function Layout({
               spans only the content column, so the sidebar reaches the top of
               the window. Tabs live on their own line below it. */}
           <TitleBar />
+          {/* VS Code-style search bar (Ctrl+F files / Ctrl+Shift+F content) */}
+          <SearchBar
+            folders={
+              runs.find((run) => run.runId === activeRunId)?.initialContextFolders ??
+              []
+            }
+          />
           {/* Top menu wrapper with collapse toggle */}
           <div className="top-menu-wrapper">
             <div

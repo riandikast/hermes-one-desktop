@@ -1,15 +1,76 @@
 import { useEffect, useState } from "react";
-import { Copy, Minus, Square, X } from "lucide-react";
 
 /**
  * Custom window controls for the Windows hidden frame. The native caption
- * buttons are gone (start.ts) — the renderer draws minimize/maximize/close
- * with lucide icons and drives the window over the window:* IPC surface
- * (preload electronAPI.windowControls).
+ * buttons are gone (start.ts) — the renderer draws minimize/maximize/close and
+ * drives the window over the window:* IPC surface (preload
+ * electronAPI.windowControls).
+ *
+ * Glyphs mirror the official desktop's native Windows caption icons (Segoe
+ * MDL2 10px geometry): thin line, square outline, diagonal cross, overlapping
+ * squares for restore.
  *
  * Renders nothing when the preload surface is absent (web preview), so the
  * layout never shows dead buttons.
  */
+function MinimizeGlyph(): React.JSX.Element {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+      <line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  );
+}
+
+function MaximizeGlyph(): React.JSX.Element {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+      <rect
+        x="0.5"
+        y="0.5"
+        width="9"
+        height="9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1"
+      />
+    </svg>
+  );
+}
+
+function RestoreGlyph(): React.JSX.Element {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+      <rect
+        x="0.5"
+        y="2.5"
+        width="7"
+        height="7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1"
+      />
+      <path
+        d="M2.5 0.5 L9.5 0.5 L9.5 7.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1"
+      />
+    </svg>
+  );
+}
+
+function CloseGlyph(): React.JSX.Element {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+      <path
+        d="M0.5 0.5 L9.5 9.5 M9.5 0.5 L0.5 9.5"
+        stroke="currentColor"
+        strokeWidth="1"
+      />
+    </svg>
+  );
+}
+
 export function WindowControls(): React.JSX.Element | null {
   const [maximized, setMaximized] = useState(false);
 
@@ -37,7 +98,7 @@ export function WindowControls(): React.JSX.Element | null {
         title="Minimize"
         aria-label="Minimize"
       >
-        <Minus size={14} />
+        <MinimizeGlyph />
       </button>
       <button
         type="button"
@@ -46,7 +107,7 @@ export function WindowControls(): React.JSX.Element | null {
         title={maximized ? "Restore" : "Maximize"}
         aria-label={maximized ? "Restore" : "Maximize"}
       >
-        {maximized ? <Copy size={12} /> : <Square size={11} />}
+        {maximized ? <RestoreGlyph /> : <MaximizeGlyph />}
       </button>
       <button
         type="button"
@@ -55,7 +116,7 @@ export function WindowControls(): React.JSX.Element | null {
         title="Close"
         aria-label="Close"
       >
-        <X size={14} />
+        <CloseGlyph />
       </button>
     </div>
   );
