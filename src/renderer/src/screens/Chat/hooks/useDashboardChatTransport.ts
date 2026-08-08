@@ -1226,7 +1226,11 @@ export function useDashboardChatTransport({
       toolPaths: captured.map((c) => c.path),
     });
     fileChangesRef.current = new Map();
-    if (captured.length === 0) return;
+    // NO early return on an empty tool capture: the git working-tree diff
+    // below is the authoritative source (it catches terminal writes and
+    // tools whose payload shape misses the capture heuristics). Skipping it
+    // when the capture is empty made the chip silently disappear — the
+    // "tracking broke" report.
     void (async () => {
       // The tool capture reads AFTER-content asynchronously — at finalize the
       // read may still be in flight, so re-read every path with a null after
