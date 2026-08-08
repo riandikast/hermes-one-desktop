@@ -19268,6 +19268,12 @@ body:has(.shell-vibrant),
   /* Above the title bar (z 1002) and tab strip (z 1001): the Find-in-Files
      dialog reuses this overlay, and a modal must never paint under them. */
   z-index: 1200;
+  /* The tab strip (active-sessions-bar) is a -webkit-app-region: drag band;
+     drag regions swallow NATIVE mouse events over their bounds regardless of
+     DOM z-order. A 96vw/94vh modal's header lands inside that band, so its
+     close button was native-drag territory — dead clicks. Opt the whole
+     overlay out of dragging while it's open. */
+  -webkit-app-region: no-drag;
   background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
