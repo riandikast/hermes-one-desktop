@@ -108,12 +108,41 @@ export function FileChangesDialog({
     [selected],
   );
 
+  // Close on Escape too (capture — nothing can swallow it). The dialog had
+  // no keyboard close; overlay click alone is easy to miss with a 96vw panel.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+
   return (
     <div className="file-changes-overlay" onClick={onClose}>
       <div className="file-changes-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="file-changes-header">
           <span className="file-changes-title">File changes</span>
-          <button type="button" className="btn-ghost" onClick={onClose} aria-label="Close">
+          <button
+            type="button"
+            className="btn-ghost file-changes-close"
+            // Dual close path: mousedown fires even if some handler in the
+            // app swallows the synthesized click; onClick keeps normal
+            // semantics. setState(null) is idempotent, so both firing is
+            // harmless.
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            aria-label="Close"
+          >
             <X size={16} />
           </button>
         </div>
