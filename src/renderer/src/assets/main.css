@@ -594,7 +594,9 @@ body:has(.shell-vibrant),
   height: 34px;
   flex-shrink: 0;
   position: relative;
-  z-index: 1001;
+  /* Above .top-menu-wrapper (z 1001) so the search results dropdown paints
+     over the tab strip instead of under it. */
+  z-index: 1002;
   -webkit-app-region: drag;
   background: var(--bg-secondary);
   user-select: none;
@@ -642,7 +644,6 @@ body:has(.shell-vibrant),
   max-width: 480px;
   min-width: 0;
   flex-shrink: 0;
-  margin-left: auto; /* push next to the window controls */
   -webkit-app-region: no-drag;
   /* Vertical breathing room inside the 34px title bar. */
   padding: 4px;
