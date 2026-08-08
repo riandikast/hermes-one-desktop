@@ -584,6 +584,57 @@ body:has(.shell-vibrant),
   z-index: 1000;
 }
 
+/* Windows custom title bar (hidden frame). Full-width drag row above the tab
+   strip — tabs live on their own line below, so they never overlap the window
+   controls. Same shade as .active-sessions-bar so the two rows read as one
+   toolbar. */
+.title-bar {
+  display: flex;
+  align-items: stretch;
+  height: 34px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1001;
+  -webkit-app-region: drag;
+  background: var(--bg-secondary);
+  user-select: none;
+}
+
+.title-bar-drag {
+  flex: 1;
+  min-width: 0;
+}
+
+.window-controls {
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.window-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: default;
+  padding: 0;
+  transition: background var(--transition), color var(--transition);
+}
+
+.window-control:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.window-control--close:hover {
+  background: #e81123;
+  color: #ffffff;
+}
+
 .app-content {
   flex: 1;
   overflow: hidden;
@@ -2249,6 +2300,21 @@ body:has(.shell-vibrant),
   gap: 10px;
   padding: 4px 12px 2px;
   margin-top: 12px;
+  /* The fixed .drag-region strip (z 1000) overlays the window's top 34px on
+     mac/Windows hidden frames; lift the brand row above it so the collapse
+     toggle below stays clickable (the toggle itself opts out of dragging). */
+  position: relative;
+  z-index: 1001;
+}
+
+.sidebar-brand .sidebar-collapse-toggle {
+  -webkit-app-region: no-drag;
+}
+
+/* Windows: park the collapse toggle top-LEFT like the official desktop. On
+   macOS it stays right-aligned, opposite the native traffic lights. */
+.app.is-windows .sidebar-brand {
+  justify-content: flex-start;
 }
 
 .sidebar-logo {

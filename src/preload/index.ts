@@ -92,6 +92,23 @@ const electronAPI = {
       node: process.versions.node,
     },
   },
+  // Custom window controls (Windows hidden frame): the renderer draws its own
+  // minimize/maximize/close buttons and drives the window over IPC.
+  windowControls: {
+    minimize: (): Promise<void> => ipcRenderer.invoke("window:minimize"),
+    maximize: (): Promise<void> => ipcRenderer.invoke("window:maximize"),
+    close: (): Promise<void> => ipcRenderer.invoke("window:close"),
+    isMaximized: (): Promise<boolean> => ipcRenderer.invoke("window:is-maximized"),
+    onMaximizedChange: (callback: (maximized: boolean) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, value: boolean): void => {
+        callback(value);
+      };
+      ipcRenderer.on("window:maximized-changed", listener);
+      return () => {
+        ipcRenderer.removeListener("window:maximized-changed", listener);
+      };
+    },
+  },
 };
 
 const hermesAPI = {

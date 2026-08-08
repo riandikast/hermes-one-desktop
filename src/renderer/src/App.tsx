@@ -5,6 +5,7 @@ import { FontProvider } from "./components/FontProvider";
 import { ProfileModalProvider } from "./components/profile/ProfileModalProvider";
 import { SettingsModalProvider } from "./components/settings/SettingsModalProvider";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { TitleBar } from "./components/TitleBar";
 import Welcome from "./screens/Welcome/Welcome";
 import Install from "./screens/Install/Install";
 import Setup from "./screens/Setup/Setup";
@@ -35,6 +36,7 @@ function App(): React.JSX.Element {
     undefined,
   );
   const isMac = window.electron?.process?.platform === "darwin";
+  const isWindows = window.electron?.process?.platform === "win32";
   // Bumped on every runInstallCheck so a superseded run (e.g. the user hit
   // "Switch to local mode" while an SSH tunnel attempt was still in flight)
   // can't clobber the newer run's screen transition.
@@ -249,10 +251,15 @@ function App(): React.JSX.Element {
             <ErrorBoundary>
               <div
                 className={`app${isMac ? " is-mac" : ""}${
-                  isMac && screen === "main" ? " shell-vibrant" : ""
-                }`}
+                  isWindows ? " is-windows" : ""
+                }${isMac && screen === "main" ? " shell-vibrant" : ""}`}
               >
                 {isMac && <div className="drag-region" />}
+                {/* Windows (hidden frame, custom caption controls): full-width
+                    title bar on every screen EXCEPT main — on the main screen
+                    the bar lives inside the content column (Layout.tsx) so the
+                    sidebar reaches the top and tabs keep their own line. */}
+                {isWindows && screen !== "main" && <TitleBar />}
                 <div className="app-content">{renderScreen()}</div>
               </div>
               <Toaster

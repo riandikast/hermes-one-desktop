@@ -27,6 +27,7 @@ export {
   Loader,
   Monitor,
   Moon,
+  PanelLeft,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,

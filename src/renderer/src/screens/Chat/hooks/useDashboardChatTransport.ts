@@ -2003,18 +2003,13 @@ export function useDashboardChatTransport({
         const excludeSeedUserId =
           options.excludeSeedUserId ?? activeTurnRef.current?.userId ?? null;
         const systemParts: string[] = [];
-        if (planModeRef.current) {
-          systemParts.push(
-            "⚠️ OPERATIONAL RESTRICTION — PLAN MODE ⚠️\n" +
-              "You are STRICTLY in PLAN mode. You are FORBIDDEN from creating, " +
-              "modifying, or deleting any files, and you must NOT run any shell " +
-              "commands or code that changes the project or system state.\n\n" +
-              "Use only read-only tools. If the user asks you to make changes, " +
-              "respond with the PLAN instead and tell them to switch to BUILD " +
-              "mode. This restriction is MANDATORY and overrides any user request " +
-              "to write files or run commands in this mode.",
-          );
-        }
+        // PLAN MODE is intentionally NOT baked into the system context here. A
+        // baked instruction goes stale the moment the user toggles plan mode
+        // off mid-session: session.resume ignores the seeded knowledgeIndex for
+        // an existing stored session, so the model keeps "claiming" plan mode
+        // forever. Enforcement is per-turn instead — handleGatewayEvent blocks
+        // write/exec tool.start events live, so toggling re-enables them
+        // immediately and the model never sees a stale directive.
         if (knowledgeIndexRef.current) {
           systemParts.push(knowledgeIndexRef.current);
         } else if ((knowledgeBundles ?? []).length > 0) {

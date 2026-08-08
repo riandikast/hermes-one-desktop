@@ -1917,6 +1917,22 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   });
 
+  // Custom window controls (Windows hidden frame). The renderer draws
+  // minimize/maximize/close and drives the window here.
+  ipcMain.handle("window:minimize", () => {
+    getMainWindow()?.minimize();
+  });
+  ipcMain.handle("window:maximize", () => {
+    const win = getMainWindow();
+    if (!win) return;
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  });
+  ipcMain.handle("window:close", () => {
+    getMainWindow()?.close();
+  });
+  ipcMain.handle("window:is-maximized", () => getMainWindow()?.isMaximized() ?? false);
+
   // Dashboard/WebSocket transport probe. This is intentionally separate from
   // the current chat path while we validate the ordered event stream.
   ipcMain.handle("dashboard-status", (_event, profile?: string) =>

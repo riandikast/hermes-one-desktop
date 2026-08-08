@@ -17,6 +17,7 @@ import {
   loadingSessionIds as deriveLoadingSessionIds,
 } from "./chatRuns";
 import { ActiveSessionsBar } from "./ActiveSessionsBar";
+import { TitleBar } from "../../components/TitleBar";
 import { StatusBar } from "./StatusBar";
 import Sessions from "../Sessions/Sessions";
 import Agents from "../Agents/Agents";
@@ -51,8 +52,7 @@ import {
   Kanban as KanbanIcon,
   Download,
   Bot,
-  PanelLeftClose,
-  PanelLeftOpen,
+  PanelLeft,
   Plus,
   ChevronUp,
   ChevronDown,
@@ -633,22 +633,14 @@ function Layout({
             : undefined);
 
   const handleNewChat = useCallback(() => {
-    const active = runs.find((r) => r.runId === activeRunId);
-    if (
-      active &&
-      !active.sessionId &&
-      !active.loading &&
-      !active.title &&
-      !active.targetView
-    ) {
-      setView("chat");
-      return;
-    }
+    // Always mint a fresh blank tab — even when the active tab is itself a
+    // pristine new chat — so the tab strip's "+" supports multiple new chats
+    // side by side (browser-style).
     const run = mintRun(activeProfile);
     setRuns((prev) => [...prev, run]);
     setActiveRunId(run.runId);
     setView("chat");
-  }, [runs, activeRunId, activeProfile]);
+  }, [activeProfile]);
 
   const handleNewChatInProject = useCallback(
     (folderPath: string) => {
@@ -955,17 +947,9 @@ function Layout({
               aria-label={sidebarToggleLabel}
               aria-expanded={!sidebarCollapsed}
             >
-              {sidebarCollapsed ? (
-                <span className="sidebar-collapse-swap">
-                  <span className="sidebar-collapse-mark" aria-hidden="true" />
-                  <PanelLeftOpen
-                    size={16}
-                    className="sidebar-collapse-expand-icon"
-                  />
-                </span>
-              ) : (
-                <PanelLeftClose size={16} />
-              )}
+              {/* Single PanelLeft icon (official desktop style) — no
+                  open/close swap. */}
+              <PanelLeft size={16} />
             </button>
           </div>
 
@@ -1150,6 +1134,10 @@ function Layout({
         </aside>
 
         <main className="content">
+          {/* Windows hidden frame: the title bar (drag + caption controls)
+              spans only the content column, so the sidebar reaches the top of
+              the window. Tabs live on their own line below it. */}
+          <TitleBar />
           {/* Top menu wrapper with collapse toggle */}
           <div className="top-menu-wrapper">
             <div

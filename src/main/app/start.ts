@@ -175,7 +175,16 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     autoHideMenuBar: true,
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : undefined,
+    titleBarStyle:
+      process.platform === "darwin"
+        ? "hiddenInset"
+        : process.platform === "win32"
+          ? "hidden"
+          : undefined,
+    // Windows: fully frameless (no native caption buttons). The renderer draws
+    // its own title bar with custom minimize/maximize/close controls
+    // (WindowControls) driven over IPC — see the window:* handlers in
+    // register.ts. The maximize state is mirrored to the renderer below.
     // macOS: translucent window material so the sidebar reads as frosted glass.
     // The material's light/dark tone follows `nativeTheme.themeSource`, which
     // the renderer keeps in step with the app theme (default dark below) — so a
@@ -201,6 +210,15 @@ function createWindow(): void {
   });
 
   mainWindow.on("ready-to-show", () => mainWindow?.show());
+
+  // Mirror maximize state to the renderer so the custom restore/maximize icon
+  // stays in step with the actual window state.
+  mainWindow.on("maximize", () =>
+    mainWindow?.webContents.send("window:maximized-changed", true),
+  );
+  mainWindow.on("unmaximize", () =>
+    mainWindow?.webContents.send("window:maximized-changed", false),
+  );
   mainWindow.webContents.once("did-finish-load", () => {
     if (OPEN_DEVTOOLS_ON_START) {
       mainWindow?.webContents.openDevTools({ mode: "detach" });

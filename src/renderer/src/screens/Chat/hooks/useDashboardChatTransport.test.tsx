@@ -51,6 +51,7 @@ interface HarnessApi {
   setConnectionMode?: Dispatch<SetStateAction<"local" | "remote" | "ssh">>;
   setMessages?: Dispatch<SetStateAction<ChatMessage[]>>;
   setModel?: Dispatch<SetStateAction<string>>;
+  setPlanMode?: Dispatch<SetStateAction<boolean>>;
   setProvider?: Dispatch<SetStateAction<string>>;
 }
 
@@ -72,12 +73,14 @@ function Harness({
   api,
   fallbackOnUnavailable = false,
   initialConnectionMode = "local",
+  initialPlanMode = false,
   onDashboardUnavailable,
   setUsage = vi.fn() as SetUsageMock,
 }: {
   api: HarnessApi;
   fallbackOnUnavailable?: boolean;
   initialConnectionMode?: "local" | "remote" | "ssh";
+  initialPlanMode?: boolean;
   onDashboardUnavailable?: (reason: string) => void;
   setUsage?: SetUsageMock;
 }): null {
@@ -91,6 +94,7 @@ function Harness({
   ]);
   const [model, setModel] = useState("bad-model");
   const [provider, setProvider] = useState("bad-provider");
+  const [planMode, setPlanMode] = useState(initialPlanMode);
   const [connectionMode, setConnectionMode] = useState<
     "local" | "remote" | "ssh"
   >(initialConnectionMode);
@@ -104,6 +108,7 @@ function Harness({
     hermesSessionId: null,
     messages,
     model,
+    planMode,
     profile: undefined,
     provider,
     setHermesSessionId: vi.fn(),
@@ -125,6 +130,7 @@ function Harness({
       setConnectionMode,
       setMessages,
       setModel,
+      setPlanMode,
       setProvider,
     });
   }, [
@@ -760,5 +766,95 @@ describe("useDashboardChatTransport context gauge estimate (no usage payload)", 
     });
 
     expect(setUsage).not.toHaveBeenCalled();
+  });
+});
+
+describe("useDashboardChatTransport plan mode", () => {
+  beforeEach(() => {
+    dashboardMock.close.mockClear();
+    dashboardMock.connect.mockClear();
+    dashboardMock.instances.length = 0;
+    dashboardMock.onEvent = null;
+    dashboardMock.request.mockReset();
+    Object.defineProperty(window, "hermesAPI", {
+      configurable: true,
+      value: {
+        recordSessionContinuation: vi.fn(async () => true),
+        recordSessionLocalError: vi.fn(async () => true),
+        startDashboard: vi.fn(async () => ({
+          connection: { wsUrl: "ws://127.0.0.1:12345" },
+          running: true,
+        })),
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const connect = async (api: HarnessApi): Promise<void> => {
+    dashboardMock.request.mockImplementation(async (method: string) => {
+      if (method === "session.create") {
+        return { session_id: "live-1", stored_session_id: "stored-1" };
+      }
+      return {};
+    });
+    await act(async () => {
+      await api.send?.("hello");
+    });
+    expect(dashboardMock.onEvent).toBeTypeOf("function");
+  };
+
+  const toolStart = (): void => {
+    dashboardMock.onEvent?.({
+      payload: {
+        context: "Writing a file",
+        name: "write_file",
+        tool_id: "t-plan",
+      },
+      session_id: "live-1",
+      type: "tool.start",
+    });
+  };
+
+  const blockedCount = (api: HarnessApi): number =>
+    JSON.stringify(api.messages).split("BLOCKED: Plan mode is active").length - 1;
+
+  it("blocks write-tool starts while plan mode is on", async () => {
+    const api: HarnessApi = {};
+    render(<Harness api={api} initialPlanMode={true} />);
+    await connect(api);
+
+    await act(() => toolStart());
+
+    expect(blockedCount(api)).toBe(1);
+  });
+
+  it("does not block write-tool starts when plan mode is off", async () => {
+    const api: HarnessApi = {};
+    render(<Harness api={api} initialPlanMode={false} />);
+    await connect(api);
+
+    await act(() => toolStart());
+
+    expect(blockedCount(api)).toBe(0);
+  });
+
+  it("stops blocking write tools after the user toggles plan mode off", async () => {
+    const api: HarnessApi = {};
+    render(<Harness api={api} initialPlanMode={true} />);
+    await connect(api);
+
+    await act(() => toolStart());
+    expect(blockedCount(api)).toBe(1);
+
+    await act(async () => {
+      api.setPlanMode?.(false);
+    });
+    await act(() => toolStart());
+
+    // The second tool.start passes through untouched — no new BLOCKED row.
+    expect(blockedCount(api)).toBe(1);
   });
 });
