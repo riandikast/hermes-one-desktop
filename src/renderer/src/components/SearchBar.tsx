@@ -3,28 +3,16 @@ import { FileText, Folder, Search, X } from "lucide-react";
 import { searchFiles, type FileSearchEntry } from "../screens/Chat/fileSearch";
 
 /**
- * VS Code-style search input, always visible on the title-bar row (right side,
- * next to the window controls).
+ * VS Code-style FILE search input, always visible on the title-bar row (left
+ * side). Ctrl+F focuses it. Ctrl+Shift+F is handled by Layout, which opens the
+ * Find-in-Files dialog (content search) — see Layout.tsx.
  *
- * - Ctrl+F          → focus in "Files" mode (file-name search)
- * - Ctrl+Shift+F    → focus in "Content" mode (search inside files)
  * - Auto-targets the ACTIVE tab's context folders: seeded from the active run
  *   and kept live via the hermes-session-context-folder-changed event
  *   (scoped by session id — a background tab's folder change can't hijack it).
- * - Results: click, or navigate with ↑/↓ + Enter. Opens files through the
- *   existing hermes-open-file event (Layout opens a file tab; line-aware
- *   payload for content matches).
+ * - Results: click, or navigate with ↑/↓ + Enter; the dropdown closes after a
+ *   file is picked. Opens files through the existing hermes-open-file event.
  */
-type SearchMode = "files" | "content";
-
-interface ContentMatchRow {
-  path: string;
-  line: number;
-  text: string;
-}
-
-type Results = FileSearchEntry[] | ContentMatchRow[] | null;
-
 export function SearchBar({
   initialFolders,
   sessionId,
@@ -35,9 +23,8 @@ export function SearchBar({
   sessionId: string | null;
 }): React.JSX.Element {
   const [folders, setFolders] = useState<string[]>(initialFolders);
-  const [mode, setMode] = useState<SearchMode>("files");
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Results>(null);
+  const [results, setResults] = useState<FileSearchEntry[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -58,8 +45,8 @@ export function SearchBar({
   }
 
   // Latest values for the (once-bound) keyboard handlers.
-  const stateRef = useRef({ mode, query, results, activeIndex });
-  stateRef.current = { mode, query, results, activeIndex };
+  const stateRef = useRef({ query, results, activeIndex });
+  stateRef.current = { query, results, activeIndex };
 
   // Live folder tracking: Chat dispatches hermes-session-context-folder-changed
   // with { sessionId, folders } whenever the active session's folders change.
@@ -75,41 +62,38 @@ export function SearchBar({
       window.removeEventListener("hermes-session-context-folder-changed", onFoldersChanged);
   }, [sessionId]);
 
-  const openResultAt = (index: number): void => {
-    const { mode: currentMode, results: currentResults } = stateRef.current;
-    if (!currentResults || index < 0 || index >= currentResults.length) return;
-    if (currentMode === "files") {
-      const entry = currentResults[index] as FileSearchEntry;
-      window.dispatchEvent(new CustomEvent("hermes-open-file", { detail: entry.path }));
-    } else {
-      const row = currentResults[index] as ContentMatchRow;
-      window.dispatchEvent(
-        new CustomEvent("hermes-open-file", {
-          detail: { path: row.path, line: row.line },
-        }),
-      );
-    }
+  const closeResults = (): void => {
+    setResults(null);
+    setActiveIndex(-1);
   };
 
-  // Global keyboard: Ctrl+F / Ctrl+Shift+F focus+mode, ↑/↓/Enter navigate the
-  // results dropdown, Esc closes results then clears.
+  const openResultAt = (index: number): void => {
+    const { results: currentResults } = stateRef.current;
+    if (!currentResults || index < 0 || index >= currentResults.length) return;
+    const entry = currentResults[index] as FileSearchEntry;
+    window.dispatchEvent(new CustomEvent("hermes-open-file", { detail: entry.path }));
+    // Drop the dropdown once a file is picked.
+    closeResults();
+  };
+
+  // Global keyboard: Ctrl+F focuses the input; ↑/↓/Enter navigate the results
+  // dropdown; Esc closes results then clears.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      const { results: currentResults, activeIndex: currentIndex } =
-        stateRef.current;
-
       if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "f") {
+        // Ctrl+Shift+F = content search → Layout opens the Find-in-Files dialog.
+        if (e.shiftKey) return;
         e.preventDefault();
-        setMode(e.shiftKey ? "content" : "files");
-        setResults(null);
         inputRef.current?.focus();
         return;
       }
 
+      const { results: currentResults, activeIndex: currentIndex } =
+        stateRef.current;
+
       if (e.key === "Escape") {
         if (currentResults) {
-          setResults(null);
-          setActiveIndex(-1);
+          closeResults();
         } else {
           setQuery("");
         }
@@ -148,80 +132,45 @@ export function SearchBar({
     setSearching(true);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      if (mode === "files") {
-        void (async () => {
-          const seen = new Set<string>();
-          const all: FileSearchEntry[] = [];
-          for (const folder of folders) {
-            const list = await window.hermesAPI.listFilesRecursive(folder);
-            if (seqRef.current !== seq || !list) continue;
-            for (const entry of list) {
+      void (async () => {
+        const seen = new Set<string>();
+        const all: FileSearchEntry[] = [];
+        for (const folder of folders) {
+          const list = await window.hermesAPI.listFilesRecursive(folder);
+          if (seqRef.current !== seq || !list) continue;
+          for (const entry of list) {
+            if (!entry.path || seen.has(entry.path)) continue;
+            seen.add(entry.path);
+            all.push(entry);
+          }
+          try {
+            const ev = await window.hermesAPI.everythingSearch(trimmed, folder);
+            if (seqRef.current !== seq || !ev) continue;
+            for (const entry of ev) {
               if (!entry.path || seen.has(entry.path)) continue;
               seen.add(entry.path);
               all.push(entry);
             }
-            try {
-              const ev = await window.hermesAPI.everythingSearch(trimmed, folder);
-              if (seqRef.current !== seq || !ev) continue;
-              for (const entry of ev) {
-                if (!entry.path || seen.has(entry.path)) continue;
-                seen.add(entry.path);
-                all.push(entry);
-              }
-            } catch {
-              /* Everything search unavailable */
-            }
+          } catch {
+            /* Everything search unavailable */
           }
-          if (seqRef.current !== seq) return;
-          setResults(searchFiles(all, trimmed, "all").slice(0, 15));
-          setSearching(false);
-          setActiveIndex(-1);
-        })();
-      } else {
-        void window.hermesAPI
-          .searchInFiles(folders, trimmed)
-          .then((res) => {
-            if (seqRef.current !== seq) return;
-            const rows: ContentMatchRow[] = [];
-            for (const file of res ?? []) {
-              for (const match of file.matches) {
-                rows.push({ path: file.path, line: match.line, text: match.text });
-                if (rows.length >= 100) break;
-              }
-              if (rows.length >= 100) break;
-            }
-            setResults(rows);
-            setSearching(false);
-            setActiveIndex(-1);
-          })
-          .catch(() => {
-            if (seqRef.current !== seq) return;
-            setResults([]);
-            setSearching(false);
-            setActiveIndex(-1);
-          });
-      }
+        }
+        if (seqRef.current !== seq) return;
+        setResults(searchFiles(all, trimmed, "all").slice(0, 15));
+        setSearching(false);
+        setActiveIndex(-1);
+      })();
     }, 250);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [mode, query, folders]);
+  }, [query, folders]);
 
   const canSearch = folders.length > 0;
   const count = results?.length ?? 0;
 
-  const toggleMode = (): void => {
-    setMode((prev) => (prev === "files" ? "content" : "files"));
-    setResults(null);
-    setActiveIndex(-1);
-    inputRef.current?.focus();
-  };
-
   return (
-    <div
-      className="search-bar-wrap"
-      onClick={() => inputRef.current?.focus()}
-    >
+    <div className="search-bar-wrap" onClick={() => inputRef.current?.focus()}>
       <div className="search-bar">
         <Search size={13} className="search-bar-icon" />
         <input
@@ -229,30 +178,11 @@ export function SearchBar({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={
-            !canSearch
-              ? "Open a folder to search"
-              : mode === "files"
-                ? "Search files…"
-                : "Search inside files…"
+            !canSearch ? "Open a folder to search" : "Search files…"
           }
           spellCheck={false}
-          aria-label={mode === "files" ? "Search files" : "Search inside files"}
+          aria-label="Search files"
         />
-        <button
-          type="button"
-          className={`search-bar-mode${mode === "content" ? " active" : ""}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleMode();
-          }}
-          title={
-            mode === "files"
-              ? "Search inside files (Ctrl+Shift+F)"
-              : "Search files (Ctrl+F)"
-          }
-        >
-          {mode === "files" ? "Files" : "Search"}
-        </button>
         {searching && <span className="search-bar-busy" aria-label="Searching" />}
         {query && (
           <button
@@ -261,8 +191,7 @@ export function SearchBar({
             onClick={(e) => {
               e.stopPropagation();
               setQuery("");
-              setResults(null);
-              setActiveIndex(-1);
+              closeResults();
             }}
             title="Clear (Esc)"
             aria-label="Clear search"
@@ -277,8 +206,8 @@ export function SearchBar({
             <div className="search-bar-status">Searching…</div>
           ) : count === 0 ? (
             <div className="search-bar-status">No results</div>
-          ) : mode === "files" ? (
-            (results as FileSearchEntry[]).map((entry, index) => (
+          ) : (
+            (results ?? []).map((entry, index) => (
               <button
                 key={entry.path}
                 type="button"
@@ -298,26 +227,6 @@ export function SearchBar({
                 )}
                 <span className="search-bar-result-name">{entry.name}</span>
                 <span className="search-bar-result-path">{entry.path}</span>
-              </button>
-            ))
-          ) : (
-            (results as ContentMatchRow[]).map((row, index) => (
-              <button
-                key={`${row.path}:${row.line}:${index}`}
-                type="button"
-                role="option"
-                aria-selected={index === activeIndex}
-                className={`search-bar-result${
-                  index === activeIndex ? " active" : ""
-                }`}
-                onMouseEnter={() => setActiveIndex(index)}
-                onClick={() => openResultAt(index)}
-                title={`${row.path}:${row.line}`}
-              >
-                <FileText size={14} className="search-bar-result-icon" />
-                <span className="search-bar-result-name">{row.path}</span>
-                <span className="search-bar-result-lineno">{row.line}</span>
-                <span className="search-bar-result-text">{row.text}</span>
               </button>
             ))
           )}

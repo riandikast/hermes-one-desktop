@@ -8,12 +8,6 @@ const hermesAPIMock = vi.hoisted(() => ({
     { name: "app.ts", isDirectory: false, path: "C:/proj/app.ts" },
     { name: "styles", isDirectory: true, path: "C:/proj/styles" },
   ]),
-  searchInFiles: vi.fn(async () => [
-    {
-      path: "C:/proj/app.ts",
-      matches: [{ line: 3, text: "const greeting = 'hi'" }],
-    },
-  ]),
 }));
 
 const FOLDERS = ["C:/proj"];
@@ -36,24 +30,14 @@ describe("SearchBar", () => {
     expect(screen.getByPlaceholderText(/Search files/)).toBeTruthy();
   });
 
-  it("switches to content mode on Ctrl+Shift+F and searches file contents", async () => {
+  it("focuses the input on Ctrl+F", () => {
     render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
 
-    fireEvent.keyDown(window, { key: "f", ctrlKey: true, shiftKey: true });
-    const input = screen.getByPlaceholderText(/Search inside files/);
-    fireEvent.change(input, { target: { value: "greeting" } });
-
-    await waitFor(() => {
-      expect(hermesAPIMock.searchInFiles).toHaveBeenCalledWith(
-        FOLDERS,
-        "greeting",
-      );
-    });
-    expect(await screen.findByText("const greeting = 'hi'")).toBeTruthy();
-    expect(screen.getByText("3")).toBeTruthy(); // line number
+    fireEvent.keyDown(window, { key: "f", ctrlKey: true });
+    expect(document.activeElement).toBe(screen.getByPlaceholderText(/Search files/));
   });
 
-  it("searches files in files mode and dispatches hermes-open-file on a hit", async () => {
+  it("searches files and dispatches hermes-open-file on a hit", async () => {
     const onOpen = vi.fn();
     window.addEventListener("hermes-open-file", onOpen);
     render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
@@ -70,6 +54,19 @@ describe("SearchBar", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
     expect(onOpen.mock.calls[0][0].detail).toBe("C:/proj/app.ts");
     window.removeEventListener("hermes-open-file", onOpen);
+  });
+
+  it("hides the results dropdown after a file is picked, keeping the query", async () => {
+    render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
+
+    const input = screen.getByPlaceholderText(/Search files/) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "app" } });
+    await screen.findByText("app.ts");
+
+    fireEvent.click(screen.getByText("app.ts"));
+
+    expect(screen.queryByText("app.ts")).toBeNull();
+    expect(input.value).toBe("app");
   });
 
   it("adopts folders from the active session's folder-changed event", async () => {
@@ -120,19 +117,7 @@ describe("SearchBar", () => {
     expect(input.value).toBe("");
   });
 
-  it("focuses the input on Ctrl+F and switches mode on Ctrl+Shift+F", () => {
-    render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
-
-    fireEvent.keyDown(window, { key: "f", ctrlKey: true });
-    expect(document.activeElement).toBe(screen.getByPlaceholderText(/Search files/));
-
-    fireEvent.keyDown(window, { key: "f", ctrlKey: true, shiftKey: true });
-    expect(document.activeElement).toBe(
-      screen.getByPlaceholderText(/Search inside files/),
-    );
-  });
-
-  it("navigates results with ArrowDown/ArrowUp and opens on Enter", async () => {
+  it("navigates results with ArrowDown/ArrowUp, opens on Enter, closes after pick", async () => {
     const onOpen = vi.fn();
     window.addEventListener("hermes-open-file", onOpen);
     render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
@@ -148,19 +133,24 @@ describe("SearchBar", () => {
     );
     expect(optionPaths).toHaveLength(2);
 
-    // Enter with no selection opens index 0; ArrowDown 0→1; ArrowUp wraps
-    // back to 0.
+    // ArrowDown from no selection → 0, ArrowDown → 1, ArrowUp wraps back to 0.
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    fireEvent.keyDown(window, { key: "ArrowUp" });
     fireEvent.keyDown(window, { key: "Enter" });
     expect(onOpen.mock.calls[0][0].detail).toBe(optionPaths[0]);
+    // Picking a file closes the dropdown but keeps the query.
+    expect(screen.queryByText("app.ts")).toBeNull();
+    expect((input as HTMLInputElement).value).toBe("s");
 
+    // Re-search (query change forces the debounced effect to re-run) and
+    // arrow to index 1.
+    fireEvent.change(input, { target: { value: "s " } });
+    await screen.findByText("app.ts");
     fireEvent.keyDown(window, { key: "ArrowDown" });
     fireEvent.keyDown(window, { key: "ArrowDown" });
     fireEvent.keyDown(window, { key: "Enter" });
     expect(onOpen.mock.calls[1][0].detail).toBe(optionPaths[1]);
-
-    fireEvent.keyDown(window, { key: "ArrowUp" });
-    fireEvent.keyDown(window, { key: "Enter" });
-    expect(onOpen.mock.calls[2][0].detail).toBe(optionPaths[0]);
 
     window.removeEventListener("hermes-open-file", onOpen);
   });

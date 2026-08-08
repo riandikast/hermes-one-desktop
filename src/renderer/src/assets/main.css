@@ -3585,9 +3585,10 @@ body:has(.shell-vibrant),
 }
 
 .sidebar-recent-session.active {
-  /* Active state is shown by the bullet + text color only — no filled
-     background (keeps the list visually quiet). */
-  color: var(--accent-text);
+  /* Active = hover-style background fill, no text-color swap — same concept
+     as the nav items, so the current session reads as a filled row. */
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .sidebar-recent-session-title {

@@ -19,6 +19,7 @@ import {
 import { ActiveSessionsBar } from "./ActiveSessionsBar";
 import { TitleBar } from "../../components/TitleBar";
 import { SearchBar } from "../../components/SearchBar";
+import { FindInFilesDialog } from "../Chat/FindInFilesDialog";
 import { StatusBar } from "./StatusBar";
 import Sessions from "../Sessions/Sessions";
 import Agents from "../Agents/Agents";
@@ -653,6 +654,25 @@ function Layout({
     [activeProfile, goTo],
   );
 
+  // Ctrl+Shift+F opens the Find-in-Files dialog (content search) for the
+  // active tab's folders — same dialog the worktree panel's button uses.
+  const [findInFilesOpen, setFindInFilesOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        !e.altKey &&
+        e.key.toLowerCase() === "f"
+      ) {
+        e.preventDefault();
+        setFindInFilesOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   useEffect(() => {
     const cleanupNewChat = window.hermesAPI.onMenuNewChat(() => {
       handleNewChat();
@@ -920,6 +940,15 @@ function Layout({
     ? t("navigation.expandTopMenu")
     : t("navigation.collapseTopMenu");
 
+  // Tab strip hidden when there's nothing meaningful open: the app always
+  // starts with one blank scratch run (mintRun), so "no tabs" = a single
+  // blank run that has never produced a session, title, or pinned view.
+  const showTabStrip =
+    runs.length > 1 ||
+    runs.some(
+      (run) => run.sessionId || run.title || run.targetView || run.loading,
+    );
+
   return (
     <div className="layout-shell">
       <div className={`layout ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
@@ -1152,7 +1181,7 @@ function Layout({
           </TitleBar>
           {/* Top menu wrapper with collapse toggle — hidden entirely when no
               tabs are open (no tab strip, no dead drag band). */}
-          {runs.length > 0 && (
+          {showTabStrip && (
             <div className="top-menu-wrapper">
               <div
                 className={`top-menu-container ${topMenuCollapsed ? "top-menu-collapsed" : ""}`}
@@ -1184,6 +1213,26 @@ function Layout({
                 </button>
               </div>
             </div>
+          )}
+
+          {/* Ctrl+Shift+F content search — the worktree panel's dialog,
+              re-targeted at the active tab's folders. */}
+          {findInFilesOpen && (
+            <FindInFilesDialog
+              folders={
+                runs.find((run) => run.runId === activeRunId)
+                  ?.initialContextFolders ?? []
+              }
+              onClose={() => setFindInFilesOpen(false)}
+              onOpenFile={(path, line) => {
+                window.dispatchEvent(
+                  new CustomEvent("hermes-open-file", {
+                    detail: line ? { path, line } : path,
+                  }),
+                );
+                setFindInFilesOpen(false);
+              }}
+            />
           )}
 
           {verifyWarning && onReinstall && onDismissVerifyWarning && (
