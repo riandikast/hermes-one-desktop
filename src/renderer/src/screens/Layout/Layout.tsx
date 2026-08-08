@@ -663,15 +663,15 @@ function Layout({
   const [activeSessionFolders, setActiveSessionFolders] = useState<
     string[] | null
   >(null);
-  const activeSessionId = runs.find((run) => run.runId === activeRunId)
-    ?.sessionId;
+  const activeSessionId = currentSessionId;
   useEffect(() => {
     setActiveSessionFolders(null);
-    if (!activeSessionId) return;
     const onFoldersChanged = (e: Event): void => {
       const detail = (
         e as CustomEvent<{ sessionId?: string; folders?: string[] }>
       ).detail;
+      // Strict equality: a null-session event (folder picked on a blank tab)
+      // is adopted only when the active tab also has no session yet.
       if (!detail || detail.sessionId !== activeSessionId) return;
       if (detail.folders) setActiveSessionFolders(detail.folders);
     };

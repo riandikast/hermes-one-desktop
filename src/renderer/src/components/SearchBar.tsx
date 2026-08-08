@@ -49,12 +49,14 @@ export function SearchBar({
   stateRef.current = { query, results, activeIndex };
 
   // Live folder tracking: Chat dispatches hermes-session-context-folder-changed
-  // with { sessionId, folders } whenever the active session's folders change.
+  // with { sessionId, folders } whenever the active session's folders change
+  // (sessionId may be null for a sessionless blank tab — matched only by a
+  // listener whose session id is also null).
   useEffect(() => {
     const onFoldersChanged = (e: Event): void => {
       const detail = (e as CustomEvent<{ sessionId?: string; folders?: string[] }>)
         .detail;
-      if (!detail || !sessionId || detail.sessionId !== sessionId) return;
+      if (!detail || detail.sessionId !== sessionId) return;
       if (detail.folders) setFolders(detail.folders);
     };
     window.addEventListener("hermes-session-context-folder-changed", onFoldersChanged);

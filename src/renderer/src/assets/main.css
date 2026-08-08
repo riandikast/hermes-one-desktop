@@ -769,9 +769,19 @@ body:has(.shell-vibrant),
   min-width: 0;
 }
 
-.search-bar-result:hover,
-.search-bar-result.active {
+.search-bar-result:hover {
   background: var(--bg-tertiary);
+}
+
+/* Selected row (arrows): strong accent fill so the current item is obvious
+   even out of the corner of the eye. */
+.search-bar-result.active {
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.search-bar-result.active .search-bar-result-icon {
+  color: inherit;
 }
 
 .search-bar-result-icon {

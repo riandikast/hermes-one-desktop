@@ -106,6 +106,23 @@ describe("SearchBar", () => {
     );
   });
 
+  it("adopts null-session folder events on a sessionless tab", async () => {
+    render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
+
+    window.dispatchEvent(
+      new CustomEvent("hermes-session-context-folder-changed", {
+        detail: { sessionId: null, folders: ["C:/picked"] },
+      }),
+    );
+
+    const input = screen.getByPlaceholderText(/Search files/);
+    fireEvent.change(input, { target: { value: "x" } });
+
+    await waitFor(() => {
+      expect(hermesAPIMock.listFilesRecursive).toHaveBeenCalledWith("C:/picked");
+    });
+  });
+
   it("clears the query on Escape", () => {
     render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
 

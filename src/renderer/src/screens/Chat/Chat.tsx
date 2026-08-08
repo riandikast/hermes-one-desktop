@@ -343,16 +343,29 @@ function Chat({
     [hermesSessionId],
   );
   useEffect(() => {
-    if (!hermesSessionId || !contextFolderLoadedRef.current) return;
+    // No hermesSessionId gate: a folder picked on a sessionless blank tab must
+    // still propagate (sessionId: null) so the title-bar search / Find-in-Files
+    // can adopt it. Listeners scope by session id, so null only matches the
+    // active tab that also has no session yet.
+    if (!contextFolderLoadedRef.current) return;
+    const payload = {
+      sessionId: hermesSessionId,
+      folders: contextFolders,
+    };
+    const broadcast = (): void => {
+      window.dispatchEvent(
+        new CustomEvent("hermes-session-context-folder-changed", {
+          detail: payload,
+        }),
+      );
+    };
+    if (!hermesSessionId) {
+      broadcast();
+      return;
+    }
     void window.hermesAPI
       .setSessionContextFolder(hermesSessionId, contextFolders)
-      .then(() => {
-        window.dispatchEvent(
-          new CustomEvent("hermes-session-context-folder-changed", {
-            detail: { sessionId: hermesSessionId, folders: contextFolders },
-          }),
-        );
-      })
+      .then(broadcast)
       .catch(() => {
         /* best-effort sidebar refresh signal */
       });
