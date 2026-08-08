@@ -2497,6 +2497,12 @@ body:has(.shell-vibrant),
   justify-content: flex-start;
 }
 
+/* Windows collapsed rail: the toggle centers again (the flex-start rule above
+   would otherwise pin it to the left edge of the 64px rail). */
+.app.is-windows .sidebar-collapsed .sidebar-brand {
+  justify-content: center;
+}
+
 .sidebar-logo {
   height: 30px;
   width: 150px;
@@ -2665,8 +2671,10 @@ body:has(.shell-vibrant),
 }
 
 .sidebar-nav-item.active {
-  background: var(--accent-subtle);
-  color: var(--accent-text);
+  /* Active = hover-style background fill, no text-color swap — the same
+     concept as hover, so selection reads as a filled row, not recolored text. */
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .sidebar-nav-item svg {

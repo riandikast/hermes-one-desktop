@@ -179,4 +179,37 @@ describe("SearchBar", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(input.value).toBe("");
   });
+
+  it("keeps results across re-renders with a new array identity but same folder content", async () => {
+    const { rerender } = render(
+      <SearchBar initialFolders={FOLDERS} sessionId={null} />,
+    );
+
+    const input = screen.getByPlaceholderText(/Search files/);
+    fireEvent.change(input, { target: { value: "app" } });
+    await screen.findByText("app.ts");
+
+    // Layout re-renders pass a freshly-minted array with the same content
+    // (e.g. `initialContextFolders ?? []`); results must survive.
+    rerender(<SearchBar initialFolders={["C:/proj"]} sessionId={null} />);
+    rerender(<SearchBar initialFolders={["C:/proj"]} sessionId={null} />);
+
+    expect(screen.getByText("app.ts")).toBeTruthy();
+  });
+
+  it("re-seeds folders when the folder content actually changes", async () => {
+    const { rerender } = render(
+      <SearchBar initialFolders={FOLDERS} sessionId={null} />,
+    );
+
+    rerender(<SearchBar initialFolders={["C:/other"]} sessionId={null} />);
+
+    const input = screen.getByPlaceholderText(/Search files/);
+    fireEvent.change(input, { target: { value: "x" } });
+
+    await waitFor(() => {
+      expect(hermesAPIMock.listFilesRecursive).toHaveBeenCalledWith("C:/other");
+    });
+    expect(hermesAPIMock.listFilesRecursive).not.toHaveBeenCalledWith("C:/proj");
+  });
 });

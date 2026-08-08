@@ -44,16 +44,22 @@ export function SearchBar({
   const seqRef = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Latest values for the (once-bound) keyboard handlers.
-  const stateRef = useRef({ mode, query, results, activeIndex });
-  stateRef.current = { mode, query, results, activeIndex };
-
-  // Re-seed when the active tab changes (Layout re-renders with the new run).
-  useEffect(() => {
+  // Re-seed when the active tab's folder list CONTENT changes — not on array
+  // identity. Layout passes `initialContextFolders ?? []`, which mints a fresh
+  // [] on every render for folderless runs; keying on identity would wipe
+  // results on every Layout re-render ("search works once, never again").
+  const foldersKey = initialFolders.join("\u0000");
+  const lastFoldersKeyRef = useRef<string | null>(null);
+  if (lastFoldersKeyRef.current !== foldersKey) {
+    lastFoldersKeyRef.current = foldersKey;
     setFolders(initialFolders);
     setResults(null);
     setActiveIndex(-1);
-  }, [initialFolders]);
+  }
+
+  // Latest values for the (once-bound) keyboard handlers.
+  const stateRef = useRef({ mode, query, results, activeIndex });
+  stateRef.current = { mode, query, results, activeIndex };
 
   // Live folder tracking: Chat dispatches hermes-session-context-folder-changed
   // with { sessionId, folders } whenever the active session's folders change.

@@ -1150,38 +1150,41 @@ function Layout({
               }
             />
           </TitleBar>
-          {/* Top menu wrapper with collapse toggle */}
-          <div className="top-menu-wrapper">
-            <div
-              className={`top-menu-container ${topMenuCollapsed ? "top-menu-collapsed" : ""}`}
-            >
-              <ActiveSessionsBar
-                runs={runs}
-                activeRunId={activeRunId}
-                onSelect={handleActivateRun}
-                onClose={handleCloseRun}
-                onCloseOthers={handleCloseOthers}
-                onCloseToRight={handleCloseToRight}
-                onReorder={handleReorderRuns}
-                onNew={handleNewChat}
-                getAppearance={getAppearance}
-              />
-              <button
-                className="top-menu-collapse-toggle"
-                type="button"
-                onClick={toggleTopMenuCollapsed}
-                title={topMenuToggleLabel}
-                aria-label={topMenuToggleLabel}
-                aria-expanded={!topMenuCollapsed}
+          {/* Top menu wrapper with collapse toggle — hidden entirely when no
+              tabs are open (no tab strip, no dead drag band). */}
+          {runs.length > 0 && (
+            <div className="top-menu-wrapper">
+              <div
+                className={`top-menu-container ${topMenuCollapsed ? "top-menu-collapsed" : ""}`}
               >
-                {topMenuCollapsed ? (
-                  <ChevronDown size={16} />
-                ) : (
-                  <ChevronUp size={16} />
-                )}
-              </button>
+                <ActiveSessionsBar
+                  runs={runs}
+                  activeRunId={activeRunId}
+                  onSelect={handleActivateRun}
+                  onClose={handleCloseRun}
+                  onCloseOthers={handleCloseOthers}
+                  onCloseToRight={handleCloseToRight}
+                  onReorder={handleReorderRuns}
+                  onNew={handleNewChat}
+                  getAppearance={getAppearance}
+                />
+                <button
+                  className="top-menu-collapse-toggle"
+                  type="button"
+                  onClick={toggleTopMenuCollapsed}
+                  title={topMenuToggleLabel}
+                  aria-label={topMenuToggleLabel}
+                  aria-expanded={!topMenuCollapsed}
+                >
+                  {topMenuCollapsed ? (
+                    <ChevronDown size={16} />
+                  ) : (
+                    <ChevronUp size={16} />
+                  )}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {verifyWarning && onReinstall && onDismissVerifyWarning && (
             <VerifyWarningBanner
