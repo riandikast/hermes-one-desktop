@@ -142,6 +142,18 @@ export function extractToolPath(
       text = String(args);
     }
   } else if (typeof args === "string") {
+    // JSON-encoded payload: parse it so escaped Windows backslashes
+    // ("D:\\Repo\\A.cs" in raw JSON) resolve correctly — the quoted-token
+    // scan below treats \\ as an escape and mangles the path (D: + RepoA.cs).
+    try {
+      const parsed = JSON.parse(args);
+      if (isRecord(parsed)) {
+        const direct = extractToolPath(parsed, baseDir);
+        if (direct) return direct;
+      }
+    } catch {
+      /* plain text description */
+    }
     text = args;
   } else {
     return null;
@@ -162,6 +174,78 @@ export function extractToolPath(
 export interface DiffLine {
   type: "same" | "add" | "del";
   text: string;
+}
+
+/** File-edit tools whose results count as changes — the OFFICIAL desktop's
+ *  FILE_EDIT_TOOL_NAMES semantics ({ edit_file, patch, write_file }): only
+ *  the agent's explicit edits count; command executors never do. */
+export const FILE_EDIT_TOOL_NAMES = new Set([
+  "edit_file",
+  "patch",
+  "write_file",
+]);
+
+/** Case-insensitive, separator-normalized key for deduping change rows: the
+ *  stream capture, the transcript derivation and the git diff can report the
+ *  same file with different case or slash/backslash forms. */
+export function normalizePathKey(path: string): string {
+  return path.replace(/\//g, "\\").toLowerCase();
+}
+
+/** Derive the turn's edited files straight from the TRANSCRIPT — the same
+ *  derivation the official desktop uses. Scans the tool-call rows after the
+ *  last user message, keeps only file-edit tools whose result landed, and
+ *  pulls the concrete path from the result (`resolved_path` / path keys) or
+ *  the args (resolved against `baseDir`). Git state is irrelevant: a file
+ *  already dirty before the turn still counts when the agent patched it.
+ *  Returns display paths, deduped, in first-touched order. */
+export function changedFilesFromToolRows(
+  messages: ReadonlyArray<{
+    kind?: string;
+    role?: string;
+    callId?: string;
+    name?: string;
+    args?: string;
+    content?: string;
+    status?: string;
+  }>,
+  startIndex: number,
+  baseDir?: string | null,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (let i = startIndex; i < messages.length; i++) {
+    const msg = messages[i];
+    if (!msg || msg.kind !== "tool_call") continue;
+    const name = String(msg.name ?? "").toLowerCase();
+    if (!FILE_EDIT_TOOL_NAMES.has(name)) continue;
+    if (msg.status === "failed") continue;
+    // Pair with the result row; a missing result means the edit never settled.
+    let resultContent: string | null = null;
+    for (let j = i + 1; j < messages.length; j++) {
+      const r = messages[j];
+      if (!r || r.kind !== "tool_result" || r.callId !== msg.callId) continue;
+      resultContent = r.content ?? null;
+      break;
+    }
+    if (resultContent === null) continue;
+    // A failed edit carries an error in the result JSON and no landed path.
+    try {
+      const parsed = JSON.parse(resultContent) as { error?: unknown };
+      if (parsed && typeof parsed === "object" && parsed.error) continue;
+    } catch {
+      /* raw text result — fine */
+    }
+    const path =
+      extractToolPath(resultContent, baseDir) ??
+      extractToolPath(msg.args ?? "", baseDir);
+    if (!path) continue;
+    const key = normalizePathKey(path);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(path);
+  }
+  return out;
 }
 
 /** One working-tree entry from the git snapshot (path → status|content). */

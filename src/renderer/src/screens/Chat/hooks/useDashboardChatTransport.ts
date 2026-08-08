@@ -10,7 +10,12 @@ import {
   type DashboardStreamEvent,
   WRITE_TOOL_NAMES,
 } from "../dashboardEventAdapter";
-import { extractToolPath, gitChangedDuringTurn } from "../fileChanges";
+import {
+  extractToolPath,
+  gitChangedDuringTurn,
+  changedFilesFromToolRows,
+  normalizePathKey,
+} from "../fileChanges";
 import {
   dbItemsToChatMessages,
   reconcileAfterDbRefresh,
@@ -1232,24 +1237,58 @@ export function useDashboardChatTransport({
     // when the capture is empty made the chip silently disappear — the
     // "tracking broke" report.
     void (async () => {
-      // The tool capture reads AFTER-content asynchronously — at finalize the
-      // read may still be in flight, so re-read every path with a null after
-      // before deciding what changed (files that no longer exist stay null;
-      // deletions are kept only when the before is known).
-      const filled = await Promise.all(
-        captured.map(async (c): Promise<FileChange> => {
-          if (c.after !== null) return c;
-          try {
-            const res = await window.hermesAPI.readFile(c.path);
-            return { ...c, after: res?.content ?? null };
-          } catch {
-            return { ...c, after: null };
-          }
-        }),
-      );
       const byPath = new Map<string, FileChange>();
-      for (const c of filled) byPath.set(c.path, c);
+      // Merge helper: normalized (case-insensitive) keys so the same file
+      // reported by different sources with different case/separators lands on
+      // ONE row; first source wins per field, later sources fill gaps.
+      const add = (path: string, entry: Partial<FileChange>): void => {
+        const key = normalizePathKey(path);
+        const existing = byPath.get(key);
+        if (existing) {
+          if (existing.before === null && entry.before !== undefined)
+            existing.before = entry.before;
+          if (existing.after === null && entry.after !== undefined)
+            existing.after = entry.after;
+          if (entry.beforeKnown) existing.beforeKnown = true;
+          if (entry.removed && !existing.removed) existing.removed = entry.removed;
+          if (entry.added && !existing.added) existing.added = entry.added;
+          return;
+        }
+        byPath.set(key, {
+          path,
+          before: entry.before ?? null,
+          after: entry.after ?? null,
+          beforeKnown: entry.beforeKnown ?? false,
+          removed: entry.removed,
+          added: entry.added,
+        });
+      };
+
+      // 1. Live stream capture (tool.start/tool.complete path heuristics).
+      for (const c of captured) add(c.path, c);
+
+      // 2. Transcript tool rows — the OFFICIAL derivation. Catches edits the
+      //    stream capture missed (payload shapes) AND files that were already
+      //    dirty before the turn, which the git diff below cannot attribute
+      //    (its snapshot comparison deliberately excludes pre-existing dirt).
       const folder = contextFolder?.trim();
+      let lastUserIdx = -1;
+      for (let i = messagesRef.current.length - 1; i >= 0; i--) {
+        if (messagesRef.current[i].role === "user") {
+          lastUserIdx = i;
+          break;
+        }
+      }
+      const transcriptPaths = changedFilesFromToolRows(
+        messagesRef.current,
+        lastUserIdx + 1,
+        folder ?? null,
+      );
+      console.info("[file-changes] transcript", { transcriptPaths });
+      for (const p of transcriptPaths) add(p, {});
+
+      // 3. Git working-tree diff vs the turn-start snapshot (authoritative for
+      //    terminal writes / missed captures).
       if (folder) {
         try {
           const gitList =
@@ -1262,8 +1301,8 @@ export function useDashboardChatTransport({
           const snapshot = gitSnapshotRef.current;
           gitSnapshotRef.current = null;
           // No turn-start snapshot (race: turn finished before it loaded, or
-          // no git) → can't tell what changed this turn; rely on tool capture
-          // only rather than reporting the whole dirty tree.
+          // no git) → can't tell what changed this turn; rely on the tool
+          // sources only rather than reporting the whole dirty tree.
           if (snapshot) {
             const changedPaths = new Set(
               gitChangedDuringTurn(
@@ -1277,19 +1316,28 @@ export function useDashboardChatTransport({
             );
             for (const g of gitList) {
               if (!changedPaths.has(g.path)) continue;
-              const existing = byPath.get(g.path);
-              byPath.set(g.path, {
-                path: g.path,
-                before: g.before,
-                after: g.after,
+              add(g.path, {
+                before: g.before ?? undefined,
+                after: g.after ?? undefined,
                 beforeKnown: true,
-                removed: existing?.removed,
-                added: existing?.added,
               });
             }
           }
         } catch {
-          /* git detection optional — tool capture still applies */
+          /* git detection optional — tool sources still apply */
+        }
+      }
+
+      // 4. Fill after-content for entries still missing it (async reads —
+      //    files that no longer exist stay null; deletions are kept only when
+      //    the before is known).
+      for (const c of byPath.values()) {
+        if (c.after !== null) continue;
+        try {
+          const res = await window.hermesAPI.readFile(c.path);
+          c.after = res?.content ?? null;
+        } catch {
+          c.after = null;
         }
       }
       const changes = Array.from(byPath.values()).filter(

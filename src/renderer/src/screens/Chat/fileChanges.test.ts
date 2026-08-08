@@ -4,6 +4,8 @@ import {
   diffLines,
   gitChangedDuringTurn,
   gitSnapshotKey,
+  changedFilesFromToolRows,
+  normalizePathKey,
   type DiffLine,
 } from "./fileChanges";
 
@@ -229,5 +231,69 @@ describe("gitChangedDuringTurn — read/dirty files are not attributed", () => {
   it("gitSnapshotKey encodes status + content", () => {
     expect(gitSnapshotKey("M", "abc")).toBe("M|abc");
     expect(gitSnapshotKey("??", null)).toBe("??|");
+  });
+});
+
+describe("changedFilesFromToolRows", () => {
+  const toolCall = (name: string, callId: string, args: string, status?: string) => ({
+    kind: "tool_call",
+    role: "agent",
+    name,
+    callId,
+    args,
+    status,
+  });
+  const toolResult = (callId: string, content: string) => ({
+    kind: "tool_result",
+    role: "agent",
+    name: "patch",
+    callId,
+    content,
+  });
+
+  it("derives file-edit tools from the transcript, deduped", () => {
+    const messages = [
+      { kind: "user", role: "user", content: "fix it" },
+      toolCall("patch", "c1", JSON.stringify({ mode: "replace", new_string: "a", old_string: "b" })),
+      toolResult("c1", JSON.stringify({ success: true, resolved_path: "D:/Repo/A.cs" })),
+      toolCall("write_file", "c2", JSON.stringify({ path: "/repo/B.cs" })),
+      toolResult("c2", JSON.stringify({ success: true })),
+    ];
+    expect(changedFilesFromToolRows(messages, 1)).toEqual([
+      "D:/Repo/A.cs",
+      "/repo/B.cs",
+    ]);
+  });
+
+  it("ignores failed edits and non-file-edit tools", () => {
+    const messages = [
+      { kind: "user", role: "user", content: "go" },
+      toolCall("patch", "c1", JSON.stringify({ path: "/repo/A.cs" }), "failed"),
+      toolCall("terminal", "c2", JSON.stringify({ command: "echo hi" })),
+      toolResult("c2", JSON.stringify({ success: true, files_modified: ["C:/x/godot.log"] })),
+      toolCall("patch", "c3", JSON.stringify({ path: "/repo/C.cs" })),
+      toolResult("c3", JSON.stringify({ success: false, error: "no match" })),
+    ];
+    expect(changedFilesFromToolRows(messages, 1)).toEqual([]);
+  });
+
+  it("dedupes case-insensitively across path forms", () => {
+    const messages = [
+      toolCall("patch", "c1", ""),
+      toolResult("c1", JSON.stringify({ success: true, resolved_path: "D:/REPO/a.cs" })),
+      toolCall("patch", "c2", ""),
+      toolResult("c2", JSON.stringify({ success: true, resolved_path: "d:/repo/A.cs" })),
+    ];
+    expect(changedFilesFromToolRows(messages, 0)).toEqual(["D:/REPO/a.cs"]);
+  });
+});
+
+describe("normalizePathKey", () => {
+  const BS = String.fromCharCode(92);
+
+  it("is case-insensitive and separator-normalized", () => {
+    expect(normalizePathKey(`D:${BS}Game${BS}a.cs`)).toBe(
+      normalizePathKey("d:/game/a.cs"),
+    );
   });
 });
