@@ -220,7 +220,8 @@ function Chat({
   const usageTracker = useUsageTracker();
   const [dragActive, setDragActive] = useState(false);
   const [remoteMode, setRemoteMode] = useState(false);
-  // File-changes dialog: non-null = open with the given changes.
+  // File-changes dialog: non-null = open with the given changes. Feeds the
+  // per-turn FileChangesRow chip only — the in-bubble badge was removed.
   const [fileChangesOpen, setFileChangesOpen] = useState<FileChange[] | null>(
     null,
   );

@@ -231,7 +231,6 @@ function buildRows(
         onRevertCheckpoint={callbacks.onRevertCheckpoint}
         onUnsendLastUser={callbacks.onUnsendLastUser}
         isLastUser={i === lastUserIdx}
-        onOpenFileChanges={callbacks.onOpenFileChanges}
         waitForReasoningId={
           msg.role === "agent" ? turnLastReasoningId : undefined
         }
