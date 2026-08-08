@@ -1179,6 +1179,32 @@ export function useDashboardChatTransport({
     null,
   );
   const QUIET_FINALIZE_MS = 10_000;
+  // After the first quiet read, wait again and re-read before finalizing.
+  // The gateway writes assistant rows INCREMENTALLY, and the transport renders
+  // answer deltas with renderAssistantDeltas:false — so the answer text is
+  // generated in TOTAL silence (no events to re-arm the timer), and a single
+  // read cannot distinguish "partial answer, still generating" from
+  // "complete". If the tail grew between the two reads, the turn is alive.
+  const QUIET_FINALIZE_CONFIRM_MS = 4_000;
+
+  // Signature of everything after the last user row — the answer region.
+  // Any growth (or a new user message) changes it.
+  const answerTailSignature = (msgs: ChatMessage[]): string => {
+    let lastUserIdx = -1;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === "user") {
+        lastUserIdx = i;
+        break;
+      }
+    }
+    return JSON.stringify(
+      msgs.slice(lastUserIdx + 1).map((m) =>
+        "kind" in m
+          ? `k:${m.kind}`
+          : `${m.role}:${String(m.content)}:${String(m.pending ?? "")}`,
+      ),
+    );
+  };
 
   const clearQuietFinalize = useCallback((): void => {
     if (quietFinalizeTimerRef.current !== null) {
@@ -1377,9 +1403,32 @@ export function useDashboardChatTransport({
             resetQuietFinalize();
             return;
           }
+          // STABILITY GATE: the first read passed, but the answer may still be
+          // GROWING (incremental db writes during a silent generation). Re-read
+          // after a short window; if the answer tail changed, the turn is
+          // alive — re-arm (which also pushes the stall watchdog out, since
+          // db growth is proof the gateway is working).
+          const firstSig = answerTailSignature(dbMessages);
+          console.info("[quiet-finalize] answer sig len", firstSig.length);
+          await new Promise((resolve) =>
+            setTimeout(resolve, QUIET_FINALIZE_CONFIRM_MS),
+          );
+          const confirmItems = (await window.hermesAPI.getSessionMessages(
+            storedSessionId,
+          )) as DbHistoryItem[];
+          const confirmMessages = dbItemsToChatMessages(confirmItems);
+          const confirmSig = answerTailSignature(confirmMessages);
+          if (confirmSig !== firstSig) {
+            console.info(
+              "[quiet-finalize] answer grew during confirm window — still generating, re-arm",
+            );
+            resetQuietFinalize();
+            resetStallTimer();
+            return;
+          }
           messagesRef.current = reconcileAfterDbRefresh(
             messagesRef.current,
-            dbMessages,
+            confirmMessages,
             { activeTurn },
           );
           setMessages(messagesRef.current);
@@ -1397,6 +1446,7 @@ export function useDashboardChatTransport({
   }, [
     clearQuietFinalize,
     finalizeFileChanges,
+    resetStallTimer,
     setMessages,
     setToolProgress,
     setIsLoading,
