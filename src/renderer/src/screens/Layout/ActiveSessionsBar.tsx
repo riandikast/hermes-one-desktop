@@ -77,8 +77,46 @@ export const ActiveSessionsBar = memo(function ActiveSessionsBar({
   // Nothing real to switch to yet → leave the strip empty (pure drag area).
   const showChips = runs.length > 1 || anyLoading || hasRealSession;
 
+  const barRef = useRef<HTMLDivElement | null>(null);
+
+  // VS Code-style tab strip: a vertical wheel over the strip scrolls it
+  // HORIZONTALLY (overflow-x: auto, hidden scrollbar). Native non-passive
+  // listener so preventDefault actually stops the page from scrolling; only
+  // consumes the wheel when the strip is genuinely scrollable.
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent): void => {
+      if (el.scrollWidth <= el.clientWidth) return;
+      if (Math.abs(e.deltaY) < Math.abs(e.deltaX)) return; // already horizontal
+      el.scrollLeft += e.deltaY;
+      e.preventDefault();
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // Keep the active tab visible: opening/switching tabs can push it past the
+  // right edge; VS Code reveals the active tab automatically.
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const activeChip = el.querySelector<HTMLElement>(
+      '[role="tab"][aria-selected="true"]',
+    );
+    // jsdom has no scrollIntoView — guard so tests (and any embedder without
+    // the API) don't crash; the reveal is a pure enhancement.
+    if (typeof activeChip?.scrollIntoView === "function") {
+      activeChip.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }, [activeRunId, runs.length]);
+
   return (
-    <div className="active-sessions-bar" role="tablist">
+    <div
+      className="active-sessions-bar"
+      role="tablist"
+      ref={barRef}
+    >
       {showChips &&
         runs.map((run) => {
           const active = run.runId === activeRunId;
