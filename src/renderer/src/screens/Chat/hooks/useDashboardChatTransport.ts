@@ -1007,6 +1007,14 @@ export function useDashboardChatTransport({
   const appliedModelRef = useRef<string | null>(null);
   const recreateRuntimeSessionRef = useRef(false);
   const lastRuntimeSessionWasCreatedRef = useRef(false);
+  // Foreign-turn watcher bookkeeping (see the active_list poller effect):
+  // whether we're mirroring a turn started by another client, the refresh
+  // sequence guard, and the last LOCAL turn activity timestamp (a grace
+  // window after a local turn ends prevents re-entering foreign mode while
+  // the gateway still reports the session as working).
+  const foreignTurnRef = useRef(false);
+  const foreignRefreshSeqRef = useRef(0);
+  const lastLocalActivityAtRef = useRef(0);
   // Per-turn file-change capture: path → latest before/after pair. Reset on
   // each new user turn; attached to the assistant bubble on message.complete.
   const fileChangesRef = useRef<Map<string, FileChange>>(new Map());
@@ -1121,8 +1129,8 @@ export function useDashboardChatTransport({
     lastSyncedCwdRef.current = null;
     // Foreign-turn bookkeeping: re-baseline so a stale tail signature from a
     // previous session can't flag loading on the new one.
-    foreignTailSigRef.current = null;
-    foreignLoadingRef.current = false;
+    foreignTurnRef.current = false;
+    lastLocalActivityAtRef.current = Date.now();
   }, [connectionMode, profile]);
 
   // Turn stall watchdog: `prompt.submit` is only an ACK — the turn completes
@@ -1170,6 +1178,7 @@ export function useDashboardChatTransport({
       activeTurnRef.current = null;
       setToolProgress(null);
       setIsLoading(false);
+      lastLocalActivityAtRef.current = Date.now();
     }, TURN_STALL_TIMEOUT_MS);
   }, [clearStallTimer, setMessages, setToolProgress, setIsLoading]);
 
@@ -1215,15 +1224,7 @@ export function useDashboardChatTransport({
     );
   };
 
-  // FOREIGN-TURN liveness: another surface (another desktop app, a cron run,
-  // a messaging platform) writes the SAME state.db while streaming a turn.
-  // The gateway's change watcher broadcasts sessions.changed to us on any
-  // db mtime move (cross-process by design). When THIS run has no local
-  // turn but its stored rows keep growing, a foreign turn is in flight:
-  // reconcile the new rows in live and mirror the loading state (composer
-  // interrupt icon, tab orb) instead of waiting for a reopen.
-  const foreignTailSigRef = useRef<string | null>(null);
-  const foreignLoadingRef = useRef(false);
+
   const clearQuietFinalize = useCallback((): void => {
     if (quietFinalizeTimerRef.current !== null) {
       clearTimeout(quietFinalizeTimerRef.current);
@@ -1504,6 +1505,7 @@ export function useDashboardChatTransport({
           activeTurnRef.current = null;
           setToolProgress(null);
           setIsLoading(false);
+          lastLocalActivityAtRef.current = Date.now();
               // FILE-CHANGES: emit the summary chip (lost message.complete must
           // not lose the badge either).
           finalizeFileChanges();
@@ -1527,47 +1529,6 @@ export function useDashboardChatTransport({
   // flagging loading when the tail is growing under a foreign writer. Runs on
   // every sessions.changed broadcast (the gateway's change watcher fires it
   // when the shared state.db mtime moves — any process's writes included).
-  const syncForeignTurn = useCallback((): void => {
-    // A LOCAL turn owns the UI: its own stream + quiet-finalize already
-    // reconcile; foreign sync must not fight it.
-    if (activeTurnRef.current) return;
-    const storedSessionId = storedSessionIdRef.current;
-    if (!storedSessionId) return;
-    void (async () => {
-      try {
-        const items = (await window.hermesAPI.getSessionMessages(
-          storedSessionId,
-        )) as DbHistoryItem[];
-        const dbMessages = dbItemsToChatMessages(items);
-        const sig = answerTailSignature(dbMessages);
-        if (sig === foreignTailSigRef.current) {
-          // Stable tail — the writer stopped. End foreign loading.
-          if (foreignLoadingRef.current) {
-            foreignLoadingRef.current = false;
-            setIsLoading(false);
-          }
-          return;
-        }
-        const hadBaseline = foreignTailSigRef.current !== null;
-        foreignTailSigRef.current = sig;
-        if (!hadBaseline) return; // first sighting: baseline only
-        // Tail moved — a foreign writer is appending rows.
-        const activeTurn = activeTurnRef.current;
-        messagesRef.current = reconcileAfterDbRefresh(
-          messagesRef.current,
-          dbMessages,
-          activeTurn ? { activeTurn } : {},
-        );
-        setMessages(messagesRef.current);
-        if (!activeTurn && !foreignLoadingRef.current) {
-          foreignLoadingRef.current = true;
-          setIsLoading(true);
-        }
-      } catch {
-        /* transient read error — the next tick retries */
-      }
-    })();
-  }, [setIsLoading, setMessages]);
 
   const handleGatewayEvent = useCallback(
     (event: DashboardStreamEvent): void => {
@@ -1601,8 +1562,12 @@ export function useDashboardChatTransport({
       // from ANY process (this gateway's stream, another desktop app, a cron
       // run, a messaging platform). Drives foreign-turn liveness for this
       // session; nothing else to apply from the broadcast itself.
+      // Change-watcher broadcast: the shared state.db mtime moved — a write
+      // from ANY process (this gateway's stream, another desktop app, a cron
+      // run, a messaging platform). Foreign-turn liveness is handled by the
+      // active_list poller (see the foreign-turn watcher effect); nothing
+      // else to apply from the broadcast itself.
       if (event.type === "sessions.changed") {
-        syncForeignTurn();
         return;
       }
       // Background (`/btw`) prompts run on a separate agent and report back via
@@ -1991,6 +1956,7 @@ export function useDashboardChatTransport({
         clearQuietFinalize();
         setToolProgress(null);
         setIsLoading(false);
+        lastLocalActivityAtRef.current = Date.now();
           // FILE-CHANGES: emit the per-turn summary chip row (git + tool merge).
         finalizeFileChanges();
         const usage = usageFromPayload(event.payload);
@@ -2423,6 +2389,119 @@ export function useDashboardChatTransport({
     [],
   );
 
+  // ── Foreign-turn watcher ─────────────────────────────────────────────────
+  // A turn started by ANOTHER client (the official desktop, a dashboard tab,
+  // a second instance) streams to THAT client's transport — not ours. The
+  // gateway still exposes every live session through `session.active_list`
+  // (the official desktop polls it at 1.5s). Poll it too, so an open session
+  // whose turn we did not start still: paints the loading state (spinner,
+  // interrupt button, tab orb — everything flows from setIsLoading), keeps
+  // the transcript fresh at the poll cadence, and finalizes on completion —
+  // no reopen needed. This REPLACES the old sessions.changed-broadcast
+  // sync, which never fired when our WebSocket was disconnected (the client
+  // connects lazily on first send) — the exact "needs reopen" report.
+  const FOREIGN_TURN_POLL_MS = 2_000;
+  // After a LOCAL turn ends the gateway can still report the session as
+  // working for a moment; don't re-enter foreign mode during that window.
+  const FOREIGN_TURN_GRACE_MS = 5_000;
+
+  useEffect(() => {
+    if (!enabled) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const reconcileFromDb = async (): Promise<void> => {
+      const stored = storedSessionIdRef.current;
+      if (!stored) return;
+      const seq = ++foreignRefreshSeqRef.current;
+      try {
+        const items = (await window.hermesAPI.getSessionMessages(
+          stored,
+        )) as DbHistoryItem[];
+        if (disposed || seq !== foreignRefreshSeqRef.current) return;
+        const dbMessages = dbItemsToChatMessages(items);
+        messagesRef.current = reconcileAfterDbRefresh(
+          messagesRef.current,
+          dbMessages,
+          { activeTurn: activeTurnRef.current },
+        );
+        setMessages(messagesRef.current);
+      } catch {
+        /* transient — the next tick retries */
+      }
+    };
+
+    const tick = async (): Promise<void> => {
+      const runtimeId = runtimeSessionIdRef.current;
+      if (!runtimeId) return;
+      // A local turn owns the UI — never fight it.
+      if (activeTurnRef.current) {
+        if (foreignTurnRef.current) foreignTurnRef.current = false;
+        return;
+      }
+      const client =
+        clientRef.current ?? (await ensureClient().catch(() => null));
+      if (!client || disposed) return;
+      const res = (await client
+        .request("session.active_list")
+        .catch(() => null)) as
+        | { sessions?: Array<{ id?: string; status?: string }> }
+        | null;
+      if (disposed) return;
+      const entry = res?.sessions?.find((s) => s.id === runtimeId);
+      const busy =
+        entry?.status === "working" ||
+        entry?.status === "waiting" ||
+        entry?.status === "starting";
+      const wasForeign = foreignTurnRef.current;
+      if (!busy) {
+        if (wasForeign) {
+          // Foreign turn finished: pull the complete answer in (same
+          // machinery as quiet-finalize) and drop the loading state.
+          foreignTurnRef.current = false;
+          await reconcileFromDb();
+          activeTurnRef.current = null;
+          setToolProgress(null);
+          setIsLoading(false);
+        }
+        return;
+      }
+      if (!wasForeign) {
+        if (
+          Date.now() - lastLocalActivityAtRef.current <
+          FOREIGN_TURN_GRACE_MS
+        ) {
+          return; // a local turn just ended — let the gateway settle
+        }
+        foreignTurnRef.current = true;
+        activeTurnRef.current = {
+          turnId: `foreign-${Date.now()}`,
+          userId: "",
+          startIndex: messagesRef.current.length,
+          status: "running",
+        };
+        setToolProgress(null);
+        setIsLoading(true);
+        await reconcileFromDb();
+        return;
+      }
+      await reconcileFromDb();
+    };
+
+    timer = setInterval(() => {
+      void tick();
+    }, FOREIGN_TURN_POLL_MS);
+    return () => {
+      disposed = true;
+      if (timer) clearInterval(timer);
+      if (foreignTurnRef.current) {
+        foreignTurnRef.current = false;
+        activeTurnRef.current = null;
+        setIsLoading(false);
+      }
+    };
+  }, [enabled, ensureClient, setMessages, setIsLoading, setToolProgress]);
+
   const sendMessage = useCallback(
     async (text: string, attachments?: Attachment[]): Promise<boolean> => {
       if (!enabled) return false;
@@ -2752,6 +2831,7 @@ export function useDashboardChatTransport({
     activeTurnRef.current = null;
     clearQuietFinalize();
     setIsLoading(false);
+    lastLocalActivityAtRef.current = Date.now();
     setToolProgress(null);
   }, [clearQuietFinalize, enabled, setIsLoading, setToolProgress]);
 

@@ -167,39 +167,49 @@ describe("useDashboardChatTransport recovery", () => {
     });
   });
 
-  it("reconciles state.db rows on sessions.changed (foreign turn)", async () => {
-    dashboardMock.request.mockImplementation(async (method) => {
-      if (method === "session.create") {
-        return { session_id: "live", stored_session_id: "stored" };
-      }
-      return {};
-    });
-    const api: HarnessApi = {};
-    render(<Harness api={api} initialConnectionMode="local" />);
-
-    await act(async () => {
-      await api.send?.("hello");
-    });
-    // End the local turn so activeTurnRef is clear — foreign sync only
-    // applies when no LOCAL turn owns the UI.
-    await act(async () => {
-      dashboardMock.onEvent?.({
-        type: "message.complete",
-        payload: { content: "done" },
-        session_id: "live",
+  it("tracks a foreign turn via session.active_list polling", async () => {
+    vi.useFakeTimers();
+    try {
+      dashboardMock.request.mockImplementation(async (method) => {
+        if (method === "session.create") {
+          return { session_id: "live", stored_session_id: "stored" };
+        }
+        if (method === "session.active_list") {
+          return { sessions: [{ id: "live", status: "working" }] };
+        }
+        return {};
       });
-    });
+      const api: HarnessApi = {};
+      render(<Harness api={api} initialConnectionMode="local" />);
 
-    // A foreign writer (another app) appended a row to state.db — the
-    // gateway broadcasts sessions.changed; the transport must pull the
-    // canonical rows without crashing and without flagging loading on
-    // the first (baseline) sighting.
-    const getMessages = vi.fn(async () => []);
-    (window.hermesAPI as unknown as { getSessionMessages: typeof getMessages }).getSessionMessages = getMessages;
-    await act(async () => {
-      dashboardMock.onEvent?.({ type: "sessions.changed", payload: {} });
-    });
-    expect(getMessages).toHaveBeenCalledWith("stored");
+      await act(async () => {
+        await api.send?.("hello");
+      });
+      // End the local turn so activeTurnRef is clear — foreign tracking only
+      // applies when no LOCAL turn owns the UI.
+      await act(async () => {
+        dashboardMock.onEvent?.({
+          type: "message.complete",
+          payload: { content: "done" },
+          session_id: "live",
+        });
+      });
+
+      // A foreign writer (another app) is streaming a turn on this session —
+      // the poller must see status=working, enter foreign mode and pull the
+      // canonical rows.
+      const getMessages = vi.fn(async () => []);
+      (window.hermesAPI as unknown as { getSessionMessages: typeof getMessages }).getSessionMessages = getMessages;
+      await act(async () => {
+        // Advance past BOTH the 2s poll interval AND the 5s post-local-turn
+        // grace window (a local message.complete just stamped activity).
+        vi.advanceTimersByTime(7200);
+      });
+      expect(dashboardMock.request).toHaveBeenCalledWith("session.active_list");
+      expect(getMessages).toHaveBeenCalledWith("stored");
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("requests a fresh WebSocket URL immediately before connecting", async () => {
     dashboardMock.request.mockImplementation(async (method) => {
