@@ -162,10 +162,45 @@ describe("useDashboardChatTransport recovery", () => {
           connection: { wsUrl: "ws://127.0.0.1:12345" },
           running: true,
         })),
+        getSessionMessages: vi.fn(async () => []),
       },
     });
   });
 
+  it("reconciles state.db rows on sessions.changed (foreign turn)", async () => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") {
+        return { session_id: "live", stored_session_id: "stored" };
+      }
+      return {};
+    });
+    const api: HarnessApi = {};
+    render(<Harness api={api} initialConnectionMode="local" />);
+
+    await act(async () => {
+      await api.send?.("hello");
+    });
+    // End the local turn so activeTurnRef is clear — foreign sync only
+    // applies when no LOCAL turn owns the UI.
+    await act(async () => {
+      dashboardMock.onEvent?.({
+        type: "message.complete",
+        payload: { content: "done" },
+        session_id: "live",
+      });
+    });
+
+    // A foreign writer (another app) appended a row to state.db — the
+    // gateway broadcasts sessions.changed; the transport must pull the
+    // canonical rows without crashing and without flagging loading on
+    // the first (baseline) sighting.
+    const getMessages = vi.fn(async () => []);
+    (window.hermesAPI as unknown as { getSessionMessages: typeof getMessages }).getSessionMessages = getMessages;
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "sessions.changed", payload: {} });
+    });
+    expect(getMessages).toHaveBeenCalledWith("stored");
+  });
   it("requests a fresh WebSocket URL immediately before connecting", async () => {
     dashboardMock.request.mockImplementation(async (method) => {
       if (method === "session.create") {
@@ -590,6 +625,7 @@ describe("useDashboardChatTransport messagesRef sync", () => {
           connection: { wsUrl: "ws://127.0.0.1:12345" },
           running: true,
         })),
+        getSessionMessages: vi.fn(async () => []),
       },
     });
   });
@@ -684,6 +720,7 @@ describe("useDashboardChatTransport context gauge estimate (no usage payload)", 
           connection: { wsUrl: "ws://127.0.0.1:12345" },
           running: true,
         })),
+        getSessionMessages: vi.fn(async () => []),
       },
     });
   });
@@ -785,6 +822,7 @@ describe("useDashboardChatTransport plan mode", () => {
           connection: { wsUrl: "ws://127.0.0.1:12345" },
           running: true,
         })),
+        getSessionMessages: vi.fn(async () => []),
       },
     });
   });

@@ -1119,6 +1119,10 @@ export function useDashboardChatTransport({
     pendingClarifyRequestIdRef.current = null;
     pendingRecoveredContinuationRef.current = [];
     lastSyncedCwdRef.current = null;
+    // Foreign-turn bookkeeping: re-baseline so a stale tail signature from a
+    // previous session can't flag loading on the new one.
+    foreignTailSigRef.current = null;
+    foreignLoadingRef.current = false;
   }, [connectionMode, profile]);
 
   // Turn stall watchdog: `prompt.submit` is only an ACK — the turn completes
@@ -1211,12 +1215,25 @@ export function useDashboardChatTransport({
     );
   };
 
+  // FOREIGN-TURN liveness: another surface (another desktop app, a cron run,
+  // a messaging platform) writes the SAME state.db while streaming a turn.
+  // The gateway's change watcher broadcasts sessions.changed to us on any
+  // db mtime move (cross-process by design). When THIS run has no local
+  // turn but its stored rows keep growing, a foreign turn is in flight:
+  // reconcile the new rows in live and mirror the loading state (composer
+  // interrupt icon, tab orb) instead of waiting for a reopen.
+  const foreignTailSigRef = useRef<string | null>(null);
+  const foreignLoadingRef = useRef(false);
   const clearQuietFinalize = useCallback((): void => {
     if (quietFinalizeTimerRef.current !== null) {
       clearTimeout(quietFinalizeTimerRef.current);
       quietFinalizeTimerRef.current = null;
     }
   }, []);
+
+
+  // FOREIGN-TURN liveness is handled by the active_list poller (see the
+  // foreign-turn watcher effect below).
 
   // Per-turn file-changes summary: merge the tool-event capture (paths from
   // write tools) with git working-tree detection (authoritative — catches
@@ -1487,7 +1504,7 @@ export function useDashboardChatTransport({
           activeTurnRef.current = null;
           setToolProgress(null);
           setIsLoading(false);
-          // FILE-CHANGES: emit the summary chip (lost message.complete must
+              // FILE-CHANGES: emit the summary chip (lost message.complete must
           // not lose the badge either).
           finalizeFileChanges();
         } catch {
@@ -1505,6 +1522,52 @@ export function useDashboardChatTransport({
   ]);
 
   useEffect(() => clearQuietFinalize, [clearQuietFinalize]);
+
+  // Pull the canonical rows for THIS session and reconcile them in live,
+  // flagging loading when the tail is growing under a foreign writer. Runs on
+  // every sessions.changed broadcast (the gateway's change watcher fires it
+  // when the shared state.db mtime moves — any process's writes included).
+  const syncForeignTurn = useCallback((): void => {
+    // A LOCAL turn owns the UI: its own stream + quiet-finalize already
+    // reconcile; foreign sync must not fight it.
+    if (activeTurnRef.current) return;
+    const storedSessionId = storedSessionIdRef.current;
+    if (!storedSessionId) return;
+    void (async () => {
+      try {
+        const items = (await window.hermesAPI.getSessionMessages(
+          storedSessionId,
+        )) as DbHistoryItem[];
+        const dbMessages = dbItemsToChatMessages(items);
+        const sig = answerTailSignature(dbMessages);
+        if (sig === foreignTailSigRef.current) {
+          // Stable tail — the writer stopped. End foreign loading.
+          if (foreignLoadingRef.current) {
+            foreignLoadingRef.current = false;
+            setIsLoading(false);
+          }
+          return;
+        }
+        const hadBaseline = foreignTailSigRef.current !== null;
+        foreignTailSigRef.current = sig;
+        if (!hadBaseline) return; // first sighting: baseline only
+        // Tail moved — a foreign writer is appending rows.
+        const activeTurn = activeTurnRef.current;
+        messagesRef.current = reconcileAfterDbRefresh(
+          messagesRef.current,
+          dbMessages,
+          activeTurn ? { activeTurn } : {},
+        );
+        setMessages(messagesRef.current);
+        if (!activeTurn && !foreignLoadingRef.current) {
+          foreignLoadingRef.current = true;
+          setIsLoading(true);
+        }
+      } catch {
+        /* transient read error — the next tick retries */
+      }
+    })();
+  }, [setIsLoading, setMessages]);
 
   const handleGatewayEvent = useCallback(
     (event: DashboardStreamEvent): void => {
@@ -1533,6 +1596,15 @@ export function useDashboardChatTransport({
       // Also re-arm the quiet-finalize fallback (fires if NO further events
       // arrive for 10s — a lost message.complete).
       resetQuietFinalize();
+
+      // Change-watcher broadcast: the shared state.db mtime moved — a write
+      // from ANY process (this gateway's stream, another desktop app, a cron
+      // run, a messaging platform). Drives foreign-turn liveness for this
+      // session; nothing else to apply from the broadcast itself.
+      if (event.type === "sessions.changed") {
+        syncForeignTurn();
+        return;
+      }
       // Background (`/btw`) prompts run on a separate agent and report back via
       // `background.complete` — outside the main turn lifecycle, so render the
       // answer as a standalone agent message without touching isLoading or the
@@ -1919,7 +1991,7 @@ export function useDashboardChatTransport({
         clearQuietFinalize();
         setToolProgress(null);
         setIsLoading(false);
-        // FILE-CHANGES: emit the per-turn summary chip row (git + tool merge).
+          // FILE-CHANGES: emit the per-turn summary chip row (git + tool merge).
         finalizeFileChanges();
         const usage = usageFromPayload(event.payload);
         if (usage || !failed) {
