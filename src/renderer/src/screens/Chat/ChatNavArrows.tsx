@@ -19,10 +19,11 @@ interface ChatNavArrowProps {
  *
  * - Top arrow: visible while scrolled UP (not at the bottom); click scrolls to
  *   the previous user message above the viewport centre.
- * - Bottom arrow: visible while at the bottom; click scrolls to the next user
- *   message below the viewport centre — or, when the last question is already
- *   above the centre (the usual state at the bottom of a long answer), to the
- *   LATEST user message, so the arrow is never a dead button.
+ * - Bottom arrow: visible when a NEXT user message (any but the latest) sits
+ *   below the viewport centre; click scrolls it to the centre. The LATEST
+ *   user message never counts as a next target — right after sending a new
+ *   prompt it sits just below centre and there is nothing to navigate to, so
+ *   the arrow stays hidden instead of appearing over the newest question.
  *
  * Pinning is `position: sticky` on a zero-height wrapper (first/last child of
  * the scroll container), so the button hovers over the messages and never
@@ -53,8 +54,18 @@ export const ChatNavArrow = memo(function ChatNavArrow({
       container.scrollHeight - container.clientHeight > AT_BOTTOM_TOLERANCE_PX;
     let anyAbove = false;
     let anyBelow = false;
+    // The LATEST user message never counts as a "next" target: right after
+    // sending a new prompt it sits just below the centre, and the bottom
+    // arrow has nothing to navigate to there — showing it is confusing
+    // ("next" exists only when an OLDER question is still below).
+    let lastUserId: string | null = null;
     for (const msg of messagesRef.current) {
       if (msg.role !== "user") continue;
+      lastUserId = msg.id;
+    }
+    for (const msg of messagesRef.current) {
+      if (msg.role !== "user") continue;
+      if (msg.id === lastUserId) continue;
       const el = document.getElementById(rowId(msg.id));
       if (!el) continue;
       const r = el.getBoundingClientRect();
