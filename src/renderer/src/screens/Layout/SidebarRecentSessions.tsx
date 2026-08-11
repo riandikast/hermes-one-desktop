@@ -958,10 +958,14 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
           />
         )}
         {loading ? (
-          <Loader
-            className="sidebar-recent-session-dot sidebar-recent-session-dot--loading"
-            size={11}
-          />
+          <>
+            <Loader
+              className="sidebar-recent-session-dot sidebar-recent-session-dot--loading"
+              size={11}
+            />
+            {/* Official-style rotating light ring around the processing row. */}
+            <span aria-hidden="true" className="arc-border arc-row" />
+          </>
         ) : pinned ? (
           <Pin className="sidebar-recent-session-dot" size={11} />
         ) : (
