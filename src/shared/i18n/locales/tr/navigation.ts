@@ -5,8 +5,10 @@ export default {
   projects: "Projeler",
   chats: "Sohbetler",
   noChats: "Sohbet yok",
-  pinned: "Sabitlenenler",
-  discover: "Keşfet",
+
+  searchSessions: "Oturum ara",  pinned: "Sabitlenenler",
+
+  noSearchMatches: "Sonuç yok",  discover: "Keşfet",
   agents: "Profiller",
   office: "Ofis",
   models: "Modeller",

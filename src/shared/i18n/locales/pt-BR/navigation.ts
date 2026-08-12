@@ -5,8 +5,10 @@ export default {
   projects: "Projetos",
   chats: "Chats",
   noChats: "Sem chats",
-  discover: "Descobrir",
-  pinned: "Fixados",
+
+  searchSessions: "Pesquisar sessões",  discover: "Descobrir",
+
+  noSearchMatches: "Sem resultados",  pinned: "Fixados",
   agents: "Perfis",
   office: "Escritório",
   models: "Modelos",

@@ -5,8 +5,10 @@ export default {
   projects: "项目",
   chats: "聊天",
   noChats: "暂无聊天",
-  discover: "发现",
-  pinned: "已固定",
+
+  searchSessions: "搜索会话",  discover: "发现",
+
+  noSearchMatches: "无匹配会话",  pinned: "已固定",
   agents: "档案",
   office: "工作区",
   models: "模型",

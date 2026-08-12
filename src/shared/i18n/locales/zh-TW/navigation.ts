@@ -5,8 +5,10 @@ export default {
   projects: "專案",
   chats: "聊天",
   noChats: "沒有聊天",
-  discover: "探索",
-  pinned: "已釘選",
+
+  searchSessions: "搜尋對話",  discover: "探索",
+
+  noSearchMatches: "無相符對話",  pinned: "已釘選",
   agents: "檔案",
   office: "工作區",
   models: "模型",

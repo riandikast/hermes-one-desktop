@@ -5,8 +5,10 @@ export default {
   projects: "פרויקטים",
   chats: "צ'אטים",
   noChats: "אין צ'אטים",
-  pinned: "מוצמדים",
-  discover: "גילוי",
+
+  searchSessions: "חיפוש שיחות",  pinned: "מוצמדים",
+
+  noSearchMatches: "אין תוצאות",  discover: "גילוי",
   agents: "פרופילים",
   office: "אופיס",
   models: "מודלים",

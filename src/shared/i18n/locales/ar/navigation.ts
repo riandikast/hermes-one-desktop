@@ -12,8 +12,10 @@ export default {
   chats: "المحادثات",
   pinned: "مثبت",
   noChats: "لا توجد محادثات",
-  soul: "الشخصية",
-  memory: "الذاكرة",
+
+  searchSessions: "البحث في المحادثات",  soul: "الشخصية",
+
+  noSearchMatches: "لا توجد نتائج",  memory: "الذاكرة",
   tools: "الإمكانيات",
   schedules: "الجدولة",
   kanban: "كانبان",

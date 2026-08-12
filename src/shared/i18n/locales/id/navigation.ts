@@ -5,8 +5,10 @@ export default {
   projects: "Proyek",
   chats: "Obrolan",
   noChats: "Tidak ada obrolan",
-  discover: "Jelajahi",
-  pinned: "Disematkan",
+
+  searchSessions: "Cari sesi",  discover: "Jelajahi",
+
+  noSearchMatches: "Tidak ada hasil",  pinned: "Disematkan",
   agents: "Profil",
   office: "Office",
   models: "Model",
