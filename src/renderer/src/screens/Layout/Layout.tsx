@@ -55,6 +55,7 @@ import {
   Download,
   Bot,
   PanelLeft,
+  Search,
   Plus,
   ChevronUp,
   ChevronDown,
@@ -100,9 +101,10 @@ const TOP_MENU_COLLAPSED_KEY = "hermes.topmenu.collapsed";
 const SIDEBAR_SCROLLBAR_HIDE_MS = 700;
 const PINNED_NAV_COLLAPSED_KEY = "hermes.sidebar.pinnedCollapsed";
 
-/** Sidebar drag-resize bounds: current 250px is the max; can only be narrowed. */
+/** Sidebar drag-resize bounds: official 237px is the max; can only be narrowed. */
 const SIDEBAR_WIDTH_MIN = 180;
-const SIDEBAR_WIDTH_MAX = 250;
+// Matches the official desktop's --sidebar-width (14.8125rem = 237px).
+const SIDEBAR_WIDTH_MAX = 237;
 
 interface LayoutProps {
   verifyWarning?: boolean;
@@ -281,6 +283,9 @@ function Layout({
       return false;
     }
   });
+  // Session search: the icon next to the collapse toggle filters the sidebar's
+  // recent-sessions list.
+  const [sidebarSearchOpen, setSidebarSearchOpen] = useState(false);
 
   // Drag-resizable sidebar width. Persisted; only narrows from the current
   // default (250px) down to a comfortable minimum.
@@ -1034,6 +1039,19 @@ function Layout({
                   open/close swap. */}
               <PanelLeft size={16} />
             </button>
+            {/* Session search — filters the recent-sessions list. */}
+            {!sidebarCollapsed && (
+              <button
+                className="sidebar-collapse-toggle sidebar-search-toggle"
+                type="button"
+                onClick={() => setSidebarSearchOpen((v) => !v)}
+                title={t("navigation.searchSessions")}
+                aria-label={t("navigation.searchSessions")}
+                aria-pressed={sidebarSearchOpen}
+              >
+                <Search size={16} />
+              </button>
+            )}
           </div>
 
           <nav className="sidebar-nav sidebar-nav-pinned">
@@ -1106,6 +1124,8 @@ function Layout({
                     if (id === currentSessionId) handleNewChat();
                   }}
                   onNewChatInProject={handleNewChatInProject}
+                  searchOpen={sidebarSearchOpen}
+                  onSearchOpenChange={setSidebarSearchOpen}
                   scrollRootRef={sidebarChatScrollRef}
                 />
               </div>

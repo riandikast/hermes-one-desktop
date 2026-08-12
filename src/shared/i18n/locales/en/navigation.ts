@@ -12,6 +12,8 @@ export default {
   chats: "Chats",
   pinned: "Pinned",
   noChats: "No chats",
+  searchSessions: "Search sessions",
+  noSearchMatches: "No matching sessions",
   soul: "Persona",
   memory: "Memory",
   tools: "Capabilities",

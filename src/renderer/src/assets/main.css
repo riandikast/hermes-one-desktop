@@ -2786,6 +2786,61 @@ body:has(.shell-vibrant),
   margin-bottom: 2px;
 }
 
+/* ── Session search (magnifier next to the collapse toggle) ── */
+.sidebar-recent-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 4px 8px 2px;
+}
+
+.sidebar-recent-search-icon {
+  position: absolute;
+  left: 8px;
+  color: var(--text-muted);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.sidebar-recent-search-input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 8px 5px 26px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  outline: none;
+}
+
+.sidebar-recent-search-input:focus {
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.sidebar-recent-search-clear {
+  position: absolute;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+}
+
+.sidebar-recent-search-clear:hover {
+  color: var(--text-primary);
+}
+
+.sidebar-recent-no-matches {
+  padding: 8px 10px;
+}
+
 .sidebar-recent-section {
   min-width: 0;
   display: flex;
@@ -19606,6 +19661,66 @@ body:has(.shell-vibrant),
 }
 
 /* Badge on assistant bubbles */
+/* ── Session search (icon beside the collapse toggle) ── */
+.sidebar-recent-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 2px 8px 4px;
+}
+
+.sidebar-recent-search-icon {
+  position: absolute;
+  left: 8px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.sidebar-recent-search-input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 24px 5px 26px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  outline: none;
+}
+
+.sidebar-recent-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.sidebar-recent-search-input:focus {
+  box-shadow: 0 0 0 1px var(--accent, var(--accent-text));
+}
+
+.sidebar-recent-search-clear {
+  position: absolute;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.sidebar-recent-search-clear:hover {
+  color: var(--text-primary);
+}
+
+.sidebar-recent-no-matches {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 /* ── Official-style rotating light ring on the PROCESSING session row ──
    Ported from the official desktop's `.arc-border` (styles.css): a thin,
    masked ring whose gradient arc travels along the row's border while the

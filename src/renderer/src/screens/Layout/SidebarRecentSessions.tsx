@@ -18,6 +18,7 @@ import {
   MoreHorizontal,
   Pin,
   X,
+  Search,
   Bot,
 } from "../../assets/icons";
 import SidebarSessionMenu, {
@@ -198,6 +199,8 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   onSelect,
   onSessionDeleted,
   onNewChatInProject,
+  searchOpen,
+  onSearchOpenChange,
   scrollRootRef,
 }: {
   open: boolean;
@@ -214,6 +217,9 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   onNewChatInProject?: (folderPath: string) => void;
   /** Scroll container owned by Layout; nearing its bottom loads the next page. */
   scrollRootRef: RefObject<HTMLDivElement | null>;
+  /** Session search: when true, a filter input filters the session lists. */
+  searchOpen: boolean;
+  onSearchOpenChange: (open: boolean) => void;
 }): React.JSX.Element | null {
   const { t } = useI18n();
   const [sessions, setSessions] = useState<RecentSession[]>([]);
@@ -574,6 +580,42 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       groupSessionsByWorkspace(sessions.filter((s) => !pinnedIds.has(s.id))),
     [sessions, pinnedIds, projectAliasesVersion],
   );
+
+  // Session search (the magnifier next to the collapse toggle): filters every
+  // section by title or context folder, case-insensitively.
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const q = searchQuery.trim().toLowerCase();
+  const matchesQuery = (s: RecentSession): boolean =>
+    !q ||
+    s.title.toLowerCase().includes(q) ||
+    (s.contextFolder ?? "").toLowerCase().includes(q);
+  const filteredPinned = useMemo(
+    () => (q ? pinnedSessions.filter(matchesQuery) : pinnedSessions),
+    [pinnedSessions, q],
+  );
+  const filteredChats = useMemo(
+    () => (q ? chats.filter(matchesQuery) : chats),
+    [chats, q],
+  );
+  const filteredGroups = useMemo(
+    () =>
+      q
+        ? projectGroups
+            .map((g) => ({ ...g, sessions: g.sessions.filter(matchesQuery) }))
+            .filter((g) => g.sessions.length > 0)
+        : projectGroups,
+    [projectGroups, q],
+  );
+  const noMatches = q && filteredChats.length === 0 && filteredPinned.length === 0 && filteredGroups.length === 0;
+  // Auto-focus on open; clear the query when closed.
+  useEffect(() => {
+    if (searchOpen) {
+      searchInputRef.current?.focus();
+    } else {
+      setSearchQuery("");
+    }
+  }, [searchOpen]);
 
   // Every distinct project folder currently in use, so "Move to project" lists
   // them all — even ones whose only conversation is pinned or filtered out.
@@ -1035,7 +1077,44 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             </button>
           </div>
         )}
-        {pinnedSessions.length > 0 && (
+        {searchOpen && (
+          <div className="sidebar-recent-search">
+            <Search size={13} className="sidebar-recent-search-icon" />
+            <input
+              ref={searchInputRef}
+              className="sidebar-recent-search-input"
+              type="text"
+              placeholder={t("navigation.searchSessions")}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setSearchQuery("");
+                  onSearchOpenChange(false);
+                }
+              }}
+              aria-label={t("navigation.searchSessions")}
+            />
+            {searchQuery ? (
+              <button
+                type="button"
+                className="sidebar-recent-search-clear"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
+                tabIndex={expanded ? 0 : -1}
+              >
+                <X size={12} />
+              </button>
+            ) : null}
+          </div>
+        )}
+        {noMatches && (
+          <div className="sidebar-recent-empty sidebar-recent-no-matches">
+            {t("navigation.noSearchMatches")}
+          </div>
+        )}
+        {filteredPinned.length > 0 && (
           <div className="sidebar-recent-section">
             <button
               type="button"
@@ -1072,14 +1151,14 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
               }`}
             >
               <div className="sidebar-recent-collapse-inner">
-                {pinnedSessions.map((s) =>
+                {filteredPinned.map((s) =>
                   renderSessionButton(s, false, expanded && pinnedOpen, true),
                 )}
               </div>
             </div>
           </div>
         )}
-        {projectGroups.length > 0 && (
+        {filteredGroups.length > 0 && (
           <div className="sidebar-recent-section">
             <button
               type="button"
@@ -1107,7 +1186,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
               }`}
             >
               <div className="sidebar-recent-collapse-inner">
-                {projectGroups.map((group) => {
+                {filteredGroups.map((group) => {
                   const projectOpen = !closedProjectFolders.has(group.path);
                   const visible = expanded && projectsOpen && projectOpen;
                   return (
@@ -1226,11 +1305,11 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             className={`sidebar-recent-collapse ${chatsOpen ? "expanded" : ""}`}
           >
             <div className="sidebar-recent-collapse-inner">
-              {chats.length > 0 ? (
-                chats.map((s) =>
+              {filteredChats.length > 0 ? (
+                filteredChats.map((s) =>
                   renderSessionButton(s, false, expanded && chatsOpen),
                 )
-              ) : (
+              ) : q ? null : (
                 <div className="sidebar-recent-empty">
                   {t("navigation.noChats")}
                 </div>
