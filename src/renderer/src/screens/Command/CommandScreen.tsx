@@ -51,6 +51,8 @@ export function CommandScreen(): React.JSX.Element {
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
     () => new Set<string>(),
   );
+  // Guards the collapse-all-on-first-open default (see refresh).
+  const collapseInitializedRef = useRef(false);
   const [newFolderMode, setNewFolderMode] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   // Delete confirmation dialog (command rows delete via a two-step confirm).
@@ -78,9 +80,20 @@ export function CommandScreen(): React.JSX.Element {
   const refresh = useCallback(async () => {
     try {
       const list = await window.hermesAPI.listCommands();
-      setCommands(
-        (list as CommandItem[]).map((c) => ({ ...c, folder: c.folder ?? "" })),
-      );
+      const items = (list as CommandItem[]).map((c) => ({
+        ...c,
+        folder: c.folder ?? "",
+      }));
+      setCommands(items);
+      // First open: every folder starts collapsed (requested default). The
+      // ref keeps later manual refreshes from re-collapsing what the user
+      // expanded.
+      if (!collapseInitializedRef.current) {
+        collapseInitializedRef.current = true;
+        setCollapsedFolders(
+          new Set(items.map((c) => c.folder).filter((f) => f !== "")),
+        );
+      }
     } catch {
       setCommands([]);
     }

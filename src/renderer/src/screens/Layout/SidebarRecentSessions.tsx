@@ -594,6 +594,11 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     () => (q ? pinnedSessions.filter(matchesQuery) : pinnedSessions),
     [pinnedSessions, q],
   );
+  // While searching, matching sections force-open: the query already
+  // whittled the lists to matches, so collapsing them would hide results.
+  const effectiveProjectsOpen = q !== "" ? true : projectsOpen;
+  const effectiveChatsOpen = q !== "" ? true : chatsOpen;
+
   const filteredChats = useMemo(
     () => (q ? chats.filter(matchesQuery) : chats),
     [chats, q],
@@ -974,7 +979,9 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
         tabIndex={visible ? 0 : -1}
         className={`sidebar-recent-session ${project ? "project-child" : ""} ${
           active ? "active" : ""
-        } ${menuOpen ? "menu-open" : ""}`}
+        } ${menuOpen ? "menu-open" : ""} ${
+          q !== "" && matchesQuery(s) ? "search-match" : ""
+        }`}
         onClick={() => (selectMode ? handleToggleSelect(s.id) : onSelect(s.id))}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -1164,11 +1171,11 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
               type="button"
               className="sidebar-recent-section-toggle"
               onClick={toggleProjects}
-              aria-expanded={projectsOpen}
+              aria-expanded={effectiveProjectsOpen}
               tabIndex={expanded ? 0 : -1}
             >
               <span>{t("navigation.projects")}</span>
-              {projectsOpen ? (
+              {effectiveProjectsOpen ? (
                 <ChevronDown
                   className="sidebar-recent-disclosure-icon"
                   size={13}
@@ -1182,13 +1189,17 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             </button>
             <div
               className={`sidebar-recent-collapse ${
-                projectsOpen ? "expanded" : ""
+                effectiveProjectsOpen ? "expanded" : ""
               }`}
             >
               <div className="sidebar-recent-collapse-inner">
                 {filteredGroups.map((group) => {
-                  const projectOpen = !closedProjectFolders.has(group.path);
-                  const visible = expanded && projectsOpen && projectOpen;
+                  const projectOpen =
+                    q !== ""
+                      ? true
+                      : !closedProjectFolders.has(group.path);
+                  const visible =
+                    expanded && effectiveProjectsOpen && projectOpen;
                   return (
                     <div className="sidebar-recent-project" key={group.path}>
                       {editingProjectPath === group.path ? (
@@ -1276,7 +1287,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             type="button"
             className="sidebar-recent-section-toggle"
             onClick={toggleChats}
-            aria-expanded={chatsOpen}
+            aria-expanded={effectiveChatsOpen}
             tabIndex={expanded ? 0 : -1}
             onContextMenu={(e) => {
               if (chats.length === 0) return;
@@ -1289,7 +1300,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             }}
           >
             <span>{t("navigation.chats")}</span>
-            {chatsOpen ? (
+            {effectiveChatsOpen ? (
               <ChevronDown
                 className="sidebar-recent-disclosure-icon"
                 size={13}
@@ -1302,12 +1313,14 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             )}
           </button>
           <div
-            className={`sidebar-recent-collapse ${chatsOpen ? "expanded" : ""}`}
+            className={`sidebar-recent-collapse ${
+              effectiveChatsOpen ? "expanded" : ""
+            }`}
           >
             <div className="sidebar-recent-collapse-inner">
               {filteredChats.length > 0 ? (
                 filteredChats.map((s) =>
-                  renderSessionButton(s, false, expanded && chatsOpen),
+                  renderSessionButton(s, false, expanded && effectiveChatsOpen),
                 )
               ) : q ? null : (
                 <div className="sidebar-recent-empty">

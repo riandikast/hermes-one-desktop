@@ -2487,7 +2487,7 @@ body:has(.shell-vibrant),
   /* Logo removed for a clean top — just the collapse toggle, parked top-right
      opposite the traffic lights. */
   justify-content: flex-end;
-  gap: 10px;
+  gap: 6px;
   padding: 4px 12px 2px;
   margin-top: 12px;
   /* The fixed .drag-region strip (z 1000) overlays the window's top 34px on
@@ -2543,6 +2543,28 @@ body:has(.shell-vibrant),
 }
 
 .sidebar-collapse-toggle:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Session-search toggle next to the collapse toggle — same affordance. */
+.sidebar-search-toggle {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.sidebar-search-toggle:hover,
+.sidebar-search-toggle[aria-pressed="true"] {
   background: var(--bg-tertiary);
   color: var(--text-primary);
 }
@@ -3663,6 +3685,15 @@ body:has(.shell-vibrant),
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Highlighted search match inside the sidebar session list. */
+.sidebar-recent-session.search-match {
+  background: var(--accent-subtle);
+}
+
+.sidebar-recent-session.search-match .sidebar-recent-session-title {
+  color: var(--accent-text);
 }
 
 .sidebar-recent-empty {
