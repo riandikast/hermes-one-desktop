@@ -180,6 +180,41 @@
   --selection: rgba(97, 175, 239, 0.7);
 }
 
+/* ----- VS Code Dark+ ----- */
+[data-theme="vs-code"] {
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #252526;
+  --bg-tertiary: #2d2d30;
+  --bg-elevated: #333333;
+  --bg-hover: #2a2d2e;
+  --bg-active: #37373d;
+  --accent: #0078d4;
+  --accent-hover: #1a8adb;
+  --accent-subtle: rgba(0, 120, 212, 0.18);
+  --accent-text: #4fc1ff;
+  --primary-yellow: #d7ba7d;
+  --text-primary: #cccccc;
+  --text-secondary: #9d9d9d;
+  --text-muted: #858585;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-bright: rgba(255, 255, 255, 0.12);
+  --border-focus: #0078d4;
+  --success: #89d185;
+  --success-bg: rgba(137, 209, 133, 0.14);
+  --error: #f48771;
+  --error-bg: rgba(244, 135, 113, 0.14);
+  --warning: #d7ba7d;
+  --warning-bg: rgba(215, 186, 125, 0.14);
+  --user-bubble: #0078d4;
+  --user-bubble-text: #ffffff;
+  --agent-bubble: #2d2d30;
+  --agent-bubble-text: #cccccc;
+  --code-bg: #1e1e1e;
+  --scrollbar-thumb: #424242;
+  --scrollbar-hover: #4f4f4f;
+  --selection: rgba(38, 79, 120, 0.9);
+}
+
 /* ----- GitHub Dark ----- */
 [data-theme="github-dark"] {
   --bg-primary: #0d1117;

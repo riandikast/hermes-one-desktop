@@ -673,6 +673,7 @@ export const THEMES: ThemeDef[] = [
   { id: "dracula", name: "Dracula", appearance: "dark" },
   { id: "nord", name: "Nord", appearance: "dark" },
   { id: "one-dark", name: "One Dark", appearance: "dark" },
+  { id: "vs-code", name: "VS Code", appearance: "dark" },
   { id: "github-dark", name: "GitHub Dark", appearance: "dark" },
   { id: "monokai", name: "Monokai", appearance: "dark" },
   { id: "solarized-dark", name: "Solarized Dark", appearance: "dark" },
