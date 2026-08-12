@@ -1015,6 +1015,11 @@ export function useDashboardChatTransport({
   const foreignTurnRef = useRef(false);
   const foreignRefreshSeqRef = useRef(0);
   const lastLocalActivityAtRef = useRef(0);
+  // Delayed post-complete DB reconcile (intermediate answers) — cleared on
+  // transport reset so it can't fire into a different session.
+  const completeSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   // Per-turn file-change capture: path → latest before/after pair. Reset on
   // each new user turn; attached to the assistant bubble on message.complete.
   const fileChangesRef = useRef<Map<string, FileChange>>(new Map());
@@ -1107,6 +1112,10 @@ export function useDashboardChatTransport({
     lastRuntimeSessionWasCreatedRef.current = false;
     pendingClarifyRequestIdRef.current = null;
     lastSyncedCwdRef.current = null;
+    if (completeSyncTimerRef.current !== null) {
+      clearTimeout(completeSyncTimerRef.current);
+      completeSyncTimerRef.current = null;
+    }
   }, [hermesSessionId]);
 
   useEffect(() => {
@@ -1523,7 +1532,13 @@ export function useDashboardChatTransport({
     setIsLoading,
   ]);
 
-  useEffect(() => clearQuietFinalize, [clearQuietFinalize]);
+  useEffect(() => {
+    clearQuietFinalize();
+    if (completeSyncTimerRef.current !== null) {
+      clearTimeout(completeSyncTimerRef.current);
+      completeSyncTimerRef.current = null;
+    }
+  }, [clearQuietFinalize]);
 
   // Pull the canonical rows for THIS session and reconcile them in live,
   // flagging loading when the tail is growing under a foreign writer. Runs on
@@ -1959,6 +1974,39 @@ export function useDashboardChatTransport({
         lastLocalActivityAtRef.current = Date.now();
           // FILE-CHANGES: emit the per-turn summary chip row (git + tool merge).
         finalizeFileChanges();
+        // The completion payload only carries the LAST answer text.
+        // Intermediate answers (model text emitted between tool rounds) are
+        // persisted as separate session rows — the official desktop shows
+        // them, and reopening the session does too. Pull the stored rows a
+        // beat after completion (the gateway persists them just before
+        // sending complete) and reconcile, so the live transcript matches
+        // the reopened view. Any lagging read self-heals via the next
+        // sessions.changed broadcast.
+        if (completeSyncTimerRef.current !== null) {
+          clearTimeout(completeSyncTimerRef.current);
+        }
+        completeSyncTimerRef.current = setTimeout(() => {
+          completeSyncTimerRef.current = null;
+          const stored = storedSessionIdRef.current;
+          if (!stored) return;
+          void (async () => {
+            try {
+              const items = (await window.hermesAPI.getSessionMessages(
+                stored,
+              )) as DbHistoryItem[];
+              const dbMessages = dbItemsToChatMessages(items);
+              const next = reconcileAfterDbRefresh(
+                messagesRef.current,
+                dbMessages,
+                {},
+              );
+              messagesRef.current = next;
+              setMessages(next);
+            } catch {
+              /* a later sessions.changed broadcast retries */
+            }
+          })();
+        }, 400);
         const usage = usageFromPayload(event.payload);
         if (usage || !failed) {
           // The gauge only renders when `contextTokens` is set, so it must be
