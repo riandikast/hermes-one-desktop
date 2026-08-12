@@ -184,10 +184,10 @@
 [data-theme="vs-code"] {
   --bg-primary: #1e1e1e;
   --bg-secondary: #252526;
-  --bg-tertiary: #2d2d30;
+  --bg-tertiary: #3c3c3c;
   --bg-elevated: #333333;
   --bg-hover: #2a2d2e;
-  --bg-active: #37373d;
+  --bg-active: #094771;
   --accent: #0078d4;
   --accent-hover: #1a8adb;
   --accent-subtle: rgba(0, 120, 212, 0.18);
