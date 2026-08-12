@@ -85,14 +85,12 @@ export function CommandScreen(): React.JSX.Element {
         folder: c.folder ?? "",
       }));
       setCommands(items);
-      // First open: every folder starts collapsed (requested default). The
-      // ref keeps later manual refreshes from re-collapsing what the user
-      // expanded.
+      // First open: every folder starts collapsed (requested default) —
+      // including the UNGROUPED section (folder === ""). The ref keeps
+      // later manual refreshes from re-collapsing what the user expanded.
       if (!collapseInitializedRef.current) {
         collapseInitializedRef.current = true;
-        setCollapsedFolders(
-          new Set(items.map((c) => c.folder).filter((f) => f !== "")),
-        );
+        setCollapsedFolders(new Set(items.map((c) => c.folder)));
       }
     } catch {
       setCommands([]);

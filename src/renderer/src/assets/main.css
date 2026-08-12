@@ -3045,6 +3045,26 @@ body:has(.shell-vibrant),
   border-bottom: 1px solid var(--border-color);
 }
 
+/* Title row: label + collapse toggle on the right (aligned end). */
+.knowledge-sidebar-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px 8px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.knowledge-sidebar-title-row .knowledge-sidebar-title {
+  padding: 0;
+  border-bottom: none;
+}
+
+/* Collapsed rail: keep the expand toggle centered. */
+.knowledge-sidebar-toggle.collapsed {
+  margin: 8px auto;
+}
+
 .knowledge-bundle-list {
   display: flex;
   flex-direction: column;

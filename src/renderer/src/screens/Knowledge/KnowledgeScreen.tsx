@@ -954,38 +954,38 @@ export function KnowledgeScreen(): React.JSX.Element {
             aria-label="Resize bundle list"
             title="Drag to resize"
           />
-          <button
-            type="button"
-            className={`knowledge-sidebar-toggle ${
-              knowledgeSidebarCollapsed ? "collapsed" : ""
-            }`}
-            onClick={toggleKnowledgeSidebar}
-            aria-label={
-              knowledgeSidebarCollapsed
-                ? "Expand bundle list"
-                : "Collapse bundle list"
-            }
-            title={
-              knowledgeSidebarCollapsed
-                ? "Expand bundle list"
-                : "Collapse bundle list"
-            }
-          >
-            {knowledgeSidebarCollapsed ? (
+          {knowledgeSidebarCollapsed ? (
+            <button
+              type="button"
+              className="knowledge-sidebar-toggle collapsed"
+              onClick={toggleKnowledgeSidebar}
+              aria-label="Expand bundle list"
+              title="Expand bundle list"
+            >
               <ChevronRight size={14} />
-            ) : (
-              <ChevronDown size={14} />
-            )}
-          </button>
-          {!knowledgeSidebarCollapsed && (
-            <div className="knowledge-sidebar-title">
-              Global Knowledge Bundles
+            </button>
+          ) : (
+            <div className="knowledge-sidebar-title-row">
+              <span className="knowledge-sidebar-title">
+                Global Knowledge Bundles
+              </span>
+              <button
+                type="button"
+                className="knowledge-sidebar-toggle"
+                onClick={toggleKnowledgeSidebar}
+                aria-label="Collapse bundle list"
+                title="Collapse bundle list"
+              >
+                <ChevronDown size={14} />
+              </button>
             </div>
           )}
           {!knowledgeSidebarCollapsed && (
             <div className="knowledge-bundle-list">
               {bundles.map((bundle) => {
-                const isExpanded = expandedBundles[bundle.name] ?? true;
+                // Default COLLAPSED on page open (requested): the state only
+                // records what the user explicitly toggled.
+                const isExpanded = expandedBundles[bundle.name] ?? false;
                 const isRenamingBundle = renamingBundle === bundle.name;
                 return (
                   <div
