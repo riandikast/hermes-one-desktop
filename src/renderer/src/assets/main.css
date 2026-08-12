@@ -182,8 +182,10 @@
 
 /* ----- VS Code Dark+ ----- */
 [data-theme="vs-code"] {
-  --bg-primary: #1e1e1e;
-  --bg-secondary: #252526;
+  /* User-requested inversion vs stock Dark+: the CHAT canvas takes the
+     sidebar gray and the sidebar takes the editor gray. */
+  --bg-primary: #252526;
+  --bg-secondary: #1e1e1e;
   --bg-tertiary: #3c3c3c;
   --bg-elevated: #333333;
   --bg-hover: #2a2d2e;
