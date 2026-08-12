@@ -24,7 +24,9 @@ export function useUiZoom(): void {
       const { steps, remaining } = stepWheelDelta(acc, rawDelta);
       acc = remaining;
       if (steps !== 0) {
-        window.hermesAPI.zoomBy(steps).catch(() => undefined);
+        // Wheel-up is a NEGATIVE deltaY; zooming should follow the gesture
+        // (up = zoom in), so the step sign is inverted for zoomBy().
+        window.hermesAPI.zoomBy(-steps).catch(() => undefined);
       }
     };
 

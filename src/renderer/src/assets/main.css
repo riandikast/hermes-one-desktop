@@ -511,10 +511,12 @@
   --radius-xl: 20px;
   --transition: 150ms ease;
   --font-sans:
-    "Cairo", "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    sans-serif;
+    "Segoe WPC", "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol", "Noto Color Emoji", emoji;
   --font-mono:
-    "SF Mono", "Fira Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    Menlo, Monaco, "SF Mono", "Courier Prime", monospace, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", emoji;
   /* Amounts and money figures (bank teller totals, token balances). */
   --font-numeric: "Space Grotesk", var(--font-sans);
 }
@@ -2432,7 +2434,7 @@ body:has(.shell-vibrant),
 }
 
 .sidebar {
-  width: 250px;
+  width: 237px; /* official desktop's --sidebar-width (14.8125rem) */
   background: var(--bg-secondary);
   border-right: none;
   display: flex;
@@ -2649,8 +2651,8 @@ body:has(.shell-vibrant),
 .sidebar-nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
+  gap: 8px;
+  padding: 4px 8px;
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all var(--transition);
@@ -3555,17 +3557,17 @@ body:has(.shell-vibrant),
   position: relative;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 6px;
   width: 100%;
   min-width: 0;
-  padding: 6px 10px;
+  padding: 2px 8px; /* official row inset: pl-2 pr-1 py-0.5 */
   border: none;
   background: none;
   border-radius: var(--radius-md);
   cursor: pointer;
   text-align: left;
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: 13px; /* official conversation text size (0.8125rem) */
 
   transition: all var(--transition);
 }
