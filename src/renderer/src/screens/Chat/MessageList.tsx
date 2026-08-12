@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { FilePlus2 } from "lucide-react";
 import { HermesAvatar, MessageRow } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
@@ -301,6 +301,41 @@ export const MessageList = memo(function MessageList({
   const stableSlice = visibleMessages.slice(0, splitAt);
   const streamingSlice = visibleMessages.slice(splitAt);
 
+  // ── Progressive stable-history reveal ─────────────────────────────────────
+  // Opening a long session mounts every stable row at once — React still
+  // creates all the DOM nodes even with content-visibility: auto, freezing
+  // the UI thread for a beat. Render only the trailing INITIAL rows and
+  // prepend the rest in small batches; Chromium's scroll anchoring keeps the
+  // viewport stable while older rows land above. buildRows receives the
+  // ABSOLUTE start offset so reasoning-group keys (index-based) stay stable
+  // as rows are prepended — otherwise every batch would remount rows.
+  const INITIAL_STABLE_ROWS = 120;
+  const STABLE_ROW_BATCH = 40;
+  const [revealedStableCount, setRevealedStableCount] = useState(() =>
+    Math.min(INITIAL_STABLE_ROWS, stableSlice.length),
+  );
+  useEffect(() => {
+    if (revealedStableCount >= stableSlice.length) return;
+    // Two rAF hops = one full paint cycle between batches, so each chunk
+    // lands in its own frame instead of stacking in a single busy frame.
+    let raf = 0;
+    const t = setTimeout(() => {
+      raf = requestAnimationFrame(() => {
+        raf = requestAnimationFrame(() => {
+          setRevealedStableCount((c) =>
+            Math.min(stableSlice.length, c + STABLE_ROW_BATCH),
+          );
+        });
+      });
+    }, 0);
+    return () => {
+      clearTimeout(t);
+      if (raf !== 0) cancelAnimationFrame(raf);
+    };
+  }, [revealedStableCount, stableSlice.length]);
+  const revealStart = stableSlice.length - revealedStableCount;
+  const revealedStable = stableSlice.slice(revealStart);
+
   // ── Stable history rows ────────────────────────────────────────────────────
   // Cached so they rebuild only when the history changes (user sends, revert,
   // unsend, end-of-stream reconcile) — NOT on every streaming delta. This
@@ -328,11 +363,13 @@ export const MessageList = memo(function MessageList({
   });
 
   const stableTail =
-    stableSlice.length > 0 ? stableSlice[stableSlice.length - 1] : undefined;
+    revealedStable.length > 0
+      ? revealedStable[revealedStable.length - 1]
+      : undefined;
   const avatarKey = agentAvatar ? "a" : "n";
   if (
     stableCacheRef.current.tail !== stableTail ||
-    stableCacheRef.current.len !== stableSlice.length ||
+    stableCacheRef.current.len !== revealedStable.length ||
     stableCacheRef.current.avatarKey !== avatarKey
   ) {
     // Stable history changed — rebuild. Stable rows are NEVER streaming-active.
@@ -345,23 +382,55 @@ export const MessageList = memo(function MessageList({
       onUnsendLastUser,
       onOpenFileChanges,
     };
-    const result = buildRows(
-      stableSlice,
-      0,
-      visibleMessages.length,
-      lastUserBubbleIdx,
-      undefined,
-      undefined,
-      false, // stable rows are never "loading-active"
-      callbacks,
-    );
+    const prev = stableCacheRef.current;
+    let rows: React.JSX.Element[];
+    let lastRole = prev.lastRole;
+    let turnLastReasoningId = prev.turnLastReasoningId;
+    if (
+      prev.len > 0 &&
+      prev.tail === stableTail &&
+      revealedStable.length > prev.len
+    ) {
+      // Pure PREPEND (progressive reveal): build only the newly revealed
+      // leading rows and prepend them. Absolute-index keys keep the cached
+      // rows' keys stable, so React mounts just the new chunk — the per-batch
+      // cost stays O(batch) instead of O(revealed) (which made the later
+      // batches of a long session visibly stutter).
+      const fresh = revealedStable.slice(0, revealedStable.length - prev.len);
+      rows = buildRows(
+        fresh,
+        revealStart,
+        visibleMessages.length,
+        lastUserBubbleIdx,
+        undefined,
+        undefined,
+        false,
+        callbacks,
+      ).rows;
+      rows = [...rows, ...prev.rows];
+    } else {
+      // History changed mid-list or first build — full rebuild.
+      const result = buildRows(
+        revealedStable,
+        revealStart,
+        visibleMessages.length,
+        lastUserBubbleIdx,
+        undefined,
+        undefined,
+        false,
+        callbacks,
+      );
+      rows = result.rows;
+      lastRole = result.lastRole;
+      turnLastReasoningId = result.turnLastReasoningId;
+    }
     stableCacheRef.current = {
       tail: stableTail,
-      len: stableSlice.length,
+      len: revealedStable.length,
       avatarKey,
-      rows: result.rows,
-      lastRole: result.lastRole,
-      turnLastReasoningId: result.turnLastReasoningId,
+      rows,
+      lastRole,
+      turnLastReasoningId,
     };
   }
   const { rows: stableRows, lastRole: stableLastRole } = stableCacheRef.current;
