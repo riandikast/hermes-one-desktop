@@ -6212,10 +6212,10 @@ body:has(.shell-vibrant),
 }
 
 .chat-empty-icon {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  background: #000;
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6224,10 +6224,9 @@ body:has(.shell-vibrant),
 
 /* The app icon (HERRmes.png) — rendered as an <img> in the empty state. */
 .chat-empty-logo {
-  width: 52px;
-  height: 52px;
-  object-fit: contain;
-  border-radius: 10px;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   user-select: none;
   -webkit-user-drag: none;
 }

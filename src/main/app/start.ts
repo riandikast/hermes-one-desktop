@@ -175,6 +175,12 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     autoHideMenuBar: true,
+    // Windows: the app icon (the packaged exe embeds the same asset, but
+    // dev runs use electron.exe's default atom icon — set it explicitly so
+    // the taskbar/window shows the real app icon in both).
+    ...(process.platform === "win32"
+      ? { icon: join(app.getAppPath(), "build/icon.png") }
+      : {}),
     titleBarStyle:
       process.platform === "darwin"
         ? "hiddenInset"
