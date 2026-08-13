@@ -938,6 +938,38 @@ function Layout({
     return () => window.removeEventListener("keydown", handleKey);
   }, [runs, activeRunId, handleActivateRun, handleCloseRun]);
 
+  // ── Session preload ─────────────────────────────────────────────────────
+  // Opening a session pays a full IPC DB read + a synchronous renderer
+  // conversion — 200-800ms+ of await/freeze for long sessions. Warm the
+  // MOST RECENT session at startup (the user usually opens it first): the
+  // open then paints instantly from the cache and the transport's reconcile
+  // brings any newer rows in. Idle-priority so startup is not competing.
+  const preloadedSessionRef = useRef<{
+    id: string;
+    messages: ReturnType<typeof dbItemsToChatMessages>;
+  } | null>(null);
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const cached = await window.hermesAPI.listCachedSessions(1);
+          const latest = cached[0];
+          if (!latest?.id) return;
+          const items = (await window.hermesAPI.getSessionMessages(
+            latest.id,
+          )) as DbHistoryItem[];
+          preloadedSessionRef.current = {
+            id: latest.id,
+            messages: dbItemsToChatMessages(items),
+          };
+        } catch {
+          /* best-effort warm */
+        }
+      })();
+    }, 1500);
+    return () => window.clearTimeout(t);
+  }, []);
+
   const handleResumeSession = useCallback(
     async (sessionId: string) => {
       const live = findRunBySession(runs, sessionId);
@@ -950,6 +982,19 @@ function Layout({
       resumingRef.current.add(sessionId);
       setResumingSessionId(sessionId);
       try {
+        // Fast path: the startup preload cached this session's messages.
+        const preloaded = preloadedSessionRef.current;
+        if (preloaded?.id === sessionId) {
+          preloadedSessionRef.current = null;
+          const run = mintRun(activeProfile, preloaded.messages);
+          run.sessionId = sessionId;
+          setRuns(
+            (prev) => openSessionRunTransition(prev, activeRunId, run).runs,
+          );
+          setActiveRunId(run.runId);
+          goTo("chat");
+          return;
+        }
         const items = (await window.hermesAPI.getSessionMessages(
           sessionId,
         )) as DbHistoryItem[];
