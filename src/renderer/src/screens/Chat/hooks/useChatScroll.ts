@@ -14,6 +14,8 @@ export function useChatScroll(messages: ChatMessage[]): {
   containerRef: React.RefObject<HTMLDivElement | null>;
   bottomRef: React.RefObject<HTMLDivElement | null>;
   jumpToPresent: () => () => void;
+  /** Re-snap to the present only if the user is still pinned to the bottom. */
+  jumpToPresentIfPinned: () => void;
 } {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -167,5 +169,17 @@ export function useChatScroll(messages: ChatMessage[]): {
     return undefined;
   }, [messages, jumpToPresent, snapToBottom]);
 
-  return { containerRef, bottomRef, jumpToPresent };
+  // The progressive-reveal batch re-snap: with scroll anchoring disabled on
+  // the container (overflow-anchor: none) the scroll listener sees ONLY
+  // genuine user scrolls, so this flag is reliable — re-snap on every reveal
+  // batch while the user is still pinned to the bottom. The mount snap's
+  // settle retries end long before the reveal does, and without anchoring
+  // the batches would drift the viewport up, so each batch needs its own
+  // pull back to the (growing) present.
+  const jumpToPresentIfPinned = useCallback((): void => {
+    if (userScrolledUpRef.current) return;
+    jumpToPresent();
+  }, [jumpToPresent]);
+
+  return { containerRef, bottomRef, jumpToPresent, jumpToPresentIfPinned };
 }

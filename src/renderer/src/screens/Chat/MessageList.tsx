@@ -64,10 +64,10 @@ interface MessageListProps {
   onUnsendLastUser?: (msgId: string, content: string) => void;
   /** Open the file-changes dialog for a bubble (dashboard transport). */
   onOpenFileChanges?: (changes: FileChange[]) => void;
-  /** Fired once when the progressive stable-history reveal finishes (long
-   *  sessions only) — lets the owner re-snap to the present now that the
-   *  full transcript height has landed. */
-  onRevealComplete?: () => void;
+  /** Fired after EVERY progressive-reveal batch lands (long sessions only)
+   *  — the owner re-snaps to the present while pinned, so first-open stays
+   *  at the bottom as older rows stream in above. */
+  onRevealProgress?: () => void;
 }
 
 function TypingIndicator({
@@ -266,7 +266,7 @@ export const MessageList = memo(function MessageList({
   onRevertCheckpoint,
   onUnsendLastUser,
   onOpenFileChanges,
-  onRevealComplete,
+  onRevealProgress,
 }: MessageListProps): React.JSX.Element {
   // Bubbles with empty content are still hidden (live-stream placeholders).
   // History rows pass through unconditionally. Agent bubbles streaming live are kept.
@@ -322,19 +322,22 @@ export const MessageList = memo(function MessageList({
   const revealDoneRef = useRef(false);
   useEffect(() => {
     if (revealedStableCount >= stableSlice.length) {
-      // Reveal finished. If it actually revealed anything (long session),
-      // let the owner re-snap to the present — the mount snap + its settle
-      // retries ran while the transcript was still partial, so the
-      // full-height bottom was never reached.
+      // Reveal finished — if it actually revealed anything (long session),
+      // let the owner re-snap to the present: the mount snap's settle
+      // retries end long before the reveal does.
       if (!revealDoneRef.current) {
         revealDoneRef.current = true;
         if (stableSlice.length > INITIAL_STABLE_ROWS) {
-          onRevealComplete?.();
+          onRevealProgress?.();
         }
       }
       return;
     }
     revealDoneRef.current = false;
+    // Every batch lands and then the owner re-snaps (pinned users stay at
+    // the growing present; the scroll listener only sees genuine scrolls
+    // now that anchoring is off).
+    onRevealProgress?.();
     // Two rAF hops = one full paint cycle between batches, so each chunk
     // lands in its own frame instead of stacking in a single busy frame.
     let raf = 0;
@@ -351,7 +354,7 @@ export const MessageList = memo(function MessageList({
       clearTimeout(t);
       if (raf !== 0) cancelAnimationFrame(raf);
     };
-  }, [revealedStableCount, stableSlice.length, onRevealComplete]);
+  }, [revealedStableCount, stableSlice.length, onRevealProgress]);
   const revealStart = stableSlice.length - revealedStableCount;
   const revealedStable = stableSlice.slice(revealStart);
 
