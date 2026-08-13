@@ -6117,12 +6117,6 @@ body:has(.shell-vibrant),
   flex: 1;
   overflow-y: auto;
   padding: 24px;
-  /* Disable scroll anchoring: the progressive reveal + content-visibility
-     keep shifting the anchor node as batches land above, so the browser
-     fights programmatic bottom-snaps (jumpToPresent loops forever). With
-     anchoring off, the reveal-completion snap lands and STAYS at the
-     present; mid-reveal viewport shifts are the accepted trade. */
-  overflow-anchor: none;
   /* Block flow, NOT a flex column. `content-visibility: auto` on the rows
      (below) lets the browser skip layout/paint for off-screen messages, which
      is what keeps typing fast in long conversations (#748). A flex column
@@ -6325,6 +6319,16 @@ body:has(.shell-vibrant),
    content-visibility: auto (with the now-remembered real sizes) resumes. */
 .chat-stable-reveal .chat-message {
   content-visibility: visible;
+}
+
+/* Scroll anchoring off ONLY while the reveal is running: prepends above the
+   viewport would otherwise shift the anchor node and fight the per-batch
+   snaps. The moment it ends (MessageList -> onRevealStateChange), anchoring
+   returns so normal scrolling over content-visibility rows stays stable —
+   with anchoring off permanently, one scroll-up on a long session crept
+   into continuous scrolling. */
+.chat-messages.is-revealing {
+  overflow-anchor: none;
 }
 
 @keyframes messageIn {

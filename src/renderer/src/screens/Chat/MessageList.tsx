@@ -68,6 +68,10 @@ interface MessageListProps {
    *  — the owner re-snaps to the present while pinned, so first-open stays
    *  at the bottom as older rows stream in above. */
   onRevealProgress?: () => void;
+  /** Fired when the progressive reveal starts/stops — the owner toggles
+   *  scroll anchoring off during it (prepends would otherwise fight the
+   *  per-batch snaps) and back on afterwards for normal scrolling. */
+  onRevealStateChange?: (active: boolean) => void;
 }
 
 function TypingIndicator({
@@ -274,6 +278,7 @@ export const MessageList = memo(function MessageList({
   onUnsendLastUser,
   onOpenFileChanges,
   onRevealProgress,
+  onRevealStateChange,
 }: MessageListProps): React.JSX.Element {
   // Bubbles with empty content are still hidden (live-stream placeholders).
   // History rows pass through unconditionally. Agent bubbles streaming live are kept.
@@ -327,6 +332,11 @@ export const MessageList = memo(function MessageList({
     Math.min(INITIAL_STABLE_ROWS, stableSlice.length),
   );
   const revealDoneRef = useRef(false);
+  // Set once when the reveal COMPLETES; never reset. Subsequent transcript
+  // growth (a new turn) then reveals the tail in ONE shot instead of
+  // re-running the batch machinery per streaming delta.
+  const revealCompletedRef = useRef(false);
+  const revealActiveReportedRef = useRef(false);
   // Layout effect: the snap must run synchronously BEFORE the next paint.
   // The batch has already rendered (DOM mutated) by this point, so the
   // scrollHeight read + scrollTop write land in the SAME frame — no drift
@@ -334,9 +344,15 @@ export const MessageList = memo(function MessageList({
   useLayoutEffect(() => {
     if (revealedStableCount >= stableSlice.length) {
       // Reveal finished — if it actually revealed anything (long session),
-      // one final snap to the present.
+      // one final snap to the present, and tell the owner the reveal ended
+      // (it re-enables scroll anchoring for normal scrolling).
       if (!revealDoneRef.current) {
         revealDoneRef.current = true;
+        revealCompletedRef.current = true;
+        if (revealActiveReportedRef.current) {
+          revealActiveReportedRef.current = false;
+          onRevealStateChange?.(false);
+        }
         if (stableSlice.length > INITIAL_STABLE_ROWS) {
           onRevealProgress?.();
         }
@@ -344,11 +360,21 @@ export const MessageList = memo(function MessageList({
       return;
     }
     revealDoneRef.current = false;
+    if (!revealActiveReportedRef.current) {
+      revealActiveReportedRef.current = true;
+      onRevealStateChange?.(true);
+    }
     onRevealProgress?.();
-  }, [revealedStableCount, stableSlice.length, onRevealProgress]);
+  }, [revealedStableCount, stableSlice.length, onRevealProgress, onRevealStateChange]);
 
   useEffect(() => {
     if (revealedStableCount >= stableSlice.length) return;
+    // Growth AFTER the reveal completed (a new turn landed): reveal the new
+    // tail in ONE shot — the batch machinery is only for the initial open.
+    if (revealCompletedRef.current) {
+      setRevealedStableCount(stableSlice.length);
+      return;
+    }
     // Two rAF hops = one full paint cycle between batches, so each chunk
     // lands in its own frame instead of stacking in a single busy frame.
     let raf = 0;

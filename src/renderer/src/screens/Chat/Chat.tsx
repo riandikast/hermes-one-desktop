@@ -457,8 +457,12 @@ function Chat({
     };
   }, []);
 
-  const { containerRef, bottomRef, jumpToPresent, jumpToPresentIfPinned } =
+  const { containerRef, bottomRef, jumpToPresent, snapToBottomIfPinned } =
     useChatScroll(messages);
+  // Progressive transcript reveal: while active, scroll anchoring must be
+  // OFF (prepends would fight the per-batch snaps); when it ends, anchoring
+  // returns so normal scrolling over content-visibility rows stays stable.
+  const [revealActive, setRevealActive] = useState(false);
   const modelConfig = useModelConfig(profile);
   const chatCurrentModel =
     sessionModelOverride?.model ?? modelConfig.currentModel;
@@ -1256,7 +1260,10 @@ function Chat({
       <ConfigHealthBanner profile={profile} onOpenDiagnose={onOpenDiagnose} />
 
       <div className="chat-body">
-        <div className="chat-messages" ref={containerRef}>
+        <div
+          className={`chat-messages${revealActive ? " is-revealing" : ""}`}
+          ref={containerRef}
+        >
           <ChatNavArrow
             position="top"
             messages={messages}
@@ -1276,7 +1283,8 @@ function Chat({
               onRevertCheckpoint={handleRevertCheckpoint}
               onUnsendLastUser={handleUnsendLastUser}
               onOpenFileChanges={(changes) => setFileChangesOpen(changes)}
-              onRevealProgress={jumpToPresentIfPinned}
+              onRevealProgress={snapToBottomIfPinned}
+              onRevealStateChange={setRevealActive}
             />
           )}
           <div ref={bottomRef} />
