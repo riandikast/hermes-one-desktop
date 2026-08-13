@@ -6222,18 +6222,14 @@ body:has(.shell-vibrant),
   margin-bottom: 4px;
 }
 
-/* The wordmark SVG ships with a black fill; recolour it to white via masking so
-   it reads on the black circle, regardless of the source artwork's colours. */
+/* The app icon (HERRmes.png) — rendered as an <img> in the empty state. */
 .chat-empty-logo {
   width: 52px;
-  height: 40px;
-  background-color: #fff;
-  mask-repeat: no-repeat;
-  mask-position: center;
-  mask-size: contain;
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  -webkit-mask-size: contain;
+  height: 52px;
+  object-fit: contain;
+  border-radius: 10px;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .chat-empty-text {
