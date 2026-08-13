@@ -74,6 +74,9 @@ interface MessageListProps {
    *  scroll anchoring off during it (prepends would otherwise fight the
    *  per-batch snaps) and back on afterwards for normal scrolling. */
   onRevealStateChange?: (active: boolean) => void;
+  /** False for background tabs: keep only a compact trailing shell mounted
+   *  so multi-tab long sessions don't pin thousands of rows per tab. */
+  active?: boolean;
 }
 
 function TypingIndicator({
@@ -283,6 +286,7 @@ export const MessageList = memo(function MessageList({
   onOpenFileChanges,
   onRevealBatchApplied,
   onRevealStateChange,
+  active,
 }: MessageListProps): React.JSX.Element {
   // Bubbles with empty content are still hidden (live-stream placeholders).
   // History rows pass through unconditionally. Agent bubbles streaming live are kept.
@@ -342,6 +346,12 @@ export const MessageList = memo(function MessageList({
   const [revealedStableCount, setRevealedStableCount] = useState(() =>
     Math.min(INITIAL_STABLE_ROWS, stableSlice.length),
   );
+  // Background tabs keep a compact shell: only the trailing INITIAL rows
+  // stay mounted, so multi-tab long sessions don't pin thousands of DOM
+  // rows per tab. The reveal re-runs when the tab is shown again.
+  const effectiveRevealedCount = active
+    ? revealedStableCount
+    : Math.min(INITIAL_STABLE_ROWS, stableSlice.length);
   const revealDoneRef = useRef(false);
   // Manual anchoring for the reveal: the batches PREPEND above the
   // viewport. Measure the stable tail's offsetTop delta (the batch's REAL
@@ -354,7 +364,7 @@ export const MessageList = memo(function MessageList({
   // re-running the batch machinery per streaming delta.
   const revealCompletedRef = useRef(false);
   const revealActiveReportedRef = useRef(false);
-  const revealStart = stableSlice.length - revealedStableCount;
+  const revealStart = stableSlice.length - effectiveRevealedCount;
   const revealedStable = stableSlice.slice(revealStart);
   // The measurement anchor: the LAST row of the revealed stable slice is a
   // USER row (splitAt = lastUserBubbleIdx + 1) — MessageRow gives user rows
@@ -368,6 +378,7 @@ export const MessageList = memo(function MessageList({
   // prepended height — and pass it to the owner for the scrollTop shift
   // (manual anchoring, same frame, no drift frame ever paints).
   useLayoutEffect(() => {
+    if (active === false) return;
     let delta = 0;
     if (stableTail) {
       const tailEl = document.getElementById(rowId(stableTail.id));
@@ -401,6 +412,7 @@ export const MessageList = memo(function MessageList({
   }, [revealedStableCount, stableSlice.length, onRevealBatchApplied, onRevealStateChange, stableTail]);
 
   useEffect(() => {
+    if (active === false) return;
     if (revealedStableCount >= stableSlice.length) return;
     // Growth AFTER the reveal completed (a new turn landed): reveal the new
     // tail in ONE shot — the batch machinery is only for the initial open.
@@ -408,23 +420,46 @@ export const MessageList = memo(function MessageList({
       setRevealedStableCount(stableSlice.length);
       return;
     }
-    // Two rAF hops = one full paint cycle between batches, so each chunk
-    // lands in its own frame instead of stacking in a single busy frame.
+    // IDLE-priority batches: the reveal must never compete with input or
+    // streaming. requestIdleCallback yields whenever the main thread is busy
+    // (sending, typing, streaming renders) and the timeout floor keeps an
+    // always-busy thread progressing. Two rAF hops after the idle callback
+    // give one full paint cycle so each chunk lands in its own frame.
     let raf = 0;
-    const t = setTimeout(() => {
+    let raf2 = 0;
+    const doBatch = (): void => {
       raf = requestAnimationFrame(() => {
-        raf = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => {
           setRevealedStableCount((c) =>
             Math.min(stableSlice.length, c + STABLE_ROW_BATCH),
           );
         });
       });
+    };
+    const t = window.setTimeout(() => {
+      if (typeof requestIdleCallback === "function") {
+        requestIdleCallback(doBatch, { timeout: 120 });
+      } else {
+        doBatch();
+      }
     }, 0);
     return () => {
-      clearTimeout(t);
+      window.clearTimeout(t);
       if (raf !== 0) cancelAnimationFrame(raf);
+      if (raf2 !== 0) cancelAnimationFrame(raf2);
     };
-  }, [revealedStableCount, stableSlice.length]);
+  }, [active, revealedStableCount, stableSlice.length]);
+
+  useEffect(() => {
+    if (active === false) {
+      // Background tab: drop the revealed rows back to the compact shell and
+      // reset the reveal bookkeeping so showing the tab re-runs it.
+      revealDoneRef.current = false;
+      revealCompletedRef.current = false;
+      revealActiveReportedRef.current = false;
+      setRevealedStableCount(Math.min(INITIAL_STABLE_ROWS, stableSlice.length));
+    }
+  }, [active, stableSlice.length]);
 
   // ── Stable history rows ────────────────────────────────────────────────────
   // Cached so they rebuild only when the history changes (user sends, revert,
@@ -548,7 +583,7 @@ export const MessageList = memo(function MessageList({
     <>
       <StableHistory
         rows={stableRows}
-        revealing={revealedStableCount < stableSlice.length}
+        revealing={active === true && revealedStableCount < stableSlice.length}
       />
       {streamingRows}
 

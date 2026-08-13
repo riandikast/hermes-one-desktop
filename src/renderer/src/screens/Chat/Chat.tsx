@@ -1295,6 +1295,7 @@ function Chat({
               onOpenFileChanges={(changes) => setFileChangesOpen(changes)}
               onRevealBatchApplied={handleRevealBatchApplied}
               onRevealStateChange={setRevealActive}
+              active={active}
             />
           )}
           <div ref={bottomRef} />
