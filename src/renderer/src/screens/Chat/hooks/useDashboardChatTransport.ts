@@ -1547,7 +1547,6 @@ export function useDashboardChatTransport({
 
   const handleGatewayEvent = useCallback(
     (event: DashboardStreamEvent): void => {
-      const dbgT0 = performance.now();
       const runtimeSessionId = runtimeSessionIdRef.current;
       if (
         event.session_id &&
@@ -1882,14 +1881,6 @@ export function useDashboardChatTransport({
         }
       }
 
-      const dbgT1 = performance.now();
-      if (dbgT1 - dbgT0 > 15) {
-        // TEMP send-debug: slow event processing (the UI-thread freeze
-        // suspect — a single event must not block for 15ms+).
-        console.log(
-          `[SEND-DEBUG] slow-event ${event.type} ${Math.round(dbgT1 - dbgT0)}ms`,
-        );
-      }
       const next = applyDashboardStreamEvent(
         {
           messages: messagesRef.current,
@@ -1917,12 +1908,6 @@ export function useDashboardChatTransport({
             activeTurnRef.current,
           )
         : next.messages;
-      const dbgT2 = performance.now();
-      if (dbgT2 - dbgT1 > 25) {
-        console.log(
-          `[SEND-DEBUG] adapter ${event.type} ${Math.round(dbgT2 - dbgT1)}ms`,
-        );
-      }
       messagesRef.current = nextMessages;
       setMessages(nextMessages);
 
@@ -2881,28 +2866,49 @@ export function useDashboardChatTransport({
   );
 
   const abort = useCallback(() => {
-    const client = clientRef.current;
-    const sessionId = runtimeSessionIdRef.current;
     if (!enabled) return;
-    if (client && sessionId) {
-      void client
-        .request("session.interrupt", { session_id: sessionId })
-        .catch(() => undefined);
-    }
-    // Force-close the WebSocket so any late streaming events after the
-    // interrupt don't keep arriving and updating the transcript. The next
-    // sendMessage reconnects cleanly.
-    if (client) {
-      client.close();
-      clientRef.current = null;
-    }
+    const sessionId = runtimeSessionIdRef.current;
+    void (async () => {
+      // The WS may already be closed ("websocket are closed" — the client
+      // disconnects on gateway restarts). The interrupt MUST still reach
+      // the gateway, so reconnect if needed — a silently-dropped interrupt
+      // leaves the model processing (the user has to press twice).
+      let client = clientRef.current;
+      if (!client && sessionId) {
+        client = await ensureClient().catch(() => null);
+      }
+      if (client && sessionId) {
+        try {
+          await client.request("session.interrupt", {
+            session_id: sessionId,
+          });
+        } catch {
+          // WS died mid-request — retry once on a fresh connection.
+          const retry = await ensureClient().catch(() => null);
+          if (retry && retry !== client && sessionId) {
+            await retry
+              .request("session.interrupt", { session_id: sessionId })
+              .catch(() => undefined);
+            client = retry;
+          }
+        }
+      }
+      // Force-close the WebSocket so any late streaming events after the
+      // interrupt don't keep arriving and updating the transcript. The next
+      // sendMessage reconnects cleanly.
+      const toClose = clientRef.current ?? client;
+      if (toClose) {
+        toClose.close();
+        clientRef.current = null;
+      }
+    })();
     // Clear loading immediately — don't wait for the gateway to confirm.
     activeTurnRef.current = null;
     clearQuietFinalize();
     setIsLoading(false);
     lastLocalActivityAtRef.current = Date.now();
     setToolProgress(null);
-  }, [clearQuietFinalize, enabled, setIsLoading, setToolProgress]);
+  }, [clearQuietFinalize, enabled, ensureClient, setIsLoading, setToolProgress]);
 
   useEffect(
     () => () => {

@@ -190,29 +190,32 @@ export const ChatNavArrow = memo(function ChatNavArrow({
  */
 export const JumpToLatest = memo(function JumpToLatest({
   containerRef,
+  messages,
   revealing,
 }: {
   containerRef: React.RefObject<HTMLDivElement | null>;
-  /** Progressive transcript reveal in flight — keep the button hidden
-   *  (see ChatNavArrow). */
+  messages: ChatMessage[];
+  /** Progressive transcript reveal in flight — the DOM only holds the
+   *  trailing shell, so fall back to a message-count estimate for the
+   *  scrollable check (the button should appear immediately on long
+   *  sessions, not after the reveal finishes). */
   revealing?: boolean;
 }): React.JSX.Element {
   const [visible, setVisible] = useState(false);
 
   const update = useCallback(() => {
-    if (revealing) {
-      setVisible(false);
-      return;
-    }
     const container = containerRef.current;
     if (!container) return;
     const atBottom =
       container.scrollHeight - container.scrollTop - container.clientHeight <
       AT_BOTTOM_TOLERANCE_PX;
-    const scrollable =
+    const domScrollable =
       container.scrollHeight - container.clientHeight > AT_BOTTOM_TOLERANCE_PX;
+    // During the reveal the DOM holds only the trailing shell; a long
+    // transcript is scrollable even if the DOM says otherwise right now.
+    const scrollable = revealing ? messages.length > 24 : domScrollable;
     setVisible(scrollable && !atBottom);
-  }, [containerRef, revealing]);
+  }, [containerRef, messages, revealing]);
 
   useEffect(() => {
     update();

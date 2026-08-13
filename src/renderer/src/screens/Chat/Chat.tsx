@@ -1307,6 +1307,7 @@ function Chat({
           />
           <JumpToLatest
             containerRef={containerRef}
+            messages={messages}
             revealing={revealActive}
           />
         </div>
