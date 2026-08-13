@@ -336,7 +336,7 @@ export const MessageList = memo(function MessageList({
   // time). Scale the batch with the transcript so the reveal finishes in a
   // few seconds regardless of size.
   const STABLE_ROW_BATCH = Math.min(
-    160,
+    300,
     Math.max(40, Math.round(stableSlice.length / 40)),
   );
   const [revealedStableCount, setRevealedStableCount] = useState(() =>

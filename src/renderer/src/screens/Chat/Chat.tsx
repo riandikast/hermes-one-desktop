@@ -463,11 +463,15 @@ function Chat({
   // each batch's prepended height and we shift scrollTop by it — the
   // viewport content stays put for everyone.
   const [revealActive, setRevealActive] = useState(false);
-  const handleRevealBatchApplied = (deltaPx: number): void => {
+  // Stable identity is CRITICAL: MessageList's reveal layout effect depends
+  // on this callback — a fresh function per render would re-run the effect
+  // on every streaming delta, forcing a synchronous layout read each time
+  // (offsetTop) during the huge reveal = 99% CPU.
+  const handleRevealBatchApplied = useCallback((deltaPx: number): void => {
     const el = containerRef.current;
     if (!el || deltaPx <= 0) return;
     el.scrollTop += deltaPx;
-  };
+  }, []);
   const modelConfig = useModelConfig(profile);
   const chatCurrentModel =
     sessionModelOverride?.model ?? modelConfig.currentModel;
