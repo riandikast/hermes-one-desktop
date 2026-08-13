@@ -38,10 +38,6 @@ export function useChatScroll(messages: ChatMessage[]): {
     const max = container.scrollHeight - container.clientHeight;
     maxScrollTopRef.current = max;
     container.scrollTop = max;
-    // TEMP scroll-debug
-    console.log(
-      `[SCROLL-DEBUG] snapToBottom st=${container.scrollTop} max=${max} sh=${container.scrollHeight}`,
-    );
   }, []);
 
   // Keep the cached max scroll position fresh when the container resizes
@@ -51,10 +47,6 @@ export function useChatScroll(messages: ChatMessage[]): {
     if (!container || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
       maxScrollTopRef.current = container.scrollHeight - container.clientHeight;
-      // TEMP scroll-debug
-      console.log(
-        `[SCROLL-DEBUG] resize sh=${container.scrollHeight} ch=${container.clientHeight} st=${container.scrollTop} max=${maxScrollTopRef.current}`,
-      );
     });
     observer.observe(container);
     return () => observer.disconnect();
@@ -105,10 +97,6 @@ export function useChatScroll(messages: ChatMessage[]): {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    // TEMP scroll-debug: rate-limited log (100ms) + always on state changes
-    let lastLogT = 0;
-    let lastLogAt = true;
-    let lastLogSt = -1;
     let maxRefreshRaf = 0;
     function handleScroll(): void {
       const el = container!;
@@ -132,30 +120,10 @@ export function useChatScroll(messages: ChatMessage[]): {
       }
       const atBottom = el.scrollTop >= maxScrollTopRef.current - 60;
       userScrolledUpRef.current = !atBottom;
-      const t = Date.now();
-      if (
-        t - lastLogT > 100 ||
-        lastLogAt !== atBottom ||
-        lastLogSt !== el.scrollTop
-      ) {
-        lastLogT = t;
-        lastLogAt = atBottom;
-        lastLogSt = el.scrollTop;
-        console.log(
-          `[SCROLL-DEBUG] scroll st=${el.scrollTop} max=${maxScrollTopRef.current} atBottom=${atBottom}`,
-        );
-      }
-    }
-    function handleWheel(e: WheelEvent): void {
-      console.log(
-        `[SCROLL-DEBUG] wheel dy=${e.deltaY} dx=${e.deltaX} st=${container!.scrollTop}`,
-      );
     }
     container.addEventListener("scroll", handleScroll, { passive: true });
-    container.addEventListener("wheel", handleWheel, { passive: true });
     return () => {
       container.removeEventListener("scroll", handleScroll);
-      container.removeEventListener("wheel", handleWheel);
     };
   }, []);
 
