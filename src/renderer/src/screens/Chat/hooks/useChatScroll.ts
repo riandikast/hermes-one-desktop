@@ -14,6 +14,8 @@ export function useChatScroll(messages: ChatMessage[]): {
   containerRef: React.RefObject<HTMLDivElement | null>;
   bottomRef: React.RefObject<HTMLDivElement | null>;
   jumpToPresent: () => () => void;
+  /** Re-snap to the present only if the user is still pinned to the bottom. */
+  jumpToPresentIfPinned: () => void;
 } {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -167,5 +169,14 @@ export function useChatScroll(messages: ChatMessage[]): {
     return undefined;
   }, [messages, jumpToPresent, snapToBottom]);
 
-  return { containerRef, bottomRef, jumpToPresent };
+  // The progressive-reveal completion re-snap: the mount snap + settle
+  // retries finish while the transcript is still partially revealed, so the
+  // full-height bottom is never reached. Re-snap ONLY if the user is still
+  // pinned (a user who scrolled up during the ~1s reveal keeps their place).
+  const jumpToPresentIfPinned = useCallback((): void => {
+    if (userScrolledUpRef.current) return;
+    jumpToPresent();
+  }, [jumpToPresent]);
+
+  return { containerRef, bottomRef, jumpToPresent, jumpToPresentIfPinned };
 }

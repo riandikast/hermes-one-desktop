@@ -457,7 +457,8 @@ function Chat({
     };
   }, []);
 
-  const { containerRef, bottomRef, jumpToPresent } = useChatScroll(messages);
+  const { containerRef, bottomRef, jumpToPresent, jumpToPresentIfPinned } =
+    useChatScroll(messages);
   const modelConfig = useModelConfig(profile);
   const chatCurrentModel =
     sessionModelOverride?.model ?? modelConfig.currentModel;
@@ -1275,6 +1276,7 @@ function Chat({
               onRevertCheckpoint={handleRevertCheckpoint}
               onUnsendLastUser={handleUnsendLastUser}
               onOpenFileChanges={(changes) => setFileChangesOpen(changes)}
+              onRevealComplete={jumpToPresentIfPinned}
             />
           )}
           <div ref={bottomRef} />
