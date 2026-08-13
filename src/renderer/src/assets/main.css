@@ -6317,6 +6317,16 @@ body:has(.shell-vibrant),
   contain-intrinsic-size: auto 120px;
 }
 
+/* While the progressive reveal is active, the revealed rows must lay out at
+   REAL heights: the per-batch bottom-snap reads scrollHeight, and the 120px
+   first-paint estimates made the content end move whenever a freshly
+   prepended batch entered the viewport — the visible clip/unclip blink on
+   some long sessions. Once the reveal finishes the wrapper is removed and
+   content-visibility: auto (with the now-remembered real sizes) resumes. */
+.chat-stable-reveal .chat-message {
+  content-visibility: visible;
+}
+
 @keyframes messageIn {
   from {
     opacity: 0;

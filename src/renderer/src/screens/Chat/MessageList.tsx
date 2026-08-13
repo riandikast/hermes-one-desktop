@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FilePlus2 } from "lucide-react";
 import { HermesAvatar, MessageRow } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
@@ -249,10 +249,17 @@ function buildRows(
  *  the history changes, NOT on every streaming delta). */
 const StableHistory = memo(function StableHistory({
   rows,
+  revealing,
 }: {
   rows: React.JSX.Element[];
+  revealing: boolean;
 }): React.JSX.Element {
-  return <>{rows}</>;
+  // While the progressive reveal is active the rows must lay out at REAL
+  // heights (see .chat-stable-reveal) — the per-batch snap reads
+  // scrollHeight, and content-visibility's 120px first-paint estimates made
+  // the content end move whenever a freshly prepended batch entered the
+  // viewport (the visible clip/unclip blink).
+  return revealing ? <div className="chat-stable-reveal">{rows}</div> : <>{rows}</>;
 });
 
 export const MessageList = memo(function MessageList({
@@ -320,11 +327,14 @@ export const MessageList = memo(function MessageList({
     Math.min(INITIAL_STABLE_ROWS, stableSlice.length),
   );
   const revealDoneRef = useRef(false);
-  useEffect(() => {
+  // Layout effect: the snap must run synchronously BEFORE the next paint.
+  // The batch has already rendered (DOM mutated) by this point, so the
+  // scrollHeight read + scrollTop write land in the SAME frame — no drift
+  // frame ever paints, which is what made some sessions blink.
+  useLayoutEffect(() => {
     if (revealedStableCount >= stableSlice.length) {
       // Reveal finished — if it actually revealed anything (long session),
-      // let the owner re-snap to the present: the mount snap's settle
-      // retries end long before the reveal does.
+      // one final snap to the present.
       if (!revealDoneRef.current) {
         revealDoneRef.current = true;
         if (stableSlice.length > INITIAL_STABLE_ROWS) {
@@ -334,10 +344,11 @@ export const MessageList = memo(function MessageList({
       return;
     }
     revealDoneRef.current = false;
-    // Every batch lands and then the owner re-snaps (pinned users stay at
-    // the growing present; the scroll listener only sees genuine scrolls
-    // now that anchoring is off).
     onRevealProgress?.();
+  }, [revealedStableCount, stableSlice.length, onRevealProgress]);
+
+  useEffect(() => {
+    if (revealedStableCount >= stableSlice.length) return;
     // Two rAF hops = one full paint cycle between batches, so each chunk
     // lands in its own frame instead of stacking in a single busy frame.
     let raf = 0;
@@ -354,7 +365,7 @@ export const MessageList = memo(function MessageList({
       clearTimeout(t);
       if (raf !== 0) cancelAnimationFrame(raf);
     };
-  }, [revealedStableCount, stableSlice.length, onRevealProgress]);
+  }, [revealedStableCount, stableSlice.length]);
   const revealStart = stableSlice.length - revealedStableCount;
   const revealedStable = stableSlice.slice(revealStart);
 
@@ -482,7 +493,10 @@ export const MessageList = memo(function MessageList({
 
   return (
     <>
-      <StableHistory rows={stableRows} />
+      <StableHistory
+        rows={stableRows}
+        revealing={revealedStableCount < stableSlice.length}
+      />
       {streamingRows}
 
       {isLoading && !lastMessageIsAgent && (
