@@ -1547,6 +1547,7 @@ export function useDashboardChatTransport({
 
   const handleGatewayEvent = useCallback(
     (event: DashboardStreamEvent): void => {
+      const dbgT0 = performance.now();
       const runtimeSessionId = runtimeSessionIdRef.current;
       if (
         event.session_id &&
@@ -1881,6 +1882,14 @@ export function useDashboardChatTransport({
         }
       }
 
+      const dbgT1 = performance.now();
+      if (dbgT1 - dbgT0 > 15) {
+        // TEMP send-debug: slow event processing (the UI-thread freeze
+        // suspect — a single event must not block for 15ms+).
+        console.log(
+          `[SEND-DEBUG] slow-event ${event.type} ${Math.round(dbgT1 - dbgT0)}ms`,
+        );
+      }
       const next = applyDashboardStreamEvent(
         {
           messages: messagesRef.current,
@@ -1908,6 +1917,12 @@ export function useDashboardChatTransport({
             activeTurnRef.current,
           )
         : next.messages;
+      const dbgT2 = performance.now();
+      if (dbgT2 - dbgT1 > 25) {
+        console.log(
+          `[SEND-DEBUG] adapter ${event.type} ${Math.round(dbgT2 - dbgT1)}ms`,
+        );
+      }
       messagesRef.current = nextMessages;
       setMessages(nextMessages);
 
@@ -2553,6 +2568,12 @@ export function useDashboardChatTransport({
   const sendMessage = useCallback(
     async (text: string, attachments?: Attachment[]): Promise<boolean> => {
       if (!enabled) return false;
+      // Stamp LOCAL activity BEFORE the send's await window (ensureClient →
+      // ensureRuntimeSession → ensureSelectedModel → syncAttachments can take
+      // 1-3s) — during it activeTurnRef is still null, and without a fresh
+      // stamp the 2s foreign poll would see the gateway already "working",
+      // enter foreign mode and run a full DB reconcile on the UI thread.
+      lastLocalActivityAtRef.current = Date.now();
       // FILE-CHANGES: a new user turn starts a fresh accumulator.
       fileChangesRef.current = new Map();
       // Start a fresh per-turn stall window (don't inherit the previous turn's
