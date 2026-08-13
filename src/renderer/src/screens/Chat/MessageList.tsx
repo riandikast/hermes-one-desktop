@@ -420,35 +420,47 @@ export const MessageList = memo(function MessageList({
       setRevealedStableCount(stableSlice.length);
       return;
     }
-    // IDLE-priority batches: the reveal must never compete with input or
-    // streaming. requestIdleCallback yields whenever the main thread is busy
-    // (sending, typing, streaming renders) and the timeout floor keeps an
-    // always-busy thread progressing. Two rAF hops after the idle callback
-    // give one full paint cycle so each chunk lands in its own frame.
-    let raf = 0;
-    let raf2 = 0;
-    const doBatch = (): void => {
-      raf = requestAnimationFrame(() => {
-        raf2 = requestAnimationFrame(() => {
-          setRevealedStableCount((c) =>
-            Math.min(stableSlice.length, c + STABLE_ROW_BATCH),
-          );
-        });
-      });
-    };
-    const t = window.setTimeout(() => {
-      if (typeof requestIdleCallback === "function") {
-        requestIdleCallback(doBatch, { timeout: 120 });
-      } else {
-        doBatch();
-      }
-    }, 0);
-    return () => {
-      window.clearTimeout(t);
-      if (raf !== 0) cancelAnimationFrame(raf);
-      if (raf2 !== 0) cancelAnimationFrame(raf2);
-    };
-  }, [active, revealedStableCount, stableSlice.length]);
+    // Eager first batch, idle-priority for the rest. The first batch carries
+        // INITIAL→INITIAL+batch and shows enough rows for the arrows to find
+        // targets. If we waited for an idle slot the arrows would stay hidden
+        // while the model streams (the streaming renders keep the thread busy
+        // forever and requestIdleCallback never fires). Once INITIAL rows are
+        // visible the rest can yield.
+        if (revealedStableCount === Math.min(INITIAL_STABLE_ROWS, stableSlice.length)) {
+          const t = window.setTimeout(() => {
+            setRevealedStableCount((c) =>
+              Math.min(stableSlice.length, c + STABLE_ROW_BATCH),
+            );
+          }, 0);
+          return () => window.clearTimeout(t);
+        }
+        // Subsequent batches: yield to input/streaming via requestIdleCallback
+        // (120ms floor). Two rAF hops give one full paint cycle so each chunk
+        // lands in its own frame.
+        let raf = 0;
+        let raf2 = 0;
+        const doBatch = (): void => {
+          raf = requestAnimationFrame(() => {
+            raf2 = requestAnimationFrame(() => {
+              setRevealedStableCount((c) =>
+                Math.min(stableSlice.length, c + STABLE_ROW_BATCH),
+              );
+            });
+          });
+        };
+        const t = window.setTimeout(() => {
+          if (typeof requestIdleCallback === "function") {
+            requestIdleCallback(doBatch, { timeout: 120 });
+          } else {
+            doBatch();
+          }
+        }, 0);
+        return () => {
+          window.clearTimeout(t);
+          if (raf !== 0) cancelAnimationFrame(raf);
+          if (raf2 !== 0) cancelAnimationFrame(raf2);
+        };
+      }, [active, revealedStableCount, stableSlice.length]);
 
   useEffect(() => {
     if (active === false) {
