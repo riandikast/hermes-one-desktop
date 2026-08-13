@@ -14,8 +14,6 @@ export function useChatScroll(messages: ChatMessage[]): {
   containerRef: React.RefObject<HTMLDivElement | null>;
   bottomRef: React.RefObject<HTMLDivElement | null>;
   jumpToPresent: () => () => void;
-  /** Single bottom snap, only while the user is pinned (reveal batches). */
-  snapToBottomIfPinned: () => void;
 } {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -40,6 +38,10 @@ export function useChatScroll(messages: ChatMessage[]): {
     const max = container.scrollHeight - container.clientHeight;
     maxScrollTopRef.current = max;
     container.scrollTop = max;
+    // TEMP scroll-debug
+    console.log(
+      `[SCROLL-DEBUG] snapToBottom st=${container.scrollTop} max=${max} sh=${container.scrollHeight}`,
+    );
   }, []);
 
   // Keep the cached max scroll position fresh when the container resizes
@@ -49,6 +51,10 @@ export function useChatScroll(messages: ChatMessage[]): {
     if (!container || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
       maxScrollTopRef.current = container.scrollHeight - container.clientHeight;
+      // TEMP scroll-debug
+      console.log(
+        `[SCROLL-DEBUG] resize sh=${container.scrollHeight} ch=${container.clientHeight} st=${container.scrollTop} max=${maxScrollTopRef.current}`,
+      );
     });
     observer.observe(container);
     return () => observer.disconnect();
@@ -99,13 +105,58 @@ export function useChatScroll(messages: ChatMessage[]): {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    // TEMP scroll-debug: rate-limited log (100ms) + always on state changes
+    let lastLogT = 0;
+    let lastLogAt = true;
+    let lastLogSt = -1;
+    let maxRefreshRaf = 0;
     function handleScroll(): void {
       const el = container!;
+      // Keep the cached max fresh WITHOUT a per-event layout read: when the
+      // user is near the cached bottom, schedule ONE rAF-throttled
+      // scrollHeight read. A stale max (content grew via reveal batches or
+      // a streaming turn; only snaps used to refresh it) flipped the
+      // atBottom check to "pinned" while the user was scrolled up,
+      // re-arming the snap machinery — the continuous scroll.
+      if (
+        el.scrollTop >= maxScrollTopRef.current - 120 &&
+        maxRefreshRaf === 0
+      ) {
+        maxRefreshRaf = requestAnimationFrame(() => {
+          maxRefreshRaf = 0;
+          const realMax = el.scrollHeight - el.clientHeight;
+          if (realMax > maxScrollTopRef.current) {
+            maxScrollTopRef.current = realMax;
+          }
+        });
+      }
       const atBottom = el.scrollTop >= maxScrollTopRef.current - 60;
       userScrolledUpRef.current = !atBottom;
+      const t = Date.now();
+      if (
+        t - lastLogT > 100 ||
+        lastLogAt !== atBottom ||
+        lastLogSt !== el.scrollTop
+      ) {
+        lastLogT = t;
+        lastLogAt = atBottom;
+        lastLogSt = el.scrollTop;
+        console.log(
+          `[SCROLL-DEBUG] scroll st=${el.scrollTop} max=${maxScrollTopRef.current} atBottom=${atBottom}`,
+        );
+      }
+    }
+    function handleWheel(e: WheelEvent): void {
+      console.log(
+        `[SCROLL-DEBUG] wheel dy=${e.deltaY} dx=${e.deltaX} st=${container!.scrollTop}`,
+      );
     }
     container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
+    container.addEventListener("wheel", handleWheel, { passive: true });
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+      container.removeEventListener("wheel", handleWheel);
+    };
   }, []);
 
   // When the window becomes visible again (minimize/restore, alt-tab back),
@@ -172,13 +223,7 @@ export function useChatScroll(messages: ChatMessage[]): {
   // Single, retry-free bottom snap for the reveal batches. jumpToPresent's
   // rAF/timeout retry barrage re-snaps over ~250ms while the batch layout
   // settles, which VISIBLY re-jumps the viewport (blink). The reveal needs
-  // exactly one snap, synchronously BEFORE the next paint — the batch has
-  // rendered by the time the layout effect runs, so one snap lands exactly
-  // at the real bottom with no drift frame.
-  const snapToBottomIfPinned = useCallback((): void => {
-    if (userScrolledUpRef.current) return;
-    snapToBottom();
-  }, [snapToBottom]);
-
-  return { containerRef, bottomRef, jumpToPresent, snapToBottomIfPinned };
+  // The reveal batches compensate the viewport via the owner's manual
+  // anchoring (offsetTop delta), so no per-batch snap exists here.
+  return { containerRef, bottomRef, jumpToPresent };
 }

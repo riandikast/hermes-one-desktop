@@ -457,12 +457,17 @@ function Chat({
     };
   }, []);
 
-  const { containerRef, bottomRef, jumpToPresent, snapToBottomIfPinned } =
-    useChatScroll(messages);
+  const { containerRef, bottomRef, jumpToPresent } = useChatScroll(messages);
   // Progressive transcript reveal: while active, scroll anchoring must be
-  // OFF (prepends would fight the per-batch snaps); when it ends, anchoring
-  // returns so normal scrolling over content-visibility rows stays stable.
+  // OFF (prepends would fight the manual compensation); the reveal reports
+  // each batch's prepended height and we shift scrollTop by it — the
+  // viewport content stays put for everyone.
   const [revealActive, setRevealActive] = useState(false);
+  const handleRevealBatchApplied = (deltaPx: number): void => {
+    const el = containerRef.current;
+    if (!el || deltaPx <= 0) return;
+    el.scrollTop += deltaPx;
+  };
   const modelConfig = useModelConfig(profile);
   const chatCurrentModel =
     sessionModelOverride?.model ?? modelConfig.currentModel;
@@ -1283,7 +1288,7 @@ function Chat({
               onRevertCheckpoint={handleRevertCheckpoint}
               onUnsendLastUser={handleUnsendLastUser}
               onOpenFileChanges={(changes) => setFileChangesOpen(changes)}
-              onRevealProgress={snapToBottomIfPinned}
+              onRevealBatchApplied={handleRevealBatchApplied}
               onRevealStateChange={setRevealActive}
             />
           )}

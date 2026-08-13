@@ -65,9 +65,11 @@ interface MessageListProps {
   /** Open the file-changes dialog for a bubble (dashboard transport). */
   onOpenFileChanges?: (changes: FileChange[]) => void;
   /** Fired after EVERY progressive-reveal batch lands (long sessions only)
-   *  — the owner re-snaps to the present while pinned, so first-open stays
-   *  at the bottom as older rows stream in above. */
-  onRevealProgress?: () => void;
+   *  with the batch's REAL prepended height — the owner shifts scrollTop by
+   *  it (manual anchoring): a scrolled-up user keeps their place, the
+   *  bottom-pinned user stays at the present.
+   */
+  onRevealBatchApplied?: (deltaPx: number) => void;
   /** Fired when the progressive reveal starts/stops — the owner toggles
    *  scroll anchoring off during it (prepends would otherwise fight the
    *  per-batch snaps) and back on afterwards for normal scrolling. */
@@ -251,6 +253,8 @@ function buildRows(
 
 /** Stable wrapper — only re-renders when `rows` identity changes (i.e. when
  *  the history changes, NOT on every streaming delta). */
+const rowId = (id: string): string => `chat-msg-${id}`;
+
 const StableHistory = memo(function StableHistory({
   rows,
   revealing,
@@ -277,7 +281,7 @@ export const MessageList = memo(function MessageList({
   onRevertCheckpoint,
   onUnsendLastUser,
   onOpenFileChanges,
-  onRevealProgress,
+  onRevealBatchApplied,
   onRevealStateChange,
 }: MessageListProps): React.JSX.Element {
   // Bubbles with empty content are still hidden (live-stream placeholders).
@@ -332,20 +336,44 @@ export const MessageList = memo(function MessageList({
     Math.min(INITIAL_STABLE_ROWS, stableSlice.length),
   );
   const revealDoneRef = useRef(false);
+  // Manual anchoring for the reveal: the batches PREPEND above the
+  // viewport. Measure the stable tail's offsetTop delta (the batch's REAL
+  // prepended height — streaming appends below don't move it) and pass it
+  // to the owner, which shifts scrollTop by it — the viewport content stays
+  // put for a scrolled-up user AND the bottom-pinned user stays pinned.
+  const prevStableTailOffsetRef = useRef(0);
   // Set once when the reveal COMPLETES; never reset. Subsequent transcript
   // growth (a new turn) then reveals the tail in ONE shot instead of
   // re-running the batch machinery per streaming delta.
   const revealCompletedRef = useRef(false);
   const revealActiveReportedRef = useRef(false);
-  // Layout effect: the snap must run synchronously BEFORE the next paint.
-  // The batch has already rendered (DOM mutated) by this point, so the
-  // scrollHeight read + scrollTop write land in the SAME frame — no drift
-  // frame ever paints, which is what made some sessions blink.
+  const revealStart = stableSlice.length - revealedStableCount;
+  const revealedStable = stableSlice.slice(revealStart);
+  // The measurement anchor: the LAST row of the revealed stable slice is a
+  // USER row (splitAt = lastUserBubbleIdx + 1) — MessageRow gives user rows
+  // the `chat-msg-<id>` DOM id (assistant rows don't), so it's findable.
+  const stableTail =
+    revealedStable.length > 0
+      ? revealedStable[revealedStable.length - 1]
+      : undefined;
+  // Layout effect: the batch has already rendered (DOM mutated) by this
+  // point. Measure the stable tail's offsetTop delta — the batch's REAL
+  // prepended height — and pass it to the owner for the scrollTop shift
+  // (manual anchoring, same frame, no drift frame ever paints).
   useLayoutEffect(() => {
+    let delta = 0;
+    if (stableTail) {
+      const tailEl = document.getElementById(rowId(stableTail.id));
+      const ot = tailEl ? tailEl.offsetTop : 0;
+      if (prevStableTailOffsetRef.current > 0) {
+        delta = ot - prevStableTailOffsetRef.current;
+      }
+      prevStableTailOffsetRef.current = ot;
+    }
     if (revealedStableCount >= stableSlice.length) {
       // Reveal finished — if it actually revealed anything (long session),
-      // one final snap to the present, and tell the owner the reveal ended
-      // (it re-enables scroll anchoring for normal scrolling).
+      // shift by the last batch's delta, and tell the owner the reveal
+      // ended (it re-enables scroll anchoring for normal scrolling).
       if (!revealDoneRef.current) {
         revealDoneRef.current = true;
         revealCompletedRef.current = true;
@@ -353,9 +381,7 @@ export const MessageList = memo(function MessageList({
           revealActiveReportedRef.current = false;
           onRevealStateChange?.(false);
         }
-        if (stableSlice.length > INITIAL_STABLE_ROWS) {
-          onRevealProgress?.();
-        }
+        if (delta > 0) onRevealBatchApplied?.(delta);
       }
       return;
     }
@@ -364,8 +390,8 @@ export const MessageList = memo(function MessageList({
       revealActiveReportedRef.current = true;
       onRevealStateChange?.(true);
     }
-    onRevealProgress?.();
-  }, [revealedStableCount, stableSlice.length, onRevealProgress, onRevealStateChange]);
+    if (delta > 0) onRevealBatchApplied?.(delta);
+  }, [revealedStableCount, stableSlice.length, onRevealBatchApplied, onRevealStateChange, stableTail]);
 
   useEffect(() => {
     if (revealedStableCount >= stableSlice.length) return;
@@ -392,8 +418,6 @@ export const MessageList = memo(function MessageList({
       if (raf !== 0) cancelAnimationFrame(raf);
     };
   }, [revealedStableCount, stableSlice.length]);
-  const revealStart = stableSlice.length - revealedStableCount;
-  const revealedStable = stableSlice.slice(revealStart);
 
   // ── Stable history rows ────────────────────────────────────────────────────
   // Cached so they rebuild only when the history changes (user sends, revert,
@@ -421,10 +445,6 @@ export const MessageList = memo(function MessageList({
     turnLastReasoningId: undefined,
   });
 
-  const stableTail =
-    revealedStable.length > 0
-      ? revealedStable[revealedStable.length - 1]
-      : undefined;
   const avatarKey = agentAvatar ? "a" : "n";
   if (
     stableCacheRef.current.tail !== stableTail ||
