@@ -14,8 +14,8 @@ export function useChatScroll(messages: ChatMessage[]): {
   containerRef: React.RefObject<HTMLDivElement | null>;
   bottomRef: React.RefObject<HTMLDivElement | null>;
   jumpToPresent: () => () => void;
-  /** Re-snap to the present only if the user is still pinned to the bottom. */
-  jumpToPresentIfPinned: () => void;
+  /** Single bottom snap, only while the user is pinned (reveal batches). */
+  snapToBottomIfPinned: () => void;
 } {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -169,17 +169,16 @@ export function useChatScroll(messages: ChatMessage[]): {
     return undefined;
   }, [messages, jumpToPresent, snapToBottom]);
 
-  // The progressive-reveal batch re-snap: with scroll anchoring disabled on
-  // the container (overflow-anchor: none) the scroll listener sees ONLY
-  // genuine user scrolls, so this flag is reliable — re-snap on every reveal
-  // batch while the user is still pinned to the bottom. The mount snap's
-  // settle retries end long before the reveal does, and without anchoring
-  // the batches would drift the viewport up, so each batch needs its own
-  // pull back to the (growing) present.
-  const jumpToPresentIfPinned = useCallback((): void => {
+  // Single, retry-free bottom snap for the reveal batches. jumpToPresent's
+  // rAF/timeout retry barrage re-snaps over ~250ms while the batch layout
+  // settles, which VISIBLY re-jumps the viewport (blink). The reveal needs
+  // exactly one snap, synchronously BEFORE the next paint — the batch has
+  // rendered by the time the layout effect runs, so one snap lands exactly
+  // at the real bottom with no drift frame.
+  const snapToBottomIfPinned = useCallback((): void => {
     if (userScrolledUpRef.current) return;
-    jumpToPresent();
-  }, [jumpToPresent]);
+    snapToBottom();
+  }, [snapToBottom]);
 
-  return { containerRef, bottomRef, jumpToPresent, jumpToPresentIfPinned };
+  return { containerRef, bottomRef, jumpToPresent, snapToBottomIfPinned };
 }
