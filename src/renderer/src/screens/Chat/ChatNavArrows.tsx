@@ -10,6 +10,10 @@ interface ChatNavArrowProps {
   position: "top" | "bottom";
   messages: ChatMessage[];
   containerRef: React.RefObject<HTMLDivElement | null>;
+  /** Progressive transcript reveal in flight — keep the arrows hidden
+   *  (jump targets may not be mounted yet; the batch compensation would
+   *  fight a jump). */
+  revealing?: boolean;
 }
 
 /**
@@ -35,6 +39,7 @@ export const ChatNavArrow = memo(function ChatNavArrow({
   position,
   messages,
   containerRef,
+  revealing,
 }: ChatNavArrowProps): React.JSX.Element | null {
   const [visible, setVisible] = useState(false);
   // Read latest messages from a ref so the scroll listener attaches once
@@ -43,6 +48,13 @@ export const ChatNavArrow = memo(function ChatNavArrow({
   messagesRef.current = messages;
 
   const update = useCallback(() => {
+    if (revealing) {
+      // The progressive reveal is still mounting the transcript: jump
+      // targets may not exist in the DOM yet and the batch compensation
+      // would fight any jump. Keep the arrows hidden until it completes.
+      setVisible(false);
+      return;
+    }
     const container = containerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
@@ -83,7 +95,7 @@ export const ChatNavArrow = memo(function ChatNavArrow({
     // the latest and the arrow would be pointless).
     if (position === "top") setVisible(!atBottom && anyAbove);
     else setVisible(anyBelow);
-  }, [containerRef, position]);
+  }, [containerRef, position, revealing]);
 
   useEffect(() => {
     update();
@@ -178,12 +190,20 @@ export const ChatNavArrow = memo(function ChatNavArrow({
  */
 export const JumpToLatest = memo(function JumpToLatest({
   containerRef,
+  revealing,
 }: {
   containerRef: React.RefObject<HTMLDivElement | null>;
+  /** Progressive transcript reveal in flight — keep the button hidden
+   *  (see ChatNavArrow). */
+  revealing?: boolean;
 }): React.JSX.Element {
   const [visible, setVisible] = useState(false);
 
   const update = useCallback(() => {
+    if (revealing) {
+      setVisible(false);
+      return;
+    }
     const container = containerRef.current;
     if (!container) return;
     const atBottom =
@@ -192,7 +212,7 @@ export const JumpToLatest = memo(function JumpToLatest({
     const scrollable =
       container.scrollHeight - container.clientHeight > AT_BOTTOM_TOLERANCE_PX;
     setVisible(scrollable && !atBottom);
-  }, [containerRef]);
+  }, [containerRef, revealing]);
 
   useEffect(() => {
     update();

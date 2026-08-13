@@ -331,7 +331,14 @@ export const MessageList = memo(function MessageList({
   // ABSOLUTE start offset so reasoning-group keys (index-based) stay stable
   // as rows are prepended — otherwise every batch would remount rows.
   const INITIAL_STABLE_ROWS = 120;
-  const STABLE_ROW_BATCH = 40;
+  // Adaptive batch: 40 rows is fine for a few hundred rows but a 4000-row
+  // session would take ~40s at that pace (the arrows stay hidden the whole
+  // time). Scale the batch with the transcript so the reveal finishes in a
+  // few seconds regardless of size.
+  const STABLE_ROW_BATCH = Math.min(
+    160,
+    Math.max(40, Math.round(stableSlice.length / 40)),
+  );
   const [revealedStableCount, setRevealedStableCount] = useState(() =>
     Math.min(INITIAL_STABLE_ROWS, stableSlice.length),
   );

@@ -1273,6 +1273,7 @@ function Chat({
             position="top"
             messages={messages}
             containerRef={containerRef}
+            revealing={revealActive}
           />
           {messages.length === 0 ? (
             <ChatEmptyState onSelectSuggestion={handleSuggestion} />
@@ -1297,8 +1298,12 @@ function Chat({
             position="bottom"
             messages={messages}
             containerRef={containerRef}
+            revealing={revealActive}
           />
-          <JumpToLatest containerRef={containerRef} />
+          <JumpToLatest
+            containerRef={containerRef}
+            revealing={revealActive}
+          />
         </div>
 
         {contextFolders.length > 0 && worktreeVisible && (
