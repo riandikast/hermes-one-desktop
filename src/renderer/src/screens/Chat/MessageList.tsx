@@ -389,18 +389,17 @@ export const MessageList = memo(function MessageList({
       prevStableTailOffsetRef.current = ot;
     }
     if (revealedStableCount >= stableSlice.length) {
-      // Reveal finished — if it actually revealed anything (long session),
-      // shift by the last batch's delta, and tell the owner the reveal
-      // ended (it re-enables scroll anchoring for normal scrolling).
-      if (!revealDoneRef.current) {
-        revealDoneRef.current = true;
-        revealCompletedRef.current = true;
-        if (revealActiveReportedRef.current) {
-          revealActiveReportedRef.current = false;
-          onRevealStateChange?.(false);
-        }
-        if (delta > 0) onRevealBatchApplied?.(delta);
+      // Reveal finished. Report the end EVERY time we land here (not just
+      // the first completion): the shell/reactivation path jumps the count
+      // straight to full, and a stale revealing=true would leave the
+      // container's overflow-anchor off and the nav arrows hidden.
+      revealDoneRef.current = true;
+      revealCompletedRef.current = true;
+      if (revealActiveReportedRef.current) {
+        revealActiveReportedRef.current = false;
+        onRevealStateChange?.(false);
       }
+      if (delta > 0) onRevealBatchApplied?.(delta);
       return;
     }
     revealDoneRef.current = false;
@@ -464,11 +463,14 @@ export const MessageList = memo(function MessageList({
 
   useEffect(() => {
     if (active === false) {
-      // Background tab: drop the revealed rows back to the compact shell and
-      // reset the reveal bookkeeping so showing the tab re-runs it.
-      revealDoneRef.current = false;
-      revealCompletedRef.current = false;
-      revealActiveReportedRef.current = false;
+      // Background tab: drop the revealed rows back to the compact shell.
+      // Deliberately do NOT reset the reveal bookkeeping (revealDoneRef /
+      // revealCompletedRef / revealActiveReportedRef): the transcript is
+      // already revealed (or mid-reveal) — showing the tab again must NOT
+      // re-run the batched reveal (that was the slow "re-scan": the count
+      // reset to 120 and the batches re-chunked the whole 5700 rows, ~10s
+      // of recovering with the arrows hidden). Keeping the completed flag
+      // makes the reactivation jump straight to the full count in one shot.
       setRevealedStableCount(Math.min(INITIAL_STABLE_ROWS, stableSlice.length));
     }
   }, [active, stableSlice.length]);
