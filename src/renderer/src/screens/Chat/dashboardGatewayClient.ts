@@ -173,6 +173,7 @@ export class DashboardGatewayClient {
   request<T = unknown>(
     method: string,
     params: Record<string, unknown> = {},
+    timeoutMs?: number,
   ): Promise<T> {
     const socket = this.socket;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -188,7 +189,7 @@ export class DashboardGatewayClient {
       const timeout = window.setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`Hermes dashboard request timed out: ${method}`));
-      }, this.requestTimeoutMs);
+      }, timeoutMs ?? this.requestTimeoutMs);
       this.pending.set(id, {
         resolve: (value: unknown) => resolve(value as T),
         reject,

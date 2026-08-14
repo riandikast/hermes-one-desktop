@@ -22,6 +22,7 @@
 export type GatewayRequest = (
   method: string,
   params: Record<string, unknown>,
+  timeoutMs?: number,
 ) => Promise<unknown>;
 
 interface SlashExecResponse {
@@ -46,6 +47,14 @@ export type SlashExecOutcome =
   | { kind: "done" }
   | { kind: "send"; message: string; source: "send" | "skill" }
   | { kind: "error"; message: string };
+
+/**
+ * Long-running commands (builds, tests, multi-minute agents) routinely
+ * exceed the client's default 30s request timeout — raising it per-call
+ * avoids a spurious "dashboard request timed out: slash.exec" while the
+ * gateway keeps executing.
+ */
+const SLASH_EXEC_TIMEOUT_MS = 600_000;
 
 export interface ExecuteSlashOptions {
   /** Raw command including the leading slash (e.g. "/compress here"). */
@@ -77,10 +86,17 @@ export async function executeSlash(
 
   // Primary dispatcher: the registry-backed slash worker.
   try {
-    const raw = await request("slash.exec", {
-      command: command.replace(/^\/+/, ""),
-      session_id: sessionId,
-    });
+    const raw = await request(
+      "slash.exec",
+      {
+        command: command.replace(/^\/+/, ""),
+        session_id: sessionId,
+      },
+      // Commands legitimately run minutes (builds, tests, long agents) —
+      // the 30s default request timeout would report a spurious "timed out"
+      // while the gateway keeps executing and answers anyway.
+      SLASH_EXEC_TIMEOUT_MS,
+    );
     const dispatched = parseCommandDispatch(raw);
     if (dispatched) {
       return handleCommandDispatch(

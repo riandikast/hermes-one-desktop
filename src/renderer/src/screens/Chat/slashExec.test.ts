@@ -39,7 +39,7 @@ describe("executeSlash", () => {
     expect(request).toHaveBeenCalledWith("slash.exec", {
       command: "compact",
       session_id: "sid",
-    });
+    }, expect.any(Number));
     expect(sys).toHaveBeenCalledWith("compacted 12 turns");
   });
 
@@ -121,7 +121,7 @@ describe("executeSlash", () => {
     expect(request).toHaveBeenCalledWith("slash.exec", {
       command: "learn this conversation",
       session_id: "s",
-    });
+    }, expect.any(Number));
     expect(sys).not.toHaveBeenCalled();
   });
 

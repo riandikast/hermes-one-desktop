@@ -2836,7 +2836,8 @@ export function useDashboardChatTransport({
         return await executeSlash({
           command,
           sessionId,
-          request: (method, params) => client.request(method, params),
+          request: (method, params, timeoutMs) =>
+            client.request(method, params, timeoutMs),
           sys,
         });
       } catch (err) {
