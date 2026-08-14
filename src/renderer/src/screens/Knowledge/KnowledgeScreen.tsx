@@ -6,6 +6,8 @@ import { EditorState } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { search } from "@codemirror/search";
+import { keymap } from "@codemirror/view";
+import { indentWithTab } from "@codemirror/commands";
 import { oneDark } from "@codemirror/theme-one-dark";
 import {
   autocompletion,
@@ -491,6 +493,9 @@ export function KnowledgeScreen(): React.JSX.Element {
           basicSetup,
           oneDark,
           search({ top: true }),
+          // IDE behavior: Tab indents/inserts a tab instead of moving focus
+          // (the default browser behavior in a webview). Shift-Tab outdents.
+          keymap.of([indentWithTab]),
           markdown({ codeLanguages: languages }),
           autocompletion({
             override: [

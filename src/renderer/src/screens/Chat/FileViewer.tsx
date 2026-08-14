@@ -8,6 +8,7 @@ import { search } from "@codemirror/search";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { languages } from "@codemirror/language-data";
 import { keymap } from "@codemirror/view";
+import { indentWithTab } from "@codemirror/commands";
 import { Prec } from "@codemirror/state";
 import { useI18n } from "../../components/useI18n";
 
@@ -253,6 +254,9 @@ export const FileViewer = memo(function FileViewer({
             basicSetup,
             oneDark,
             search({ top: true }),
+            // IDE behavior: Tab indents/inserts a tab instead of moving focus
+            // (the default browser behavior in a webview). Shift-Tab outdents.
+            keymap.of([indentWithTab]),
             saveKeymap,
             ...(lang ? [lang] : []),
             EditorView.updateListener.of((update) => {

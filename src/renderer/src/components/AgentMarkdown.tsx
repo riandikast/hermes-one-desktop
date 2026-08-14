@@ -1,4 +1,4 @@
-import { useState, useEffect, memo } from "react";
+import { useState, useEffect, useRef, memo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Copy } from "lucide-react";
@@ -10,6 +10,34 @@ import { describeImageSrc } from "../screens/Chat/mediaUtils";
 let _highlighterMod: typeof import("react-syntax-highlighter") | null = null;
 let _oneDark: Record<string, React.CSSProperties> | null = null;
 let _loadingPromise: Promise<void> | null = null;
+
+// Deferred syntax highlighting: tokenize ONLY blocks that are near the
+// viewport. Opening a long session mounts thousands of code blocks (the
+// progressive reveal); Prism tokenizing every one synchronously on the UI
+// thread — even collapsed ones (the collapse is a pure CSS clip of the full
+// render) — was the open-stutter. Plain rendering is layout-identical to the
+// highlighted output (both white-space: pre — token spans never change line
+// wrapping, and both use the same font-size/line-height/padding), so a block
+// swaps to colors the moment it scrolls near with zero layout shift.
+const VIEW_MARGIN_PX = 300;
+let _inViewIO: IntersectionObserver | null = null;
+const _inViewTargets = new WeakMap<Element, () => void>();
+function ensureInViewIO(): IntersectionObserver {
+  if (_inViewIO) return _inViewIO;
+  _inViewIO = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        _inViewIO?.unobserve(entry.target);
+        const fire = _inViewTargets.get(entry.target);
+        _inViewTargets.delete(entry.target);
+        fire?.();
+      }
+    },
+    { rootMargin: `${VIEW_MARGIN_PX}px 0px` },
+  );
+  return _inViewIO;
+}
 
 // Box Drawing (U+2500\u2013U+257F) plus Block Elements (U+2580\u2013U+259F): tree
 // connectors like \u251C\u2500\u2500 \u2514\u2500\u2500 \u2502 and the shading/progress-bar glyphs \u2588 \u2591 \u2592 \u2593.
@@ -113,6 +141,25 @@ function CodeBlock({
   const [highlighterReady, setHighlighterReady] = useState(
     () => _highlighterMod !== null && _oneDark !== null,
   );
+  // Deferred tokenization: false until the block nears the viewport (the IO
+  // singleton fires once, then unobserves). Environments without an
+  // IntersectionObserver (jsdom tests) default to true — the old eager
+  // behavior, so the `.token` assertions keep working.
+  const [inView, setInView] = useState(
+    () => typeof IntersectionObserver === "undefined",
+  );
+  const blockHostRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = blockHostRef.current;
+    if (!el || inView) return;
+    ensureInViewIO().observe(el);
+    const fire = (): void => setInView(true);
+    _inViewTargets.set(el, fire);
+    return () => {
+      ensureInViewIO().unobserve(el);
+      _inViewTargets.delete(el);
+    };
+  }, [inView]);
   const code = String(children).replace(/\n$/, "");
   const match = /language-(\w+)/.exec(className || "");
   const language = match ? match[1] : "";
@@ -143,7 +190,7 @@ function CodeBlock({
     <DiffView code={code} />
   ) : boxDiagram ? (
     <PlainCodeView code={code} />
-  ) : highlighterReady && _highlighterMod && _oneDark ? (
+  ) : inView && highlighterReady && _highlighterMod && _oneDark ? (
     <_highlighterMod.Prism
       style={_oneDark}
       language={language || "text"}
@@ -163,7 +210,7 @@ function CodeBlock({
   );
 
   return (
-    <div className="chat-code-block">
+    <div className="chat-code-block" ref={blockHostRef}>
       <div className="chat-code-header">
         <span className="chat-code-lang">
           {/* Keep the fence's declared language even when a box diagram
