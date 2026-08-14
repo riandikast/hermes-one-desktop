@@ -2889,47 +2889,50 @@ export function useDashboardChatTransport({
   const abort = useCallback(() => {
     if (!enabled) return;
     const sessionId = runtimeSessionIdRef.current;
-    void (async () => {
-      // The WS may already be closed ("websocket are closed" — the client
-      // disconnects on gateway restarts). The interrupt MUST still reach
-      // the gateway, so reconnect if needed — a silently-dropped interrupt
-      // leaves the model processing (the user has to press twice).
-      let client = clientRef.current;
-      if (!client && sessionId) {
-        client = await ensureClient().catch(() => null);
-      }
-      if (client && sessionId) {
+    // STOP receiving FIRST: close the shared streaming client so no late
+    // events keep updating the transcript after the interrupt.
+    const streaming = clientRef.current;
+    if (streaming) {
+      streaming.close();
+      clientRef.current = null;
+    }
+    if (sessionId) {
+      void (async () => {
+        // Throwaway CONTROL connection: the user pressed STOP — we must NOT
+        // re-arm the streaming channel. Connect fresh, send the interrupt,
+        // close. A dead socket can never eat the interrupt again (the old
+        // code sent it over the very WS it was about to close — and when
+        // that socket was already closed the interrupt silently dropped,
+        // hence the two-press bug).
+        let ctrl: DashboardGatewayClient | null = null;
         try {
-          await client.request("session.interrupt", {
-            session_id: sessionId,
-          });
-        } catch {
-          // WS died mid-request — retry once on a fresh connection.
-          const retry = await ensureClient().catch(() => null);
-          if (retry && retry !== client && sessionId) {
-            await retry
-              .request("session.interrupt", { session_id: sessionId })
-              .catch(() => undefined);
-            client = retry;
+          const freshUrl = window.hermesAPI.freshDashboardWsUrl
+            ? await window.hermesAPI.freshDashboardWsUrl(profile)
+            : null;
+          if (freshUrl) {
+            ctrl = new DashboardGatewayClient({
+              onEvent: () => undefined,
+              onClose: () => undefined,
+            });
+            await ctrl.connect(freshUrl);
+            await ctrl.request("session.interrupt", {
+              session_id: sessionId,
+            });
           }
+        } catch {
+          // Gateway unreachable — nothing is streaming anyway.
+        } finally {
+          ctrl?.close();
         }
-      }
-      // Force-close the WebSocket so any late streaming events after the
-      // interrupt don't keep arriving and updating the transcript. The next
-      // sendMessage reconnects cleanly.
-      const toClose = clientRef.current ?? client;
-      if (toClose) {
-        toClose.close();
-        clientRef.current = null;
-      }
-    })();
+      })();
+    }
     // Clear loading immediately — don't wait for the gateway to confirm.
     activeTurnRef.current = null;
     clearQuietFinalize();
     setIsLoading(false);
     lastLocalActivityAtRef.current = Date.now();
     setToolProgress(null);
-  }, [clearQuietFinalize, enabled, ensureClient, setIsLoading, setToolProgress]);
+  }, [clearQuietFinalize, enabled, ensureClient, profile, setIsLoading, setToolProgress]);
 
   useEffect(
     () => () => {
