@@ -20,13 +20,15 @@ vi.mock("./MediaImage", () => ({
 
 // Wait until the lazily-imported Prism highlighter has produced token spans,
 // so a later "no .token" assertion is meaningful rather than just observing
-// the not-yet-loaded fallback.
+// the not-yet-loaded fallback. The cold import of react-syntax-highlighter in
+// jsdom takes ~1.5-2s — the default 1s waitFor timeout is a false negative.
 async function renderHighlighted(
   markdown: string,
 ): Promise<ReturnType<typeof render>> {
   const view = render(<AgentMarkdown>{markdown}</AgentMarkdown>);
-  await waitFor(() =>
-    expect(view.container.querySelector(".token")).not.toBeNull(),
+  await waitFor(
+    () => expect(view.container.querySelector(".token")).not.toBeNull(),
+    { timeout: 10000 },
   );
   return view;
 }
