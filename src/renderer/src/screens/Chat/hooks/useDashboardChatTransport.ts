@@ -2595,6 +2595,27 @@ export function useDashboardChatTransport({
           return true;
         }
       }
+      // OPTIMISTIC UI: the gateway may still be booting (model spawn can
+      // take 10-20s+ on a cold gateway). Show the user's message + loading
+      // IMMEDIATELY so the first seconds aren't a dead void; the submit
+      // proceeds when the gateway answers. The DB reconcile dedupes by
+      // role+content, so the echoed row replaces this one without a
+      // duplicate bubble.
+      const optimisticUser: ChatMessage = {
+        id: `local-send-${Date.now()}`,
+        role: "user",
+        content: text,
+      };
+      messagesRef.current = [...messagesRef.current, optimisticUser];
+      setMessages(messagesRef.current);
+      activeTurnRef.current = {
+        turnId: `send-${Date.now()}`,
+        userId: "",
+        startIndex: messagesRef.current.length - 1,
+        status: "running",
+      };
+      setToolProgress(null);
+      setIsLoading(true);
       const dashboardText = dashboardPromptTextForAttachments(
         text,
         attachments,
