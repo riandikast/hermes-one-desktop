@@ -35,9 +35,15 @@ export function useChatScroll(messages: ChatMessage[]): {
   const snapToBottom = useCallback((): void => {
     const container = containerRef.current;
     if (!container) return;
+    // Over-scroll to clamp: the browser clamps scrollTop to
+    // `scrollHeight - clientHeight`. Reading that value directly can land
+    // SHORT when the virtual window still holds ESTIMATED heights for
+    // unmounted rows below the viewport (scrollHeight grows once those rows
+    // mount and are measured). The huge-value clamp always resolves to the
+    // current true bottom, and the settle retries ride out the corrections.
+    container.scrollTop = Number.MAX_SAFE_INTEGER;
     const max = container.scrollHeight - container.clientHeight;
     maxScrollTopRef.current = max;
-    container.scrollTop = max;
   }, []);
 
   // Keep the cached max scroll position fresh when the container resizes
@@ -68,11 +74,16 @@ export function useChatScroll(messages: ChatMessage[]): {
     );
     const t1 = window.setTimeout(snapToBottom, 80);
     const t2 = window.setTimeout(snapToBottom, 250);
+    // Late measurement corrections (a long session's bottom rows mounting
+    // after the window slides, or images/fonts landing) can move the true
+    // bottom after the earlier retries — one more pass catches the tail.
+    const t3 = window.setTimeout(snapToBottom, 500);
     return (): void => {
       cancelAnimationFrame(raf);
       cancelAnimationFrame(raf2);
       window.clearTimeout(t1);
       window.clearTimeout(t2);
+      window.clearTimeout(t3);
     };
   }, [snapToBottom]);
 

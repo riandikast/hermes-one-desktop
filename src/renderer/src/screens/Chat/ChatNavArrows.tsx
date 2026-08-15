@@ -22,11 +22,12 @@ interface ChatNavArrowProps {
  *
  * - Top arrow: visible while scrolled UP (not at the bottom); click scrolls to
  *   the previous user message above the viewport centre.
- * - Bottom arrow: visible when a NEXT user message (any but the latest) sits
- *   below the viewport centre; click scrolls it to the centre. The LATEST
- *   user message never counts as a next target — right after sending a new
- *   prompt it sits just below centre and there is nothing to navigate to, so
- *   the arrow stays hidden instead of appearing over the newest question.
+ * - Bottom arrow: visible while scrolled UP when a NEXT user message (any but
+ *   the latest) sits below the viewport centre; click scrolls it to the
+ *   centre. Hidden at the very bottom — the LATEST user message never counts
+ *   as a next target, and a tall viewport can place an older question below
+ *   the centre line even while pinned, so gating on !atBottom is required or
+ *   the arrow appears on the latest message / right after sending.
  *
  * Pinning is `position: sticky` on a zero-height wrapper (first/last child of
  * the scroll container), so the button hovers over the messages and never
@@ -85,12 +86,14 @@ export const ChatNavArrow = memo(function ChatNavArrow({
       return;
     }
     // Top arrow: scrolled up AND a previous question sits above the centre.
-    // Bottom arrow: a next question sits below the centre — NOT gated on the
-    // absolute bottom, so it appears as soon as you scroll down toward the
-    // next question instead of only at max scroll (where you're already at
-    // the latest and the arrow would be pointless).
+    // Bottom arrow: scrolled up AND a next question sits below the centre.
+    // Both gate on !atBottom — at the very bottom there is nothing to
+    // navigate to (the "next" question is above you in reading order), and a
+    // tall viewport can place the previous question BELOW the centre line
+    // even while pinned, which previously made the bottom arrow appear on the
+    // latest message / right after sending.
     if (position === "top") setVisible(!atBottom && anyAbove);
-    else setVisible(anyBelow);
+    else setVisible(!atBottom && anyBelow);
   }, [containerRef, position, modelRef]);
 
   useEffect(() => {
@@ -196,8 +199,17 @@ export const ChatNavArrow = memo(function ChatNavArrow({
  */
 export const JumpToLatest = memo(function JumpToLatest({
   containerRef,
+  onJump,
 }: {
   containerRef: React.RefObject<HTMLDivElement | null>;
+  /** Robust "reach the present" routine from useChatScroll (over-scroll clamp
+   *  + settle retries). When scrolled far up, a single smooth-scroll to a
+   *  snapshot of `scrollHeight` lands SHORT — the virtual window's unmounted
+   *  rows below are ESTIMATED, and as they mount their real heights move the
+   *  true bottom past the stale target (the "needs 2-3 taps" bug). The clamp
+   *  re-resolves the current bottom on every retry and also clears the
+   *  scroll-up flag, re-engaging auto-scroll. */
+  onJump?: () => (() => void);
 }): React.JSX.Element {
   const [visible, setVisible] = useState(false);
 
@@ -235,13 +247,19 @@ export const JumpToLatest = memo(function JumpToLatest({
   }, [containerRef, update]);
 
   const jump = useCallback(() => {
+    if (onJump) {
+      // Use the robust clamp+retry routine when wired (it clears the
+      // scroll-up flag and re-resolves the true bottom each retry).
+      onJump();
+      return;
+    }
     const container = containerRef.current;
     if (!container) return;
     container.scrollTo({
       top: container.scrollHeight,
       behavior: "smooth",
     });
-  }, [containerRef]);
+  }, [containerRef, onJump]);
 
   return (
     <div

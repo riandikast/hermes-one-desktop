@@ -1292,7 +1292,7 @@ function Chat({
             containerRef={containerRef}
             modelRef={messageListModelRef}
           />
-          <JumpToLatest containerRef={containerRef} />
+          <JumpToLatest containerRef={containerRef} onJump={jumpToPresent} />
         </div>
 
         {contextFolders.length > 0 && worktreeVisible && (
