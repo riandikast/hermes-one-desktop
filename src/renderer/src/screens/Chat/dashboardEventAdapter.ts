@@ -1,7 +1,12 @@
 import type { ChatToolEvent } from "../../../../shared/chat-stream";
 import { isLossyChunkCopy } from "./lossyText";
 import { markReasoningSettled } from "./reasoningStall";
-import type { ActiveTurn, ChatBubbleMessage, ChatMessage } from "./types";
+import type {
+  ActiveTurn,
+  ChatBubbleMessage,
+  ChatMessage,
+  ClarifyMessage,
+} from "./types";
 
 export interface DashboardStreamEvent<T = unknown> {
   payload?: T;
@@ -170,29 +175,28 @@ function appendClarifyRequest(
         .map((choice) => stringValue(choice))
         .filter((choice) => choice.trim())
     : [];
-  const content =
-    choices.length > 0
-      ? `${question}\n\n${choices
-          .map((choice, index) => `${index + 1}. ${choice}`)
-          .join("\n")}`
-      : question;
   const id = `clarify-${requestId || `${now}-${messages.length}`}`;
   const existingIndex = messages.findIndex((message) => message.id === id);
-  const bubble: ChatBubbleMessage = {
+  // A `ClarifyMessage` (kind:"clarify") renders the interactive ClarifyCard
+  // (choice buttons / textarea / skip). Emitting a plain agent bubble here was
+  // the "clarify UI never pops up" bug — the question appeared as inert text
+  // with no way to answer it.
+  const card: ClarifyMessage = {
     id,
+    kind: "clarify",
     role: "agent",
-    content,
-    pending: false,
-    localOnly: true,
+    requestId: requestId || `${now}-${messages.length}`,
+    question,
+    choices,
   };
   if (existingIndex >= 0) {
     return [
       ...messages.slice(0, existingIndex),
-      bubble,
+      card,
       ...messages.slice(existingIndex + 1),
     ];
   }
-  return [...messages, bubble];
+  return [...messages, card];
 }
 
 function toolEventFromGatewayEvent(event: DashboardStreamEvent): ChatToolEvent {

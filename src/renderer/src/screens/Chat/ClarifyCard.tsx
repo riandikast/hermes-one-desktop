@@ -13,6 +13,10 @@ interface ClarifyCardProps {
   msg: ClarifyMessage;
   /** Mark the card resolved in parent state once the user answers/skips. */
   onResolved: (requestId: string, answer: string) => void;
+  /** Optional answer transport. Defaults to the legacy `respondClarify` IPC
+   *  (main-process gateway). The dashboard transport passes its own
+   *  `respondClarify` here so the answer flows over the live WebSocket. */
+  onRespond?: (requestId: string, answer: string) => Promise<boolean>;
 }
 
 /**
@@ -24,6 +28,7 @@ interface ClarifyCardProps {
 export const ClarifyCard = memo(function ClarifyCard({
   msg,
   onResolved,
+  onRespond,
 }: ClarifyCardProps): React.JSX.Element {
   const { t } = useI18n();
   const [text, setText] = useState("");
@@ -37,7 +42,9 @@ export const ClarifyCard = memo(function ClarifyCard({
     setSubmitting(true);
     setError(false);
     try {
-      const ok = await window.hermesAPI.respondClarify(msg.requestId, answer);
+      const ok = onRespond
+        ? await onRespond(msg.requestId, answer)
+        : await window.hermesAPI.respondClarify(msg.requestId, answer);
       // The IPC handler returns false when no pending request matched (e.g. the
       // turn already ended). Only flip the card to resolved on a confirmed
       // delivery; otherwise surface an error and let the user retry.

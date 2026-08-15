@@ -64,6 +64,8 @@ interface MessageListProps {
   onDeny: () => void;
   /** Mark an inline clarify card resolved once the user answers/skips. */
   onClarifyResolved: (requestId: string, answer: string) => void;
+  /** Answer transport for inline clarify cards (dashboard WebSocket vs legacy IPC). */
+  onClarifyRespond?: (requestId: string, answer: string) => Promise<boolean>;
   /** Appearance of the agent this conversation is with, so idle avatars show
    *  the agent's profile picture instead of the loading gif. */
   agentAvatar?: AgentAvatarInfo;
@@ -147,6 +149,7 @@ function buildRows(
     onApprove: () => void;
     onDeny: () => void;
     onClarifyResolved: (requestId: string, answer: string) => void;
+    onClarifyRespond?: (requestId: string, answer: string) => Promise<boolean>;
     onRevertCheckpoint?: (msgId: string) => void;
     onUnsendLastUser?: (msgId: string, content: string) => void;
     onOpenFileChanges?: (changes: FileChange[]) => void;
@@ -218,7 +221,8 @@ function buildRows(
           key={msg.id}
           msg={msg as ClarifyMessage}
           onResolved={callbacks.onClarifyResolved}
-        />,
+          onRespond={callbacks.onClarifyRespond}
+        />
       );
       continue;
     }
@@ -389,6 +393,7 @@ export const MessageList = memo(function MessageList({
   onApprove,
   onDeny,
   onClarifyResolved,
+  onClarifyRespond,
   agentAvatar,
   onRevertCheckpoint,
   onUnsendLastUser,
@@ -609,6 +614,7 @@ export const MessageList = memo(function MessageList({
     onApprove,
     onDeny,
     onClarifyResolved,
+    onClarifyRespond,
     onRevertCheckpoint,
     onUnsendLastUser,
     onOpenFileChanges,

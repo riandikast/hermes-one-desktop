@@ -147,6 +147,13 @@ interface UseDashboardChatTransportResult {
   enabled: boolean;
   sendMessage: (text: string, attachments?: Attachment[]) => Promise<boolean>;
   /**
+   * Answer an inline clarify card (`clarify.respond`) over the live dashboard
+   * WebSocket and resume the turn. Returns false when the gateway rejects the
+   * answer (request already resolved / expired) so the card can surface an
+   * error instead of falsely marking itself resolved.
+   */
+  respondClarify: (requestId: string, answer: string) => Promise<boolean>;
+  /**
    * Run a slash command through the gateway's `slash.exec` pipeline instead of
    * submitting it to the model as a literal prompt. `sys` renders command
    * output into the transcript; a `send` outcome hands an agent prompt back to
@@ -2046,9 +2053,13 @@ export function useDashboardChatTransport({
           typeof payload.request_id === "string" ? payload.request_id : "";
         if (requestId) {
           pendingClarifyRequestIdRef.current = requestId;
-          activeTurnRef.current = null;
+          // Keep the turn ALIVE while the card waits for an answer. Nulling
+          // activeTurn + isLoading here meant the resumed turn (after the user
+          // answered) streamed with no spinner and no turn to attach deltas to,
+          // so its reasoning/tool rows rendered detached and the answer only
+          // materialized via the delayed DB reconcile. Match the legacy
+          // transport: loading stays on through the clarify round.
           setToolProgress(null);
-          setIsLoading(false);
         }
       }
     },
@@ -2448,6 +2459,30 @@ export function useDashboardChatTransport({
   // no reopen needed. This REPLACES the old sessions.changed-broadcast
   // sync, which never fired when our WebSocket was disconnected (the client
   // connects lazily on first send) — the exact "needs reopen" report.
+  //
+  // REOPEN: on a reopened session the runtime id starts null (it is only
+  // established lazily on the first send), so `tick` bails before ever
+  // polling `active_list` and an in-flight turn stays invisible until the
+  // user sends something or reopens again. Re-attach once up front so a
+  // reopened, still-processing session paints its live state immediately.
+  useEffect(() => {
+    if (!enabled || !hermesSessionId) return;
+    if (runtimeSessionIdRef.current) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const client = await ensureClient();
+        if (cancelled) return;
+        await ensureRuntimeSession(client);
+      } catch {
+        /* poller / next send retries */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, hermesSessionId, ensureClient, ensureRuntimeSession]);
+
   const FOREIGN_TURN_POLL_MS = 2_000;
   // After a LOCAL turn ends the gateway can still report the session as
   // working for a moment; don't re-enter foreign mode during that window.
@@ -2887,6 +2922,52 @@ export function useDashboardChatTransport({
     [enabled, ensureClient, ensureRuntimeSession, ensureSelectedModel, profile],
   );
 
+  const respondClarify = useCallback(
+    async (requestId: string, answer: string): Promise<boolean> => {
+      if (!enabled) return false;
+      try {
+        const client = await ensureClient();
+        await client.request("clarify.respond", {
+          request_id: requestId,
+          answer,
+        });
+        // The turn resumes from the clarify answer; keep loading until the
+        // next message.complete (mirrors sendMessage's clarify branch).
+        pendingClarifyRequestIdRef.current = null;
+        resetStallTimer();
+        resetQuietFinalize();
+        lastLocalActivityAtRef.current = Date.now();
+        return true;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const activeTurn = activeTurnRef.current;
+        if (activeTurn) activeTurn.status = "failed";
+        setMessages((prev) => {
+          const failedMessages = markActiveTurnFailed(
+            prev,
+            message,
+            activeTurn,
+          );
+          messagesRef.current = failedMessages;
+          return failedMessages;
+        });
+        activeTurnRef.current = null;
+        setToolProgress(null);
+        setIsLoading(false);
+        return false;
+      }
+    },
+    [
+      enabled,
+      ensureClient,
+      resetStallTimer,
+      resetQuietFinalize,
+      setMessages,
+      setIsLoading,
+      setToolProgress,
+    ],
+  );
+
   const abort = useCallback(() => {
     if (!enabled) return;
     const sessionId = runtimeSessionIdRef.current;
@@ -2947,6 +3028,7 @@ export function useDashboardChatTransport({
     abort,
     enabled,
     sendMessage,
+    respondClarify,
     execSlash,
     getCommandCatalog,
     runBackground,

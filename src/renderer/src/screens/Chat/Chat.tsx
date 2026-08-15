@@ -1277,6 +1277,11 @@ function Chat({
               onApprove={actions.handleApprove}
               onDeny={actions.handleDeny}
               onClarifyResolved={handleClarifyResolved}
+              onClarifyRespond={
+                dashboardTransport.enabled
+                  ? dashboardTransport.respondClarify
+                  : undefined
+              }
               agentAvatar={agentAvatar}
               onRevertCheckpoint={handleRevertCheckpoint}
               onUnsendLastUser={handleUnsendLastUser}
