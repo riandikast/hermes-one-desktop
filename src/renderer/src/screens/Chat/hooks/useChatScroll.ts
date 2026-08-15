@@ -68,16 +68,24 @@ export function useChatScroll(messages: ChatMessage[]): {
   const jumpToPresent = useCallback((): (() => void) => {
     userScrolledUpRef.current = false;
     snapToBottom();
-    const raf = requestAnimationFrame(snapToBottom);
+    // The settle retries catch late layout (rows mounting, images/fonts
+    // landing) at the BOTTOM. They must NOT fight a user who scrolls up right
+    // after sending — otherwise invisible snaps yank the viewport back down
+    // before any content streams. Gate each retry on the pinned flag so an
+    // upward scroll cancels the settle.
+    const settleSnap = (): void => {
+      if (!userScrolledUpRef.current) snapToBottom();
+    };
+    const raf = requestAnimationFrame(settleSnap);
     const raf2 = requestAnimationFrame(() =>
-      requestAnimationFrame(snapToBottom),
+      requestAnimationFrame(settleSnap),
     );
-    const t1 = window.setTimeout(snapToBottom, 80);
-    const t2 = window.setTimeout(snapToBottom, 250);
+    const t1 = window.setTimeout(settleSnap, 80);
+    const t2 = window.setTimeout(settleSnap, 250);
     // Late measurement corrections (a long session's bottom rows mounting
     // after the window slides, or images/fonts landing) can move the true
     // bottom after the earlier retries — one more pass catches the tail.
-    const t3 = window.setTimeout(snapToBottom, 500);
+    const t3 = window.setTimeout(settleSnap, 500);
     return (): void => {
       cancelAnimationFrame(raf);
       cancelAnimationFrame(raf2);
