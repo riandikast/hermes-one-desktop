@@ -42,3 +42,4 @@ release/
 /*.ps1
 .mcp.json
 dist2/
+dist3/

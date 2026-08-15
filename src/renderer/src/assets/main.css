@@ -6117,6 +6117,14 @@ body:has(.shell-vibrant),
   flex: 1;
   overflow-y: auto;
   padding: 24px;
+  /* The virtualized window (MessageList) slides spacers as you scroll; the
+     browser's scroll anchoring would interpret each spacer shift as a DOM
+     change above the anchor and write scrollTop BACK to cancel it — the
+     scroll loop on long sessions. The slide geometry is self-consistent
+     (top-spacer + window + bottom-spacer sum to a constant), so anchoring
+     must be OFF; MessageList manually compensates measurement corrections
+     instead. */
+  overflow-anchor: none;
   /* Block flow, NOT a flex column. `content-visibility: auto` on the rows
      (below) lets the browser skip layout/paint for off-screen messages, which
      is what keeps typing fast in long conversations (#748). A flex column

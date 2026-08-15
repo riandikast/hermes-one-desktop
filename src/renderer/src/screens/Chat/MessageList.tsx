@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FilePlus2 } from "lucide-react";
 import { HermesAvatar, MessageRow } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
@@ -322,6 +322,25 @@ function stableWindowContext(
   return { prevRole, initReasonId };
 }
 
+/** First stable-row index whose bottom is at or below scrollTop (clamped to
+ *  the last row when the viewport sits in the bottom-spacer/streaming
+ *  region). Offsets are prefix sums, so a binary search applies. */
+function firstVisibleIndex(
+  scrollTop: number,
+  offsets: number[],
+  len: number,
+): number {
+  if (len === 0) return 0;
+  let lo = 0;
+  let hi = len - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (offsets[mid + 1] <= scrollTop) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
 /** Row wrapper in the virtual window: owns one ResizeObserver that reports
  *  the row's REAL height into the height map (used for the spacers + arrow
  *  jumps). Its own observer + cleanup means ref identities never churn — a
@@ -484,16 +503,7 @@ export const MessageList = memo(function MessageList({
       return;
     }
     const ofs = offsetsRef.current;
-    // Binary search: first index whose row contains scrollTop (clamped to the
-    // last row when the viewport sits in the bottom-spacer/streaming region).
-    let lo = 0;
-    let hi = len - 1;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (ofs[mid + 1] <= scrollTop) lo = mid + 1;
-      else hi = mid;
-    }
-    const firstVisible = lo;
+    const firstVisible = firstVisibleIndex(scrollTop, ofs, len);
     const start = Math.max(
       0,
       Math.min(firstVisible - WINDOW_ROWS_ABOVE, len - 1),
@@ -503,6 +513,35 @@ export const MessageList = memo(function MessageList({
   };
   const applyWindowRef = useRef(applyWindow);
   applyWindowRef.current = applyWindow;
+
+  // Manual scroll anchoring (the browser's own anchoring is OFF — see
+  // .chat-messages overflow-anchor: none): when mounted rows' heights are
+  // corrected by the ResizeObserver, the rows ABOVE the viewport shift and
+  // would move the content the user is reading. Compensate scrollTop by the
+  // delta of the first-visible row's offset WHEN THE INDEX IS UNCHANGED —
+  // an index change means the user scrolled (window slide), whose geometry
+  // is already self-consistent. Layout effect = pre-paint, no visible jump.
+  const scrollAnchorRef = useRef<{ idx: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const len = stableLenRef.current;
+    if (len === 0) {
+      scrollAnchorRef.current = null;
+      return;
+    }
+    const ofs = offsetsRef.current;
+    const idx = firstVisibleIndex(container.scrollTop, ofs, len);
+    const top = ofs[idx];
+    const prev = scrollAnchorRef.current;
+    if (prev && prev.idx === idx && top !== prev.top) {
+      container.scrollTop += top - prev.top;
+    }
+    scrollAnchorRef.current = { idx, top };
+    // NO deps array: runs after every commit. Measurement corrections
+    // re-render without changing containerRef/stableLen, and the effect must
+    // compensate those too (the deps array would skip them).
+  });
 
   // Slide the window on scroll / container resize (rAF-throttled).
   useEffect(() => {
