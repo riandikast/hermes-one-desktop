@@ -283,22 +283,26 @@ const WINDOW_ROWS_BELOW = 70;
 
 function estimateRowHeight(m: ChatMessage): number {
   const k = (m as { kind?: string }).kind;
-  if (isToolRow(m)) return 88; // collapsed tool-activity summary
-  if (k === "reasoning") {
-    return Math.min(
-      320,
-      44 + (((m as { text?: string }).text || "").length / 110) * 22,
-    );
-  }
-  if (k === "clarify") return 132;
-  if (k === "file_changes") return 64;
+  // Collapsed history rows default to a ~44px summary (28px avatar + 16px
+  // row padding). Estimating them at their EXPANDED height was the runaway
+  // scroll bug: every scroll-up mounted rows whose real collapsed height was
+  // 2-7x smaller than the estimate, so the content above the viewport shrank
+  // on every measurement, driving continuous upward drift and inflating
+  // scrollHeight (jump-to-present overshot). Collapsed is the steady state;
+  // expanded rows are re-measured by the ResizeObserver on mount anyway.
+  if (isToolRow(m)) return 44;
+  if (k === "reasoning") return 44;
+  if (k === "clarify") return 160; // inline question card
+  if (k === "file_changes") return 44;
   const content = (m as { content?: string }).content || "";
-  const lines = content.split("\n").length;
-  // ~90 chars per 13px/1.5 line in an 85%-width bubble; fences are dense.
-  return Math.min(
-    2400,
-    56 + Math.max(lines, Math.ceil(content.length / 90)) * 22 + 16,
-  );
+  // Fenced code blocks collapse to ~180px (max-height); prose wraps at
+  // ~90 chars/line. Estimate each collapsed fence at 180px instead of its
+  // raw line count — a 100-line code block is ~200px rendered, not ~1200px.
+  const fences = content.match(/```/g);
+  const fenceCount = fences ? fences.length >> 1 : 0;
+  const prose = content.replace(/```[\s\S]*?```/g, "");
+  const proseLines = Math.max(1, Math.ceil((prose.length || 1) / 90));
+  return Math.min(2400, 44 + (proseLines - 1) * 20 + fenceCount * 180);
 }
 
 /** Role + carried reasoning id just before a window boundary — mirrors what
@@ -515,32 +519,36 @@ export const MessageList = memo(function MessageList({
   applyWindowRef.current = applyWindow;
 
   // Manual scroll anchoring (the browser's own anchoring is OFF — see
-  // .chat-messages overflow-anchor: none): when mounted rows' heights are
-  // corrected by the ResizeObserver, the rows ABOVE the viewport shift and
-  // would move the content the user is reading. Compensate scrollTop by the
-  // delta of the first-visible row's offset WHEN THE INDEX IS UNCHANGED —
-  // an index change means the user scrolled (window slide), whose geometry
-  // is already self-consistent. Layout effect = pre-paint, no visible jump.
-  const scrollAnchorRef = useRef<{ idx: number; top: number } | null>(null);
+  // .chat-messages overflow-anchor: none). When a measurement corrects row
+  // heights (ResizeObserver), the rows ABOVE the viewport shift and would
+  // move the content the user is reading. Compensate by the delta of the row
+  // that WAS at the viewport top (found by its index under the PREVIOUS
+  // offsets), but ONLY when scrollTop hasn't changed between commits — a
+  // scrollTop change means the user scrolled (window slide), whose geometry
+  // is already self-consistent and must not be compensated. Layout effect =
+  // pre-paint, no visible jump.
+  const prevOffsetsRef = useRef<number[] | null>(null);
+  const prevScrollTopRef = useRef(0);
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const len = stableLenRef.current;
-    if (len === 0) {
-      scrollAnchorRef.current = null;
-      return;
+    const offsets = offsetsRef.current;
+    const prevOffsets = prevOffsetsRef.current;
+    const scrollTop = container.scrollTop;
+    if (
+      len > 0 &&
+      prevOffsets &&
+      prevOffsets.length === len + 1 &&
+      scrollTop === prevScrollTopRef.current
+    ) {
+      // Measurement correction, no user scroll: keep the same row in place.
+      const prevIdx = firstVisibleIndex(scrollTop, prevOffsets, len);
+      const delta = offsets[prevIdx] - prevOffsets[prevIdx];
+      if (delta !== 0) container.scrollTop += delta;
     }
-    const ofs = offsetsRef.current;
-    const idx = firstVisibleIndex(container.scrollTop, ofs, len);
-    const top = ofs[idx];
-    const prev = scrollAnchorRef.current;
-    if (prev && prev.idx === idx && top !== prev.top) {
-      container.scrollTop += top - prev.top;
-    }
-    scrollAnchorRef.current = { idx, top };
-    // NO deps array: runs after every commit. Measurement corrections
-    // re-render without changing containerRef/stableLen, and the effect must
-    // compensate those too (the deps array would skip them).
+    prevOffsetsRef.current = offsets;
+    prevScrollTopRef.current = scrollTop;
   });
 
   // Slide the window on scroll / container resize (rAF-throttled).
