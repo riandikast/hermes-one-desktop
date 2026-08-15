@@ -4,6 +4,7 @@ import { Zap, Globe, ClipboardList, Hammer } from "lucide-react";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatEmptyState } from "./ChatEmptyState";
 import { MessageList } from "./MessageList";
+import type { MessageListModel } from "./MessageList";
 import { FileChangesDialog } from "./FileChangesDialog";
 import { ModelPicker } from "./ModelPicker";
 import { ReasoningEffortPicker } from "./ReasoningEffortPicker";
@@ -458,20 +459,10 @@ function Chat({
   }, []);
 
   const { containerRef, bottomRef, jumpToPresent } = useChatScroll(messages);
-  // Progressive transcript reveal: while active, scroll anchoring must be
-  // OFF (prepends would fight the manual compensation); the reveal reports
-  // each batch's prepended height and we shift scrollTop by it — the
-  // viewport content stays put for everyone.
-  const [revealActive, setRevealActive] = useState(false);
-  // Stable identity is CRITICAL: MessageList's reveal layout effect depends
-  // on this callback — a fresh function per render would re-run the effect
-  // on every streaming delta, forcing a synchronous layout read each time
-  // (offsetTop) during the huge reveal = 99% CPU.
-  const handleRevealBatchApplied = useCallback((deltaPx: number): void => {
-    const el = containerRef.current;
-    if (!el || deltaPx <= 0) return;
-    el.scrollTop += deltaPx;
-  }, []);
+  // MessageList's virtual window publishes row-geometry lookups here so the
+  // nav arrows can locate user rows without DOM ids (out-of-window rows are
+  // not mounted).
+  const messageListModelRef = useRef<MessageListModel | null>(null);
   const modelConfig = useModelConfig(profile);
   const chatCurrentModel =
     sessionModelOverride?.model ?? modelConfig.currentModel;
@@ -1269,15 +1260,12 @@ function Chat({
       <ConfigHealthBanner profile={profile} onOpenDiagnose={onOpenDiagnose} />
 
       <div className="chat-body">
-        <div
-          className={`chat-messages${revealActive ? " is-revealing" : ""}`}
-          ref={containerRef}
-        >
+        <div className="chat-messages" ref={containerRef}>
           <ChatNavArrow
             position="top"
             messages={messages}
             containerRef={containerRef}
-            revealing={revealActive}
+            modelRef={messageListModelRef}
           />
           {messages.length === 0 ? (
             <ChatEmptyState onSelectSuggestion={handleSuggestion} />
@@ -1293,9 +1281,8 @@ function Chat({
               onRevertCheckpoint={handleRevertCheckpoint}
               onUnsendLastUser={handleUnsendLastUser}
               onOpenFileChanges={(changes) => setFileChangesOpen(changes)}
-              onRevealBatchApplied={handleRevealBatchApplied}
-              onRevealStateChange={setRevealActive}
-              active={active}
+              containerRef={containerRef}
+              modelRef={messageListModelRef}
             />
           )}
           <div ref={bottomRef} />
@@ -1303,13 +1290,9 @@ function Chat({
             position="bottom"
             messages={messages}
             containerRef={containerRef}
-            revealing={revealActive}
+            modelRef={messageListModelRef}
           />
-          <JumpToLatest
-            containerRef={containerRef}
-            messages={messages}
-            revealing={revealActive}
-          />
+          <JumpToLatest containerRef={containerRef} />
         </div>
 
         {contextFolders.length > 0 && worktreeVisible && (

@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FilePlus2 } from "lucide-react";
 import { HermesAvatar, MessageRow } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
@@ -44,6 +44,18 @@ const FileChangesRow = memo(function FileChangesRow({
   );
 });
 
+/** Geometry lookups the nav arrows use to locate user rows. Rows outside the
+ *  virtual window are NOT mounted, so the arrows can't use DOM ids — they
+ *  read the measured/estimated offsets the virtualizer maintains. */
+export interface MessageListModel {
+  /** Document-space top (px, relative to the chat-messages container top) of
+   *  a stable message, or undefined when the message isn't in the stable
+   *  history (it's part of the live streaming tail). */
+  getRowTop: (id: string) => number | undefined;
+  /** Measured (or estimated) height of a stable message row in px. */
+  getRowHeight: (id: string) => number | undefined;
+}
+
 interface MessageListProps {
   messages: ChatMessage[];
   isLoading: boolean;
@@ -64,19 +76,11 @@ interface MessageListProps {
   onUnsendLastUser?: (msgId: string, content: string) => void;
   /** Open the file-changes dialog for a bubble (dashboard transport). */
   onOpenFileChanges?: (changes: FileChange[]) => void;
-  /** Fired after EVERY progressive-reveal batch lands (long sessions only)
-   *  with the batch's REAL prepended height — the owner shifts scrollTop by
-   *  it (manual anchoring): a scrolled-up user keeps their place, the
-   *  bottom-pinned user stays at the present.
-   */
-  onRevealBatchApplied?: (deltaPx: number) => void;
-  /** Fired when the progressive reveal starts/stops — the owner toggles
-   *  scroll anchoring off during it (prepends would otherwise fight the
-   *  per-batch snaps) and back on afterwards for normal scrolling. */
-  onRevealStateChange?: (active: boolean) => void;
-  /** False for background tabs: keep only a compact trailing shell mounted
-   *  so multi-tab long sessions don't pin thousands of rows per tab. */
-  active?: boolean;
+  /** The chat-messages scroll container (owned by useChatScroll in Chat). */
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  /** Shared mutable model: MessageList publishes row-geometry lookups here so
+   *  the sibling ChatNavArrows can locate user rows without DOM elements. */
+  modelRef?: React.MutableRefObject<MessageListModel | null>;
 }
 
 function TypingIndicator({
@@ -254,23 +258,105 @@ function buildRows(
   return { rows, lastRole, turnLastReasoningId };
 }
 
-/** Stable wrapper — only re-renders when `rows` identity changes (i.e. when
- *  the history changes, NOT on every streaming delta). */
-const rowId = (id: string): string => `chat-msg-${id}`;
+/** ── Virtual window ────────────────────────────────────────────────────────
+ * Only the rows around the viewport are ever mounted. The stable history is
+ * preceded by a top spacer whose height = the total measured height of the
+ * rows above the window, so the browser's scrollbar reflects the FULL
+ * transcript while the DOM stays bounded (~WINDOW_SIZE rows) no matter how
+ * long the session is. Opening a huge session therefore mounts ~100 rows
+ * instantly — the old progressive reveal mounted ALL of them over seconds
+ * and kept them in the DOM forever.
+ *
+ * Rows report their REAL height to a shared ResizeObserver; unmounted rows
+ * fall back to `estimateRowHeight`. The offsets (prefix sums over the height
+ * map) are recomputed per render — O(n) with n = stable rows, ~0.1ms — and
+ * the scroll handler slides the window via a binary search.
+ *
+ * Scroll anchoring stays ON (the default): when the spacer height changes as
+ * a consequence of a window slide or a measurement correction, the browser
+ * adjusts scrollTop to keep the visible rows fixed — that IS the correct
+ * virtualizer compensation (a window slide moves rows, anchoring cancels the
+ * move within the frame).
+ */
+const WINDOW_ROWS_ABOVE = 30;
+const WINDOW_ROWS_BELOW = 70;
 
-const StableHistory = memo(function StableHistory({
-  rows,
-  revealing,
+function estimateRowHeight(m: ChatMessage): number {
+  const k = (m as { kind?: string }).kind;
+  if (isToolRow(m)) return 88; // collapsed tool-activity summary
+  if (k === "reasoning") {
+    return Math.min(
+      320,
+      44 + (((m as { text?: string }).text || "").length / 110) * 22,
+    );
+  }
+  if (k === "clarify") return 132;
+  if (k === "file_changes") return 64;
+  const content = (m as { content?: string }).content || "";
+  const lines = content.split("\n").length;
+  // ~90 chars per 13px/1.5 line in an 85%-width bubble; fences are dense.
+  return Math.min(
+    2400,
+    56 + Math.max(lines, Math.ceil(content.length / 90)) * 22 + 16,
+  );
+}
+
+/** Role + carried reasoning id just before a window boundary — mirrors what
+ *  buildRows would have accumulated up to `windowStart` (reasoning resets at
+ *  user rows, tool rows imply an agent context). */
+function stableWindowContext(
+  slice: ChatMessage[],
+  windowStart: number,
+): { prevRole?: string; initReasonId?: string } {
+  if (windowStart <= 0) return {};
+  let prevRole: string | undefined;
+  let initReasonId: string | undefined;
+  for (let i = windowStart - 1; i >= 0; i--) {
+    const m = slice[i];
+    if (m.role === "user") break;
+    if (prevRole === undefined) prevRole = isToolRow(m) ? "agent" : m.role;
+    if (!initReasonId && (m as { kind?: string }).kind === "reasoning") {
+      initReasonId = m.id;
+    }
+  }
+  return { prevRole, initReasonId };
+}
+
+/** Row wrapper in the virtual window: owns one ResizeObserver that reports
+ *  the row's REAL height into the height map (used for the spacers + arrow
+ *  jumps). Its own observer + cleanup means ref identities never churn — a
+ *  per-render closure on the host's ref callback would detach/reattach every
+ *  mounted row on every streaming delta. */
+const MeasureRow = memo(function MeasureRow({
+  id,
+  onRowHeight,
+  children,
 }: {
-  rows: React.JSX.Element[];
-  revealing: boolean;
+  id: string;
+  onRowHeight: (id: string, height: number) => void;
+  children: React.ReactNode;
 }): React.JSX.Element {
-  // While the progressive reveal is active the rows must lay out at REAL
-  // heights (see .chat-stable-reveal) — the per-batch snap reads
-  // scrollHeight, and content-visibility's 120px first-paint estimates made
-  // the content end move whenever a freshly prepended batch entered the
-  // viewport (the visible clip/unclip blink).
-  return revealing ? <div className="chat-stable-reveal">{rows}</div> : <>{rows}</>;
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const onRowHeightRef = useRef(onRowHeight);
+  onRowHeightRef.current = onRowHeight;
+  useEffect(() => {
+    const el = hostRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const h =
+        entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+      if (h > 0) onRowHeightRef.current(id, h);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [id]);
+  return (
+    <div ref={hostRef} className="chat-virtual-row">
+      {children}
+    </div>
+  );
 });
 
 export const MessageList = memo(function MessageList({
@@ -284,9 +370,8 @@ export const MessageList = memo(function MessageList({
   onRevertCheckpoint,
   onUnsendLastUser,
   onOpenFileChanges,
-  onRevealBatchApplied,
-  onRevealStateChange,
-  active,
+  containerRef,
+  modelRef,
 }: MessageListProps): React.JSX.Element {
   // Bubbles with empty content are still hidden (live-stream placeholders).
   // History rows pass through unconditionally. Agent bubbles streaming live are kept.
@@ -325,253 +410,153 @@ export const MessageList = memo(function MessageList({
   const splitAt = lastUserBubbleIdx >= 0 ? lastUserBubbleIdx + 1 : 0;
   const stableSlice = visibleMessages.slice(0, splitAt);
   const streamingSlice = visibleMessages.slice(splitAt);
+  const stableLen = stableSlice.length;
 
-  // ── Progressive stable-history reveal ─────────────────────────────────────
-  // Opening a long session mounts every stable row at once — React still
-  // creates all the DOM nodes even with content-visibility: auto, freezing
-  // the UI thread for a beat. Render only the trailing INITIAL rows and
-  // prepend the rest in small batches; Chromium's scroll anchoring keeps the
-  // viewport stable while older rows land above. buildRows receives the
-  // ABSOLUTE start offset so reasoning-group keys (index-based) stay stable
-  // as rows are prepended — otherwise every batch would remount rows.
-  const INITIAL_STABLE_ROWS = 120;
-  // Adaptive batch: 40 rows is fine for a few hundred rows but a 4000-row
-  // session would take ~40s at that pace (the arrows stay hidden the whole
-  // time). Scale the batch with the transcript so the reveal finishes in a
-  // few seconds regardless of size.
-  const STABLE_ROW_BATCH = Math.min(
-    300,
-    Math.max(40, Math.round(stableSlice.length / 40)),
-  );
-  const [revealedStableCount, setRevealedStableCount] = useState(() =>
-    Math.min(INITIAL_STABLE_ROWS, stableSlice.length),
-  );
-  // Background tabs keep a compact shell: only the trailing INITIAL rows
-  // stay mounted, so multi-tab long sessions don't pin thousands of DOM
-  // rows per tab. The reveal re-runs when the tab is shown again.
-  const effectiveRevealedCount = active
-    ? revealedStableCount
-    : Math.min(INITIAL_STABLE_ROWS, stableSlice.length);
-  const revealDoneRef = useRef(false);
-  // Manual anchoring for the reveal: the batches PREPEND above the
-  // viewport. Measure the stable tail's offsetTop delta (the batch's REAL
-  // prepended height — streaming appends below don't move it) and pass it
-  // to the owner, which shifts scrollTop by it — the viewport content stays
-  // put for a scrolled-up user AND the bottom-pinned user stays pinned.
-  const prevStableTailOffsetRef = useRef(0);
-  // Set once when the reveal COMPLETES; never reset. Subsequent transcript
-  // growth (a new turn) then reveals the tail in ONE shot instead of
-  // re-running the batch machinery per streaming delta.
-  const revealCompletedRef = useRef(false);
-  const revealActiveReportedRef = useRef(false);
-  const revealStart = stableSlice.length - effectiveRevealedCount;
-  const revealedStable = stableSlice.slice(revealStart);
-  // The measurement anchor: the LAST row of the revealed stable slice is a
-  // USER row (splitAt = lastUserBubbleIdx + 1) — MessageRow gives user rows
-  // the `chat-msg-<id>` DOM id (assistant rows don't), so it's findable.
-  const stableTail =
-    revealedStable.length > 0
-      ? revealedStable[revealedStable.length - 1]
-      : undefined;
-  // Layout effect: the batch has already rendered (DOM mutated) by this
-  // point. Measure the stable tail's offsetTop delta — the batch's REAL
-  // prepended height — and pass it to the owner for the scrollTop shift
-  // (manual anchoring, same frame, no drift frame ever paints).
-  useLayoutEffect(() => {
-    if (active === false) return;
-    let delta = 0;
-    if (stableTail) {
-      const tailEl = document.getElementById(rowId(stableTail.id));
-      const ot = tailEl ? tailEl.offsetTop : 0;
-      if (prevStableTailOffsetRef.current > 0) {
-        delta = ot - prevStableTailOffsetRef.current;
-      }
-      prevStableTailOffsetRef.current = ot;
-    }
-    if (revealedStableCount >= stableSlice.length) {
-      // Reveal finished. Report the end EVERY time we land here (not just
-      // the first completion): the shell/reactivation path jumps the count
-      // straight to full, and a stale revealing=true would leave the
-      // container's overflow-anchor off and the nav arrows hidden.
-      revealDoneRef.current = true;
-      revealCompletedRef.current = true;
-      if (revealActiveReportedRef.current) {
-        revealActiveReportedRef.current = false;
-        onRevealStateChange?.(false);
-      }
-      if (delta > 0) onRevealBatchApplied?.(delta);
-      return;
-    }
-    revealDoneRef.current = false;
-    if (!revealActiveReportedRef.current) {
-      revealActiveReportedRef.current = true;
-      onRevealStateChange?.(true);
-    }
-    if (delta > 0) onRevealBatchApplied?.(delta);
-  }, [revealedStableCount, stableSlice.length, onRevealBatchApplied, onRevealStateChange, stableTail]);
+  // ── Height model ─────────────────────────────────────────────────────────
+  // id → measured px (real heights only; unmounted rows use estimates).
+  const heightMapRef = useRef(new Map<string, number>());
+  // Bump to re-render (offsets + spacers) after a batch of measurements.
+  const [, setHeightsVersion] = useState(0);
+  const heightsVersionRef = useRef(0);
 
-  useEffect(() => {
-    if (active === false) return;
-    if (revealedStableCount >= stableSlice.length) return;
-    // Growth AFTER the reveal completed (a new turn landed): reveal the new
-    // tail in ONE shot — the batch machinery is only for the initial open.
-    if (revealCompletedRef.current) {
-      setRevealedStableCount(stableSlice.length);
-      return;
+  const onRowHeight = useCallback((id: string, h: number): void => {
+    if (h <= 0) return;
+    if (heightMapRef.current.get(id) !== h) {
+      heightMapRef.current.set(id, h);
     }
-    // Eager first batch, idle-priority for the rest. The first batch carries
-        // INITIAL→INITIAL+batch and shows enough rows for the arrows to find
-        // targets. If we waited for an idle slot the arrows would stay hidden
-        // while the model streams (the streaming renders keep the thread busy
-        // forever and requestIdleCallback never fires). Once INITIAL rows are
-        // visible the rest can yield.
-        if (revealedStableCount === Math.min(INITIAL_STABLE_ROWS, stableSlice.length)) {
-          const t = window.setTimeout(() => {
-            setRevealedStableCount((c) =>
-              Math.min(stableSlice.length, c + STABLE_ROW_BATCH),
-            );
-          }, 0);
-          return () => window.clearTimeout(t);
-        }
-        // Subsequent batches: yield to input/streaming via requestIdleCallback
-        // (120ms floor). Two rAF hops give one full paint cycle so each chunk
-        // lands in its own frame.
-        let raf = 0;
-        let raf2 = 0;
-        const doBatch = (): void => {
-          raf = requestAnimationFrame(() => {
-            raf2 = requestAnimationFrame(() => {
-              setRevealedStableCount((c) =>
-                Math.min(stableSlice.length, c + STABLE_ROW_BATCH),
-              );
-            });
-          });
-        };
-        const t = window.setTimeout(() => {
-          if (typeof requestIdleCallback === "function") {
-            requestIdleCallback(doBatch, { timeout: 120 });
-          } else {
-            doBatch();
-          }
-        }, 0);
-        return () => {
-          window.clearTimeout(t);
-          if (raf !== 0) cancelAnimationFrame(raf);
-          if (raf2 !== 0) cancelAnimationFrame(raf2);
-        };
-      }, [active, revealedStableCount, stableSlice.length]);
-
-  useEffect(() => {
-    if (active === false) {
-      // Background tab: drop the revealed rows back to the compact shell.
-      // Deliberately do NOT reset the reveal bookkeeping (revealDoneRef /
-      // revealCompletedRef / revealActiveReportedRef): the transcript is
-      // already revealed (or mid-reveal) — showing the tab again must NOT
-      // re-run the batched reveal (that was the slow "re-scan": the count
-      // reset to 120 and the batches re-chunked the whole 5700 rows, ~10s
-      // of recovering with the arrows hidden). Keeping the completed flag
-      // makes the reactivation jump straight to the full count in one shot.
-      setRevealedStableCount(Math.min(INITIAL_STABLE_ROWS, stableSlice.length));
+    // Batch: many rows mount per window slide; one re-render per frame.
+    if (!heightsVersionRef.current) {
+      heightsVersionRef.current = requestAnimationFrame(() => {
+        heightsVersionRef.current = 0;
+        setHeightsVersion((v) => v + 1);
+      });
     }
-  }, [active, stableSlice.length]);
+  }, []);
 
-  // ── Stable history rows ────────────────────────────────────────────────────
-  // Cached so they rebuild only when the history changes (user sends, revert,
-  // unsend, end-of-stream reconcile) — NOT on every streaming delta. This
-  // turns the per-delta O(n_total) element-creation cost into O(n_turn).
-  // The cache check is O(1): every message update is immutable (state updates
-  // spread/replace objects), so the LAST stable message's object reference is
-  // identical across streaming deltas and only changes when the history
-  // actually changed (a reconcile recreates every row object, so mid-history
-  // edits are caught too). agentAvatar identity is also part of the key: it
-  // can change (appearance / profile switch) without any message changing.
-  const stableCacheRef = useRef<{
-    tail: ChatMessage | undefined;
-    len: number;
-    avatarKey: string;
-    rows: React.JSX.Element[];
-    lastRole: string | undefined;
-    turnLastReasoningId: string | undefined;
-  }>({
-    tail: undefined,
-    len: 0,
-    avatarKey: "",
-    rows: [],
-    lastRole: undefined,
-    turnLastReasoningId: undefined,
-  });
-
-  const avatarKey = agentAvatar ? "a" : "n";
-  if (
-    stableCacheRef.current.tail !== stableTail ||
-    stableCacheRef.current.len !== revealedStable.length ||
-    stableCacheRef.current.avatarKey !== avatarKey
-  ) {
-    // Stable history changed — rebuild. Stable rows are NEVER streaming-active.
-    const callbacks = {
-      agentAvatar,
-      onApprove,
-      onDeny,
-      onClarifyResolved,
-      onRevertCheckpoint,
-      onUnsendLastUser,
-      onOpenFileChanges,
-    };
-    const prev = stableCacheRef.current;
-    let rows: React.JSX.Element[];
-    let lastRole = prev.lastRole;
-    let turnLastReasoningId = prev.turnLastReasoningId;
-    if (
-      prev.len > 0 &&
-      prev.tail === stableTail &&
-      revealedStable.length > prev.len
-    ) {
-      // Pure PREPEND (progressive reveal): build only the newly revealed
-      // leading rows and prepend them. Absolute-index keys keep the cached
-      // rows' keys stable, so React mounts just the new chunk — the per-batch
-      // cost stays O(batch) instead of O(revealed) (which made the later
-      // batches of a long session visibly stutter).
-      const fresh = revealedStable.slice(0, revealedStable.length - prev.len);
-      rows = buildRows(
-        fresh,
-        revealStart,
-        visibleMessages.length,
-        lastUserBubbleIdx,
-        undefined,
-        undefined,
-        false,
-        callbacks,
-      ).rows;
-      rows = [...rows, ...prev.rows];
-    } else {
-      // History changed mid-list or first build — full rebuild.
-      const result = buildRows(
-        revealedStable,
-        revealStart,
-        visibleMessages.length,
-        lastUserBubbleIdx,
-        undefined,
-        undefined,
-        false,
-        callbacks,
-      );
-      rows = result.rows;
-      lastRole = result.lastRole;
-      turnLastReasoningId = result.turnLastReasoningId;
-    }
-    stableCacheRef.current = {
-      tail: stableTail,
-      len: revealedStable.length,
-      avatarKey,
-      rows,
-      lastRole,
-      turnLastReasoningId,
-    };
+  // Offsets: prefix sums over measured-or-estimated heights. Rebuilt per
+  // render (O(n)); the scroll handler reads the latest via ref.
+  const offsetsRef = useRef<number[]>([]);
+  const stableLenRef = useRef(0);
+  stableLenRef.current = stableLen;
+  const idToIndex = useMemo(() => {
+    const m = new Map<string, number>();
+    for (let i = 0; i < stableLen; i++) m.set(stableSlice[i].id, i);
+    return m;
+  }, [stableSlice, stableLen]);
+  const offsets = new Array<number>(stableLen + 1);
+  offsets[0] = 0;
+  for (let i = 0; i < stableLen; i++) {
+    const msg = stableSlice[i];
+    offsets[i + 1] =
+      offsets[i] + (heightMapRef.current.get(msg.id) ?? estimateRowHeight(msg));
   }
-  const { rows: stableRows, lastRole: stableLastRole } = stableCacheRef.current;
+  offsetsRef.current = offsets;
 
-  // ── Streaming turn rows ────────────────────────────────────────────────────
-  // Re-built on every delta, but the slice is tiny (the current agent turn).
+  // Publish the geometry model for the nav arrows (they're siblings — the
+  // rows they'd previously query via getElementById may not be mounted).
+  const model: MessageListModel = {
+    getRowTop: (id) => {
+      const i = idToIndex.get(id);
+      return i === undefined ? undefined : offsets[i];
+    },
+    getRowHeight: (id) => {
+      const measured = heightMapRef.current.get(id);
+      if (measured !== undefined) return measured;
+      const i = idToIndex.get(id);
+      return i === undefined ? undefined : estimateRowHeight(stableSlice[i]);
+    },
+  };
+  if (modelRef) modelRef.current = model;
+
+  // ── Virtual window state ─────────────────────────────────────────────────
+  // Initialized to the BOTTOM window: opening a session shows the present.
+  const [windowRange, setWindowRange] = useState<[number, number]>(() => {
+    const end = Math.min(stableLen, Math.max(1, stableLen));
+    const start = Math.max(0, end - (WINDOW_ROWS_ABOVE + WINDOW_ROWS_BELOW));
+    return [start, end];
+  });
+  const [windowStart, windowEnd] = windowRange;
+
+  const applyWindow = (scrollTop: number): void => {
+    const len = stableLenRef.current;
+    if (len === 0) {
+      setWindowRange((r) => (r[0] === 0 && r[1] === 0 ? r : [0, 0]));
+      return;
+    }
+    const ofs = offsetsRef.current;
+    // Binary search: first index whose row contains scrollTop (clamped to the
+    // last row when the viewport sits in the bottom-spacer/streaming region).
+    let lo = 0;
+    let hi = len - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (ofs[mid + 1] <= scrollTop) lo = mid + 1;
+      else hi = mid;
+    }
+    const firstVisible = lo;
+    const start = Math.max(
+      0,
+      Math.min(firstVisible - WINDOW_ROWS_ABOVE, len - 1),
+    );
+    const end = Math.min(len, firstVisible + WINDOW_ROWS_BELOW);
+    setWindowRange((r) => (r[0] === start && r[1] === end ? r : [start, end]));
+  };
+  const applyWindowRef = useRef(applyWindow);
+  applyWindowRef.current = applyWindow;
+
+  // Slide the window on scroll / container resize (rAF-throttled).
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    let raf = 0;
+    const schedule = (): void => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        applyWindowRef.current(container.scrollTop);
+      });
+    };
+    container.addEventListener("scroll", schedule, { passive: true });
+    schedule();
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(schedule);
+      observer.observe(container);
+    }
+    return () => {
+      container.removeEventListener("scroll", schedule);
+      if (raf) cancelAnimationFrame(raf);
+      observer?.disconnect();
+    };
+  }, [containerRef]);
+
+  // When the stable transcript GROWS (a turn completed and reconciled) while
+  // the window touched the bottom, extend it so the new rows render without
+  // waiting for a scroll event (the pinned user must see them appear).
+  const prevStableLenRef = useRef(stableLen);
+  useEffect(() => {
+    const prevLen = prevStableLenRef.current;
+    prevStableLenRef.current = stableLen;
+    if (stableLen <= prevLen) return;
+    setWindowRange(([s, e]) => {
+      if (e >= prevLen && e < stableLen) return [s, stableLen];
+      return [Math.min(s, Math.max(0, stableLen - 1)), Math.min(e, stableLen)];
+    });
+  }, [stableLen]);
+
+  // ── Render ───────────────────────────────────────────────────────────────
+  const effStart =
+    stableLen === 0
+      ? 0
+      : Math.max(0, Math.min(windowStart, stableLen - 1));
+  const effEnd =
+    stableLen === 0
+      ? 0
+      : Math.min(stableLen, Math.max(windowEnd, effStart + 1));
+  const topSpacerH = effStart > 0 ? offsets[effStart] : 0;
+  const bottomSpacerH =
+    stableLen > effEnd ? offsets[stableLen] - offsets[effEnd] : 0;
+
   const callbacks = {
     agentAvatar,
     onApprove,
@@ -581,6 +566,29 @@ export const MessageList = memo(function MessageList({
     onUnsendLastUser,
     onOpenFileChanges,
   };
+
+  // Window rows: buildRows over the visible window with the context the
+  // full-history build would have accumulated by `effStart`.
+  const windowCtx = stableWindowContext(stableSlice, effStart);
+  const windowRows = buildRows(
+    stableSlice.slice(effStart, effEnd),
+    effStart,
+    visibleMessages.length,
+    lastUserBubbleIdx,
+    windowCtx.prevRole,
+    windowCtx.initReasonId,
+    false,
+    callbacks,
+  ).rows;
+
+  // The streaming turn renders after the bottom spacer; its avatar grouping
+  // needs the LAST stable row's effective role (tool rows read as agent).
+  const stableLastRole =
+    stableLen === 0
+      ? undefined
+      : isToolRow(stableSlice[stableLen - 1])
+        ? "agent"
+        : stableSlice[stableLen - 1].role;
   const { rows: streamingRows } = buildRows(
     streamingSlice,
     splitAt,
@@ -595,10 +603,31 @@ export const MessageList = memo(function MessageList({
 
   return (
     <>
-      <StableHistory
-        rows={stableRows}
-        revealing={active === true && revealedStableCount < stableSlice.length}
-      />
+      {topSpacerH > 0 && (
+        <div
+          className="chat-virtual-spacer chat-virtual-spacer--top"
+          style={{ height: topSpacerH }}
+          aria-hidden="true"
+        />
+      )}
+      <div className="chat-virtual-window">
+        {windowRows.map((row, i) => (
+          <MeasureRow
+            key={stableSlice[effStart + i].id}
+            id={stableSlice[effStart + i].id}
+            onRowHeight={onRowHeight}
+          >
+            {row}
+          </MeasureRow>
+        ))}
+      </div>
+      {bottomSpacerH > 0 && (
+        <div
+          className="chat-virtual-spacer chat-virtual-spacer--bottom"
+          style={{ height: bottomSpacerH }}
+          aria-hidden="true"
+        />
+      )}
       {streamingRows}
 
       {isLoading && !lastMessageIsAgent && (

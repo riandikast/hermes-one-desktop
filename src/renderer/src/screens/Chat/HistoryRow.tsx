@@ -17,6 +17,14 @@ import type {
 } from "./types";
 
 /* ── Reasoning ────────────────────────────────────────────────────────── */
+// Collapse/expand state persists across unmounts (module-scoped, like
+// expandedCodeBlocks in AgentMarkdown): the virtualized message list
+// unmounts rows when they leave the viewport window, and a remounted row
+// must come back in the state the user left it.
+
+const reasoningOpenById = new Set<string>();
+const toolGroupOpenById = new Set<string>();
+const toolItemOpenById = new Set<string>();
 
 export const ReasoningRow = memo(function ReasoningRow({
   msg,
@@ -37,11 +45,21 @@ export const ReasoningRow = memo(function ReasoningRow({
   const { t } = useI18n();
   const [open, setOpen] = useState(() => {
     try {
-      return localStorage.getItem("hermes.autoExpandReasoning") === "true";
+      return (
+        reasoningOpenById.has(msg.id) ||
+        localStorage.getItem("hermes.autoExpandReasoning") === "true"
+      );
     } catch {
       return false;
     }
   });
+  const toggleOpen = (): void =>
+    setOpen((o) => {
+      const next = !o;
+      if (next) reasoningOpenById.add(msg.id);
+      else reasoningOpenById.delete(msg.id);
+      return next;
+    });
 
   // Auto-expand live reasoning chunks during streaming if preference is enabled
   useEffect(() => {
@@ -117,7 +135,7 @@ export const ReasoningRow = memo(function ReasoningRow({
           type="button"
           className="chat-reasoning-group-summary"
           aria-expanded={open}
-          onClick={() => setOpen((o) => !o)}
+          onClick={toggleOpen}
         >
           {active ? (
             <OrbLoader
@@ -273,7 +291,14 @@ const ToolActivityItem = memo(function ToolActivityItem({
 }: {
   msg: ToolItem;
 }): React.JSX.Element {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => toolItemOpenById.has(msg.id));
+  const toggleOpen = (): void =>
+    setOpen((o) => {
+      const next = !o;
+      if (next) toolItemOpenById.add(msg.id);
+      else toolItemOpenById.delete(msg.id);
+      return next;
+    });
   const call = isToolCall(msg);
   const failed = call && msg.status === "failed";
   const hasAttachments =
@@ -285,7 +310,7 @@ const ToolActivityItem = memo(function ToolActivityItem({
         type="button"
         className="chat-tool-item-header"
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggleOpen}
       >
         <ChevronRight
           size={12}
@@ -355,7 +380,19 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
    *  activity never appears mid-thought ("full thought -> tools"). */
   waitForReasoningId?: string;
 }): React.JSX.Element {
-  const [open, setOpen] = useState(false);
+  const groupKey = items[0]?.id;
+  const [open, setOpen] = useState(() =>
+    groupKey ? toolGroupOpenById.has(groupKey) : false,
+  );
+  const toggleOpen = (): void =>
+    setOpen((o) => {
+      const next = !o;
+      if (groupKey) {
+        if (next) toolGroupOpenById.add(groupKey);
+        else toolGroupOpenById.delete(groupKey);
+      }
+      return next;
+    });
   const { waiting } = useReasoningGate({
     waitForReasoningId,
     hasContent: items.length > 0,
@@ -385,7 +422,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
           type="button"
           className="chat-tool-group-summary"
           aria-expanded={open}
-          onClick={() => setOpen((o) => !o)}
+          onClick={toggleOpen}
         >
           {active ? (
             <OrbLoader

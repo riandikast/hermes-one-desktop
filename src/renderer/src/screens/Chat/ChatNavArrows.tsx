@@ -1,8 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { ChevronUp, ChevronDown, ArrowDown } from "lucide-react";
 import type { ChatMessage } from "./types";
-
-const rowId = (id: string): string => `chat-msg-${id}`;
+import type { MessageListModel } from "./MessageList";
 
 const AT_BOTTOM_TOLERANCE_PX = 60;
 
@@ -10,10 +9,10 @@ interface ChatNavArrowProps {
   position: "top" | "bottom";
   messages: ChatMessage[];
   containerRef: React.RefObject<HTMLDivElement | null>;
-  /** Progressive transcript reveal in flight — keep the arrows hidden
-   *  (jump targets may not be mounted yet; the batch compensation would
-   *  fight a jump). */
-  revealing?: boolean;
+  /** Row-geometry model published by MessageList's virtual window. Rows
+   *  outside the window are NOT mounted, so jumps resolve via measured/
+   *  estimated offsets instead of getElementById. */
+  modelRef: React.MutableRefObject<MessageListModel | null>;
 }
 
 /**
@@ -39,7 +38,7 @@ export const ChatNavArrow = memo(function ChatNavArrow({
   position,
   messages,
   containerRef,
-  revealing,
+  modelRef,
 }: ChatNavArrowProps): React.JSX.Element | null {
   const [visible, setVisible] = useState(false);
   // Read latest messages from a ref so the scroll listener attaches once
@@ -48,22 +47,19 @@ export const ChatNavArrow = memo(function ChatNavArrow({
   messagesRef.current = messages;
 
   const update = useCallback(() => {
-    if (revealing) {
-      // The progressive reveal is still mounting the transcript: jump
-      // targets may not exist in the DOM yet and the batch compensation
-      // would fight any jump. Keep the arrows hidden until it completes.
+    const container = containerRef.current;
+    const model = modelRef.current;
+    if (!container || !model) {
       setVisible(false);
       return;
     }
-    const container = containerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const center = rect.top + rect.height / 2;
+    const scrollTop = container.scrollTop;
+    const clientH = container.clientHeight;
+    const center = scrollTop + clientH / 2;
     const atBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight <
-      AT_BOTTOM_TOLERANCE_PX;
+      container.scrollHeight - scrollTop - clientH < AT_BOTTOM_TOLERANCE_PX;
     const scrollable =
-      container.scrollHeight - container.clientHeight > AT_BOTTOM_TOLERANCE_PX;
+      container.scrollHeight - clientH > AT_BOTTOM_TOLERANCE_PX;
     let anyAbove = false;
     let anyBelow = false;
     // The LATEST user message never counts as a "next" target: right after
@@ -78,11 +74,11 @@ export const ChatNavArrow = memo(function ChatNavArrow({
     for (const msg of messagesRef.current) {
       if (msg.role !== "user") continue;
       if (msg.id === lastUserId) continue;
-      const el = document.getElementById(rowId(msg.id));
-      if (!el) continue;
-      const r = el.getBoundingClientRect();
-      if (r.bottom < center) anyAbove = true;
-      else if (r.top > center) anyBelow = true;
+      const top = model.getRowTop(msg.id);
+      if (top === undefined) continue;
+      const h = model.getRowHeight(msg.id) ?? 0;
+      if (top + h < center) anyAbove = true;
+      else if (top > center) anyBelow = true;
     }
     if (!scrollable) {
       setVisible(false);
@@ -95,7 +91,7 @@ export const ChatNavArrow = memo(function ChatNavArrow({
     // the latest and the arrow would be pointless).
     if (position === "top") setVisible(!atBottom && anyAbove);
     else setVisible(anyBelow);
-  }, [containerRef, position, revealing]);
+  }, [containerRef, position, modelRef]);
 
   useEffect(() => {
     update();
@@ -130,21 +126,21 @@ export const ChatNavArrow = memo(function ChatNavArrow({
 
   const jump = useCallback(() => {
     const container = containerRef.current;
-    if (!container) return;
-    const center =
-      container.getBoundingClientRect().top +
-      container.getBoundingClientRect().height / 2;
+    const model = modelRef.current;
+    if (!container || !model) return;
+    const clientH = container.clientHeight;
+    const center = container.scrollTop + clientH / 2;
     let target: string | null = null;
     let lastUser: string | null = null;
     for (const msg of messagesRef.current) {
       if (msg.role !== "user") continue;
       lastUser = msg.id;
-      const el = document.getElementById(rowId(msg.id));
-      if (!el) continue;
-      const r = el.getBoundingClientRect();
-      if (position === "top" && r.bottom < center) {
+      const top = model.getRowTop(msg.id);
+      if (top === undefined) continue;
+      const h = model.getRowHeight(msg.id) ?? 0;
+      if (position === "top" && top + h < center) {
         target = msg.id; // keep walking: ends at the last one above centre
-      } else if (position === "bottom" && r.top > center) {
+      } else if (position === "bottom" && top > center) {
         target = msg.id; // first one below centre
         break;
       }
@@ -153,9 +149,19 @@ export const ChatNavArrow = memo(function ChatNavArrow({
     // usually already gone, so fall back to the LATEST user message — the
     // arrow stays useful ("back to my latest question") instead of dead.
     if (position === "bottom" && !target) target = lastUser;
-    const el = target ? document.getElementById(rowId(target)) : null;
-    el?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [containerRef, position]);
+    if (!target) return;
+    const top = model.getRowTop(target);
+    if (top === undefined) return;
+    const h = model.getRowHeight(target) ?? 0;
+    // Center the target row in the viewport. Targets outside the virtual
+    // window use estimated offsets — the window slides there and the
+    // ResizeObserver measurements correct the final position (browser scroll
+    // anchoring keeps the content stable during the correction).
+    container.scrollTo({
+      top: Math.max(0, top - (clientH - h) / 2),
+      behavior: "smooth",
+    });
+  }, [containerRef, position, modelRef]);
 
   if (!messages.some((m) => m.role === "user")) return null;
 
@@ -190,16 +196,8 @@ export const ChatNavArrow = memo(function ChatNavArrow({
  */
 export const JumpToLatest = memo(function JumpToLatest({
   containerRef,
-  messages,
-  revealing,
 }: {
   containerRef: React.RefObject<HTMLDivElement | null>;
-  messages: ChatMessage[];
-  /** Progressive transcript reveal in flight — the DOM only holds the
-   *  trailing shell, so fall back to a message-count estimate for the
-   *  scrollable check (the button should appear immediately on long
-   *  sessions, not after the reveal finishes). */
-  revealing?: boolean;
 }): React.JSX.Element {
   const [visible, setVisible] = useState(false);
 
@@ -209,13 +207,10 @@ export const JumpToLatest = memo(function JumpToLatest({
     const atBottom =
       container.scrollHeight - container.scrollTop - container.clientHeight <
       AT_BOTTOM_TOLERANCE_PX;
-    const domScrollable =
+    const scrollable =
       container.scrollHeight - container.clientHeight > AT_BOTTOM_TOLERANCE_PX;
-    // During the reveal the DOM holds only the trailing shell; a long
-    // transcript is scrollable even if the DOM says otherwise right now.
-    const scrollable = revealing ? messages.length > 24 : domScrollable;
     setVisible(scrollable && !atBottom);
-  }, [containerRef, messages, revealing]);
+  }, [containerRef]);
 
   useEffect(() => {
     update();

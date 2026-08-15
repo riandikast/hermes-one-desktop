@@ -6306,24 +6306,16 @@ body:has(.shell-vibrant),
   contain-intrinsic-size: auto 120px;
 }
 
-/* While the progressive reveal is active, the revealed rows must lay out at
-   REAL heights: the per-batch bottom-snap reads scrollHeight, and the 120px
-   first-paint estimates made the content end move whenever a freshly
-   prepended batch entered the viewport — the visible clip/unclip blink on
-   some long sessions. Once the reveal finishes the wrapper is removed and
-   content-visibility: auto (with the now-remembered real sizes) resumes. */
-.chat-stable-reveal .chat-message {
+/* Virtualized window (MessageList): the mounted rows must lay out at REAL
+   heights — the ResizeObserver measures them to size the top/bottom spacers,
+   and content-visibility's 120px first-paint estimate would pollute the
+   height map. The window is bounded (~100 rows), so forcing layout here
+   costs nothing vs the old thousands-of-rows reveal. Entrance animation is
+   off for stable rows: rows remount as they slide into the window on every
+   scroll, and a fade per row would read as flicker. */
+.chat-virtual-window .chat-message {
   content-visibility: visible;
-}
-
-/* Scroll anchoring off ONLY while the reveal is running: prepends above the
-   viewport would otherwise shift the anchor node and fight the per-batch
-   snaps. The moment it ends (MessageList -> onRevealStateChange), anchoring
-   returns so normal scrolling over content-visibility rows stays stable —
-   with anchoring off permanently, one scroll-up on a long session crept
-   into continuous scrolling. */
-.chat-messages.is-revealing {
-  overflow-anchor: none;
+  animation: none;
 }
 
 @keyframes messageIn {
