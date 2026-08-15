@@ -138,6 +138,26 @@ export function useChatScroll(messages: ChatMessage[]): {
     };
   }, []);
 
+  // Immediately pause auto-scroll on any upward scroll intent. The 60px
+  // position threshold alone cannot stop the mid-stream snap flood: each delta
+  // schedules a bottom snap, and a slow wheel scroll stays inside the 60px
+  // window long enough that the snap re-pins the viewport before the flag ever
+  // flips — the user can never scroll up while the model streams. Wheel fires
+  // for both mouse wheel and trackpad two-finger scroll in Chromium, so one
+  // listener covers both. Re-pinning still flows through the position check in
+  // handleScroll (scroll back to the bottom to resume following).
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    function handleWheel(e: WheelEvent): void {
+      if (e.deltaY < 0) {
+        userScrolledUpRef.current = true;
+      }
+    }
+    container.addEventListener("wheel", handleWheel, { passive: true });
+    return () => container.removeEventListener("wheel", handleWheel);
+  }, []);
+
   // When the window becomes visible again (minimize/restore, alt-tab back),
   // re-jump to the present IF the user was pinned to the bottom. While
   // minimized Chromium freezes rAF and throttles timers, so the auto-scroll
