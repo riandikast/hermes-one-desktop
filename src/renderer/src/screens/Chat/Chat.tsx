@@ -458,7 +458,8 @@ function Chat({
     };
   }, []);
 
-  const { containerRef, bottomRef, jumpToPresent } = useChatScroll(messages);
+  const { containerRef, bottomRef, jumpToPresent, scrolledUpAtom } =
+    useChatScroll(messages);
   // MessageList's virtual window publishes row-geometry lookups here so the
   // nav arrows can locate user rows without DOM ids (out-of-window rows are
   // not mounted).
@@ -1307,7 +1308,11 @@ function Chat({
             containerRef={containerRef}
             modelRef={messageListModelRef}
           />
-          <JumpToLatest containerRef={containerRef} onJump={() => jumpToPresent(true)} />
+          <JumpToLatest
+            containerRef={containerRef}
+            onJump={() => jumpToPresent(true)}
+            scrolledUpAtom={scrolledUpAtom}
+          />
         </div>
 
         {contextFolders.length > 0 && worktreeVisible && (

@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { ChevronUp, ChevronDown, ArrowDown } from "lucide-react";
 import type { ChatMessage } from "./types";
 import type { MessageListModel } from "./MessageList";
+import { useAtomValue } from "./hooks/useChatScrollAtoms";
 
 const AT_BOTTOM_TOLERANCE_PX = 60;
 
@@ -200,6 +201,7 @@ export const ChatNavArrow = memo(function ChatNavArrow({
 export const JumpToLatest = memo(function JumpToLatest({
   containerRef,
   onJump,
+  scrolledUpAtom,
 }: {
   containerRef: React.RefObject<HTMLDivElement | null>;
   /** Robust "reach the present" routine from useChatScroll (over-scroll clamp
@@ -210,41 +212,54 @@ export const JumpToLatest = memo(function JumpToLatest({
    *  re-resolves the current bottom on every retry and also clears the
    *  scroll-up flag, re-engaging auto-scroll. */
   onJump?: () => (() => void);
+  /** Pinned-state mirror from useChatScroll. Drives THIS button's visibility
+   *  so it stays in lock-step with the hook's pinned flag (the wheel + scroll
+   *  handlers in useChatScroll are the SOLE writers). Avoids the duplicate
+   *  scroll listener — atom subscriber fires on every pinned-flag change. */
+  scrolledUpAtom?: {
+    get: () => boolean;
+    subscribe: (l: () => void) => () => void;
+  };
 }): React.JSX.Element {
-  const [visible, setVisible] = useState(false);
+  const [scrollable, setScrollable] = useState(false);
+  // Pinned state mirrors the hook's pinned flag via the atom bridge. The
+  // hook's wheel + scroll handlers are the SOLE writers; we only read.
+  // Default to false when no atom is wired (legacy call sites).
+  const fallback = {
+    get: () => false,
+    subscribe: () => () => {},
+  };
+  const scrolledUp = useAtomValue(scrolledUpAtom ?? fallback);
 
-  const update = useCallback(() => {
+  const updateScrollable = useCallback(() => {
     const container = containerRef.current;
     if (!container) return;
-    const atBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight <
-      AT_BOTTOM_TOLERANCE_PX;
-    const scrollable =
-      container.scrollHeight - container.clientHeight > AT_BOTTOM_TOLERANCE_PX;
-    setVisible(scrollable && !atBottom);
+    setScrollable(
+      container.scrollHeight - container.clientHeight > AT_BOTTOM_TOLERANCE_PX,
+    );
   }, [containerRef]);
 
   useEffect(() => {
-    update();
+    updateScrollable();
     const container = containerRef.current;
     if (!container) return;
-    container.addEventListener("scroll", update, { passive: true });
-    window.addEventListener("resize", update);
-    // Same stale-first-measurement guard as ChatNavArrow: a short chat must
-    // not keep the button from a wrong mount-time reading.
-    const raf = requestAnimationFrame(() => requestAnimationFrame(update));
+    window.addEventListener("resize", updateScrollable);
+    const raf = requestAnimationFrame(() =>
+      requestAnimationFrame(updateScrollable),
+    );
     let observer: ResizeObserver | null = null;
     if (typeof ResizeObserver !== "undefined") {
-      observer = new ResizeObserver(update);
+      observer = new ResizeObserver(updateScrollable);
       observer.observe(container);
     }
     return () => {
       cancelAnimationFrame(raf);
-      container.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
+      window.removeEventListener("resize", updateScrollable);
       observer?.disconnect();
     };
-  }, [containerRef, update]);
+  }, [containerRef, updateScrollable]);
+
+  const visible = scrollable && scrolledUp;
 
   const jump = useCallback(() => {
     if (onJump) {
