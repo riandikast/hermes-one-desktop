@@ -38,7 +38,7 @@ interface PendingRequest<T = unknown> {
   timeout: number;
 }
 
-const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 90_000;
 const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {

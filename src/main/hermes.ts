@@ -1515,7 +1515,7 @@ function sendMessageViaApi(
       method: "POST",
       headers,
       signal: controller.signal,
-      timeout: 120000,
+      timeout: 300000,
     },
     (res) => {
       const sid = res.headers["x-hermes-session-id"];
