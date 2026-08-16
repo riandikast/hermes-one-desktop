@@ -13,7 +13,7 @@ import type { ChatMessage } from "../types";
 export function useChatScroll(messages: ChatMessage[]): {
   containerRef: React.RefObject<HTMLDivElement | null>;
   bottomRef: React.RefObject<HTMLDivElement | null>;
-  jumpToPresent: () => () => void;
+  jumpToPresent: (force?: boolean) => () => void;
 } {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -65,16 +65,19 @@ export function useChatScroll(messages: ChatMessage[]): {
   // short of the true bottom once that late layout lands, so re-snap on the
   // next frames + a couple of short timeouts to actually reach the present.
   // Returns a cleanup that cancels the pending retrials.
-  const jumpToPresent = useCallback((): (() => void) => {
+  const jumpToPresent = useCallback((force = false): (() => void) => {
     userScrolledUpRef.current = false;
     snapToBottom();
     // The settle retries catch late layout (rows mounting, images/fonts
-    // landing) at the BOTTOM. They must NOT fight a user who scrolls up right
-    // after sending — otherwise invisible snaps yank the viewport back down
-    // before any content streams. Gate each retry on the pinned flag so an
-    // upward scroll cancels the settle.
+    // landing) at the BOTTOM. On a normal jump they must NOT fight a user who
+    // scrolls up right after sending — gate each retry on the pinned flag so
+    // an upward scroll cancels the settle. But a FORCED jump (tab activation,
+    // "jump to latest" button) is an explicit "show me the present" — a
+    // transient stale-max read during a processing stream can otherwise flip
+    // the pinned flag and abort the settle, leaving the tab short of the
+    // bottom. Force un-gates the retries so the jump always completes.
     const settleSnap = (): void => {
-      if (!userScrolledUpRef.current) snapToBottom();
+      if (force || !userScrolledUpRef.current) snapToBottom();
     };
     const raf = requestAnimationFrame(settleSnap);
     const raf2 = requestAnimationFrame(() =>

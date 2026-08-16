@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Zap, Globe, ClipboardList, Hammer } from "lucide-react";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
@@ -635,14 +635,16 @@ function Chat({
   // useChatScroll does NOT re-fire on tab switch — without this a conversation
   // opened in the background lands wherever it was scrolled, not at the bottom.
   const wasActiveRef = useRef(active);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const wasActive = wasActiveRef.current;
     wasActiveRef.current = active;
     if (active && !wasActive) {
-      // The pane flips `display:none → flex` on activation; jumpToPresent's
-      // own rAF/timeout retrials let the browser lay it out so scrollHeight
-      // is real before snapping, and re-snap after late layout settles.
-      return jumpToPresent();
+      // The pane flips `display:none → flex` on activation. useLayoutEffect
+      // snaps BEFORE paint so the tab never blinks at the stale (pre-hide)
+      // scroll position; jumpToPresent's rAF/timeout retrials then ride out
+      // late layout. Force=true so a transient stale-max read during a
+      // processing stream can't flip the pinned flag and abort the settle.
+      return jumpToPresent(true);
     }
     return undefined;
   }, [active, jumpToPresent]);
@@ -1305,7 +1307,7 @@ function Chat({
             containerRef={containerRef}
             modelRef={messageListModelRef}
           />
-          <JumpToLatest containerRef={containerRef} onJump={jumpToPresent} />
+          <JumpToLatest containerRef={containerRef} onJump={() => jumpToPresent(true)} />
         </div>
 
         {contextFolders.length > 0 && worktreeVisible && (
