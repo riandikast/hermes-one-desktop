@@ -79,6 +79,19 @@ export function useChatScroll(messages: ChatMessage[]): {
     const settleSnap = (): void => {
       if (force || !userScrolledUpRef.current) snapToBottom();
     };
+    if (force) {
+      // Tab activation / "jump to latest" is an explicit "show the present":
+      // ONE instant snap + a single rAF correction (catches the
+      // display:none→flex relayout). The timeout barrage is what read as
+      // "blink" — repeated re-snaps mid-stream. A processing turn keeps
+      // following via the per-delta streaming snap, so no settle retries are
+      // needed here. Mirrors the official desktop's use-stick-to-bottom
+      // (scrollToBottom = one instant snap; resize observer follows).
+      const raf = requestAnimationFrame(settleSnap);
+      return (): void => {
+        cancelAnimationFrame(raf);
+      };
+    }
     const raf = requestAnimationFrame(settleSnap);
     const raf2 = requestAnimationFrame(() =>
       requestAnimationFrame(settleSnap),
