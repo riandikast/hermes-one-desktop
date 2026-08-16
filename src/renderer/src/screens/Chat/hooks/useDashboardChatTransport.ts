@@ -154,6 +154,14 @@ interface UseDashboardChatTransportResult {
    */
   respondClarify: (requestId: string, answer: string) => Promise<boolean>;
   /**
+   * Un-send the last user turn: truncate the gateway's live history via
+   * `session.undo` AND the renderer transcript (remove the last user message +
+   * everything after). Returns false when the gateway rejects (e.g. a turn is
+   * running — undo requires an idle session). The caller re-populates the
+   * composer with the removed text for edit+resend.
+   */
+  undoLastUser: () => Promise<boolean>;
+  /**
    * Run a slash command through the gateway's `slash.exec` pipeline instead of
    * submitting it to the model as a literal prompt. `sys` renders command
    * output into the transcript; a `send` outcome hands an agent prompt back to
@@ -2534,8 +2542,13 @@ export function useDashboardChatTransport({
       const entry = res?.sessions?.find((s) => s.id === runtimeId);
       const busy =
         entry?.status === "working" ||
-        entry?.status === "waiting" ||
-        entry?.status === "starting";
+        entry?.status === "waiting";
+      // NOTE: "starting" is deliberately NOT treated as busy. On a cold resume
+      // the gateway schedules a lazy agent build (agent_build_started, ready
+      // unset) which reports "starting" for a few seconds while NOTHING is
+      // actually running — treating it as busy painted a false "processing"
+      // spinner every reopen. A genuinely in-flight turn reports "working"
+      // (running=True); "starting" only means the agent is still being built.
       const wasForeign = foreignTurnRef.current;
       if (!busy) {
         if (wasForeign) {
@@ -2968,6 +2981,23 @@ export function useDashboardChatTransport({
     ],
   );
 
+  const undoLastUser = useCallback(async (): Promise<boolean> => {
+    if (!enabled) return false;
+    const sessionId = runtimeSessionIdRef.current;
+    if (!sessionId) return false;
+    try {
+      // Truncate the GATEWAY's live history first so the next prompt.submit
+      // builds context WITHOUT the unsent message (skipping this re-sent the
+      // "unsent" text into the model on every resend — the duplicate-resend
+      // bug). Rejects when a turn is running; unsend only fires while idle.
+      const client = await ensureClient();
+      await client.request("session.undo", { session_id: sessionId });
+      return true;
+    } catch {
+      return false;
+    }
+  }, [enabled, ensureClient]);
+
   const abort = useCallback(() => {
     if (!enabled) return;
     const sessionId = runtimeSessionIdRef.current;
@@ -3029,6 +3059,7 @@ export function useDashboardChatTransport({
     enabled,
     sendMessage,
     respondClarify,
+    undoLastUser,
     execSlash,
     getCommandCatalog,
     runBackground,

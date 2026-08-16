@@ -1068,6 +1068,14 @@ function Chat({
   // builds context from the truncated renderer state.
   const handleUnsendLastUser = useCallback(
     async (_msgId: string, content: string) => {
+      // Truncate the GATEWAY's live history too (dashboard mode). Without this
+      // the next resend builds context with the "unsent" text still present,
+      // so the model re-answers it — the duplicate-resend bug. Renderer-only
+      // truncation below is the immediate UI update; session.undo fixes the
+      // durable context.
+      if (dashboardTransport.enabled) {
+        void dashboardTransport.undoLastUser();
+      }
       // Truncate renderer-side: remove the last user message + everything after it.
       setMessages((prev) => {
         let lastUserIdx = -1;
@@ -1093,7 +1101,7 @@ function Chat({
       activeTurnRef.current = null;
       setIsLoading(false);
     },
-    [setMessages, chatInputRef, setIsLoading],
+    [setMessages, chatInputRef, setIsLoading, dashboardTransport],
   );
 
   // Drag-and-drop: filter for dragenter events carrying files (suppresses
