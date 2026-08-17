@@ -1018,6 +1018,15 @@ export function useDashboardChatTransport({
   const runtimeSessionIdRef = useRef<string | null>(null);
   const storedSessionIdRef = useRef<string | null>(hermesSessionId);
   const messagesRef = useRef<ChatMessage[]>(messages);
+  const modelRef = useRef(model);
+  const modelBaseUrlRef = useRef(modelBaseUrl);
+  const providerRef = useRef(provider);
+  // Keep routing identity current during render. The picker can be followed by
+  // an immediate send before React runs effects or publishes another render.
+  messagesRef.current = messages;
+  modelRef.current = model;
+  modelBaseUrlRef.current = modelBaseUrl;
+  providerRef.current = provider;
   const reasoningSegmentClosedRef = useRef(false);
   const appliedModelRef = useRef<string | null>(null);
   const recreateRuntimeSessionRef = useRef(false);
@@ -2315,7 +2324,10 @@ export function useDashboardChatTransport({
       client: DashboardGatewayClient,
       sessionId: string,
     ): Promise<string> => {
-      const command = dashboardModelCommand(provider, model);
+      const selectedModel = modelRef.current;
+      const selectedProvider = providerRef.current;
+      const selectedBaseUrl = modelBaseUrlRef.current;
+      const command = dashboardModelCommand(selectedProvider, selectedModel);
       if (!command) return sessionId;
       const resetRuntimeSession = async (
         targetSessionId: string,
@@ -2341,16 +2353,16 @@ export function useDashboardChatTransport({
           },
         );
         let dashboardProvider = resolveDashboardProviderForModel(
-          provider,
-          model,
-          modelBaseUrl,
+          selectedProvider,
+          selectedModel,
+          selectedBaseUrl,
           before,
         );
 
         if (
           storedSessionIdRef.current &&
-          !dashboardModelMatches(dashboardProvider, model, before) &&
-          (provider === "custom" ||
+          !dashboardModelMatches(dashboardProvider, selectedModel, before) &&
+          (selectedProvider === "custom" ||
             (before.provider || "").toLowerCase().startsWith("custom"))
         ) {
           targetSessionId = await resetRuntimeSession(targetSessionId);
@@ -2358,19 +2370,19 @@ export function useDashboardChatTransport({
             session_id: targetSessionId,
           });
           dashboardProvider = resolveDashboardProviderForModel(
-            provider,
-            model,
-            modelBaseUrl,
+            selectedProvider,
+            selectedModel,
+            selectedBaseUrl,
             before,
           );
-          if (dashboardModelMatches(dashboardProvider, model, before)) {
-            appliedModelRef.current = `${targetSessionId}\n${dashboardProvider}\n${model}`;
+          if (dashboardModelMatches(dashboardProvider, selectedModel, before)) {
+            appliedModelRef.current = `${targetSessionId}\n${dashboardProvider}\n${selectedModel}`;
             return targetSessionId;
           }
         }
 
         if (
-          provider === "custom" &&
+          selectedProvider === "custom" &&
           dashboardProvider === "custom" &&
           storedSessionIdRef.current
         ) {
@@ -2382,15 +2394,15 @@ export function useDashboardChatTransport({
               session_id: targetSessionId,
             },
           );
-          if (dashboardModelMatches("custom", model, rebuilt)) {
-            appliedModelRef.current = `${targetSessionId}\ncustom\n${model}`;
+          if (dashboardModelMatches("custom", selectedModel, rebuilt)) {
+            appliedModelRef.current = `${targetSessionId}\ncustom\n${selectedModel}`;
             return targetSessionId;
           }
         }
 
-        const resolvedCommand = dashboardModelCommand(dashboardProvider, model);
+        const resolvedCommand = dashboardModelCommand(dashboardProvider, selectedModel);
         if (!resolvedCommand) return targetSessionId;
-        const key = `${targetSessionId}\n${dashboardProvider}\n${model}`;
+        const key = `${targetSessionId}\n${dashboardProvider}\n${selectedModel}`;
         let slashResponse: SlashExecResponse | null = null;
         if (appliedModelRef.current !== key) {
           slashResponse = await client.request<SlashExecResponse>(
@@ -2408,7 +2420,7 @@ export function useDashboardChatTransport({
             session_id: targetSessionId,
           },
         );
-        if (!dashboardModelMatches(dashboardProvider, model, live)) {
+        if (!dashboardModelMatches(dashboardProvider, selectedModel, live)) {
           // The gateway may not reflect a session-only `/model` switch in
           // `model.options`: a resumed (old) session keeps reporting its
           // creation model, and custom providers outside the gateway's
@@ -2425,7 +2437,7 @@ export function useDashboardChatTransport({
             ? `; /model output: ${slashResponse.output}`
             : "";
           console.warn(
-            `Hermes dashboard did not report ${dashboardProvider}/${model}; live model is ${live.provider || "unknown"}/${live.model || "unknown"}${warning}${output}; custom inventory: ${modelOptionsSummary(before)}; continuing on ${targetSessionId}`,
+            `Hermes dashboard did not report ${dashboardProvider}/${selectedModel}; live model is ${live.provider || "unknown"}/${live.model || "unknown"}${warning}${output}; custom inventory: ${modelOptionsSummary(before)}; continuing on ${targetSessionId}`,
           );
           return targetSessionId;
         }
@@ -2442,7 +2454,7 @@ export function useDashboardChatTransport({
         return switchAndValidate(freshSessionId);
       }
     },
-    [ensureRuntimeSession, model, modelBaseUrl, provider],
+    [ensureRuntimeSession],
   );
 
   const syncDashboardAttachments = useCallback(
