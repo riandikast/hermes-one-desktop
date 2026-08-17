@@ -2413,6 +2413,7 @@ function sendMessageViaCli(
     HOME: homedir(),
     HERMES_HOME: HERMES_HOME,
     PYTHONUNBUFFERED: "1",
+    HERMES_DESKTOP_MODEL_CONFIRMED: "1",
   };
 
   // Inject all API keys from the profile .env so the CLI can access them.
