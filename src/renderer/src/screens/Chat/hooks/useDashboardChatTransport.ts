@@ -32,6 +32,7 @@ import type {
   UsageState,
 } from "../types";
 import type { DesktopSessionContinuationItem } from "../../../../../shared/session-continuation";
+import type { SessionModelOverride } from "../../../../../shared/model-override";
 
 /** First non-empty string field among the given keys (mirrors the adapter's
  *  canonical payload keys — gateway events vary between them). */
@@ -121,6 +122,7 @@ interface UseDashboardChatTransportArgs {
   fallbackOnUnavailable: boolean;
   hermesSessionId: string | null;
   messages: ChatMessage[];
+  sessionModelOverrideRef?: React.MutableRefObject<SessionModelOverride | undefined>;
   model?: string;
   modelBaseUrl?: string;
   profile?: string;
@@ -994,6 +996,7 @@ export function useDashboardChatTransport({
   messages,
   model,
   modelBaseUrl,
+  sessionModelOverrideRef,
   profile,
   provider,
   knowledgeBundles,
@@ -2324,9 +2327,10 @@ export function useDashboardChatTransport({
       client: DashboardGatewayClient,
       sessionId: string,
     ): Promise<string> => {
-      const selectedModel = modelRef.current;
-      const selectedProvider = providerRef.current;
-      const selectedBaseUrl = modelBaseUrlRef.current;
+      const liveOverride = sessionModelOverrideRef?.current;
+      const selectedModel = liveOverride?.model ?? modelRef.current;
+      const selectedProvider = liveOverride?.provider ?? providerRef.current;
+      const selectedBaseUrl = liveOverride?.baseUrl ?? modelBaseUrlRef.current;
       const command = dashboardModelCommand(selectedProvider, selectedModel);
       if (!command) return sessionId;
       const resetRuntimeSession = async (

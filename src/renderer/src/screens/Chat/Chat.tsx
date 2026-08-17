@@ -386,6 +386,9 @@ function Chat({
   const [sessionModelOverride, setSessionModelOverride] = useState<
     SessionModelOverride | undefined
   >(undefined);
+  const sessionModelOverrideRef = useRef<SessionModelOverride | undefined>(
+    undefined,
+  );
   const sessionModelOverrideLoadedRef = useRef<boolean>(!initialSessionId);
   const dragCounter = useRef(0);
   const chatInputRef = useRef<ChatInputHandle>(null);
@@ -808,6 +811,7 @@ function Chat({
     knowledgeBundles: attachedKnowledgeBundles,
     planMode,
     messages,
+    sessionModelOverrideRef,
     model: chatCurrentModel,
     modelBaseUrl: chatCurrentBaseUrl,
     profile,
@@ -1018,21 +1022,21 @@ function Chat({
   // don't re-render on every streaming chunk (each chunk re-renders <Chat>).
   const handleSelectModel = useCallback(
     (provider: string, model: string, baseUrl: string) => {
+      const override = model
+        ? {
+            provider,
+            model,
+            baseUrl: effectiveOverrideBaseUrl(provider, baseUrl),
+          }
+        : undefined;
+      sessionModelOverrideRef.current = override;
       void modelConfig.selectModel(provider, model, baseUrl, {
         persist: false,
       });
       // Carry the full identity (not just the model name) so a cross-provider
       // switch reaches the right backend. Mirror the baseUrl rule selectModel
       // applies so they can't drift.
-      setSessionModelOverride(
-        model
-          ? {
-              provider,
-              model,
-              baseUrl: effectiveOverrideBaseUrl(provider, baseUrl),
-            }
-          : undefined,
-      );
+      setSessionModelOverride(override);
     },
     [modelConfig.selectModel],
   );
