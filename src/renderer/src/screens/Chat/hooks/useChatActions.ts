@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useRef } from "react";
 import type { ChatInputHandle } from "../ChatInput";
 import { createTurn, shouldSendToAgent } from "../chatMessages";
 import { resetReasoningGate } from "../reasoningStall";
@@ -141,11 +141,11 @@ export function useChatActions({
   const messagesRef = useRef(messages);
   const isLoadingRef = useRef(isLoading);
   const sessionModelRef = useRef(sessionModel);
-  useEffect(() => {
-    messagesRef.current = messages;
-    isLoadingRef.current = isLoading;
-    sessionModelRef.current = sessionModel;
-  });
+  // Keep routing identity current during render. An effect updates too late for
+  // a send triggered immediately after the picker selection.
+  messagesRef.current = messages;
+  isLoadingRef.current = isLoading;
+  sessionModelRef.current = sessionModel;
 
   const pushUser = useCallback(
     (content: string, idPrefix = "user", attachments?: Attachment[]) => {
