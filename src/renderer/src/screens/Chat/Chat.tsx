@@ -477,13 +477,6 @@ function Chat({
   const chatDisplayModel = sessionModelOverride?.model
     ? sessionModelOverride.model.split("/").pop() || sessionModelOverride.model
     : modelConfig.displayModel;
-  if (!sessionModelOverride && chatCurrentModel) {
-    sessionModelOverrideRef.current = {
-      provider: chatCurrentProvider,
-      model: chatCurrentModel,
-      baseUrl: chatCurrentBaseUrl,
-    };
-  }
 
   // Append a record to the persistent usage log whenever the dashboard /
   // gateway transport reports a fresh usage payload. The hook dedupes
@@ -929,15 +922,7 @@ function Chat({
     contextFolders,
     knowledgeBundles: attachedKnowledgeBundles,
     planMode,
-    sessionModel:
-      sessionModelOverride ??
-      (chatCurrentModel
-        ? {
-            provider: chatCurrentProvider,
-            model: chatCurrentModel,
-            baseUrl: chatCurrentBaseUrl,
-          }
-        : undefined),
+    sessionModel: sessionModelOverride,
     sendViaDashboard: dashboardTransport.enabled
       ? dashboardTransport.sendMessage
       : undefined,
