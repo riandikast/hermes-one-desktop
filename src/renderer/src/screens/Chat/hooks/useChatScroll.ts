@@ -34,6 +34,11 @@ export function useChatScroll(messages: ChatMessage[]): {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
+  /** Guard: skip the atBottom check in handleScroll when WE caused the scroll
+   * event (snapToBottom). Without this, a programmatic snap fires `scroll`,
+   * handleScroll sees scrollTop near max → atBottom=true → clears the pinned
+   * flag the wheel handler just set → next delta snaps → scroll wins the fight. */
+  const programmaticScrollRef = useRef(false);
   /** Atom mirror — consumers (jump button, composer) read this. */
   const scrolledUpAtom = useRefReturn(createAtom<boolean>(false));
   const prevMessageCountRef = useRef(messages.length);
@@ -70,6 +75,7 @@ export function useChatScroll(messages: ChatMessage[]): {
     // unmounted rows below the viewport (scrollHeight grows once those rows
     // mount and are measured). The huge-value clamp always resolves to the
     // current true bottom.
+    programmaticScrollRef.current = true;
     container.scrollTop = Number.MAX_SAFE_INTEGER;
     const max = container.scrollHeight - container.clientHeight;
     maxScrollTopRef.current = max;
@@ -183,6 +189,14 @@ export function useChatScroll(messages: ChatMessage[]): {
     let maxRefreshRaf = 0;
     function handleScroll(): void {
       const el = container!;
+      // Skip the atBottom check when WE caused this scroll event (snapToBottom
+      // set the guard). Without this, a programmatic snap fires scroll →
+      // handleScroll sees scrollTop near max → clears the pinned flag the
+      // wheel handler just set → next delta snaps → scroll wins the fight.
+      if (programmaticScrollRef.current) {
+        programmaticScrollRef.current = false;
+        return;
+      }
       // Keep the cached max fresh WITHOUT a per-event layout read: when the
       // user is near the cached bottom, schedule ONE rAF-throttled
       // scrollHeight read. A stale max (content grew via reveal batches or
