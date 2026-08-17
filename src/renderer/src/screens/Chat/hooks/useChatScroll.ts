@@ -3,28 +3,28 @@ import type { ChatMessage } from "../types";
 import { createAtom, useAtomValue } from "./useChatScrollAtoms";
 
 /**
- * Auto-scroll behavior for the chat messages container.
+ * Auto-scroll behavior for the chat messages container — official-style
+ * single-owner model.
  *
- * - Tracks whether the user has manually scrolled up; pauses auto-scroll in that case.
- * - Re-engages auto-scroll when the user sends a new message.
- * - `jumpToPresent` forces an instant snap to the bottom — used on first mount,
- *   when the user sends a message, and when the tab becomes active again.
- * - Exposes the container ref and a bottom sentinel ref to be placed in JSX.
+ * One `isAtBottom` authority (rAF-throttled scroll listener + sentinel IO)
+ * and one `snap` path. No competing wheel flag / programmatic guard / max
+ * cache / timeout barrage — those were the blink + fight source.
  *
- * Atom mirrors (`scrolledUp` / `userScrolledUpRef`): the jump-to-latest button
- * (lives in a sibling subtree) and the composer (separate component) read
- * pinned state. The ref is the synchronous source of truth inside the hook;
- * the atom is the bridge for outside consumers. Both stay in lock-step via
- * the shared setScrolledUp() helper.
- *
- * Bug fix (Aug 2026): the previous `messages`-effect snap fired on EVERY
- * messages change, including passive recomputes from reconcileAfterDbRefresh
- * and DB refreshes that touched `messages` without changing scrollHeight.
- * With no active turn, that re-armed the snap path, fought the user's scroll,
- * and "yanked" the viewport on every quiet state update. The fix: ONLY snap
- * when scrollHeight actually grew (or shrunk) above the prior reading, AND
- * the user is still pinned. Doc-level diffs (no height change) are silent.
+ * - `userScrolledUpRef` is the synchronous source of truth; `scrolledUpAtom`
+ *   is the bridge for sibling consumers (JumpToLatest, composer). Both stay
+ *   in lock-step via `setScrolledUp`.
+ * - Streaming deltas auto-stick ONLY while pinned. Coalesced to one rAF per
+ *   frame so a burst of deltas doesn't flood.
+ * - `jumpToPresent(true)` is an explicit "show the present" (mount, tab
+ *   activation, Jump button). It clears the pinned flag and does a
+ *   synchronous snap + double-rAF settle to let the virtualizer's
+ *   `content-visibility: auto` rows re-measure after `display:none→flex`.
+ * - ResizeObserver on the container is intentionally NOT the content-growth
+ *   driver — the container's content-box doesn't change when scrollHeight
+ *   grows (overflow). Content growth is driven by the `messages` effect.
  */
+const AT_BOTTOM_TOLERANCE_PX = 60;
+
 export function useChatScroll(messages: ChatMessage[]): {
   containerRef: React.RefObject<HTMLDivElement | null>;
   bottomRef: React.RefObject<HTMLDivElement | null>;
@@ -34,28 +34,10 @@ export function useChatScroll(messages: ChatMessage[]): {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
-  /** Guard: skip the atBottom check in handleScroll when WE caused the scroll
-   * event (snapToBottom). Without this, a programmatic snap fires `scroll`,
-   * handleScroll sees scrollTop near max → atBottom=true → clears the pinned
-   * flag the wheel handler just set → next delta snaps → scroll wins the fight. */
-  const programmaticScrollRef = useRef(false);
-  /** Atom mirror — consumers (jump button, composer) read this. */
   const scrolledUpAtom = useRefReturn(createAtom<boolean>(false));
   const prevMessageCountRef = useRef(messages.length);
   const mountedRef = useRef(false);
-  /** One pending streaming snap (macrotask) at a time. */
   const pendingSnapRef = useRef(false);
-  /**
-   * Cached `scrollHeight - clientHeight` so the scroll listener can decide
-   * pinned-vs-scrolled-up WITHOUT reading `scrollHeight` — that read forces a
-   * synchronous layout, and during streaming the layout is dirty every frame
-   * (typewriter growth), making wheel scrolling janky. Refreshed by every
-   * snap and by a ResizeObserver (whose callback runs after layout, so the
-   * read there is cheap).
-   */
-  const maxScrollTopRef = useRef(0);
-  /** Last observed scrollHeight — the gate for "should I snap on this update". */
-  const lastScrollHeightRef = useRef(0);
 
   const setScrolledUp = useCallback(
     (next: boolean): void => {
@@ -69,105 +51,33 @@ export function useChatScroll(messages: ChatMessage[]): {
   const snapToBottom = useCallback((): void => {
     const container = containerRef.current;
     if (!container) return;
-    // Over-scroll to clamp: the browser clamps scrollTop to
-    // `scrollHeight - clientHeight`. Reading that value directly can land
-    // SHORT when the virtual window still holds ESTIMATED heights for
-    // unmounted rows below the viewport (scrollHeight grows once those rows
-    // mount and are measured). The huge-value clamp always resolves to the
-    // current true bottom.
-    programmaticScrollRef.current = true;
+    // Over-scroll clamp: resolves to `scrollHeight - clientHeight` even when
+    // the virtual window still holds estimated heights for unmounted rows.
     container.scrollTop = Number.MAX_SAFE_INTEGER;
-    const max = container.scrollHeight - container.clientHeight;
-    maxScrollTopRef.current = max;
-    lastScrollHeightRef.current = container.scrollHeight;
   }, []);
 
-  // Keep the cached max scroll position fresh when the container resizes
-  // (layout is clean at ResizeObserver callback time, so the read is cheap).
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      const h = container.scrollHeight;
-      maxScrollTopRef.current = h - container.clientHeight;
-      lastScrollHeightRef.current = h;
-    });
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, []);
-
-  // Force an instant bottom snap regardless of the user's scroll state, plus a
-  // few settle retries. Rows use `content-visibility: auto`, so their real
-  // height replaces the 120px intrinsic estimate only once they scroll into
-  // view (and images / fonts arrive late) — a single synchronous snap can land
-  // short of the true bottom once that late layout lands, so re-snap on the
-  // next frames + a couple of short timeouts to actually reach the present.
-  // Returns a cleanup that cancels the pending retrials.
+  // Explicit "show the present" — mount, tab activation, Jump button.
   const jumpToPresent = useCallback(
     (force = false): (() => void) => {
+      void force;
       setScrolledUp(false);
-      // Reset the height gate so the next per-delta snap fires even if the
-      // current scrollHeight matches our last reading (rare — but possible
-      // after a programmatic scroll that we want to "stick" at bottom).
-      lastScrollHeightRef.current = 0;
       snapToBottom();
-      // The settle retries catch late layout (rows mounting, images/fonts
-      // landing) at the BOTTOM. On a normal jump they must NOT fight a user
-      // who scrolls up right after sending — gate each retry on the pinned
-      // flag so an upward scroll cancels the settle. But a FORCED jump (tab
-      // activation, "jump to latest" button) is an explicit "show me the
-      // present" — a transient stale-max read during a processing stream can
-      // otherwise flip the pinned flag and abort the settle, leaving the tab
-      // short of the bottom. Force un-gates the retries so the jump always
-      // completes.
-      const settleSnap = (): void => {
-        if (force || !userScrolledUpRef.current) snapToBottom();
-      };
-      if (force) {
-        // Tab activation / "jump to latest" is an explicit "show the
-        // present": sync snap (pre-paint, prevents the stale-position
-        // flash) + DOUBLE rAF. The first rAF lets the browser lay out
-        // the pane after display:none→flex; the second catches the real
-        // bottom once virtualized rows (content-visibility:auto) re-measure.
-        // A single rAF was a race — sometimes it caught the real bottom
-        // (no issue), sometimes it landed on estimated heights (short of
-        // present), sometimes the stale sync snap painted first (blink).
-        // No timeouts — the 80/250/500ms barrage was the original blink
-        // cause (it re-snapped mid-stream, fighting the per-delta snap);
-        // the height gate (§8) now keeps the streaming snap silent when
-        // nothing grew, so the double-rAF doesn't fight it.
-        const raf1 = requestAnimationFrame(() => {
-          settleSnap();
-          requestAnimationFrame(settleSnap);
-        });
-        return (): void => {
-          cancelAnimationFrame(raf1);
-        };
-      }
-      const raf = requestAnimationFrame(settleSnap);
-      const raf2 = requestAnimationFrame(() =>
-        requestAnimationFrame(settleSnap),
-      );
-      const t1 = window.setTimeout(settleSnap, 80);
-      const t2 = window.setTimeout(settleSnap, 250);
-      // Late measurement corrections (a long session's bottom rows mounting
-      // after the window slides, or images/fonts landing) can move the true
-      // bottom after the earlier retries — one more pass catches the tail.
-      const t3 = window.setTimeout(settleSnap, 500);
+      // Double-rAF settle: first lets the browser lay out the pane after
+      // display:none→flex / virtual rows re-measure; second catches the true
+      // bottom once `content-visibility:auto` rows replace their 120px
+      // intrinsic estimate. No setTimeout barrage — it re-snapped mid-stream.
+      const raf1 = requestAnimationFrame(() => {
+        snapToBottom();
+        requestAnimationFrame(snapToBottom);
+      });
       return (): void => {
-        cancelAnimationFrame(raf);
-        cancelAnimationFrame(raf2);
-        window.clearTimeout(t1);
-        window.clearTimeout(t2);
-        window.clearTimeout(t3);
+        cancelAnimationFrame(raf1);
       };
     },
     [snapToBottom, setScrolledUp],
   );
 
-  // On first mount (opening/resuming a session) jump INSTANTLY to the bottom.
-  // Smooth scrollIntoView from an unlaid-out container (content-visibility
-  // rows, still-loading images) lands at the top of a long conversation.
+  // First mount — show the present instantly.
   useEffect(() => {
     if (mountedRef.current) return;
     mountedRef.current = true;
@@ -175,83 +85,63 @@ export function useChatScroll(messages: ChatMessage[]): {
     return cleanup;
   }, [jumpToPresent]);
 
-  // Track manual scroll position. Programmatic snaps also fire `scroll`, which
-  // is harmless (they report atBottom → stays pinned). A wheel / touch scroll
-  // up past the threshold flips the ref and pauses auto-scroll until the user
-  // sends a message or switches tabs back (jumpToPresent resets it).
-  // Layout-free: uses the CACHED max scroll position (refreshed by snaps and
-  // the ResizeObserver) instead of reading `scrollHeight` per scroll event —
-  // that read forces a synchronous layout while the stream is dirtying layout
-  // every frame, which made wheel scrolling janky mid-stream.
+  // Single-owner scroll listener: rAF-throttled atBottom check. This is the
+  // SOLE writer of the pinned flag during manual scroll (no wheel listener).
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    let maxRefreshRaf = 0;
-    function handleScroll(): void {
-      const el = container!;
-      // Skip the atBottom check when WE caused this scroll event (snapToBottom
-      // set the guard). Without this, a programmatic snap fires scroll →
-      // handleScroll sees scrollTop near max → clears the pinned flag the
-      // wheel handler just set → next delta snaps → scroll wins the fight.
-      if (programmaticScrollRef.current) {
-        programmaticScrollRef.current = false;
-        return;
-      }
-      // Keep the cached max fresh WITHOUT a per-event layout read: when the
-      // user is near the cached bottom, schedule ONE rAF-throttled
-      // scrollHeight read. A stale max (content grew via reveal batches or
-      // a streaming turn; only snaps used to refresh it) flipped the
-      // atBottom check to "pinned" while the user was scrolled up,
-      // re-arming the snap machinery — the continuous scroll.
-      if (
-        el.scrollTop >= maxScrollTopRef.current - 120 &&
-        maxRefreshRaf === 0
-      ) {
-        maxRefreshRaf = requestAnimationFrame(() => {
-          maxRefreshRaf = 0;
-          const realMax = el.scrollHeight - el.clientHeight;
-          if (realMax > maxScrollTopRef.current) {
-            maxScrollTopRef.current = realMax;
-          }
-        });
-      }
-      const atBottom = el.scrollTop >= maxScrollTopRef.current - 60;
-      setScrolledUp(!atBottom);
-    }
+    let ticking = 0;
+    const handleScroll = (): void => {
+      if (ticking) return;
+      ticking = requestAnimationFrame(() => {
+        ticking = 0;
+        const el = container;
+        const atBottom =
+          el.scrollHeight - el.scrollTop - el.clientHeight <
+          AT_BOTTOM_TOLERANCE_PX;
+        setScrolledUp(!atBottom);
+      });
+    };
     container.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
       container.removeEventListener("scroll", handleScroll);
+      if (ticking) cancelAnimationFrame(ticking);
     };
   }, [setScrolledUp]);
 
-  // Immediately pause auto-scroll on any upward scroll intent. The 60px
-  // position threshold alone cannot stop the mid-stream snap flood: each delta
-  // schedules a bottom snap, and a slow wheel scroll stays inside the 60px
-  // window long enough that the snap re-pins the viewport before the flag ever
-  // flips — the user can never scroll up while the model streams. Wheel fires
-  // for both mouse wheel and trackpad two-finger scroll in Chromium, so one
-  // listener covers both. Re-pinning still flows through the position check in
-  // handleScroll (scroll back to the bottom to resume following).
+  // Sentinel IntersectionObserver — supplements the scroll listener for
+  // programmatic / layout-driven position changes that don't fire scroll
+  // (mount, virtualizer window slide, display:none→flex). The scroll
+  // listener remains authoritative during drag; the IO just re-syncs the
+  // flag when the sentinel's visibility changes without a scroll event.
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
-    function handleWheel(e: WheelEvent): void {
-      if (e.deltaY < 0) {
-        setScrolledUp(true);
-      }
-    }
-    container.addEventListener("wheel", handleWheel, { passive: true });
-    return () => container.removeEventListener("wheel", handleWheel);
+    const bottom = bottomRef.current;
+    if (
+      !container ||
+      !bottom ||
+      typeof IntersectionObserver === "undefined"
+    )
+      return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        // Use IO's isIntersecting as the atBottom signal (rootMargin gives
+        // the same 60px tolerance as the scroll check).
+        const atBottom = entry.isIntersecting;
+        // Defer to next frame so a programmatic snap's scroll event settles
+        // first — otherwise the IO callback can race the scroll handler.
+        requestAnimationFrame(() => setScrolledUp(!atBottom));
+      },
+      { root: container, threshold: 0, rootMargin: `${AT_BOTTOM_TOLERANCE_PX}px 0px 0px 0px` },
+    );
+    io.observe(bottom);
+    return () => io.disconnect();
   }, [setScrolledUp]);
 
-  // When the window becomes visible again (minimize/restore, alt-tab back),
-  // re-jump to the present IF the user was pinned to the bottom. While
-  // minimized Chromium freezes rAF and throttles timers, so the auto-scroll
-  // settle retries never ran and the scroll position went stale — the answer
-  // that streamed while hidden sits at the bottom, skipped by
-  // `content-visibility: auto` (looks like "the last answer never appeared
-  // until the session was reopened"). A pinned user expects to land on the
-  // latest; a user who scrolled up keeps their place.
+  // Re-jump when the window becomes visible again while pinned (minimized /
+  // alt-tab during a stream left the settle rAFs frozen and scroll stale).
   useEffect(() => {
     const onVisible = (): void => {
       if (
@@ -269,18 +159,9 @@ export function useChatScroll(messages: ChatMessage[]): {
     };
   }, [jumpToPresent]);
 
-  // Auto-scroll on incoming messages; force-scroll when the user sends a new
-  // one. Streaming deltas (same length, content grew) keep the latest in view
-  // ONLY while the user is pinned to the bottom.
-  //
-  // HEIGHT-GATED (bug fix): the previous version snapped on every `messages`
-  // change. `messages` re-renders frequently from reconcileAfterDbRefresh,
-  // DB refreshes, fileChanges badges, etc. — most of which don't change
-  // scrollHeight at all. With no active turn, those re-armed the snap path
-  // and yanked the viewport. Now we read the container's scrollHeight in
-  // the macrotask and only snap if it actually grew past the prior reading.
-  // A passive reconcile (no height change) is silent. The collapse-into-one
-  // pending-snap flag still de-dupes per-frame stream deltas.
+  // Auto-stick on incoming messages. User send always forces to present;
+  // streaming deltas stick only while pinned. One rAF per frame coalesces
+  // a burst of deltas (the typewriter can emit many per frame).
   useEffect(() => {
     const prevCount = prevMessageCountRef.current;
     prevMessageCountRef.current = messages.length;
@@ -291,33 +172,17 @@ export function useChatScroll(messages: ChatMessage[]): {
       return jumpToPresent();
     }
     if (userScrolledUpRef.current) return;
-    // Collapse deltas landing in the same frame into ONE snap: the first
-    // delta schedules the task, the rest see the pending flag and skip. The
-    // task resets the flag itself; an unmounted container is a guarded no-op.
     if (pendingSnapRef.current) return;
     pendingSnapRef.current = true;
-    window.setTimeout(() => {
+    const raf = requestAnimationFrame(() => {
       pendingSnapRef.current = false;
-      // The user may have scrolled up since this snap was scheduled.
       if (userScrolledUpRef.current) return;
-      // HEIGHT GATE: read scrollHeight NOW (safe — the macrotask runs after
-      // the browser has painted the new commit) and skip if nothing grew.
-      // This is the kill-switch for the "fighting even with no process" bug:
-      // passive reconciles and DB refreshes that touch `messages` but don't
-      // add visible height are silent.
-      const container = containerRef.current;
-      if (!container) return;
-      const currentHeight = container.scrollHeight;
-      if (currentHeight <= lastScrollHeightRef.current) return;
-      lastScrollHeightRef.current = currentHeight;
       snapToBottom();
-    }, 0);
-    return undefined;
+    });
+    return (): void => cancelAnimationFrame(raf);
   }, [messages, jumpToPresent, snapToBottom]);
 
-  // Jump-to-latest atom consumers — read once here so the atom is referenced
-  // (keeps the module's hook subscription alive during HMR), and so we can
-  // log if the bridge ever drifts out of sync.
+  // Keep the atom subscription alive for HMR and for debug drift checks.
   void useAtomValue(scrolledUpAtom.current);
 
   return {
@@ -328,10 +193,6 @@ export function useChatScroll(messages: ChatMessage[]): {
   };
 }
 
-/**
- * `useRef(createAtom(...))` — a stable atom per hook instance. `useRef` is
- * the right primitive here (createAtom returns an object, not a value).
- */
 function useRefReturn<T>(value: T): { current: T } {
   const ref = useRef(value);
   return ref;
