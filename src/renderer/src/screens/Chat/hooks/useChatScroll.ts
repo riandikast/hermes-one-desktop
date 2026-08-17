@@ -119,15 +119,23 @@ export function useChatScroll(messages: ChatMessage[]): {
       };
       if (force) {
         // Tab activation / "jump to latest" is an explicit "show the
-        // present": ONE instant snap + a single rAF correction (catches
-        // the display:none→flex relayout). The timeout barrage is what read
-        // as "blink" — repeated re-snaps mid-stream. A processing turn keeps
-        // following via the per-delta streaming snap, so no settle retries
-        // are needed here. Mirrors the official desktop's use-stick-to-bottom
-        // (scrollToBottom = one instant snap; resize observer follows).
-        const raf = requestAnimationFrame(settleSnap);
+        // present": sync snap (pre-paint, prevents the stale-position
+        // flash) + DOUBLE rAF. The first rAF lets the browser lay out
+        // the pane after display:none→flex; the second catches the real
+        // bottom once virtualized rows (content-visibility:auto) re-measure.
+        // A single rAF was a race — sometimes it caught the real bottom
+        // (no issue), sometimes it landed on estimated heights (short of
+        // present), sometimes the stale sync snap painted first (blink).
+        // No timeouts — the 80/250/500ms barrage was the original blink
+        // cause (it re-snapped mid-stream, fighting the per-delta snap);
+        // the height gate (§8) now keeps the streaming snap silent when
+        // nothing grew, so the double-rAF doesn't fight it.
+        const raf1 = requestAnimationFrame(() => {
+          settleSnap();
+          requestAnimationFrame(settleSnap);
+        });
         return (): void => {
-          cancelAnimationFrame(raf);
+          cancelAnimationFrame(raf1);
         };
       }
       const raf = requestAnimationFrame(settleSnap);
