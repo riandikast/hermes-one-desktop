@@ -128,15 +128,17 @@ function Layout({
   );
   const resumingRef = useRef<Set<string>>(new Set());
   const sidebarChatScrollRef = useRef<HTMLDivElement | null>(null);
-  const sidebarScrollbarHideRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const [sidebarScrollbar, setSidebarScrollbar] = useState({
+  const scrollbarRef = useRef<HTMLDivElement | null>(null);
+  const thumbRef = useRef<HTMLDivElement | null>(null);
+  const scrollbarStateRef = useRef({
     visible: false,
     scrollable: false,
     top: 0,
     height: 0,
   });
+  const sidebarScrollbarHideRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const currentSessionId =
     runs.find((r) => r.runId === activeRunId)?.sessionId ?? null;
@@ -146,27 +148,27 @@ function Layout({
     [runs],
   );
 
+  // Imperative — no React render on scroll. The thumb is driven by direct
+  // DOM writes inside rAF; only opacity/class toggles and transform/height.
   const updateSidebarScrollbar = useCallback((visible: boolean) => {
     const root = sidebarChatScrollRef.current;
-    if (!root) {
-      setSidebarScrollbar((prev) =>
-        prev.scrollable || prev.visible
-          ? { visible: false, scrollable: false, top: 0, height: 0 }
-          : prev,
-      );
-      return;
-    }
-
+    const bar = scrollbarRef.current;
+    const thumb = thumbRef.current;
+    if (!root || !bar || !thumb) return;
     const scrollable = root.scrollHeight > root.clientHeight + 1;
     if (!scrollable) {
-      setSidebarScrollbar((prev) =>
-        prev.scrollable || prev.visible
-          ? { visible: false, scrollable: false, top: 0, height: 0 }
-          : prev,
-      );
+      const prev = scrollbarStateRef.current;
+      if (prev.scrollable || prev.visible) {
+        bar.classList.remove("visible");
+        scrollbarStateRef.current = {
+          visible: false,
+          scrollable: false,
+          top: 0,
+          height: 0,
+        };
+      }
       return;
     }
-
     const trackHeight = root.clientHeight;
     const thumbHeight = Math.max(
       32,
@@ -175,33 +177,56 @@ function Layout({
     const maxTop = Math.max(0, trackHeight - thumbHeight);
     const maxScroll = Math.max(1, root.scrollHeight - root.clientHeight);
     const top = Math.round((root.scrollTop / maxScroll) * maxTop);
-
-    setSidebarScrollbar((prev) => {
-      const next = { visible, scrollable, top, height: thumbHeight };
-      return prev.visible === next.visible &&
-        prev.scrollable === next.scrollable &&
-        prev.top === next.top &&
-        prev.height === next.height
-        ? prev
-        : next;
-    });
+    const prev = scrollbarStateRef.current;
+    if (
+      prev.visible === visible &&
+      prev.scrollable === scrollable &&
+      prev.top === top &&
+      prev.height === thumbHeight
+    )
+      return;
+    scrollbarStateRef.current = {
+      visible,
+      scrollable,
+      top,
+      height: thumbHeight,
+    };
+    bar.classList.toggle("visible", visible);
+    // Only touch style when changed — avoids layout thrash.
+    if (prev.height !== thumbHeight) thumb.style.height = `${thumbHeight}px`;
+    thumb.style.transform = `translateY(${top}px)`;
   }, []);
+
+  // rAF handle so scroll-driven scrollbar updates don't React-render per-scroll-event.
+  const sidebarRafRef = useRef<number | null>(null);
+
+  const scheduleSidebarScrollbar = useCallback(
+    (visible: boolean) => {
+      if (sidebarRafRef.current !== null)
+        cancelAnimationFrame(sidebarRafRef.current);
+      sidebarRafRef.current = requestAnimationFrame(() =>
+        updateSidebarScrollbar(visible),
+      );
+    },
+    [updateSidebarScrollbar],
+  );
 
   useEffect(() => {
     const root = sidebarChatScrollRef.current;
     if (!root) return;
 
     const showThenHide = (): void => {
-      updateSidebarScrollbar(true);
+      scheduleSidebarScrollbar(true);
       if (sidebarScrollbarHideRef.current) {
         clearTimeout(sidebarScrollbarHideRef.current);
       }
       sidebarScrollbarHideRef.current = setTimeout(() => {
+        // hide path is infrequent — no need for rAF
         updateSidebarScrollbar(false);
       }, SIDEBAR_SCROLLBAR_HIDE_MS);
     };
 
-    const updateHidden = (): void => updateSidebarScrollbar(false);
+    const updateHidden = (): void => scheduleSidebarScrollbar(false);
     root.addEventListener("scroll", showThenHide, { passive: true });
     window.addEventListener("resize", updateHidden);
     const observer = new ResizeObserver(updateHidden);
@@ -214,6 +239,10 @@ function Layout({
       observer.disconnect();
       if (sidebarScrollbarHideRef.current) {
         clearTimeout(sidebarScrollbarHideRef.current);
+      }
+      if (sidebarRafRef.current !== null) {
+        cancelAnimationFrame(sidebarRafRef.current);
+        sidebarRafRef.current = null;
       }
     };
   }, [updateSidebarScrollbar]);
@@ -1174,22 +1203,17 @@ function Layout({
                   scrollRootRef={sidebarChatScrollRef}
                 />
               </div>
-              {sidebarScrollbar.scrollable && (
+              <div
+                ref={scrollbarRef}
+                className="sidebar-chat-scrollbar"
+                aria-hidden="true"
+              >
                 <div
-                  className={`sidebar-chat-scrollbar ${
-                    sidebarScrollbar.visible ? "visible" : ""
-                  }`}
-                  aria-hidden="true"
-                >
-                  <div
-                    className="sidebar-chat-scrollbar-thumb"
-                    style={{
-                      height: sidebarScrollbar.height,
-                      transform: `translateY(${sidebarScrollbar.top}px)`,
-                    }}
-                  />
-                </div>
-              )}
+                  ref={thumbRef}
+                  className="sidebar-chat-scrollbar-thumb"
+                  style={{ transform: "translateY(0px)" }}
+                />
+              </div>
             </div>
           </div>
 

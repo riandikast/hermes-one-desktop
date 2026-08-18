@@ -528,17 +528,24 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     };
   }, [open, refresh]);
 
+  const pendingMaybeLoadRef = useRef(false);
   useEffect(() => {
     if (!open) return;
     const root = scrollRootRef.current;
     if (!root) return;
     const onScroll = (): void => {
-      maybeLoadNextPage();
+      if (pendingMaybeLoadRef.current) return;
+      pendingMaybeLoadRef.current = true;
+      queueMicrotask(() => {
+        pendingMaybeLoadRef.current = false;
+        maybeLoadNextPage();
+      });
     };
     root.addEventListener("scroll", onScroll, { passive: true });
     maybeLoadNextPage();
     return () => {
       root.removeEventListener("scroll", onScroll);
+      pendingMaybeLoadRef.current = false;
     };
   }, [maybeLoadNextPage, open, scrollRootRef]);
 

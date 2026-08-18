@@ -135,6 +135,12 @@ export function extractToolPath(
       if (baseDir && looksLikeRelativePath(trimmed)) {
         return normalizePath(joinPath(baseDir, trimmed));
       }
+      // Non-git / empty-folder case: baseDir is null but `path: "src/foo.ts"`
+      // is still a real edit. Return the relative as-is so the non-git
+      // transcript fallback doesn't silently drop every relative edit.
+      if (!baseDir && looksLikeRelativePath(trimmed)) {
+        return normalizePath(trimmed);
+      }
     }
     try {
       text = JSON.stringify(args);

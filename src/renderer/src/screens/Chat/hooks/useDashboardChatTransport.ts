@@ -1019,6 +1019,7 @@ export function useDashboardChatTransport({
   // immediately. Reset on connection change (see the effect below).
   const dashboardUnavailableRef = useRef(false);
   const runtimeSessionIdRef = useRef<string | null>(null);
+  const runtimeSessionPromiseRef = useRef<Promise<string> | null>(null);
   const storedSessionIdRef = useRef<string | null>(hermesSessionId);
   const messagesRef = useRef<ChatMessage[]>(messages);
   const modelRef = useRef(model);
@@ -1133,6 +1134,7 @@ export function useDashboardChatTransport({
     if (hermesSessionId === storedSessionIdRef.current) return;
     storedSessionIdRef.current = hermesSessionId;
     runtimeSessionIdRef.current = null;
+    runtimeSessionPromiseRef.current = null;
     reasoningSegmentClosedRef.current = false;
     appliedModelRef.current = null;
     recreateRuntimeSessionRef.current = false;
@@ -1156,6 +1158,7 @@ export function useDashboardChatTransport({
     clientRef.current = null;
     connectingRef.current = null;
     runtimeSessionIdRef.current = null;
+    runtimeSessionPromiseRef.current = null;
     reasoningSegmentClosedRef.current = false;
     appliedModelRef.current = null;
     recreateRuntimeSessionRef.current = false;
@@ -1326,6 +1329,10 @@ export function useDashboardChatTransport({
       //    dirty before the turn, which the git diff below cannot attribute
       //    (its snapshot comparison deliberately excludes pre-existing dirt).
       const folder = contextFolder?.trim();
+      const transcriptBaseDir =
+        folder && folder.length > 0
+          ? folder
+          : (lastSyncedCwdRef.current?.trim() || null);
       let lastUserIdx = -1;
       for (let i = messagesRef.current.length - 1; i >= 0; i--) {
         if (messagesRef.current[i].role === "user") {
@@ -1336,7 +1343,7 @@ export function useDashboardChatTransport({
       const transcriptPaths = changedFilesFromToolRows(
         messagesRef.current,
         lastUserIdx + 1,
-        folder ?? null,
+        transcriptBaseDir,
       );
       console.info("[file-changes] transcript", { transcriptPaths });
       for (const p of transcriptPaths) add(p, {});
@@ -2210,7 +2217,7 @@ export function useDashboardChatTransport({
       onDashboardUnavailable,
     ]);
 
-  const ensureRuntimeSession = useCallback(
+  const ensureRuntimeSessionUnlocked = useCallback(
     async (
       client: DashboardGatewayClient,
       options: {
@@ -2320,6 +2327,30 @@ export function useDashboardChatTransport({
       return targetSessionId;
     },
     [activeTurnRef, contextFolder, profile, setHermesSessionId],
+  );
+
+  const ensureRuntimeSession = useCallback(
+    (
+      client: DashboardGatewayClient,
+      options: {
+        excludeSeedUserId?: string | null;
+        forceCreate?: boolean;
+      } = {},
+    ): Promise<string> => {
+      const existing = runtimeSessionPromiseRef.current;
+      if (existing) return existing;
+
+      const pending = ensureRuntimeSessionUnlocked(client, options);
+      runtimeSessionPromiseRef.current = pending;
+      const clearPending = (): void => {
+        if (runtimeSessionPromiseRef.current === pending) {
+          runtimeSessionPromiseRef.current = null;
+        }
+      };
+      void pending.then(clearPending, clearPending);
+      return pending;
+    },
+    [ensureRuntimeSessionUnlocked],
   );
 
   const ensureSelectedModel = useCallback(
@@ -2625,9 +2656,9 @@ export function useDashboardChatTransport({
       lastLocalActivityAtRef.current = Date.now();
       // FILE-CHANGES: a new user turn starts a fresh accumulator.
       fileChangesRef.current = new Map();
-      // Start a fresh per-turn stall window (don't inherit the previous turn's
-      // deadline) and re-arm the quiet-finalize fallback.
-      resetStallTimer();
+      // Start a fresh quiet-finalize window. The stall watchdog is armed
+      // immediately after the optimistic turn is registered below, so setup
+      // stalls are covered too.
       resetQuietFinalize();
       const pendingClarifyRequestId = pendingClarifyRequestIdRef.current;
       if (pendingClarifyRequestId) {
@@ -2680,6 +2711,7 @@ export function useDashboardChatTransport({
       };
       setToolProgress(null);
       setIsLoading(true);
+      resetStallTimer();
       const dashboardText = dashboardPromptTextForAttachments(
         text,
         attachments,
