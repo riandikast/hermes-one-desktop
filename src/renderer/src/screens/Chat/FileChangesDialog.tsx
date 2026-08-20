@@ -34,7 +34,7 @@ function diffStats(change: FileChange): React.JSX.Element {
       );
     }
   }
-  return <span>Edited</span>;
+  return <span>Changed — diff unavailable</span>;
 }
 
 function ReadOnlyCode({ content }: { content: string }): React.JSX.Element {

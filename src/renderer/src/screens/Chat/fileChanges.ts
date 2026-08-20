@@ -124,7 +124,8 @@ export function extractToolPath(
 ): string | null {
   let text = "";
   if (isRecord(args)) {
-    // 1. Direct keys.
+    // 1. Direct keys. Prefer an absolute path even when a relative key appears first.
+    let relativePath: string | null = null;
     for (const key of PATH_KEYS) {
       const value = args[key];
       if (typeof value !== "string") continue;
@@ -133,15 +134,17 @@ export function extractToolPath(
         return normalizePath(trimmed);
       }
       if (baseDir && looksLikeRelativePath(trimmed)) {
-        return normalizePath(joinPath(baseDir, trimmed));
+        relativePath = normalizePath(joinPath(baseDir, trimmed));
+        continue;
       }
       // Non-git / empty-folder case: baseDir is null but `path: "src/foo.ts"`
       // is still a real edit. Return the relative as-is so the non-git
       // transcript fallback doesn't silently drop every relative edit.
       if (!baseDir && looksLikeRelativePath(trimmed)) {
-        return normalizePath(trimmed);
+        relativePath = normalizePath(trimmed);
       }
     }
+    if (relativePath) return relativePath;
     try {
       text = JSON.stringify(args);
     } catch {

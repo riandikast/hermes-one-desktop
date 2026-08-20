@@ -127,6 +127,7 @@ export interface ModelGroup {
   provider: string;
   providerLabel: string;
   models: {
+    id?: string;
     provider: string;
     model: string;
     label: string;

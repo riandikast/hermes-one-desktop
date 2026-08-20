@@ -1771,11 +1771,41 @@ export function useDashboardChatTransport({
               cmdText,
             );
           if (path && writes && !fileChangesRef.current.has(path)) {
+            const startArgs =
+              typeof toolPayload.args === "object" &&
+              toolPayload.args !== null &&
+              !Array.isArray(toolPayload.args)
+                ? (toolPayload.args as Record<string, unknown>)
+                : null;
+            const startOld =
+              typeof toolPayload.old_string === "string"
+                ? toolPayload.old_string
+                : startArgs && typeof startArgs.old_string === "string"
+                  ? startArgs.old_string
+                  : undefined;
+            const startNew =
+              typeof toolPayload.new_string === "string"
+                ? toolPayload.new_string
+                : startArgs && typeof startArgs.new_string === "string"
+                  ? startArgs.new_string
+                  : undefined;
             fileChangesRef.current.set(path, {
               path,
               before: null,
               after: null,
               beforeKnown: false,
+              removed:
+                startOld === undefined
+                  ? undefined
+                  : startOld === ""
+                    ? []
+                    : startOld.split("\n"),
+              added:
+                startNew === undefined
+                  ? undefined
+                  : startNew === ""
+                    ? []
+                    : startNew.split("\n"),
             });
             void window.hermesAPI
               .readFile(path)

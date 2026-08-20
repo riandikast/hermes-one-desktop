@@ -108,9 +108,9 @@ describe("extractToolPath", () => {
     );
   });
 
-  it("still returns null for relative paths without a baseDir", () => {
-    expect(extractToolPath({ path: "config.yaml" })).toBeNull();
-    expect(extractToolPath({ path: "src/a.js" })).toBeNull();
+  it("returns relative paths without a baseDir for transcript fallback", () => {
+    expect(extractToolPath({ path: "config.yaml" })).toBe("config.yaml");
+    expect(extractToolPath({ path: "src/a.js" })).toBe("src/a.js");
   });
 
   it("normalizes git-bash paths to Windows form", () => {

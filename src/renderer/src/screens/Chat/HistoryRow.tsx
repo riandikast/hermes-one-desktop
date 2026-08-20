@@ -1,4 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
+
+import { CodeBlock } from "../../components/AgentMarkdown";
 import { Brain, ChevronRight, Wrench } from "../../assets/icons";
 import { OrbLoader } from "../../components/OrbLoader";
 import { TypeAnimation } from "../../components/TypeAnimation";
@@ -25,6 +27,22 @@ import type {
 const reasoningOpenById = new Set<string>();
 const toolGroupOpenById = new Set<string>();
 const toolItemOpenById = new Set<string>();
+
+export type ChatDisplayControls = {
+  thoughts: "show" | "hide" | "unset";
+  tools: "show" | "hide" | "unset";
+};
+
+let displayControls: ChatDisplayControls = { thoughts: "unset", tools: "unset" };
+
+export function setChatDisplayControls(next: Partial<ChatDisplayControls>): void {
+  displayControls = { ...displayControls, ...next };
+  window.dispatchEvent(new CustomEvent("hermes-chat-display-control", { detail: next }));
+}
+
+export function currentChatDisplayControls(): ChatDisplayControls {
+  return displayControls;
+}
 
 export const ReasoningRow = memo(function ReasoningRow({
   msg,
@@ -60,6 +78,17 @@ export const ReasoningRow = memo(function ReasoningRow({
       else reasoningOpenById.delete(msg.id);
       return next;
     });
+
+  useEffect(() => {
+    const handleDisplayControl = (event: Event): void => {
+      const detail = (event as CustomEvent<Partial<ChatDisplayControls>>).detail;
+      if (detail.thoughts === "show" || detail.thoughts === "hide") {
+        setOpen(detail.thoughts === "show");
+      }
+    };
+    window.addEventListener("hermes-chat-display-control", handleDisplayControl);
+    return () => window.removeEventListener("hermes-chat-display-control", handleDisplayControl);
+  }, []);
 
   // Auto-expand live reasoning chunks during streaming if preference is enabled
   useEffect(() => {
@@ -286,6 +315,126 @@ function itemDetail(msg: ToolItem): string {
   return isToolCall(msg) ? summariseArgs(msg.args) : resultMeta(msg);
 }
 
+export function isTerminalTool(name: string): boolean {
+  return /terminal|shell|bash|powershell|cmd|exec|run[_-]?command|process/i.test(
+    name,
+  );
+}
+
+function parseToolArgs(args: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(args);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function terminalCommand(args: string): { command: string; cwd?: string } {
+  const parsed = parseToolArgs(args);
+  if (!parsed) return { command: args };
+  const command = [parsed.command, parsed.cmd, parsed.script].find(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+  const cwd = [parsed.cwd, parsed.workdir, parsed.working_directory, parsed.directory].find(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+  return { command: command || args, ...(cwd ? { cwd } : {}) };
+}
+
+function isFileTool(name: string): boolean {
+  return /^(read|write|edit|patch|apply[_-]?patch|create|delete|move|copy|rename|replace|str[_-]?replace)([_-]?file)?$/i.test(name) || /file|patch/i.test(name);
+}
+
+function textArg(parsed: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    if (typeof parsed[key] === "string" && parsed[key].trim()) return parsed[key] as string;
+  }
+  return "";
+}
+
+function ToolResultBody({ msg }: { msg: ToolResultMessage }): React.JSX.Element {
+  let content = msg.content || "(no result)";
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    if (parsed && typeof parsed === "object") content = JSON.stringify(parsed, null, 2);
+  } catch {
+    // Keep plain-text command output unchanged.
+  }
+  const failed = /\b(error|failed|failure)\b/i.test(content);
+  return (
+    <div className={`chat-tool-result-view${failed ? " chat-tool-result-view--failed" : ""}`}>
+      <div className="chat-terminal-section-label">{failed ? "Error" : "Result"}</div>
+      <CodeBlock className={/^[\s\[{]/.test(content) ? "language-json" : undefined}>{content}</CodeBlock>
+    </div>
+  );
+}
+
+function FileToolBody({
+  msg,
+}: {
+  msg: ToolCallMessage | ToolResultMessage;
+}): React.JSX.Element {
+  if (!isToolCall(msg)) {
+    return (
+      <div className="chat-file-tool-view">
+        <div className="chat-terminal-section-label">Result</div>
+        <pre className="chat-history-pre chat-history-pre--scroll">{msg.content || "(no result)"}</pre>
+      </div>
+    );
+  }
+  const parsed = parseToolArgs(msg.args);
+  if (!parsed) return <pre className="chat-history-pre chat-history-pre--code">{msg.args || "(no arguments)"}</pre>;
+  const path = textArg(parsed, ["path", "file", "file_path", "filename", "target"]);
+  const oldText = textArg(parsed, ["old_string", "oldText", "old"]);
+  const newText = textArg(parsed, ["new_string", "newText", "new", "content"]);
+  const patch = textArg(parsed, ["patch", "diff"]);
+  return (
+    <div className="chat-file-tool-view">
+      {path && <div className="chat-file-tool-path"><span className="chat-terminal-section-label">File</span><code>{path}</code></div>}
+      {oldText && <div className="chat-terminal-section"><div className="chat-terminal-section-label">Removed</div><CodeBlock className="language-diff">{oldText}</CodeBlock></div>}
+      {newText && <div className="chat-terminal-section"><div className="chat-terminal-section-label">New content</div><CodeBlock className="language-javascript">{newText}</CodeBlock></div>}
+      {patch && <div className="chat-terminal-section"><div className="chat-terminal-section-label">Patch</div><CodeBlock className="language-diff">{patch}</CodeBlock></div>}
+      {!path && !oldText && !newText && !patch && <pre className="chat-history-pre chat-history-pre--code">{msg.args || "(no arguments)"}</pre>}
+    </div>
+  );
+}
+
+function TerminalToolBody({
+  msg,
+}: {
+  msg: ToolCallMessage | ToolResultMessage;
+}): React.JSX.Element {
+  const call = isToolCall(msg);
+  if (!call) {
+    return (
+      <div className="chat-terminal-section">
+        <div className="chat-terminal-section-label">Output</div>
+        <pre className="chat-history-pre chat-history-pre--scroll">
+          {msg.content || "(no output)"}
+        </pre>
+      </div>
+    );
+  }
+  const { command, cwd } = terminalCommand(msg.args);
+  return (
+    <div className="chat-terminal-view">
+      <div className="chat-terminal-section">
+        <div className="chat-terminal-section-label">Command</div>
+        <pre className="chat-history-pre chat-history-pre--code">{command}</pre>
+      </div>
+      {cwd && (
+        <div className="chat-terminal-cwd">
+          <span className="chat-terminal-section-label">Working directory</span>
+          <code>{cwd}</code>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const ToolActivityItem = memo(function ToolActivityItem({
   msg,
 }: {
@@ -299,6 +448,16 @@ const ToolActivityItem = memo(function ToolActivityItem({
       else toolItemOpenById.delete(msg.id);
       return next;
     });
+  useEffect(() => {
+    const handleDisplayControl = (event: Event): void => {
+      const detail = (event as CustomEvent<Partial<ChatDisplayControls>>).detail;
+      if (detail.tools === "show" || detail.tools === "hide") {
+        setOpen(detail.tools === "show");
+      }
+    };
+    window.addEventListener("hermes-chat-display-control", handleDisplayControl);
+    return () => window.removeEventListener("hermes-chat-display-control", handleDisplayControl);
+  }, []);
   const call = isToolCall(msg);
   const failed = call && msg.status === "failed";
   const hasAttachments =
@@ -342,13 +501,17 @@ const ToolActivityItem = memo(function ToolActivityItem({
                 ))}
               </div>
             )}
-            <pre
-              className={`chat-history-pre ${
-                call ? "chat-history-pre--code" : "chat-history-pre--scroll"
-              }`}
-            >
-              {call ? msg.args || "(no arguments)" : msg.content || "(empty)"}
-            </pre>
+            {isTerminalTool(msg.name) ? (
+              <TerminalToolBody msg={msg} />
+            ) : isFileTool(msg.name) ? (
+              <FileToolBody msg={msg} />
+            ) : call ? (
+              <pre className="chat-history-pre chat-history-pre--code">
+                {msg.args || "(no arguments)"}
+              </pre>
+            ) : (
+              <ToolResultBody msg={msg} />
+            )}
           </div>
         </div>
       </div>
@@ -393,6 +556,16 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
       }
       return next;
     });
+  useEffect(() => {
+    const handleDisplayControl = (event: Event): void => {
+      const detail = (event as CustomEvent<Partial<ChatDisplayControls>>).detail;
+      if (detail.tools === "show" || detail.tools === "hide") {
+        setOpen(detail.tools === "show");
+      }
+    };
+    window.addEventListener("hermes-chat-display-control", handleDisplayControl);
+    return () => window.removeEventListener("hermes-chat-display-control", handleDisplayControl);
+  }, []);
   const { waiting } = useReasoningGate({
     waitForReasoningId,
     hasContent: items.length > 0,

@@ -21,12 +21,30 @@ describe("FileChangesDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("labels a path-only change when no diff evidence was captured", () => {
+    render(
+      <FileChangesDialog
+        changes={[
+          {
+            path: "C:/proj/unknown.ts",
+            before: null,
+            after: "const current = true;",
+            beforeKnown: false,
+          },
+        ]}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getAllByText("Changed — diff unavailable").length).toBeGreaterThan(0);
+  });
+
   it("closes via the X button on mousedown", () => {
     const onClose = vi.fn();
     render(<FileChangesDialog changes={changes} onClose={onClose} />);
     fireEvent.mouseDown(screen.getByLabelText("Close"));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
 
   it("closes on Escape", () => {
     const onClose = vi.fn();

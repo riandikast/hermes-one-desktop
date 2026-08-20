@@ -331,5 +331,5 @@ const AgentMarkdown = memo(function AgentMarkdown({
   );
 });
 
-export { AgentMarkdown };
+export { AgentMarkdown, CodeBlock };
 export default AgentMarkdown;

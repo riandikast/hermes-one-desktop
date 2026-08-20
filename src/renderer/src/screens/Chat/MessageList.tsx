@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, startTransition } from "react";
-import { FilePlus2 } from "lucide-react";
+import { Check, Circle, FilePlus2, ListTodo } from "lucide-react";
 import { HermesAvatar, MessageRow } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
 import { ReasoningRow, ToolActivityGroup } from "./HistoryRow";
@@ -29,6 +29,82 @@ import {
 function isToolRow(m: ChatMessage): m is ToolCallMessage | ToolResultMessage {
   const k = (m as { kind?: string }).kind;
   return k === "tool_call" || k === "tool_result";
+}
+
+interface ChatTodo {
+  id: string;
+  content: string;
+  status: "pending" | "in_progress" | "completed" | "cancelled";
+}
+
+function isTodoCall(m: ChatMessage): m is ToolCallMessage {
+  return isToolRow(m) && m.kind === "tool_call" && /(^|[._-])todo([._-]|$)/i.test(m.name);
+}
+
+function readTodos(message: ToolCallMessage): ChatTodo[] {
+  try {
+    const parsed: unknown = JSON.parse(message.args);
+    const raw = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as { todos?: unknown }).todos
+      : undefined;
+    if (!Array.isArray(raw)) return [];
+    return raw.flatMap((item, index) => {
+      if (!item || typeof item !== "object") return [];
+      const value = item as { id?: unknown; content?: unknown; status?: unknown };
+      if (typeof value.content !== "string" || !value.content.trim()) return [];
+      const status = ["pending", "in_progress", "completed", "cancelled"].includes(String(value.status))
+        ? (String(value.status) as ChatTodo["status"])
+        : "pending";
+      return [{ id: typeof value.id === "string" ? value.id : `${message.id}-${index}`, content: value.content, status }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function StickyTodoPanel({ todos }: { todos: ChatTodo[] }): React.JSX.Element | null {
+  const [open, setOpen] = useState(false);
+  const done = todos.filter((todo) => todo.status === "completed" || todo.status === "cancelled").length;
+  useEffect(() => {
+    if (done === todos.length) setOpen(false);
+  }, [done, todos.length]);
+  if (!todos.length || done === todos.length) return null;
+  return (
+    <div className="chat-sticky-todos" aria-label="Task checklist">
+      <button type="button" className="chat-sticky-todos-trigger" aria-label="Open task checklist" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        <ListTodo size={16} />
+        <span>{todos.length - done}</span>
+      </button>
+      {open && (
+        <div className="chat-sticky-todos-dialog" role="dialog" aria-label="Task checklist">
+          <div className="chat-sticky-todos-header">
+            <span className="chat-sticky-todos-title"><ListTodo size={14} /> Tasks</span>
+            <span className="chat-sticky-todos-count">{done}/{todos.length}</span>
+          </div>
+          <div className="chat-sticky-todos-list">
+            {todos.map((todo) => {
+              const finished = todo.status === "completed" || todo.status === "cancelled";
+              return <div key={todo.id} className={`chat-sticky-todo chat-sticky-todo--${todo.status}`}>{finished ? <Check size={13} /> : <Circle size={11} />}<span>{todo.content}</span></div>;
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function isCompactionHandoff(message: ChatMessage): boolean {
+  return isBubble(message) && /^\s*\[CONTEXT COMPACTION\s*[—-]/i.test(message.content);
+}
+
+function ContextCompactionRow(): React.JSX.Element {
+  return (
+    <div className="chat-context-compaction-row" role="status">
+      <span className="chat-context-compaction-dot" />
+      <span>Context compacted</span>
+      <span className="chat-context-compaction-detail">Earlier context was summarized</span>
+    </div>
+  );
 }
 
 /** Per-turn file-changes chip */
@@ -213,6 +289,11 @@ function buildRows(
       continue;
     }
 
+    if (isCompactionHandoff(msg)) {
+      rows.push(<ContextCompactionRow key={msg.id} />);
+      continue;
+    }
+
     const bubble = msg as Extract<ChatMessage, { role: "user" | "agent" }>;
     rows.push(
       <MessageRow
@@ -261,21 +342,22 @@ export const MessageList = memo(function MessageList({
   modelRef,
   sessionKey,
 }: MessageListProps): React.JSX.Element {
-  const visibleMessages = useMemo(
-    () =>
-      messages.filter((m) => {
-        if (!isBubble(m)) return true;
-        if (!!m.error || m.pending) return true;
-        if (
-          m.role === "agent" &&
-          isLoading &&
-          m === messages[messages.length - 1]
-        )
-          return true;
-        return ((m.content as string) || "").trim().length > 0;
-      }),
-    [messages, isLoading],
-  );
+  const visibleMessages = useMemo(() => {
+    const todoCallIds = new Set(messages.filter(isTodoCall).map((message) => message.callId));
+    return messages.filter((m) => {
+      if (isTodoCall(m)) return false;
+      if (isToolRow(m) && todoCallIds.has(m.callId)) return false;
+      if (!isBubble(m)) return true;
+      if (!!m.error || m.pending) return true;
+      if (m.role === "agent" && isLoading && m === messages[messages.length - 1]) return true;
+      return ((m.content as string) || "").trim().length > 0;
+    });
+  }, [messages, isLoading]);
+
+  const stickyTodos = useMemo(() => {
+    const latest = messages.filter(isTodoCall).at(-1);
+    return latest ? readTodos(latest) : [];
+  }, [messages]);
 
   const lastBubble = [...visibleMessages].reverse().find(isBubble);
   const lastMessageIsAgent = !!lastBubble && lastBubble.role === "agent";
@@ -449,6 +531,7 @@ export const MessageList = memo(function MessageList({
 
   return (
     <>
+      <StickyTodoPanel todos={stickyTodos} />
       {(realHiddenCount > 0 || olderAvailable) && (
         <button
           type="button"

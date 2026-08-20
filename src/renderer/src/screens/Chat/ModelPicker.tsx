@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { ChevronDown, Check, Asterisk, Search } from "lucide-react";
+import { ChevronDown, Check, Asterisk, Search, Pencil, X } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import BrandLogo from "../../components/common/BrandLogo";
 import type { ModelGroup } from "./types";
@@ -30,6 +30,8 @@ export const ModelPicker = memo(function ModelPicker({
   const [searchInput, setSearchInput] = useState("");
   // Left-rail provider filter (brand id); null = "All models".
   const [selectedBrand, setSelectedBrand] = useState<string | null>(null);
+  const [editingModel, setEditingModel] = useState<{ id: string; model: string } | null>(null);
+  const [aliasInput, setAliasInput] = useState("");
   const pickerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -87,28 +89,48 @@ export const ModelPicker = memo(function ModelPicker({
         .filter((group) => group.models.length > 0)
     : modelGroups;
 
-  // Left rail: one entry per provider brand present (post-search) + counts.
+  function groupKeyOf(g: { provider: string; providerLabel: string }): string {
+    // Custom-named providers (e.g. 9router) share provider "custom" but must get
+    // distinct rail entries. Use the label as the key for those; otherwise the
+    // brand is the key.
+    const genericCustomLabel = "OpenAI Compatible / Local";
+    if (g.provider === "custom" && g.providerLabel && g.providerLabel !== genericCustomLabel) {
+      return `label:${g.providerLabel}`;
+    }
+    return `brand:${g.provider}`;
+  }
+  // Left rail: one entry per provider group present (post-search) + counts.
+  // `groupKey` disambiguates multiple custom providers that otherwise all share
+  // brand "custom". Previously the rail used `brand` as its key, which collapsed
+  // every custom provider into one entry with a combined count.
   const railProviders = filteredGroups.map((g) => ({
     brand: g.provider,
     label: g.providerLabel,
+    groupKey: groupKeyOf(g),
     count: g.models.length,
   }));
-  // Flat model rows carrying their brand + display label for the right pane.
+  // Flat model rows carrying their groupKey + brand/display label for the right pane.
   // Each row keeps its raw provider/baseUrl so selection routing is unchanged.
+  // `groupKey` is the rail identity (brand vs. custom label), `brand` keeps the
+  // logo mapping.
   const allRows = filteredGroups.flatMap((g) =>
     g.models.map((m) => ({
       ...m,
       brand: g.provider,
       providerLabel: g.providerLabel,
+      groupKey: groupKeyOf(g),
     })),
   );
   // Ignore a stale brand filter once search narrows it away → fall back to All.
+  // Named custom providers share brand "custom" so filtering must use groupKey
+  // (label:<name>), not brand. `selectedBrand` is kept as the state name for
+  // backward compat but now holds a groupKey.
   const activeBrand =
-    selectedBrand && railProviders.some((p) => p.brand === selectedBrand)
+    selectedBrand && railProviders.some((p) => p.groupKey === selectedBrand)
       ? selectedBrand
       : null;
   const filteredRows = activeBrand
-    ? allRows.filter((r) => r.brand === activeBrand)
+    ? allRows.filter((r) => r.groupKey === activeBrand)
     : allRows;
 
   // Surface the current selection first. Rank: exact match (provider+model+URL)
@@ -141,6 +163,21 @@ export const ModelPicker = memo(function ModelPicker({
     setIsOpen(false);
     setSearchInput("");
     setSelectedBrand(null);
+  }
+
+  function openAliasEditor(model: { id?: string; model: string; label: string }): void {
+    if (!model.id) return;
+    setEditingModel({ id: model.id, model: model.model });
+    setAliasInput(model.label === model.model ? "" : model.label);
+  }
+
+  async function saveAlias(): Promise<void> {
+    if (!editingModel) return;
+    await window.hermesAPI.updateModel(editingModel.id, {
+      name: aliasInput.trim() || editingModel.model,
+    });
+    setEditingModel(null);
+    onOpenRef.current();
   }
 
   // Navigate to the Providers screen (keys + models management) and close.
@@ -207,12 +244,12 @@ export const ModelPicker = memo(function ModelPicker({
                 </button>
                 {railProviders.map((p) => (
                   <button
-                    key={p.brand}
+                    key={p.groupKey}
                     type="button"
-                    className={`chat-model-rail-item ${activeBrand === p.brand ? "active" : ""}`}
+                    className={`chat-model-rail-item ${activeBrand === p.groupKey ? "active" : ""}`}
                     onClick={() =>
                       setSelectedBrand((cur) =>
-                        cur === p.brand ? null : p.brand,
+                        cur === p.groupKey ? null : p.groupKey,
                       )
                     }
                   >
@@ -255,6 +292,26 @@ export const ModelPicker = memo(function ModelPicker({
                           {t(m.providerLabel)} · {m.model}
                         </span>
                       </span>
+                      <span
+                        className="chat-model-row-alias"
+                        role="button"
+                        tabIndex={0}
+                        title="Rename model"
+                        aria-label="Rename model"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openAliasEditor(m);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openAliasEditor(m);
+                          }
+                        }}
+                      >
+                        <Pencil size={13} />
+                      </span>
                       {isActive && (
                         <Check
                           size={16}
@@ -268,6 +325,53 @@ export const ModelPicker = memo(function ModelPicker({
               )}
             </div>
           </div>
+          {editingModel && (
+            <div
+              className="chat-model-alias-editor"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="chat-model-alias-header">
+                <strong>Rename model</strong>
+                <span
+                  className="chat-model-row-alias"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setEditingModel(null)}
+                  aria-label="Close"
+                >
+                  <X size={15} />
+                </span>
+              </div>
+              <div className="chat-model-alias-model">{editingModel.model}</div>
+              <input
+                className="input"
+                autoFocus
+                value={aliasInput}
+                onChange={(e) => setAliasInput(e.target.value)}
+                placeholder="Display name"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void saveAlias();
+                  if (e.key === "Escape") setEditingModel(null);
+                }}
+              />
+              <div className="chat-model-alias-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setEditingModel(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => void saveAlias()}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

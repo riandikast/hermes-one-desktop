@@ -65,6 +65,7 @@ interface UseChatActionsArgs {
    *  persisting to config.yaml (issue #688). Carries the full identity so a
    *  cross-provider switch routes to the right backend, not just the model. */
   sessionModel?: SessionModelOverride;
+  sessionModelOverrideRef?: React.MutableRefObject<SessionModelOverride | undefined>;
   sendViaDashboard?: (
     text: string,
     attachments?: Attachment[],
@@ -131,6 +132,7 @@ export function useChatActions({
   knowledgeBundles,
   planMode,
   sessionModel,
+  sessionModelOverrideRef,
   sendViaDashboard,
   execSlashViaDashboard,
   runBackgroundViaDashboard,
@@ -145,7 +147,7 @@ export function useChatActions({
   // a send triggered immediately after the picker selection.
   messagesRef.current = messages;
   isLoadingRef.current = isLoading;
-  sessionModelRef.current = sessionModel;
+  sessionModelRef.current = sessionModelOverrideRef?.current ?? sessionModel;
 
   const pushUser = useCallback(
     (content: string, idPrefix = "user", attachments?: Attachment[]) => {
