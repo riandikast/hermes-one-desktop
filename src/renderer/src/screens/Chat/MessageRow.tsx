@@ -243,11 +243,18 @@ export const MessageRow = memo(function MessageRow({
   }, []);
 
   const transformCodeMarkers = useCallback((text: string): string => {
-    // Match ##...## using explicit start/end markers instead of backreferences
     return text.replace(/(?:^|\s)##([\s\S]*?)##(?:\s|$)/g, (_match, body) => {
       const trimmed = body.trim();
       if (!trimmed) return _match;
-      return '\n```\n' + trimmed + '\n```\n';
+      let lang = "";
+      if (/^(import |export |const |let |var |function |class |=>|async )/.test(trimmed)) lang = "javascript";
+      else if (/^(def |class |import |from |print|if __name__)/.test(trimmed)) lang = "python";
+      else if (/^(fn |pub |use |struct |impl |let |mut )/.test(trimmed)) lang = "rust";
+      else if (/^(SELECT |INSERT |UPDATE |DELETE |CREATE |ALTER )/i.test(trimmed)) lang = "sql";
+      else if (/^(#include|#define|void |int |char |struct )/.test(trimmed)) lang = "c";
+      else if (/^<[a-z]/i.test(trimmed)) lang = "html";
+      else if (/^\{/.test(trimmed) && /"/.test(trimmed)) lang = "json";
+      return "\n```" + lang + "\n" + trimmed + "\n```\n";
     });
   }, []);
 
