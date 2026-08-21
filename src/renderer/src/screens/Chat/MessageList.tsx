@@ -488,6 +488,7 @@ export const MessageList = memo(function MessageList({
       onRevertCheckpoint,
       onUnsendLastUser,
       onOpenFileChanges,
+      onPinToggle,
     }),
     [
       agentAvatar,
@@ -498,6 +499,7 @@ export const MessageList = memo(function MessageList({
       onRevertCheckpoint,
       onUnsendLastUser,
       onOpenFileChanges,
+      onPinToggle,
     ],
   );
 

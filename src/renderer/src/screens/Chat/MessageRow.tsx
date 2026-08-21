@@ -187,8 +187,8 @@ interface MessageRowProps {
   /** True only for the most recent user bubble — restricts the unsend button
    *  to that row so it doesn't clutter older bubbles. */
   isLastUser?: boolean;
-  /** Toggle pin state on a bubble (user or agent). */
   onPinToggle?: (msgId: string, pinned: boolean) => void;
+  /** Toggle pin state on a bubble (user or agent). */
   /** Id of the last reasoning row of THIS turn (or undefined when the turn
    *  has no thinking). The answer's reveal holds until that thought settles,
    *  so the response never leaks out while the thought is still typing. */
@@ -239,9 +239,19 @@ export const MessageRow = memo(function MessageRow({
   });
 
   const transformCodeMarkers = useCallback((text: string): string => {
-    return text.replace(/(^|\n)##([\s\S]*?)##(?=\n|$|\Z)/g, (_match, prefix, body) => {
-      return prefix + "```\n" + body + "\n```";
-    });
+    const parts: string[] = [];
+    let rest = text;
+    while (rest.length > 0) {
+      const si = rest.indexOf('\n##');
+      if (si === -1) { parts.push(rest); break; }
+      parts.push(rest.slice(0, si + 1));
+      rest = rest.slice(si + 3);
+      const ei = rest.indexOf('##\n');
+      if (ei === -1) { parts.push('##' + rest); break; }
+      parts.push('```\n' + rest.slice(0, ei) + '\n```');
+      rest = rest.slice(ei + 3);
+    }
+    return parts.join('');
   }, []);
 
   const renderStreamingContent = useCallback(
