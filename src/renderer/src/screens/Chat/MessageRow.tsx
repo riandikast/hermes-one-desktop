@@ -1,6 +1,6 @@
 import { memo, useState, useCallback } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
-import { Copy, Check, Undo2, RotateCcw } from "lucide-react";
+import { Copy, Check, Undo2, RotateCcw, Pin } from "lucide-react";
 import ProfileAvatar from "../../components/common/ProfileAvatar";
 import { OrbLoader } from "../../components/OrbLoader";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
@@ -187,6 +187,8 @@ interface MessageRowProps {
   /** True only for the most recent user bubble — restricts the unsend button
    *  to that row so it doesn't clutter older bubbles. */
   isLastUser?: boolean;
+  /** Toggle pin state on a bubble (user or agent). */
+  onPinToggle?: (msgId: string, pinned: boolean) => void;
   /** Id of the last reasoning row of THIS turn (or undefined when the turn
    *  has no thinking). The answer's reveal holds until that thought settles,
    *  so the response never leaks out while the thought is still typing. */
@@ -205,6 +207,7 @@ export const MessageRow = memo(function MessageRow({
   onUnsendLastUser,
   isLastUser = false,
   waitForReasoningId,
+  onPinToggle,
 }: MessageRowProps): React.JSX.Element {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -326,6 +329,17 @@ export const MessageRow = memo(function MessageRow({
             >
               {copied ? <Check size={14} /> : <Copy size={14} />}
             </button>
+            {onPinToggle && (msg.role === "user" || msg.role === "agent") && !msg.isSlashLoader && (
+              <button
+                type="button"
+                className={`chat-bubble-copy${(msg as ChatBubbleMessage).pinned ? " chat-bubble-copy--active" : ""}`}
+                onClick={() => onPinToggle(msg.id, !(msg as ChatBubbleMessage).pinned)}
+                title={(msg as ChatBubbleMessage).pinned ? "Unpin" : "Pin to top"}
+                aria-label={(msg as ChatBubbleMessage).pinned ? "Unpin" : "Pin to top"}
+              >
+                <Pin size={14} />
+              </button>
+            )}
             {msg.role === "user" && onRevertCheckpoint && (
               <button
                 type="button"

@@ -43,6 +43,8 @@ export interface ChatBubbleMessage {
   timestamp?: number;
   /** Renderer-only progress row while a slash command is executing. */
   isSlashLoader?: boolean;
+  /** Pinned bubbles stay visible above the streaming transcript. */
+  pinned?: boolean;
   /** Files this assistant turn wrote/edited/deleted (dashboard transport only). */
   fileChanges?: FileChange[];
 }

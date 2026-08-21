@@ -1,7 +1,9 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, startTransition } from "react";
-import { Check, Circle, FilePlus2, ListTodo } from "lucide-react";
+import { Check, Circle, FilePlus2, ListTodo, Pin, X } from "lucide-react";
 import { HermesAvatar, MessageRow } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
+import type { ChatBubbleMessage } from "./types";
+import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { ReasoningRow, ToolActivityGroup } from "./HistoryRow";
 import { ClarifyCard } from "./ClarifyCard";
 import type {
@@ -150,6 +152,10 @@ interface MessageListProps {
   onRevertCheckpoint?: (msgId: string) => void;
   onUnsendLastUser?: (msgId: string, content: string) => void;
   onOpenFileChanges?: (changes: FileChange[]) => void;
+  /** Toggle pin state on a bubble (user or agent). */
+  onPinToggle?: (msgId: string, pinned: boolean) => void;
+  /** Pinned bubbles to render in the sticky section above the transcript. */
+  pinnedMessages?: ChatBubbleMessage[];
   /** Provided by Chat.tsx (useOfficialChatScroll): scroll container for anchoring. */
   containerRef?: React.RefObject<HTMLDivElement | null>;
   modelRef?: React.MutableRefObject<MessageListModel | null>;
@@ -204,6 +210,7 @@ function buildRows(
     onRevertCheckpoint?: (msgId: string) => void;
     onUnsendLastUser?: (msgId: string, content: string) => void;
     onOpenFileChanges?: (changes: FileChange[]) => void;
+    onPinToggle?: (msgId: string, pinned: boolean) => void;
   },
 ): {
   rows: React.JSX.Element[];
@@ -338,6 +345,8 @@ export const MessageList = memo(function MessageList({
   onRevertCheckpoint,
   onUnsendLastUser,
   onOpenFileChanges,
+  onPinToggle,
+  pinnedMessages = [],
   containerRef,
   modelRef,
   sessionKey,
@@ -535,6 +544,28 @@ export const MessageList = memo(function MessageList({
 
   return (
     <>
+      {pinnedMessages.length > 0 && (
+        <div className="chat-pinned-section" aria-label="Pinned messages">
+          <div className="chat-pinned-header">
+            <Pin size={13} /> Pinned
+          </div>
+          {pinnedMessages.map((p) => (
+            <div key={p.id} className={`chat-pinned-bubble chat-pinned-bubble-${p.role}`}>
+              <div className="chat-pinned-meta">{p.role === "user" ? "You" : "Hermes"}</div>
+              <AgentMarkdown key={p.id}>{p.content}</AgentMarkdown>
+              <button
+                type="button"
+                className="chat-pinned-unpin"
+                onClick={() => onPinToggle?.(p.id, false)}
+                aria-label="Unpin"
+                title="Unpin"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <StickyTodoPanel todos={stickyTodos} />
       {(realHiddenCount > 0 || olderAvailable) && (
         <button
