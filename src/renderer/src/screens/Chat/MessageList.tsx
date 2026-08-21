@@ -314,6 +314,7 @@ function buildRows(
         agent={callbacks.agentAvatar}
         onRevertCheckpoint={callbacks.onRevertCheckpoint}
         onUnsendLastUser={callbacks.onUnsendLastUser}
+        onPinToggle={callbacks.onPinToggle}
         isLastUser={i === lastUserIdx}
         waitForReasoningId={
           msg.role === "agent" ? turnLastReasoningId : undefined
