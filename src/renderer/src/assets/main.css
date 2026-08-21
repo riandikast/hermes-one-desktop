@@ -8246,47 +8246,76 @@ body:has(.shell-vibrant),
   color: var(--text-base, #eee);
 }
 
-/* Match agent bubble styling inside pinned cards */
+/* Match agent bubble markdown styling inside pinned cards */
 .chat-pinned-bubble .chat-code-block {
-  background: transparent;
+  margin: 0;
   border: none;
-  padding: 0;
+}
+
+.chat-pinned-bubble .chat-code-block pre,
+.chat-pinned-bubble .chat-code-block div[class*=prism] {
+  margin: 0 !important;
+  padding: 8px 10px !important;
+  background: var(--code-bg) !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
 }
 
 .chat-pinned-bubble .chat-code-header {
   display: none;
 }
 
-.chat-pinned-bubble .chat-code-plain {
-  font-size: 12px;
-  line-height: 1.5;
-  padding: 0;
-  background: transparent;
-  color: inherit;
+.chat-pinned-bubble .chat-code-block span[class*=token] {
+  background: none !important;
 }
 
+/* Match prose/inline markdown styling */
+.chat-pinned-bubble p { margin: 0 0 4px; font-size: 13px; }
+.chat-pinned-bubble pre { margin: 0; font-size: 12px; }
+.chat-pinned-bubble code { font-size: 12px; }
+.chat-pinned-bubble ul, .chat-pinned-bubble ol { margin: 0; padding-left: 16px; font-size: 12px; }
+.chat-pinned-bubble h1, .chat-pinned-bubble h2, .chat-pinned-bubble h3 { margin: 0 0 4px; font-size: 13px; }
+.chat-pinned-bubble a { color: var(--accent, #818cf8); }
+.chat-pinned-bubble blockquote {
+  margin: 0 0 4px;
+  padding-left: 10px;
+  border-left: 3px solid var(--border-accent, #6366f1);
+  color: var(--text-secondary, #aaa);
+  font-size: 12px;
+}
+
+/* Action buttons — square ratio, clear icons */
 .chat-pinned-actions {
   position: absolute;
   top: 6px;
   right: 6px;
   display: flex;
-  gap: 4px;
+  gap: 3px;
 }
 
 .chat-pinned-go,
+.chat-pinned-expand,
 .chat-pinned-unpin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
   background: transparent;
-  border: 1px solid var(--border, rgba(127, 127, 127, 0.3));
-  border-radius: 4px;
-  padding: 2px 4px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+  border-radius: 5px;
   cursor: pointer;
   color: var(--text-tertiary, #999);
+  transition: background 0.12s, color 0.12s;
 }
 
 .chat-pinned-go:hover,
+.chat-pinned-expand:hover,
 .chat-pinned-unpin:hover {
-  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
   color: var(--text-base, #eee);
+  border-color: var(--border-focus, rgba(127, 127, 127, 0.5));
 }
 
 .chat-bubble-copy--active {

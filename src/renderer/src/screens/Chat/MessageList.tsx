@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, startTransition } from "react";
-import { Check, Circle, FilePlus2, ListTodo, Pin, X } from "lucide-react";
+import { Check, Circle, FilePlus2, ListTodo, Pin, ChevronDown, ChevronUp, ExternalLink, Trash2 } from "lucide-react";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { HermesAvatar, MessageRow } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
@@ -387,7 +387,7 @@ function PinnedMessagesBar({
                       onClick={() => toggleExpand(p.id)}
                       title={isExpanded ? "Show less" : "Show full"}
                     >
-                      {isExpanded ? "-" : "+"}
+                      {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                     </button>
                   )}
                   <button
@@ -397,16 +397,16 @@ function PinnedMessagesBar({
                     title="Go to message"
                     aria-label="Go to message"
                   >
-                    ↓
+                    <ExternalLink size={11} />
                   </button>
                   <button
                     type="button"
                     className="chat-pinned-unpin"
                     onClick={() => onUnpin(p.id)}
-                    title="Remove from top"
-                    aria-label="Remove from top"
+                    title="Unpin"
+                    aria-label="Unpin"
                   >
-                    <X size={12} />
+                    <Trash2 size={11} />
                   </button>
                 </div>
               </div>
