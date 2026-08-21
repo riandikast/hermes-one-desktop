@@ -8138,6 +8138,81 @@ body:has(.shell-vibrant),
   animation: fadeIn 0.2s ease;
 }
 
+
+.chat-pinned-section {
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  width: min(720px, calc(100% - 24px));
+  margin: 8px auto 12px;
+  background: var(--bg-elevated, rgba(40, 40, 45, 0.85));
+  border: 1px solid var(--border-accent, rgba(99, 102, 241, 0.4));
+  border-radius: 10px;
+  padding: 10px 12px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.chat-pinned-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary, #999);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.chat-pinned-bubble {
+  position: relative;
+  padding: 6px 28px 6px 10px;
+  margin: 4px 0;
+  background: var(--bg-base, rgba(20, 20, 25, 0.6));
+  border-radius: 6px;
+  border-left: 3px solid var(--border-accent, #6366f1);
+  max-height: 180px;
+  overflow: hidden;
+}
+
+.chat-pinned-bubble-user {
+  border-left-color: #10b981;
+}
+
+.chat-pinned-bubble-agent {
+  border-left-color: #6366f1;
+}
+
+.chat-pinned-meta {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary, #999);
+  margin-bottom: 4px;
+}
+
+.chat-pinned-unpin {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: transparent;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.3));
+  border-radius: 4px;
+  padding: 2px 4px;
+  cursor: pointer;
+  color: var(--text-tertiary, #999);
+}
+
+.chat-pinned-unpin:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+  color: var(--text-base, #eee);
+}
+
+.chat-bubble-copy--active {
+  color: var(--accent, #6366f1);
+}
 .chat-sticky-todos {
   position: fixed;
   top: 10px;

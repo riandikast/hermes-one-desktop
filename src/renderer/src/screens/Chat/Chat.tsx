@@ -71,7 +71,7 @@ import type { Attachment } from "../../../../shared/attachments";
 
 import type { SessionModelOverride } from "../../../../shared/model-override";
 
-import type { ActiveTurn, ChatMessage, FileChange, UsageState } from "./types";
+import type { ActiveTurn, ChatBubbleMessage, ChatMessage, FileChange, UsageState } from "./types";
 
 import type { ContextUsage } from "./ContextGauge";
 
@@ -2160,6 +2160,24 @@ function Chat({
 
   // builds context from the truncated renderer state.
 
+  const pinnedMessages = useMemo(() => {
+    return messages
+      .filter((m): m is ChatBubbleMessage =>
+        m.role === "user" || m.role === "agent")
+      .filter((m) => m.pinned);
+  }, [messages]);
+
+  const handlePinToggle = useCallback(
+    (msgId: string, pinned: boolean) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msgId ? { ...m, pinned } : m,
+        ),
+      );
+    },
+    [],
+  );
+
   const handleUnsendLastUser = useCallback(
 
     async (_msgId: string, content: string) => {
@@ -2628,6 +2646,10 @@ function Chat({
               onUnsendLastUser={handleUnsendLastUser}
 
               onOpenFileChanges={(changes) => setFileChangesOpen(changes)}
+
+              onPinToggle={handlePinToggle}
+
+              pinnedMessages={pinnedMessages}
 
               containerRef={containerRef}
 
