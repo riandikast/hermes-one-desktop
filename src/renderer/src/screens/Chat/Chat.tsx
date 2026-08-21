@@ -2089,10 +2089,14 @@ function Chat({
       // applies so they can't drift.
 
       setSessionModelOverride(override);
+      // Immediately apply to backend so the model is live before the next send.
+      if (dashboardTransport.enabled && provider !== "auto") {
+        void dashboardTransport.applyModelOverride(provider, model);
+      }
 
     },
 
-    [modelConfig.selectModel],
+    [modelConfig.selectModel, dashboardTransport],
 
   );
 

@@ -128,10 +128,12 @@ function CodeBlock({
   className,
   children,
   blockId,
+  language,
 }: {
   className?: string;
   children?: React.ReactNode;
   blockId?: string;
+  language?: string;
 }): React.JSX.Element {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -161,12 +163,8 @@ function CodeBlock({
     };
   }, [inView]);
   const code = String(children).replace(/\n$/, "");
-  const match = /language-(\w+)/.exec(className || "");
-  const language = match ? match[1] : "";
-  const isDiff = language === "diff";
-  // Diffs win over the box-diagram check: DiffView is already a plain per-line
-  // renderer (no Prism), so it has no fragmentation risk, and a patch touching
-  // a tree diagram must keep its colored +/- view.
+  const lang = language || (/language-(\w+)/.exec(className || "")?.[1] ?? "");
+  const isDiff = lang === "diff";
   const boxDiagram = !isDiff && isBoxDiagram(code);
 
   const linesCount = code.split("\n").length;
@@ -193,7 +191,7 @@ function CodeBlock({
   ) : inView && highlighterReady && _highlighterMod && _oneDark ? (
     <_highlighterMod.Prism
       style={_oneDark}
-      language={language || "text"}
+      language={lang || "text"}
       PreTag="div"
       customStyle={{
         margin: 0,

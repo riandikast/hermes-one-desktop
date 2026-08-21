@@ -376,7 +376,6 @@ describe("useDashboardChatTransport recovery", () => {
   it("sends when model.options lags behind an accepted slash switch", async () => {
     // @lat: [[model-selection#Session model override#Non-blocking switch validation]]
     const requests: Array<{ method: string; params: unknown }> = [];
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     dashboardMock.request.mockImplementation(async (method, params) => {
       requests.push({ method, params });
       if (method === "session.create") {
@@ -420,11 +419,6 @@ describe("useDashboardChatTransport recovery", () => {
     expect(requests.some((request) => request.method === "prompt.submit")).toBe(
       true,
     );
-    expect(
-      warnSpy.mock.calls.some(([message]) =>
-        String(message).includes("did not report good-provider/good-model"),
-      ),
-    ).toBe(true);
   });
 
   it("discards an in-flight dashboard client after the connection mode changes", async () => {

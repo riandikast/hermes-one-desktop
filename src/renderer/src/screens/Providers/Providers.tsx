@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import toast from "react-hot-toast";
 import {
   SETTINGS_SECTIONS,
   PROVIDERS,
@@ -1205,10 +1206,68 @@ function Providers({
       )}
 
       {activeTab === "auxiliary" && <AuxiliaryTasksSection visible={visible} />}
+      {activeTab === "auxiliary" && <ModelSettingsSection visible={visible} />}
 
       {registryOpen && (
         <RegistryBrowserModal onClose={() => setRegistryOpen(false)} />
       )}
+    </div>
+  );
+}
+
+function ModelSettingsSection({ visible }: { visible?: boolean }): React.JSX.Element {
+  const [minCtx, setMinCtx] = useState<string>("");
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!visible || loaded) return;
+    void window.hermesAPI.getConfig("model.minimum_context_length").then((v) => {
+      setMinCtx(v != null ? String(v) : "");
+      setLoaded(true);
+    });
+  }, [visible, loaded]);
+
+  const save = useCallback(async () => {
+    const val = minCtx.trim();
+    if (val === "" || val === "0") {
+      // Empty or 0 = remove the override (revert to default 64K)
+      await window.hermesAPI.setConfig("model.minimum_context_length", "0");
+    } else {
+      const num = parseInt(val, 10);
+      if (Number.isNaN(num) || num < 0) return;
+      await window.hermesAPI.setConfig("model.minimum_context_length", String(num));
+    }
+    toast.success("Minimum context length saved — restart gateway to apply");
+  }, [minCtx]);
+
+  return (
+    <div style={{ padding: "16px 0" }}>
+      <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Model Settings</h3>
+      <p style={{ fontSize: 12, color: "var(--text-secondary, #888)", marginBottom: 12 }}>
+        Minimum context window required for a model to be accepted. Default: 64000.
+        Set to 0 to disable the check.
+      </p>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <label style={{ fontSize: 13, whiteSpace: "nowrap" }}>Min context length:</label>
+        <input
+          type="number"
+          min={0}
+          step={1000}
+          value={minCtx}
+          onChange={(e) => setMinCtx(e.target.value)}
+          onBlur={() => void save()}
+          placeholder="64000"
+          style={{
+            width: 120,
+            padding: "4px 8px",
+            border: "1px solid var(--border, #333)",
+            borderRadius: 4,
+            background: "var(--input-bg, #1a1a1a)",
+            color: "var(--text, #eee)",
+            fontSize: 13,
+          }}
+        />
+      </div>
     </div>
   );
 }

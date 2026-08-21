@@ -367,7 +367,7 @@ function ToolResultBody({ msg }: { msg: ToolResultMessage }): React.JSX.Element 
   return (
     <div className={`chat-tool-result-view${failed ? " chat-tool-result-view--failed" : ""}`}>
       <div className="chat-terminal-section-label">{failed ? "Error" : "Result"}</div>
-      <CodeBlock className={/^[\s\[{]/.test(content) ? "language-json" : undefined}>{content}</CodeBlock>
+      <CodeBlock language={/^[\s\[{]/.test(content) ? "json" : "text"}>{content}</CodeBlock>
     </div>
   );
 }
@@ -394,9 +394,9 @@ function FileToolBody({
   return (
     <div className="chat-file-tool-view">
       {path && <div className="chat-file-tool-path"><span className="chat-terminal-section-label">File</span><code>{path}</code></div>}
-      {oldText && <div className="chat-terminal-section"><div className="chat-terminal-section-label">Removed</div><CodeBlock className="language-diff">{oldText}</CodeBlock></div>}
-      {newText && <div className="chat-terminal-section"><div className="chat-terminal-section-label">New content</div><CodeBlock className="language-javascript">{newText}</CodeBlock></div>}
-      {patch && <div className="chat-terminal-section"><div className="chat-terminal-section-label">Patch</div><CodeBlock className="language-diff">{patch}</CodeBlock></div>}
+      {oldText && <div className="chat-terminal-section"><div className="chat-terminal-section-label">Removed</div><CodeBlock language="diff">{oldText}</CodeBlock></div>}
+      {newText && <div className="chat-terminal-section"><div className="chat-terminal-section-label">New content</div><CodeBlock language="javascript">{newText}</CodeBlock></div>}
+      {patch && <div className="chat-terminal-section"><div className="chat-terminal-section-label">Patch</div><CodeBlock language="diff">{patch}</CodeBlock></div>}
       {!path && !oldText && !newText && !patch && <pre className="chat-history-pre chat-history-pre--code">{msg.args || "(no arguments)"}</pre>}
     </div>
   );

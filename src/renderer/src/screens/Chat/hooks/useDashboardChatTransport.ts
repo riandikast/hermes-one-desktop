@@ -181,6 +181,8 @@ interface UseDashboardChatTransportResult {
    * a `background.complete` event rendered into the transcript.
    */
   runBackground: (text: string) => Promise<{ taskId?: string; error?: string }>;
+  /** Immediately persist a session-scoped model override via config.set RPC. */
+  applyModelOverride: (provider: string, model: string) => Promise<void>;
 }
 
 interface DashboardSeedMessage {
@@ -2468,16 +2470,14 @@ export function useDashboardChatTransport({
         const resolvedCommand = dashboardModelCommand(dashboardProvider, selectedModel);
         if (!resolvedCommand) return targetSessionId;
         const key = `${targetSessionId}\n${dashboardProvider}\n${selectedModel}`;
-        let slashResponse: SlashExecResponse | null = null;
-        if (appliedModelRef.current !== key) {
-          slashResponse = await client.request<SlashExecResponse>(
-            "slash.exec",
-            {
-              session_id: targetSessionId,
-              command: resolvedCommand,
-            },
-          );
-        }
+        if (appliedModelRef.current === key) return targetSessionId;
+        const slashResponse = await client.request<SlashExecResponse>(
+          "slash.exec",
+          {
+            session_id: targetSessionId,
+            command: resolvedCommand,
+          },
+        );
 
         const live = await client.request<ModelOptionsResponse>(
           "model.options",
@@ -3132,6 +3132,30 @@ export function useDashboardChatTransport({
     [],
   );
 
+  /** Immediately persist a session-scoped model override via config.set RPC.
+   *  Called by handleSelectModel so the backend switches on pick, not on next send. */
+  const applyModelOverride = useCallback(
+    async (provider: string, model: string): Promise<void> => {
+      if (!enabled) return;
+      const command = dashboardModelCommand(provider, model);
+      if (!command) return;
+      try {
+        const client = await ensureClient();
+        let sessionId = runtimeSessionIdRef.current;
+        if (!sessionId) {
+          sessionId = await ensureRuntimeSession(client);
+        }
+        await client.request("slash.exec", {
+          session_id: sessionId,
+          command,
+        });
+      } catch {
+        // Best-effort: ensureSelectedModel will retry on send if this fails.
+      }
+    },
+    [enabled, ensureClient, ensureRuntimeSession],
+  );
+
   return {
     abort,
     enabled,
@@ -3141,5 +3165,6 @@ export function useDashboardChatTransport({
     execSlash,
     getCommandCatalog,
     runBackground,
+    applyModelOverride,
   };
 }

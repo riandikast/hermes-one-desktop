@@ -342,9 +342,13 @@ export const MessageList = memo(function MessageList({
   modelRef,
   sessionKey,
 }: MessageListProps): React.JSX.Element {
+  const isGatewaySystemMarker = (m: ChatMessage): boolean =>
+    m.role === 'user' && typeof m.content === 'string' && m.content.trimStart().startsWith('[System:');
+
   const visibleMessages = useMemo(() => {
     const todoCallIds = new Set(messages.filter(isTodoCall).map((message) => message.callId));
     return messages.filter((m) => {
+      if (isGatewaySystemMarker(m)) return false;
       if (isTodoCall(m)) return false;
       if (isToolRow(m) && todoCallIds.has(m.callId)) return false;
       if (!isBubble(m)) return true;
