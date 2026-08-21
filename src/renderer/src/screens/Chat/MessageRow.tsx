@@ -414,7 +414,7 @@ export const MessageRow = memo(function MessageRow({
             )
           ) : (
             msg.content.trim() ? (
-              <AgentMarkdown>{transformCodeMarkers(msg.content)}</AgentMarkdown>
+              <div className="chat-bubble-agent"><AgentMarkdown>{transformCodeMarkers(msg.content)}</AgentMarkdown></div>
             ) : null
           ))
         )}
