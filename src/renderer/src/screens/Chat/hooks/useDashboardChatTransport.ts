@@ -2084,21 +2084,20 @@ export function useDashboardChatTransport({
           const estimatedContextTokens = estimateContextTokens(
             messagesRef.current,
           );
-          setUsage((prev) => ({
-            promptTokens:
-              (prev?.promptTokens || 0) + (usage?.promptTokens || 0),
-            completionTokens:
-              (prev?.completionTokens || 0) + (usage?.completionTokens || 0),
-            totalTokens: (prev?.totalTokens || 0) + (usage?.totalTokens || 0),
-            cost: prev?.cost,
+          // Backend sends cumulative session_input_tokens — use raw values
+            // (not accumulated) so the context gauge and usage page show correct counts.
+            setUsage(() => ({
+            promptTokens: usage?.promptTokens || 0,
+            completionTokens: usage?.completionTokens || 0,
+            totalTokens: usage?.totalTokens || 0,
+            cost: undefined,
             contextTokens:
               usage?.contextTokens ||
-              estimatedContextTokens ||
-              prev?.contextTokens,
+              estimatedContextTokens,
             contextWindowTokens:
-              usage?.contextWindowTokens || prev?.contextWindowTokens,
-            cacheReadTokens: prev?.cacheReadTokens,
-            cacheWriteTokens: prev?.cacheWriteTokens,
+              usage?.contextWindowTokens,
+            cacheReadTokens: undefined,
+            cacheWriteTokens: undefined,
           }));
         }
       }

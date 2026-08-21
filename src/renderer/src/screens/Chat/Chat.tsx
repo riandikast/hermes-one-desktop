@@ -982,6 +982,7 @@ function Chat({
   // duplicates for the same turn.
 
   const lastRecordedAt = useRef<number>(0);
+  const prevCumulativeRef = useRef<{ input: number; output: number }>({ input: 0, output: 0 });
 
   // `recordUsage` is a stable useCallback; the hook's returned object is NOT
 
@@ -1005,28 +1006,21 @@ function Chat({
 
     lastRecordedAt.current = now;
 
+    // Backend reports cumulative session_input_tokens — compute per-request delta.
+    const prevInput = prevCumulativeRef.current.input;
+    const prevOutput = prevCumulativeRef.current.output;
+    const deltaInput = Math.max(0, usage.promptTokens - prevInput);
+    const deltaOutput = Math.max(0, usage.completionTokens - prevOutput);
+    prevCumulativeRef.current = { input: usage.promptTokens, output: usage.completionTokens };
+
     recordUsage({
-
       provider: chatCurrentProvider || "default",
-
       model: chatCurrentModel || "unknown",
-
-      inputTokens: usage.promptTokens,
-
-      outputTokens: usage.completionTokens,
-
-      // Store input+output so the page's Grand total, per-model breakdown,
-
-      // activity strip, and table Total column all agree (the payload's own
-
-      // `total` can differ from input+output).
-
-      totalTokens: usage.promptTokens + usage.completionTokens,
-
+      inputTokens: deltaInput || usage.promptTokens,
+      outputTokens: deltaOutput || usage.completionTokens,
+      totalTokens: (deltaInput || usage.promptTokens) + (deltaOutput || usage.completionTokens),
       contextTokens: usage.contextTokens,
-
       contextMax: usage.contextWindowTokens,
-
     });
 
     // Reset the throttle on session/profile change so a new session isn't
