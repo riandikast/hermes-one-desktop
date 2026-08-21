@@ -238,6 +238,12 @@ export const MessageRow = memo(function MessageRow({
     isLoading,
   });
 
+  const transformCodeMarkers = useCallback((text: string): string => {
+    return text.replace(/(^|\n)##([\s\S]*?)##(?=\n|$|\Z)/g, (_match, prefix, body) => {
+      return prefix + "```\n" + body + "\n```";
+    });
+  }, []);
+
   const renderStreamingContent = useCallback(
     (visible: string): React.ReactNode => {
       const visibleSegments = parseMediaTokens(cleanLeakedToolTags(visible));
@@ -404,7 +410,9 @@ export const MessageRow = memo(function MessageRow({
               </TypeAnimation>
             )
           ) : (
-            msg.content
+            msg.content.trim() ? (
+              <AgentMarkdown>{transformCodeMarkers(msg.content)}</AgentMarkdown>
+            ) : null
           ))
         )}
       </div>
