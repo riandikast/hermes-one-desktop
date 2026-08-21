@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, startTransition } from "react";
-import { Check, Circle, FilePlus2, ListTodo, Pin, ArrowDown, X } from "lucide-react";
+import { Check, Circle, FilePlus2, ListTodo, Pin, X } from "lucide-react";
+import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { HermesAvatar, MessageRow } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
 import type { ChatBubbleMessage } from "./types";
@@ -343,6 +344,16 @@ function PinnedMessagesBar({
   onGoToMessage: (id: string) => void;
 }): React.JSX.Element {
   const [collapsed, setCollapsed] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <div className="chat-pinned-bar">
@@ -357,32 +368,50 @@ function PinnedMessagesBar({
       </button>
       {!collapsed && (
         <div className="chat-pinned-cards">
-          {messages.map((p) => (
-            <div key={p.id} className={"chat-pinned-bubble chat-pinned-bubble-" + p.role}>
-              <div className="chat-pinned-meta">{p.role === "user" ? "You" : "Hermes"}</div>
-              <div className="chat-pinned-content">{p.content}</div>
-              <div className="chat-pinned-actions">
-                <button
-                  type="button"
-                  className="chat-pinned-go"
-                  onClick={() => onGoToMessage(p.id)}
-                  title="Go to message"
-                  aria-label="Go to message"
+          {messages.map((p) => {
+            const isExpanded = expanded.has(p.id);
+            const isLong = p.content.length > 120;
+            return (
+              <div key={p.id} className={"chat-pinned-bubble chat-pinned-bubble-" + p.role}>
+                <div className="chat-pinned-meta">{p.role === "user" ? "You" : "Hermes"}</div>
+                <div
+                  className={"chat-pinned-content" + (isExpanded ? " chat-pinned-content--expanded" : "")}
                 >
-                  <ArrowDown size={12} />
-                </button>
-                <button
-                  type="button"
-                  className="chat-pinned-unpin"
-                  onClick={() => onUnpin(p.id)}
-                  title="Remove from top"
-                  aria-label="Remove from top"
-                >
-                  <X size={12} />
-                </button>
+                  <AgentMarkdown>{p.content}</AgentMarkdown>
+                </div>
+                <div className="chat-pinned-actions">
+                  {isLong && (
+                    <button
+                      type="button"
+                      className="chat-pinned-expand"
+                      onClick={() => toggleExpand(p.id)}
+                      title={isExpanded ? "Show less" : "Show full"}
+                    >
+                      {isExpanded ? "-" : "+"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="chat-pinned-go"
+                    onClick={() => onGoToMessage(p.id)}
+                    title="Go to message"
+                    aria-label="Go to message"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    className="chat-pinned-unpin"
+                    onClick={() => onUnpin(p.id)}
+                    title="Remove from top"
+                    aria-label="Remove from top"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
