@@ -238,6 +238,10 @@ export const MessageRow = memo(function MessageRow({
     isLoading,
   });
 
+  const hasCodeMarkers = useCallback((text: string): boolean => {
+    return /(?:^|\s)##[\s\S]*?##(?:\s|$)/.test(text);
+  }, []);
+
   const transformCodeMarkers = useCallback((text: string): string => {
     // Match ##...## using explicit start/end markers instead of backreferences
     return text.replace(/(?:^|\s)##([\s\S]*?)##(?:\s|$)/g, (_match, body) => {
@@ -414,7 +418,11 @@ export const MessageRow = memo(function MessageRow({
             )
           ) : (
             msg.content.trim() ? (
-              <div className="chat-bubble-agent"><AgentMarkdown>{transformCodeMarkers(msg.content)}</AgentMarkdown></div>
+              hasCodeMarkers(msg.content) ? (
+                <div className="chat-bubble-agent"><AgentMarkdown>{transformCodeMarkers(msg.content)}</AgentMarkdown></div>
+              ) : (
+                <AgentMarkdown>{msg.content}</AgentMarkdown>
+              )
             ) : null
           ))
         )}
