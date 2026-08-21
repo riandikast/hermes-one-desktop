@@ -1,9 +1,8 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, startTransition } from "react";
-import { Check, Circle, FilePlus2, ListTodo, Pin, X } from "lucide-react";
+import { Check, Circle, FilePlus2, ListTodo, Pin, ArrowDown, X } from "lucide-react";
 import { HermesAvatar, MessageRow } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
 import type { ChatBubbleMessage } from "./types";
-import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { ReasoningRow, ToolActivityGroup } from "./HistoryRow";
 import { ClarifyCard } from "./ClarifyCard";
 import type {
@@ -334,6 +333,62 @@ function buildRows(
  * its layout is settled before it can be virtualized (no height-snap drift).
  * Fork keeps the same buildRows + row components; only the windowing changes.
  */
+function PinnedMessagesBar({
+  messages,
+  onUnpin,
+  onGoToMessage,
+}: {
+  messages: ChatBubbleMessage[];
+  onUnpin: (id: string) => void;
+  onGoToMessage: (id: string) => void;
+}): React.JSX.Element {
+  const [collapsed, setCollapsed] = useState(false);
+
+  return (
+    <div className="chat-pinned-bar">
+      <button
+        type="button"
+        className="chat-pinned-bar-trigger"
+        onClick={() => setCollapsed((v) => !v)}
+        title={collapsed ? "Expand pinned" : "Collapse pinned"}
+      >
+        <Pin size={13} />
+        <span className="chat-pinned-count">{messages.length}</span>
+      </button>
+      {!collapsed && (
+        <div className="chat-pinned-cards">
+          {messages.map((p) => (
+            <div key={p.id} className={"chat-pinned-bubble chat-pinned-bubble-" + p.role}>
+              <div className="chat-pinned-meta">{p.role === "user" ? "You" : "Hermes"}</div>
+              <div className="chat-pinned-content">{p.content}</div>
+              <div className="chat-pinned-actions">
+                <button
+                  type="button"
+                  className="chat-pinned-go"
+                  onClick={() => onGoToMessage(p.id)}
+                  title="Go to message"
+                  aria-label="Go to message"
+                >
+                  <ArrowDown size={12} />
+                </button>
+                <button
+                  type="button"
+                  className="chat-pinned-unpin"
+                  onClick={() => onUnpin(p.id)}
+                  title="Remove from top"
+                  aria-label="Remove from top"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const MessageList = memo(function MessageList({
   messages,
   isLoading,
@@ -548,26 +603,14 @@ export const MessageList = memo(function MessageList({
   return (
     <>
       {pinnedMessages.length > 0 && (
-        <div className="chat-pinned-section" aria-label="Pinned messages">
-          <div className="chat-pinned-header">
-            <Pin size={13} /> Pinned
-          </div>
-          {pinnedMessages.map((p) => (
-            <div key={p.id} className={`chat-pinned-bubble chat-pinned-bubble-${p.role}`}>
-              <div className="chat-pinned-meta">{p.role === "user" ? "You" : "Hermes"}</div>
-              <AgentMarkdown key={p.id}>{p.content}</AgentMarkdown>
-              <button
-                type="button"
-                className="chat-pinned-unpin"
-                onClick={() => onPinToggle?.(p.id, false)}
-                aria-label="Unpin"
-                title="Unpin"
-              >
-                <X size={12} />
-              </button>
-            </div>
-          ))}
-        </div>
+        <PinnedMessagesBar
+          messages={pinnedMessages}
+          onUnpin={(id) => onPinToggle?.(id, false)}
+          onGoToMessage={(id) => {
+            const el = document.getElementById("chat-msg-" + id);
+            el?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }}
+        />
       )}
       <StickyTodoPanel todos={stickyTodos} />
       {(realHiddenCount > 0 || olderAvailable) && (

@@ -239,19 +239,12 @@ export const MessageRow = memo(function MessageRow({
   });
 
   const transformCodeMarkers = useCallback((text: string): string => {
-    const parts: string[] = [];
-    let rest = text;
-    while (rest.length > 0) {
-      const si = rest.indexOf('\n##');
-      if (si === -1) { parts.push(rest); break; }
-      parts.push(rest.slice(0, si + 1));
-      rest = rest.slice(si + 3);
-      const ei = rest.indexOf('##\n');
-      if (ei === -1) { parts.push('##' + rest); break; }
-      parts.push('```\n' + rest.slice(0, ei) + '\n```');
-      rest = rest.slice(ei + 3);
-    }
-    return parts.join('');
+    // Match ##...## using explicit start/end markers instead of backreferences
+    return text.replace(/(?:^|\s)##([\s\S]*?)##(?:\s|$)/g, (_match, body) => {
+      const trimmed = body.trim();
+      if (!trimmed) return _match;
+      return '\n```\n' + trimmed + '\n```\n';
+    });
   }, []);
 
   const renderStreamingContent = useCallback(
