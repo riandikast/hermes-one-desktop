@@ -8222,6 +8222,49 @@ body:has(.shell-vibrant),
   -webkit-box-orient: vertical;
 }
 
+.chat-pinned-content--expanded {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+  max-height: none;
+}
+
+.chat-pinned-expand {
+  background: transparent;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.3));
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  color: var(--text-tertiary, #999);
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.chat-pinned-expand:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+  color: var(--text-base, #eee);
+}
+
+/* Match agent bubble styling inside pinned cards */
+.chat-pinned-bubble .chat-code-block {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.chat-pinned-bubble .chat-code-header {
+  display: none;
+}
+
+.chat-pinned-bubble .chat-code-plain {
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
 .chat-pinned-actions {
   position: absolute;
   top: 6px;
