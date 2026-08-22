@@ -356,20 +356,28 @@ function PinnedMessagesBar({
   };
 
   return (
-    <div className="chat-pinned-fab">
+    <div className={collapsed ? "chat-pinned-bar is-collapsed" : "chat-pinned-bar"}>
       <button
         type="button"
-        className="chat-pinned-fab-trigger"
+        className="chat-pinned-bar-trigger"
         onClick={() => setCollapsed((v) => !v)}
-        title={collapsed ? "Show pinned" : "Hide pinned"}
-        aria-expanded={!collapsed}
+        title={collapsed ? "Expand pinned" : "Collapse pinned"}
       >
-        <Pin size={13} />
-        <span>{messages.length}</span>
+        {collapsed ? (
+          <span className="chat-pinned-bar-pill">
+            <Pin size={12} />
+            <span>{messages.length}</span>
+          </span>
+        ) : (
+          <>
+            <Pin size={13} />
+            <span>Pinned</span>
+            <span className="chat-pinned-count">{messages.length}</span>
+          </>
+        )}
       </button>
       {!collapsed && (
-        <div className="chat-pinned-panel" role="dialog" aria-label="Pinned messages">
-          <div className="chat-pinned-cards">
+        <div className="chat-pinned-cards">
           {messages.map((p) => {
             const isExpanded = expanded.has(p.id);
             const isLong = p.content.length > 120;
@@ -414,7 +422,6 @@ function PinnedMessagesBar({
               </div>
             );
           })}
-          </div>
         </div>
       )}
     </div>
