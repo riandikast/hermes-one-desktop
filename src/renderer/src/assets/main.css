@@ -8150,50 +8150,58 @@ body:has(.shell-vibrant),
 }
 
 
-.chat-pinned-bar {
-  position: sticky;
-  top: 8px;
-  z-index: 5;
-  width: min(720px, calc(100% - 24px));
-  margin: 8px auto 12px;
-  background: var(--bg-elevated, rgba(40, 40, 45, 0.85));
-  border: 1px solid var(--border-accent, rgba(99, 102, 241, 0.4));
+/* Pinned messages: floating round FAB + dropdown panel, same family as
+   .chat-display-controls and .chat-sticky-todos. */
+.chat-pinned-fab {
+  position: fixed;
+  top: 10px;
+  z-index: 4;
+  right: 24px;
+}
+
+.chat-pinned-fab-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+  border-radius: 16px;
+  background: var(--bg-elevated, #17171b);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+.chat-pinned-fab-trigger:hover {
+  color: var(--text-primary);
+  border-color: var(--accent, #8b7cf6);
+}
+
+.chat-pinned-panel {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  width: min(420px, calc(100vw - 28px));
+  max-height: min(420px, calc(100vh - 120px));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
   border-radius: 10px;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  background: var(--bg-elevated, #17171b);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
   overflow: hidden;
 }
 
-.chat-pinned-bar-trigger {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 8px 12px;
-  background: transparent;
-  border: none;
-  color: var(--text-secondary, #aaa);
-  font-size: 12px;
-  cursor: pointer;
-  transition: color 0.15s;
-}
-
-.chat-pinned-bar-trigger:hover {
-  color: var(--text-primary, #eee);
-}
-
-.chat-pinned-count {
-  background: var(--bg-hover, rgba(255,255,255,0.08));
-  border-radius: 9px;
-  padding: 1px 6px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
 .chat-pinned-cards {
-  max-height: 300px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 0 8px 8px;
+  padding: 8px;
 }
 
 .chat-pinned-bubble {
