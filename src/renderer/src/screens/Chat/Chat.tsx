@@ -982,7 +982,12 @@ function Chat({
   // duplicates for the same turn.
 
   const lastRecordedAt = useRef<number>(0);
-  const prevCumulativeRef = useRef<{ input: number; output: number }>({ input: 0, output: 0 });
+  // Cumulative-counter baseline for per-request usage deltas. `null` = no
+  // trusted baseline yet (mount/resume/session switch); `baselineKnown`
+  // marks sessions whose counters we watched start from zero.
+  const prevCumulativeRef = useRef<{ input: number; output: number } | null>(null);
+  const usageBaselineKnownRef = useRef(false);
+  const prevUsageSessionIdRef = useRef<string | null>(hermesSessionId);
 
   // `recordUsage` is a stable useCallback; the hook's returned object is NOT
 
@@ -991,6 +996,18 @@ function Chat({
   // effect on every render, causing a setState loop and app-wide lag.
 
   const { recordUsage } = usageTracker;
+
+  // Re-baseline cumulative usage counters whenever the Hermes session
+  // changes. Watching a null -> id transition means the agent session just
+  // started, so its counters begin at zero and the first usage event IS a
+  // real delta; resumed/switched sessions only get a baseline (their first
+  // observed value) and later events delta against it.
+  useEffect(() => {
+    const startedFresh = prevUsageSessionIdRef.current === null && hermesSessionId !== null;
+    prevUsageSessionIdRef.current = hermesSessionId;
+    prevCumulativeRef.current = null;
+    usageBaselineKnownRef.current = startedFresh;
+  }, [hermesSessionId]);
 
   useEffect(() => {
 
@@ -1006,19 +1023,43 @@ function Chat({
 
     lastRecordedAt.current = now;
 
-    // Backend reports cumulative session_input_tokens — compute per-request delta.
-    const prevInput = prevCumulativeRef.current.input;
-    const prevOutput = prevCumulativeRef.current.output;
-    const deltaInput = Math.max(0, usage.promptTokens - prevInput);
-    const deltaOutput = Math.max(0, usage.completionTokens - prevOutput);
-    prevCumulativeRef.current = { input: usage.promptTokens, output: usage.completionTokens };
-
+    // Backend reports cumulative session_input_tokens — derive the
+    // per-request delta STRICTLY: the counters are monotonically growing
+    // within one session, so a non-positive delta means this emission
+    // carries no new tokens (re-fire after a model/provider switch, a
+    // duplicate preview, or a counter restart). Recording anyway — or
+    // falling back to the raw cumulative — produced impossible
+    // multi-million "single request" rows on the usage page.
+    const cumInput = usage.promptTokens;
+    const cumOutput = usage.completionTokens;
+    const baseline = prevCumulativeRef.current;
+    prevCumulativeRef.current = { input: cumInput, output: cumOutput };
+    if (baseline === null) {
+      // First observation of this session's counters. Only usable as a
+      // delta when we watched the session start from zero.
+      if (!usageBaselineKnownRef.current) return;
+      lastRecordedAt.current = now;
+      recordUsage({
+        provider: chatCurrentProvider || "default",
+        model: chatCurrentModel || "unknown",
+        inputTokens: cumInput,
+        outputTokens: cumOutput,
+        totalTokens: cumInput + cumOutput,
+        contextTokens: usage.contextTokens,
+        contextMax: usage.contextWindowTokens,
+      });
+      return;
+    }
+    const deltaInput = cumInput - baseline.input;
+    const deltaOutput = cumOutput - baseline.output;
+    if (deltaInput <= 0 || deltaOutput <= 0) return;
+    lastRecordedAt.current = now;
     recordUsage({
       provider: chatCurrentProvider || "default",
       model: chatCurrentModel || "unknown",
-      inputTokens: deltaInput || usage.promptTokens,
-      outputTokens: deltaOutput || usage.completionTokens,
-      totalTokens: (deltaInput || usage.promptTokens) + (deltaOutput || usage.completionTokens),
+      inputTokens: deltaInput,
+      outputTokens: deltaOutput,
+      totalTokens: deltaInput + deltaOutput,
       contextTokens: usage.contextTokens,
       contextMax: usage.contextWindowTokens,
     });
