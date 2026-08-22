@@ -246,14 +246,21 @@ export const MessageRow = memo(function MessageRow({
     return text.replace(/(?:^|\s)##([\s\S]*?)##(?:\s|$)/g, (_match, body) => {
       const trimmed = body.trim();
       if (!trimmed) return _match;
+      // Broad language detection — distinctive tokens first, then a generic
+      // code-ish fallback so typical snippets (console.log, x = 5) get real
+      // token colors instead of a bare fence (which renders plain).
       let lang = "";
-      if (/^(import |export |const |let |var |function |class |=>|async )/.test(trimmed)) lang = "javascript";
-      else if (/^(def |class |import |from |print|if __name__)/.test(trimmed)) lang = "python";
-      else if (/^(fn |pub |use |struct |impl |let |mut )/.test(trimmed)) lang = "rust";
-      else if (/^(SELECT |INSERT |UPDATE |DELETE |CREATE |ALTER )/i.test(trimmed)) lang = "sql";
-      else if (/^(#include|#define|void |int |char |struct )/.test(trimmed)) lang = "c";
-      else if (/^<[a-z]/i.test(trimmed)) lang = "html";
-      else if (/^\{/.test(trimmed) && /"/.test(trimmed)) lang = "json";
+      if (/(?:^|\s)(?:def |elif |async def |print\(|from \w+ import )|__name__|self\./.test(trimmed)) lang = "python";
+      else if (/(?:^|\n)\s*(?:fn |pub |impl |let mut )|println!|::</.test(trimmed)) lang = "rust";
+      else if (/(?:^|\s)(?:func |package )|fmt\./.test(trimmed)) lang = "go";
+      else if (/\b(?:public|private|protected)\s+(?:static\s+)?(?:class|void|interface)|System\.out\.println/.test(trimmed)) lang = "java";
+      else if (/^\s*(?:SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|WITH)\b/i.test(trimmed)) lang = "sql";
+      else if (/(?:^|\s)(?:#include|#define)|\b(?:printf|malloc)\(/.test(trimmed)) lang = "c";
+      else if (/^\s*<\/?[a-z][\w-]*[\s>]/i.test(trimmed)) lang = "html";
+      else if (/^\s*[[{][\s\S]*[\]}]\s*$/.test(trimmed) && /"[^"]*"\s*:/.test(trimmed)) lang = "json";
+      else if (/(?:^|\s)(?:sudo |apt |npm |git |curl|mkdir |echo |pip )/.test(trimmed)) lang = "bash";
+      else if (/(?:^|[\s;{(])(?:const |let |var |function |class |async |await |import |export )|=>|console\.|document\.|window\.|require\(|===|!==/.test(trimmed)) lang = "javascript";
+      else if (/[{};()=]/.test(trimmed)) lang = "javascript";
       return "\n```" + lang + "\n" + trimmed + "\n```\n";
     });
   }, []);
