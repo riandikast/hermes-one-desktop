@@ -6445,6 +6445,17 @@ body:has(.shell-vibrant),
   white-space: normal;
 }
 
+/* ##-marker messages in USER bubbles nest a .chat-bubble-agent div inside
+   the user bubble for markdown typography. Strip its agent chrome so the
+   user bubble remains the single visible container (no gray box-in-box),
+   while all typography/code-highlight rules still apply. */
+.chat-bubble-user > .chat-bubble-agent {
+  background: transparent;
+  color: inherit;
+  border-radius: 0;
+  padding: 2px 0;
+}
+
 .chat-bubble-error {
   border: 1px solid color-mix(in srgb, var(--error) 35%, transparent);
   background: var(--error-bg);
