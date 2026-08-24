@@ -474,24 +474,20 @@ export function addModel(
       norm(m.baseUrl) === norm(baseUrl),
   );
   if (existing) {
-    // Merge: keep the existing row but apply fresh metadata (name /
-    // providerLabel) so aliases and label renames propagate instead of
-    // silently returning stale data that causes duplicate model entries
-    // in the picker.
-    const merged = { ...existing };
-    if (name && name !== existing.name) merged.name = name;
-    if (providerLabel && providerLabel !== existing.providerLabel)
-      merged.providerLabel = providerLabel;
-    if (ctx !== undefined) (merged as any).contextLength = ctx;
-    const changed = Object.keys(merged).some((k) => (merged as any)[k] !== (existing as any)[k]);
-    if (changed) {
+    // Do NOT merge name/providerLabel here — addModel is called from multiple
+    // paths (Providers auto-save, add-model button, registry) with the raw
+    // model ID as name, which would overwrite user-set aliases set via
+    // updateModel (pencil rename). Name changes must go through updateModel.
+    if (ctx !== undefined) {
+      const merged = { ...existing, contextLength: ctx } as unknown as SavedModelRow;
       const idx = models.indexOf(existing);
       if (idx !== -1) {
-        models[idx] = merged as unknown as SavedModelRow;
+        models[idx] = merged;
         writeModels(models);
       }
+      return merged as unknown as SavedModel;
     }
-    return merged as unknown as SavedModel;
+    return existing as unknown as SavedModel;
   }
 
   const entry: SavedModelRow = {
