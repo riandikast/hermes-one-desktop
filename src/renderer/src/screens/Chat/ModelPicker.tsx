@@ -282,7 +282,7 @@ export const ModelPicker = memo(function ModelPicker({
                   return (
                     <button
                       type="button"
-                      key={`${m.provider}:${m.model}:${m.baseUrl}`}
+                      key={m.id || `${m.provider}:${m.providerLabel}:${m.model}:${m.baseUrl}`}
                       className={`chat-model-row ${isActive ? "active" : ""}`}
                       onClick={() => select(m.provider, m.model, m.baseUrl)}
                     >

@@ -394,7 +394,8 @@ export function syncAgentConfigModels(profile?: string): void {
       (m) =>
         m.model === cp.model &&
         m.provider === cp.provider &&
-        norm(m.baseUrl) === norm(cp.baseUrl),
+        norm(m.baseUrl) === norm(cp.baseUrl) &&
+        (m.providerLabel || "") === cp.name,
     );
     if (!exists) {
       models.push({
