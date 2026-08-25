@@ -497,14 +497,10 @@ function Providers({
     const byBrand = new Map<string, LibModel[]>();
     const byLabel = new Map<string, LibModel[]>();
     for (const m of libModels) {
-      const legacy9r =
-        m.provider.toLowerCase() === "9r" &&
-        /localhost:20128(?:\/|$)/i.test(m.baseUrl || "");
-      const customLabel = legacy9r ? "9R" : m.providerLabel;
-      if ((m.provider === "custom" && customLabel) || legacy9r) {
-        const a = byLabel.get(customLabel!) ?? [];
+      if (m.provider === "custom" && m.providerLabel) {
+        const a = byLabel.get(m.providerLabel) ?? [];
         a.push(m);
-        byLabel.set(customLabel!, a);
+        byLabel.set(m.providerLabel, a);
       } else {
         const b = displayProviderFromConfig(m.provider, m.baseUrl);
         const a = byBrand.get(b) ?? [];
