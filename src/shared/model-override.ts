@@ -12,6 +12,7 @@
  */
 export interface SessionModelOverride {
   provider: string;
+  providerLabel?: string;
   model: string;
   baseUrl: string;
 }
