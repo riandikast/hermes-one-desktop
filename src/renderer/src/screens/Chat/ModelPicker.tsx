@@ -3,6 +3,7 @@ import { ChevronDown, Check, Asterisk, Search, Pencil, X } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import BrandLogo from "../../components/common/BrandLogo";
 import type { ModelGroup } from "./types";
+import { effectiveProviderForModel } from "./hooks/useModelConfig";
 
 interface ModelPickerProps {
   active?: boolean;
@@ -158,8 +159,13 @@ export const ModelPicker = memo(function ModelPicker({
     setSelectedBrand(null);
   }
 
-  function select(provider: string, model: string, baseUrl: string): void {
-    onSelectModel(provider, model, baseUrl);
+  function select(
+    provider: string,
+    model: string,
+    baseUrl: string,
+    providerLabel?: string,
+  ): void {
+    onSelectModel(effectiveProviderForModel(provider, providerLabel), model, baseUrl);
     setIsOpen(false);
     setSearchInput("");
     setSelectedBrand(null);
@@ -284,7 +290,7 @@ export const ModelPicker = memo(function ModelPicker({
                       type="button"
                       key={m.id || `${m.provider}:${m.providerLabel}:${m.model}:${m.baseUrl}`}
                       className={`chat-model-row ${isActive ? "active" : ""}`}
-                      onClick={() => select(m.provider, m.model, m.baseUrl)}
+                      onClick={() => select(m.provider, m.model, m.baseUrl, m.providerLabel)}
                     >
                       <span className="chat-model-row-body">
                         <span className="chat-model-row-title">{m.label}</span>
