@@ -463,15 +463,17 @@ export function addModel(
   const ctx = normalizeContextLength(contextLength);
   if (ctx !== undefined) setModelDefinition(model, { contextLength: ctx });
 
-  // Dedup: same model ID + provider + base URL. Base URL is part of the key so
-  // the same model id can live under two different custom endpoints.
+  // Dedup: same model ID + provider + base URL + provider label. The label is
+  // part of the key so the same model id can live under two named providers
+  // sharing a URL (different labels = different custom groupings).
   const norm = (u: string): string =>
     (u || "").trim().replace(/\/+$/, "").toLowerCase();
   const existing = models.find(
     (m) =>
       m.model === model &&
       m.provider === provider &&
-      norm(m.baseUrl) === norm(baseUrl),
+      norm(m.baseUrl) === norm(baseUrl) &&
+      (m.providerLabel || "") === (providerLabel || ""),
   );
   if (existing) {
     // Do NOT merge name/providerLabel here — addModel is called from multiple
