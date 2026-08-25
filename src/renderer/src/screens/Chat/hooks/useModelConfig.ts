@@ -99,12 +99,6 @@ interface UseModelConfigResult {
 function customBucketKey(m: { provider: string; baseUrl?: string; providerLabel?: string }): string | null {
   const label = m.providerLabel?.trim();
   if (label) return `custom-label:${label}`;
-  if (
-    m.provider.toLowerCase() === "9r" &&
-    /localhost:20128(?:\/|$)/i.test(m.baseUrl || "")
-  ) {
-    return "custom-label:9R";
-  }
   return null;
 }
 
@@ -115,9 +109,7 @@ function groupModelsByProvider(
   for (const m of models) {
     const customKey = customBucketKey(m as never);
     const brand = customKey
-      ? customKey === "custom-label:9R"
-        ? "9R"
-        : (m as { providerLabel: string }).providerLabel
+      ? (m as { providerLabel: string }).providerLabel
       : displayBrandFromConfig(m.provider, m.baseUrl || "");
     const label =
       customKey != null ? (brand as string) : PROVIDERS.labels[brand] || brand;
