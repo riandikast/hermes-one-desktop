@@ -43,6 +43,8 @@ import {
 
   effectiveOverrideBaseUrl,
 
+  effectiveProviderForModel,
+
 } from "./hooks/useModelConfig";
 
 import { useFastMode } from "./hooks/useFastMode";
@@ -2093,13 +2095,20 @@ function Chat({
 
   const handleSelectModel = useCallback(
 
-    (provider: string, model: string, baseUrl: string) => {
+    (
+      provider: string,
+      model: string,
+      baseUrl: string,
+      providerLabel?: string,
+    ) => {
 
+      const effectiveProvider = effectiveProviderForModel(provider, providerLabel);
       const override = model
 
         ? {
 
-            provider,
+            provider: effectiveProvider,
+            providerLabel,
 
             model,
 
@@ -2126,7 +2135,7 @@ function Chat({
       setSessionModelOverride(override);
       // Immediately apply to backend so the model is live before the next send.
       if (dashboardTransport.enabled && provider !== "auto") {
-        void dashboardTransport.applyModelOverride(provider, model);
+        void dashboardTransport.applyModelOverride(effectiveProvider, model);
       }
 
     },

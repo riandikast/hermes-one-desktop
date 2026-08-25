@@ -3,7 +3,6 @@ import { ChevronDown, Check, Asterisk, Search, Pencil, X } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import BrandLogo from "../../components/common/BrandLogo";
 import type { ModelGroup } from "./types";
-import { effectiveProviderForModel } from "./hooks/useModelConfig";
 
 interface ModelPickerProps {
   active?: boolean;
@@ -13,7 +12,12 @@ interface ModelPickerProps {
   modelGroups: ModelGroup[];
   displayModel: string;
   onOpen: () => void;
-  onSelectModel: (provider: string, model: string, baseUrl: string) => void;
+  onSelectModel: (
+    provider: string,
+    model: string,
+    baseUrl: string,
+    providerLabel?: string,
+  ) => void;
 }
 
 export const ModelPicker = memo(function ModelPicker({
@@ -165,7 +169,11 @@ export const ModelPicker = memo(function ModelPicker({
     baseUrl: string,
     providerLabel?: string,
   ): void {
-    onSelectModel(effectiveProviderForModel(provider, providerLabel), model, baseUrl);
+    if (providerLabel) {
+      onSelectModel(provider, model, baseUrl, providerLabel);
+    } else {
+      onSelectModel(provider, model, baseUrl);
+    }
     setIsOpen(false);
     setSearchInput("");
     setSelectedBrand(null);
@@ -290,7 +298,13 @@ export const ModelPicker = memo(function ModelPicker({
                       type="button"
                       key={m.id || `${m.provider}:${m.providerLabel}:${m.model}:${m.baseUrl}`}
                       className={`chat-model-row ${isActive ? "active" : ""}`}
-                      onClick={() => select(m.provider, m.model, m.baseUrl, m.providerLabel)}
+                      onClick={() => {
+                        if (m.provider === "custom" && m.providerLabel) {
+                          select(m.provider, m.model, m.baseUrl, m.providerLabel);
+                        } else {
+                          select(m.provider, m.model, m.baseUrl);
+                        }
+                      }}
                     >
                       <span className="chat-model-row-body">
                         <span className="chat-model-row-title">{m.label}</span>
