@@ -2297,6 +2297,23 @@ const CLI_COMPAT_PROVIDER_OVERRIDE: Record<string, string> = {
 
 type ModelConfig = ReturnType<typeof getModelConfig>;
 
+function namedProviderSlugForModel(config: ModelConfig): string | null {
+  if (!config.model || !config.baseUrl) return null;
+  const normalizedUrl = config.baseUrl.trim().replace(/\/+$/, "").toLowerCase();
+  const row = readModels().find(
+    (candidate) =>
+      candidate.model === config.model &&
+      candidate.providerLabel &&
+      candidate.baseUrl.trim().replace(/\/+$/, "").toLowerCase() === normalizedUrl,
+  );
+  if (!row?.providerLabel) return null;
+  return row.providerLabel
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 /**
  * Overlay a session-scoped model override on top of the persisted config.yaml
  * model config. Non-empty override fields win; empty/absent fields fall back to
@@ -2308,8 +2325,13 @@ function effectiveModelConfig(
   override?: SessionModelOverride,
 ): ModelConfig {
   const mc = getModelConfig(profile);
-  if (!override) return mc;
-  return {
+  if (!override) {
+    const namedProvider = namedProviderSlugForModel(mc);
+    return namedProvider && mc.provider === "9r"
+      ? { ...mc, provider: namedProvider }
+      : mc;
+  }
+  const overrideConfig = {
     provider: override.provider || mc.provider,
     model: override.model || mc.model,
     // baseUrl is intentionally taken verbatim from the override (including an
@@ -2317,6 +2339,10 @@ function effectiveModelConfig(
     // URL; only fall back to the persisted value when the override omits it.
     baseUrl: override.baseUrl !== undefined ? override.baseUrl : mc.baseUrl,
   };
+  const namedProvider = namedProviderSlugForModel(overrideConfig);
+  return namedProvider && overrideConfig.provider === "9r"
+    ? { ...overrideConfig, provider: namedProvider }
+    : overrideConfig;
 }
 
 function hasAttachments(attachments?: Attachment[]): boolean {
