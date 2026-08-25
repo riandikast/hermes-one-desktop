@@ -29,6 +29,18 @@ export function effectiveOverrideBaseUrl(
     : "";
 }
 
+export function effectiveProviderForModel(
+  provider: string,
+  providerLabel?: string,
+): string {
+  if (provider !== "custom" || !providerLabel?.trim()) return provider;
+  return providerLabel
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 interface SavedModelForPicker {
   id?: string;
   provider: string;
