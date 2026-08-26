@@ -591,7 +591,11 @@ export function ProviderKeysSection({
     for (const m of all) {
       if (m.provider !== "custom" || !m.baseUrl) continue;
       if (expectedEnvKeyForUrl(m.baseUrl) !== CUSTOM_API_KEY_ENV) continue;
-      push(m.providerLabel || hostOf(m.baseUrl), m.baseUrl);
+      if (m.providerLabel) {
+        push(m.providerLabel, m.baseUrl);
+      } else if (m.baseUrl) {
+        push(hostOf(m.baseUrl), m.baseUrl);
+      }
     }
     setStoredProviders(list);
   }, [profile]);
