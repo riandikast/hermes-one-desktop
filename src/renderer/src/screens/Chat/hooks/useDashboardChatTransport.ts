@@ -133,6 +133,8 @@ interface UseDashboardChatTransportArgs {
   knowledgeBundles?: string[];
   /** PLAN mode: inject a system-role instruction forbidding file mutations. */
   planMode?: boolean;
+  /** Raw / minimal system prompt mode: suppresses default Hermes instructions. */
+  rawSystemPrompt?: boolean;
   setHermesSessionId: (id: string) => void;
   setIsLoading: (loading: boolean) => void;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
@@ -1003,6 +1005,7 @@ export function useDashboardChatTransport({
   provider,
   knowledgeBundles,
   planMode,
+  rawSystemPrompt,
   setHermesSessionId,
   setIsLoading,
   setMessages,
@@ -1034,6 +1037,8 @@ export function useDashboardChatTransport({
   modelBaseUrlRef.current = modelBaseUrl;
   providerRef.current = provider;
   const reasoningSegmentClosedRef = useRef(false);
+  const rawSystemPromptRef = useRef(rawSystemPrompt);
+  rawSystemPromptRef.current = rawSystemPrompt;
   const appliedModelRef = useRef<string | null>(null);
   const recreateRuntimeSessionRef = useRef(false);
   const lastRuntimeSessionWasCreatedRef = useRef(false);

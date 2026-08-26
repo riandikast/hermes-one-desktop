@@ -102,6 +102,12 @@ export default {
     "Priority processing active — lower latency on supported models. Click to disable.",
   fastModeInactive:
     "Enable priority processing for lower latency on OpenAI and Anthropic models.",
+  rawSystemPrompt: "System Prompt",
+  rawSystemPromptOn: "System Prompt OFF (Minimal / Raw)",
+  rawSystemPromptActive:
+    "System Prompt OFF — running with minimal/raw prompt, ideal for small/local models. Click to re-enable full agent prompt.",
+  rawSystemPromptInactive:
+    "System Prompt ON — running with full Hermes agent instructions. Click to switch to minimal/raw mode.",
   availableCommands: "Available Commands",
   categoryChat: "Chat",
   categoryAgent: "Agent",

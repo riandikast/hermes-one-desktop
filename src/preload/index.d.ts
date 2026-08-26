@@ -485,6 +485,7 @@ interface HermesAPI {
     modelOverride?: SessionModelOverride,
     knowledgeBundles?: string[],
     planMode?: boolean,
+    rawSystemPrompt?: boolean,
   ) => Promise<{ response: string; sessionId?: string }>;
   getKnowledgeIndex: (bundleNames: string[]) => Promise<string>;
   getFolderIndex: (folders: string[]) => Promise<string>;
