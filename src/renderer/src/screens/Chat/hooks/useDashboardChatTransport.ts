@@ -106,6 +106,8 @@ interface EnsureDashboardRuntimeSessionParams {
    *  the agent sees it as context — never prepended to the user's prompt text
    *  (which would leak the system prompt into the visible user bubble). */
   knowledgeIndex?: string;
+  model?: string;
+  provider?: string;
 }
 
 interface EnsureDashboardRuntimeSessionResult {
@@ -338,6 +340,8 @@ export async function ensureDashboardRuntimeSession(
       ...(seedMessages.length > 0 ? { messages: seedMessages } : {}),
       ...(params.contextFolder ? { cwd: params.contextFolder } : {}),
       ...(params.profile ? { profile: params.profile } : {}),
+      ...(params.model ? { model: params.model } : {}),
+      ...(params.provider && params.provider !== "auto" ? { provider: params.provider } : {}),
     },
   );
 
@@ -2315,6 +2319,9 @@ export function useDashboardChatTransport({
             /* index optional */
           }
         }
+        const liveOverride = sessionModelOverrideRef?.current;
+        const selectedModel = liveOverride?.model ?? modelRef.current;
+        const selectedProvider = liveOverride?.provider ?? providerRef.current;
         const response = await ensureDashboardRuntimeSession({
           client,
           contextFolder,
@@ -2324,6 +2331,8 @@ export function useDashboardChatTransport({
           profile,
           storedSessionId: stored,
           knowledgeIndex: systemParts.join("\n\n"),
+          model: selectedModel,
+          provider: selectedProvider,
         });
 
         if (stored && response.created) {
