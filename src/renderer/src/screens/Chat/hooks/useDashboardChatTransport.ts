@@ -2887,6 +2887,7 @@ export function useDashboardChatTransport({
         const runtimeSessionId = await ensureRuntimeSession(client, {
           forceCreate: false,
         });
+        runtimeSessionIdRef.current = runtimeSessionId;
         if (
           lastRuntimeSessionWasCreatedRef.current ||
           pendingRecoveredContinuationRef.current.length > 0
