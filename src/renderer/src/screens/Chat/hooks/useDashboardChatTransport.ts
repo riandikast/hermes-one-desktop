@@ -583,7 +583,12 @@ export function resolveDashboardProviderForModel(
   modelBaseUrl: string | undefined,
   live: ModelOptionsResponse | null | undefined,
 ): string | undefined {
-  if (requestedProvider !== "custom" || !requestedModel) {
+  if (!requestedProvider || !requestedModel) {
+    return requestedProvider;
+  }
+
+  // If already a named slug (e.g. 9r-command-code, 9r-anti-gravity), return it directly
+  if (requestedProvider !== "custom" && requestedProvider !== "auto") {
     return requestedProvider;
   }
 
