@@ -2462,7 +2462,8 @@ export function useDashboardChatTransport({
         if (
           selectedProvider === "custom" &&
           dashboardProvider === "custom" &&
-          storedSessionIdRef.current
+          storedSessionIdRef.current &&
+          !dashboardModelMatches("custom", selectedModel, before)
         ) {
           targetSessionId = await resetRuntimeSession(targetSessionId);
 
