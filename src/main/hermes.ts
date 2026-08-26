@@ -2969,12 +2969,15 @@ export async function sendMessage(
   override?: SessionModelOverride,
   knowledgeIndex?: string,
   planMode?: boolean,
+  rawSystemPrompt?: boolean,
 ): Promise<ChatHandle> {
   ensureInitialized();
-  const effectiveSystemContext = systemContextWithPlanMode(
-    knowledgeIndex,
-    planMode,
-  );
+  const effectiveSystemContext = rawSystemPrompt
+    ? ""
+    : systemContextWithPlanMode(
+        knowledgeIndex,
+        planMode,
+      );
 
   // Remote mode: always use API, no CLI fallback. Cross-provider session
   // overrides are limited to the model string here (no CLI transport remotely).

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import toast from "react-hot-toast";
 
-import { Zap, Globe, ClipboardList, Hammer, SlidersHorizontal } from "lucide-react";
+import { Zap, Globe, ClipboardList, Hammer, SlidersHorizontal, Terminal } from "lucide-react";
 
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 
@@ -501,18 +501,33 @@ function Chat({
   // system message) to never mutate files.
 
   const [planMode, setPlanMode] = useState<boolean>(() => {
-
     try {
-
       return localStorage.getItem("hermes.session.planMode") === "true";
-
     } catch {
-
       return false;
-
     }
-
   });
+
+  // Raw / minimal system prompt mode toggle (ideal for small / local models).
+  const [rawSystemPrompt, setRawSystemPrompt] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("hermes.session.rawSystemPrompt") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleRawSystemPrompt = useCallback(() => {
+    setRawSystemPrompt((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("hermes.session.rawSystemPrompt", String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
 
   const togglePlanMode = useCallback(() => {
 
@@ -1674,6 +1689,8 @@ function Chat({
 
     planMode,
 
+    rawSystemPrompt,
+
     messages,
 
     sessionModelOverrideRef,
@@ -1897,6 +1914,7 @@ function Chat({
     knowledgeBundles: attachedKnowledgeBundles,
 
     planMode,
+    rawSystemPrompt,
     sessionModel: sessionModelOverride,
     sessionModelOverrideRef,
     sendViaDashboard: dashboardTransport.enabled
@@ -2977,6 +2995,39 @@ function Chat({
 
                 </span>
 
+              </button>
+
+              <button
+                type="button"
+                className={`btn-ghost chat-tool-btn ${
+                  rawSystemPrompt ? "chat-tool-btn-active" : ""
+                }`}
+                onClick={toggleRawSystemPrompt}
+                title={
+                  rawSystemPrompt
+                    ? t("chat.rawSystemPromptActive")
+                    : t("chat.rawSystemPromptInactive")
+                }
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: 28,
+                  padding: "0 6px",
+                  borderRadius: 6,
+                  gap: 4,
+                  color: rawSystemPrompt
+                    ? "var(--warning-text, #f59e0b)"
+                    : "var(--text-secondary)",
+                  background: rawSystemPrompt
+                    ? "color-mix(in srgb, var(--warning-text, #f59e0b) 12%, transparent)"
+                    : "transparent",
+                }}
+              >
+                <Terminal size={13} />
+                <span style={{ fontSize: 10, fontWeight: 600 }}>
+                  {rawSystemPrompt ? "RAW" : "SYS"}
+                </span>
               </button>
 
               <button
