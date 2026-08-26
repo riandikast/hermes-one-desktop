@@ -174,6 +174,7 @@ function Providers({
   const [modelProvider, setModelProvider] = useState("auto");
   const [modelName, setModelName] = useState("");
   const [modelBaseUrl, setModelBaseUrl] = useState("");
+  const [modelProviderLabel, setModelProviderLabel] = useState<string | undefined>(undefined);
   const [modelSaved, setModelSaved] = useState(false);
   // Active-model picker modal: pick a configured provider, then one of its
   // configured models. Sourced from the model library (models.json).
@@ -281,6 +282,14 @@ function Providers({
     setModelProvider(displayProviderFromConfig(mc.provider, mc.baseUrl));
     setModelName(mc.model);
     setModelBaseUrl(mc.baseUrl);
+    const lib = (await window.hermesAPI.listModels()) as LibModel[];
+    const activeLib = lib.find(
+      (m) =>
+        m.model === mc.model &&
+        displayProviderFromConfig(m.provider, m.baseUrl) ===
+          displayProviderFromConfig(mc.provider, mc.baseUrl),
+    );
+    setModelProviderLabel(activeLib?.providerLabel);
     persistedCustomUrl.current =
       mc.provider === "custom" && Boolean(mc.baseUrl?.trim());
     setCredPool(pool);
@@ -304,6 +313,14 @@ function Providers({
       setModelProvider(displayProviderFromConfig(mc.provider, mc.baseUrl));
       setModelName(mc.model);
       setModelBaseUrl(mc.baseUrl);
+      const lib = (await window.hermesAPI.listModels()) as LibModel[];
+      const activeLib = lib.find(
+        (m) =>
+          m.model === mc.model &&
+          displayProviderFromConfig(m.provider, m.baseUrl) ===
+            displayProviderFromConfig(mc.provider, mc.baseUrl),
+      );
+      setModelProviderLabel(activeLib?.providerLabel);
       persistedCustomUrl.current =
         mc.provider === "custom" && Boolean(mc.baseUrl?.trim());
       requestAnimationFrame(() => {
@@ -374,7 +391,7 @@ function Providers({
       const libProvider =
         modelProvider in OPENAI_COMPATIBLE_BASE_URLS ? "custom" : modelProvider;
       window.hermesAPI
-        .addModel(displayName, libProvider, modelName, modelBaseUrl)
+        .addModel(displayName, libProvider, modelName, modelBaseUrl, undefined, modelProviderLabel)
         .catch(() => {
           /* non-fatal — library write is best-effort */
         });
@@ -382,7 +399,7 @@ function Providers({
     return () => {
       if (modelLibTimer.current) clearTimeout(modelLibTimer.current);
     };
-  }, [modelProvider, modelName, modelBaseUrl]);
+  }, [modelProvider, modelName, modelBaseUrl, modelProviderLabel]);
 
   async function handleBlur(key: string): Promise<void> {
     // Cancel any pending debounced save for this key — the blur handler
@@ -665,6 +682,7 @@ function Providers({
     setModelBaseUrl(
       saved.baseUrl || (keepDashScopeUrl ? modelBaseUrl : p.baseUrl || ""),
     );
+    setModelProviderLabel(saved.providerLabel || p.providerLabel);
     setModelPickerOpen(false);
   }
 
