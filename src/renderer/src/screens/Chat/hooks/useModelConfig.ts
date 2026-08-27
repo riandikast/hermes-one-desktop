@@ -96,38 +96,48 @@ interface UseModelConfigResult {
 // hosts), which becomes an unbounded list. Grouping by label gives each named
 // provider its own rail entry + heading. Empty label + unknown host stays on
 // the generic bucket.
-function customBucketKey(m: { provider: string; baseUrl?: string; providerLabel?: string }): string | null {
-  const label = m.providerLabel?.trim();
-  if (label) return `custom-label:${label}`;
-  return null;
-}
-
 function groupModelsByProvider(
   models: (SavedModelForPicker & { providerLabel?: string })[],
 ): ModelGroup[] {
   const groupMap = new Map<string, ModelGroup>();
   for (const m of models) {
-    const customKey = customBucketKey(m as never);
-    const brand = customKey
-      ? (m as { providerLabel: string }).providerLabel
-      : displayBrandFromConfig(m.provider, m.baseUrl || "");
-    const label =
-      customKey != null ? (brand as string) : PROVIDERS.labels[brand] || brand;
-    const mapKey = customKey ?? brand;
-    if (!groupMap.has(mapKey)) {
-      groupMap.set(mapKey, {
-        provider: customKey != null ? "custom" : brand,
-        providerLabel: label,
-        models: [],
+    // Exactly like Providers.tsx: if provider is custom and has providerLabel, group by label
+    if (m.provider === "custom" && m.providerLabel) {
+      const mapKey = `label:${m.providerLabel}`;
+      if (!groupMap.has(mapKey)) {
+        groupMap.set(mapKey, {
+          provider: "custom",
+          providerLabel: m.providerLabel,
+          models: [],
+        });
+      }
+      groupMap.get(mapKey)!.models.push({
+        id: m.id,
+        provider: m.provider,
+        model: m.model,
+        label: m.name,
+        baseUrl: m.baseUrl || "",
+      });
+    } else {
+      // Standard brand / unlabelled model: group by brand
+      const brand = displayBrandFromConfig(m.provider, m.baseUrl || "");
+      const label = PROVIDERS.labels[brand] || brand;
+      const mapKey = `brand:${brand}`;
+      if (!groupMap.has(mapKey)) {
+        groupMap.set(mapKey, {
+          provider: brand,
+          providerLabel: label,
+          models: [],
+        });
+      }
+      groupMap.get(mapKey)!.models.push({
+        id: m.id,
+        provider: m.provider,
+        model: m.model,
+        label: m.name,
+        baseUrl: m.baseUrl || "",
       });
     }
-    groupMap.get(mapKey)!.models.push({
-      id: m.id,
-      provider: m.provider,
-      model: m.model,
-      label: m.name,
-      baseUrl: m.baseUrl || "",
-    });
   }
   return Array.from(groupMap.values());
 }
@@ -221,11 +231,6 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
     const v = pickerEnv[key];
     return !!v && !!v.trim();
   }
-  function isLocalBaseUrl(url: string): boolean {
-    const u = (url || "").trim().toLowerCase();
-    if (!u) return true;
-    return u.includes("localhost") || u.includes("127.0.0.1") || u.includes("::1");
-  }
   // Which env var gates this picker group? null => no auth required (local / oauth-only
   // provider), so never filtered. For everything else the picker mirrors the Providers
   // tab: a group whose key isn't set is hidden (with the active-model exception).
@@ -236,25 +241,13 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
     if (g.provider === "custom" && g.providerLabel && g.providerLabel !== PROVIDERS.labels["custom"] && g.providerLabel !== "OpenAI Compatible / Local") {
       return customProviderEnvKey(g.providerLabel);
     }
-    // Brand groups: look up their canonical env var in PROVIDERS.setup. Any
-    // provider whose setup entry has needsKey=true must have that key set to
-    // appear in the picker; needsKey=false (nous, oauth-only, local) never filters.
-    const setup = (PROVIDERS.setup as { id: string; envKey: string; needsKey: boolean }[]).find((s) => s.id === g.provider);
+    const brand = g.provider;
+    const setup = (PROVIDERS.setup as { id: string; envKey: string; needsKey: boolean }[]).find((s) => s.id === brand);
     if (setup) return setup.needsKey && setup.envKey ? setup.envKey : null;
-    // OpenAI-compatible ids (groq, deepseek, …) are persisted as brand ids but
-    // route as custom — they still map to their host-derived key. Fall back to
-    // expectedEnvKeyForUrl when the brand isn't in `setup` (e.g. groq without a
-    // dedicated setup card is still keyed by GROQ_API_KEY).
-    const compatUrl = OPENAI_COMPATIBLE_BASE_URLS[g.provider];
+    const compatUrl = OPENAI_COMPATIBLE_BASE_URLS[brand];
     if (compatUrl) {
       return expectedEnvKeyForUrl(compatUrl);
     }
-    // Unrecognised provider — don't hide (it may be a truly custom endpoint
-    // whose key is under CUSTOM_API_KEY or a local host).
-    // Also respect the local-baseUrl escape hatch: local hosts never filter even
-    // if their env var is absent.
-    const sampleBase = g.models[0]?.baseUrl || "";
-    if (isLocalBaseUrl(sampleBase)) return null;
     return null;
   }
   useEffect(() => {
