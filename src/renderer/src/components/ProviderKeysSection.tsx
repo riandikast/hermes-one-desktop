@@ -48,18 +48,9 @@ interface LibModel {
 
 // Normalize a base URL for equality (trailing slash + case are irrelevant when
 // deciding whether a saved `custom` model belongs to a given endpoint).
+// Norm a URL for case/trailing-slash insensitive comparison.
 const normUrl = (u: string): string =>
   (u || "").trim().replace(/\/+$/, "").toLowerCase();
-
-// Host of a base URL, used as a fallback custom-provider title (raw URL if
-// unparseable).
-const hostOf = (url: string): string => {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-};
 
 // The LLM-providers key manager. Instead of rendering a static card for EVERY
 // known provider (an overwhelming wall of empty inputs), it shows only the
@@ -591,10 +582,11 @@ export function ProviderKeysSection({
     for (const m of all) {
       if (m.provider !== "custom" || !m.baseUrl) continue;
       if (expectedEnvKeyForUrl(m.baseUrl) !== CUSTOM_API_KEY_ENV) continue;
+      // Only push if there is an explicit providerLabel so unlabeled models
+      // (like default model rows or generic entries) do not create a duplicate
+      // "OpenAI Compatible / host" card when named providers already exist.
       if (m.providerLabel) {
         push(m.providerLabel, m.baseUrl);
-      } else if (m.baseUrl) {
-        push(hostOf(m.baseUrl), m.baseUrl);
       }
     }
     setStoredProviders(list);
