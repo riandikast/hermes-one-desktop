@@ -319,6 +319,53 @@ export function patchDashboardModelLibrarySource(
   };
 }
 
+export function patchGatewaySlashCommandsSource(
+  source: string,
+): DashboardSourcePatchResult {
+  let modified = source;
+  let changed = false;
+
+  // 1. Coerce user_id to string in _resume_caller_is_admin so numeric Telegram IDs match policy
+  if (modified.includes("uid = getattr(source, \"user_id\", None)")) {
+    modified = modified.replace(
+      "uid = getattr(source, \"user_id\", None)",
+      "uid = str(getattr(source, \"user_id\", \"\") or \"\")",
+    );
+    changed = true;
+  }
+
+  // 2. Allow bare "all" and "—all" in addition to "--all" for /resume and /sessions
+  const oldAllowAll = 'allow_all = "--all" in parts';
+  const newAllowAll = 'allow_all = "--all" in parts or "all" in parts or "—all" in parts';
+  if (modified.includes(oldAllowAll) && !modified.includes(newAllowAll)) {
+    modified = modified.replace(oldAllowAll, newAllowAll);
+    changed = true;
+  }
+
+  const oldCrossRoom = 'allow_cross_room = "--cross-room" in parts';
+  const newCrossRoom = 'allow_cross_room = "--cross-room" in parts or "cross-room" in parts or "—cross-room" in parts';
+  if (modified.includes(oldCrossRoom) && !modified.includes(newCrossRoom)) {
+    modified = modified.replace(oldCrossRoom, newCrossRoom);
+    changed = true;
+  }
+
+  const oldNameJoin = 'name = " ".join(p for p in parts if p not in {"--all", "--cross-room"}).strip()';
+  const newNameJoin = 'name = " ".join(p for p in parts if p not in {"--all", "all", "—all", "--cross-room", "cross-room", "—cross-room"}).strip()';
+  if (modified.includes(oldNameJoin) && !modified.includes(newNameJoin)) {
+    modified = modified.replace(oldNameJoin, newNameJoin);
+    changed = true;
+  }
+
+  return {
+    compatible: true,
+    changed,
+    source: modified,
+    detail: changed
+      ? "Patched gateway slash commands for Telegram /resume and /sessions compatibility."
+      : "Gateway slash commands already compatible.",
+  };
+}
+
 function removeModelLibraryCompatBlock(source: string): {
   source: string;
   removed: boolean;
@@ -397,36 +444,55 @@ export function writeCompatFileAtomically(path: string, source: string): void {
 }
 
 export function ensureLocalDashboardCompatibility(): HermesAgentCompatResult {
-  const path = join(HERMES_REPO, "hermes_cli", "web_server.py");
+  const webServerPath = join(HERMES_REPO, "hermes_cli", "web_server.py");
+  const slashCommandsPath = join(HERMES_REPO, "gateway", "slash_commands.py");
+  const details: string[] = [];
+  let totalApplied = false;
+
   try {
-    const source = readFileSync(path, "utf-8");
-    const patched = patchDashboardCompatibilitySource(source);
-    if (!patched.compatible) {
-      const result: HermesAgentCompatResult = {
-        ok: false,
-        target: "local",
-        compatible: false,
-        applied: false,
-        version: HERMES_AGENT_COMPAT_VERSION,
-        detail: patched.detail,
-        path,
-      };
-      writeLocalMarker(result);
-      return result;
+    // 1. web_server.py compatibility
+    if (existsSync(webServerPath)) {
+      const source = readFileSync(webServerPath, "utf-8");
+      const patched = patchDashboardCompatibilitySource(source);
+      if (!patched.compatible) {
+        const result: HermesAgentCompatResult = {
+          ok: false,
+          target: "local",
+          compatible: false,
+          applied: false,
+          version: HERMES_AGENT_COMPAT_VERSION,
+          detail: patched.detail,
+          path: webServerPath,
+        };
+        writeLocalMarker(result);
+        return result;
+      }
+      if (patched.changed) {
+        writeCompatFileAtomically(webServerPath, patched.source);
+        totalApplied = true;
+      }
+      details.push(patched.detail);
     }
 
-    if (patched.changed) {
-      writeCompatFileAtomically(path, patched.source);
+    // 2. gateway/slash_commands.py compatibility
+    if (existsSync(slashCommandsPath)) {
+      const slashSource = readFileSync(slashCommandsPath, "utf-8");
+      const slashPatched = patchGatewaySlashCommandsSource(slashSource);
+      if (slashPatched.changed) {
+        writeCompatFileAtomically(slashCommandsPath, slashPatched.source);
+        totalApplied = true;
+      }
+      details.push(slashPatched.detail);
     }
 
     const result: HermesAgentCompatResult = {
       ok: true,
       target: "local",
       compatible: true,
-      applied: patched.changed,
+      applied: totalApplied,
       version: HERMES_AGENT_COMPAT_VERSION,
-      detail: patched.detail,
-      path,
+      detail: details.join(" "),
+      path: webServerPath,
     };
     writeLocalMarker(result);
     return result;
@@ -438,7 +504,7 @@ export function ensureLocalDashboardCompatibility(): HermesAgentCompatResult {
       applied: false,
       version: HERMES_AGENT_COMPAT_VERSION,
       detail: "Could not inspect local Hermes Agent dashboard source.",
-      path,
+      path: webServerPath,
       error: err instanceof Error ? err.message : String(err),
     };
     writeLocalMarker(result);
