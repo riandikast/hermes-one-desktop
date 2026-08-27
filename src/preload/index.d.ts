@@ -1496,6 +1496,16 @@ interface HermesAPI {
   // Debug dump
   runHermesDump: () => Promise<string>;
 
+  // Backend compatibility check & patch
+  checkBackendCompat: () => Promise<{
+    ok: boolean;
+    compatible: boolean;
+    applied: boolean;
+    version: string;
+    detail: string;
+    error?: string;
+  }>;
+
   // Memory providers
   discoverMemoryProviders: (profile?: string) => Promise<
     Array<{

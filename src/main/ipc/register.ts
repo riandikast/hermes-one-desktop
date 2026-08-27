@@ -3648,6 +3648,15 @@ export function registerIpcHandlers(context: IpcContext): void {
     return runHermesDump();
   });
 
+  // Check / apply backend compatibility patch
+  ipcMain.handle("check-backend-compat", () => {
+    const conn = getConnectionConfig();
+    if (conn.mode === "ssh" && conn.ssh) {
+      return ensureSshDashboardCompatibility(conn.ssh);
+    }
+    return ensureLocalDashboardCompatibility();
+  });
+
   // MCP servers
   ipcMain.handle("list-mcp-servers", (_event, profile?: string) =>
     listMcpServers(profile),

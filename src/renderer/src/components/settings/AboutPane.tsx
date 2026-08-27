@@ -9,6 +9,7 @@ import {
   RefreshCw,
   RotateCw,
   Stethoscope,
+  Wrench,
 } from "lucide-react";
 import { useI18n } from "../useI18n";
 import BrandLogo from "../common/BrandLogo";
@@ -178,6 +179,30 @@ export default function AboutPane(): React.JSX.Element {
             >
               <Bug size={14} />
               {dumpRunning ? t("settings.running") : t("settings.debugDump")}
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={async () => {
+                setDumpRunning(true);
+                setDumpOutput(null);
+                try {
+                  const res = await window.hermesAPI.checkBackendCompat();
+                  setDumpOutput(
+                    `Backend Compatibility: ${res.compatible ? "OK" : "FAILED"}\n` +
+                    `Applied Patch: ${res.applied ? "YES" : "NO"}\n` +
+                    `Details: ${res.detail}\n` +
+                    (res.error ? `Error: ${res.error}\n` : "") +
+                    `Target: ${res.version}`
+                  );
+                } catch (err) {
+                  setDumpOutput(`Failed to check/patch backend: ${err instanceof Error ? err.message : String(err)}`);
+                }
+                setDumpRunning(false);
+              }}
+              disabled={dumpRunning}
+            >
+              <Wrench size={14} />
+              Repair / Patch Backend
             </button>
           </div>
 
