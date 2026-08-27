@@ -18,7 +18,6 @@ import {
 import { registerIpcHandlers } from "../ipc/register";
 import { setGatewayPromptParent } from "../gatewayPrompt";
 import { showChatContextMenu } from "./context-menu";
-import { warmTerminalResolver } from "../terminal-launcher";
 import { buildMenu } from "./menu";
 import { setupUpdater } from "./updater";
 import { zoomBy, zoomReset } from "../zoom";
@@ -55,9 +54,10 @@ export function startMainProcess(): void {
   app.whenReady().then(() => {
     electronApp.setAppUserModelId("com.hermes.desktop");
 
-    // Start the Windows terminal probes early so the first "Open terminal
-    // here" never waits on Get-AppxPackage (cached, failure results included).
-    warmTerminalResolver();
+    // Start the Windows terminal probes early only on demand or quietly with windowsHide.
+    // warmTerminalResolver was firing multiple powershell.exe subprocesses at app start,
+    // which causes console window flashes on Windows when spawning Get-AppxPackage probes.
+    // warmTerminalResolver();
 
     app.on("browser-window-created", (_, window) => {
       optimizer.watchWindowShortcuts(window);
