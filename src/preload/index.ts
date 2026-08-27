@@ -1897,6 +1897,16 @@ const hermesAPI = {
   // Debug dump
   runHermesDump: (): Promise<string> => ipcRenderer.invoke("run-hermes-dump"),
 
+  // Backend compatibility check & patch
+  checkBackendCompat: (): Promise<{
+    ok: boolean;
+    compatible: boolean;
+    applied: boolean;
+    version: string;
+    detail: string;
+    error?: string;
+  }> => ipcRenderer.invoke("check-backend-compat"),
+
   // Memory providers
   discoverMemoryProviders: (
     profile?: string,
