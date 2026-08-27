@@ -2451,11 +2451,10 @@ export function useDashboardChatTransport({
           before,
         );
 
+        // Only reset the session if the model actually changed AND we don't match
         if (
           storedSessionIdRef.current &&
-          !dashboardModelMatches(dashboardProvider, selectedModel, before) &&
-          (selectedProvider === "custom" ||
-            (before.provider || "").toLowerCase().startsWith("custom"))
+          !dashboardModelMatches(dashboardProvider, selectedModel, before)
         ) {
           targetSessionId = await resetRuntimeSession(targetSessionId);
           before = await client.request<ModelOptionsResponse>("model.options", {
@@ -2473,26 +2472,8 @@ export function useDashboardChatTransport({
           }
         }
 
-        if (
-          selectedProvider === "custom" &&
-          dashboardProvider === "custom" &&
-          storedSessionIdRef.current &&
-          !dashboardModelMatches("custom", selectedModel, before)
-        ) {
-          targetSessionId = await resetRuntimeSession(targetSessionId);
-
-          const rebuilt = await client.request<ModelOptionsResponse>(
-            "model.options",
-            {
-              session_id: targetSessionId,
-            },
-          );
-          if (dashboardModelMatches("custom", selectedModel, rebuilt)) {
-            appliedModelRef.current = `${targetSessionId}\ncustom\n${selectedModel}`;
-            return targetSessionId;
-          }
-        }
-
+        // Re-read runtime session ID in case resetRuntimeSession updated it
+        targetSessionId = runtimeSessionIdRef.current || targetSessionId;
         const resolvedCommand = dashboardModelCommand(dashboardProvider, selectedModel);
         if (!resolvedCommand) return targetSessionId;
         const key = `${targetSessionId}\n${dashboardProvider}\n${selectedModel}`;
@@ -2512,14 +2493,6 @@ export function useDashboardChatTransport({
           },
         );
         if (!dashboardModelMatches(dashboardProvider, selectedModel, live)) {
-          // The gateway may not reflect a session-only `/model` switch in
-          // `model.options`: a resumed (old) session keeps reporting its
-          // creation model, and custom providers outside the gateway's
-          // auto-detected inventory never appear. The slash was accepted (a
-          // non-thrown response) and the custom endpoint accepts the model,
-          // so a mismatch here must not block the turn — warn and send on the
-          // session instead, and drop the applied key so the next send retries
-          // the switch until the gateway reports it.
           appliedModelRef.current = null;
           const warning = slashResponse?.warning
             ? `; /model warning: ${slashResponse.warning}`
