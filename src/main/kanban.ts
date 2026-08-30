@@ -6,6 +6,7 @@ import {
   hermesCliArgs,
   getEnhancedPath,
 } from "./installer";
+import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 import { isRemoteOnlyMode } from "./hermes";
 import { getConnectionConfig } from "./config";
 import { sshRunKanban, sshListClaw3dHqTasks } from "./ssh-remote";
@@ -130,6 +131,7 @@ async function runKanban(
     timeout: opts.timeoutMs ?? KANBAN_TIMEOUT_MS,
     env: { ...process.env, PATH: getEnhancedPath() },
     maxBuffer: 16 * 1024 * 1024,
+    ...HIDDEN_SUBPROCESS_OPTIONS,
   };
 
   return new Promise((resolve) => {
