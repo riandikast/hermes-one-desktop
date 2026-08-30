@@ -571,16 +571,8 @@ async function resolveWindowsTerminalAsync(
  * resolution. Safe to call repeatedly and on any platform.
  */
 export function warmTerminalResolver(): void {
-  if (process.platform !== "win32") return;
-  const systemDrive = windowsSystemDrive(process.env);
-  const systemRoot = win32.join(systemDrive, "Windows");
-  for (const packageName of [
-    "Microsoft.PowerShell",
-    "Microsoft.WindowsTerminal",
-    "Microsoft.WindowsTerminalPreview",
-  ]) {
-    void defaultWindowsPackageInstallLocationsAsync(packageName, systemRoot);
-  }
+  // Disabled on Windows to prevent powershell.exe console window flashes during app launch
+  return;
 }
 
 export function resolveTerminalCommand(
