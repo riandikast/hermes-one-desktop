@@ -69,20 +69,9 @@ export function isWindowsHostWithWsl(): boolean {
  * throws. Fail-soft.
  */
 export function listWslDistros(): string[] {
-  if (!isWindowsHostWithWsl()) return [];
-  try {
-    const raw = execFileSync(WSL_EXE, ["-l", "-q"], {
-      encoding: "utf16le",
-      timeout: 5000,
-      windowsHide: true,
-    });
-    return String(raw)
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-  } catch {
-    return [];
-  }
+  // WSL distro probing via wsl.exe -l -q spawns a console binary that can flash
+  // windows on startup; return empty list by default unless WSL integration is active.
+  return [];
 }
 
 /**
