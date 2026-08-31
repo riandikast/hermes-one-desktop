@@ -159,7 +159,7 @@ function installBinariesFor(home: string): { python: string; script: string } {
   const venv = join(repo, "venv");
   return IS_WINDOWS
     ? {
-        python: join(venv, "Scripts", "python.exe"),
+        python: join(venv, "Scripts", "pythonw.exe"),
         script: join(venv, "Scripts", "hermes.exe"),
       }
     : { python: join(venv, "bin", "python"), script: join(repo, "hermes") };

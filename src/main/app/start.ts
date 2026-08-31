@@ -21,7 +21,6 @@ import { showChatContextMenu } from "./context-menu";
 import { buildMenu } from "./menu";
 import { setupUpdater } from "./updater";
 import { zoomBy, zoomReset } from "../zoom";
-import { ensureLocalDashboardCompatibility } from "../hermes-agent-compat";
 
 const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Hermes One";
 const OPEN_DEVTOOLS_ON_START =
@@ -113,15 +112,6 @@ export function startMainProcess(): void {
 
     createWindow();
     buildMenu({ getMainWindow: () => mainWindow, openExternalUrl });
-
-    // Auto-patch backend compatibility on desktop startup if needed so fresh
-    // installations or updated backends automatically get the required
-    // endpoints (e.g. model library) without manual intervention.
-    try {
-      ensureLocalDashboardCompatibility();
-    } catch (e) {
-      console.warn("[compat] Auto-patch local backend check failed:", e);
-    }
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
