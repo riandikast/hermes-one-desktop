@@ -12554,14 +12554,391 @@ body:has(.shell-vibrant),
   color: var(--error);
 }
 
-/* Profiles list — a table-style layout with a shared column grid so the
-   header and every row align. The active row is marked by a left green bar. */
-.agents-table {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+/* ══════════════════════════════════════════════════════════════════════════════
+   HERMES BOTS ROSTER & CHAT WORKSPACE (Official Desktop Style)
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+.bot-roster-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.bot-roster-sidebar {
+  width: 320px;
+  min-width: 280px;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
   background: var(--bg-secondary);
 }
+
+.bot-roster-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+}
+
+.bot-roster-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.bot-roster-icon {
+  color: var(--accent);
+}
+
+.bot-roster-count {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.bot-roster-btn-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.bot-roster-btn-new:hover {
+  opacity: 0.9;
+}
+
+.bot-roster-search-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 12px 16px;
+}
+
+.bot-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.bot-search-input {
+  width: 100%;
+  padding: 8px 30px 8px 32px;
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-input, var(--bg-primary));
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.bot-search-input:focus {
+  border-color: var(--accent);
+}
+
+.bot-search-clear {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+}
+
+.bot-roster-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bot-roster-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.bot-roster-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.bot-roster-item.selected {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+
+.bot-item-avatar-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.bot-status-indicator {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-secondary);
+}
+
+.bot-status-indicator.online {
+  background: var(--success, #10b981);
+}
+
+.bot-status-indicator.offline {
+  background: var(--text-muted, #6b7280);
+}
+
+.bot-item-details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bot-item-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.bot-item-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bot-active-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--success-bg, rgba(16, 185, 129, 0.12));
+  color: var(--success, #10b981);
+  border: 1px solid var(--success-border, rgba(16, 185, 129, 0.3));
+}
+
+.bot-item-row-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.bot-item-model {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bot-item-provider {
+  font-size: 10.5px;
+  opacity: 0.85;
+}
+
+/* Right Content Area */
+.bot-roster-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 40px;
+  display: flex;
+  flex-direction: column;
+}
+
+.bot-details-card {
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.bot-details-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+
+.bot-details-avatar-section {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.bot-details-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: var(--text-primary);
+}
+
+.bot-details-handle {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.bot-details-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bot-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.bot-info-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+
+.bot-info-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+  padding-bottom: 10px;
+}
+
+.bot-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.bot-info-label {
+  color: var(--text-secondary);
+}
+
+.bot-info-val {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.bot-info-code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--accent);
+}
+
+.bot-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 12px;
+}
+
+.bot-pill.pill-on {
+  background: var(--success-bg, rgba(16, 185, 129, 0.12));
+  color: var(--success, #10b981);
+}
+
+.bot-pill.pill-off {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+}
+
+.bot-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.bot-footer-switch-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  border: 1px dashed var(--border);
+}
+
+.bot-switch-desc {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.bot-roster-empty {
+  margin: auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+}
+
+.bot-empty-icon {
+  opacity: 0.4;
+}
+
 
 .agents-table-head,
 .agents-row {
