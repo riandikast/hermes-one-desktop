@@ -80,6 +80,7 @@ type View =
   | "usage";
 
 const PINNED_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
+  { view: "agents", icon: Bot, labelKey: "navigation.agents" },
   { view: "capabilities", icon: Compass, labelKey: "navigation.tools" },
   { view: "office", icon: Building, labelKey: "navigation.office" },
   { view: "kanban", icon: KanbanIcon, labelKey: "navigation.kanban" },
