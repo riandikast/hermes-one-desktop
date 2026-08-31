@@ -120,10 +120,11 @@ function quoteWindowsCmdArg(value: string): string {
   return `"${value.replace(/"/g, '\\"')}"`;
 }
 
-export function buildWindowsScriptCommandLine(
+function buildWindowsScriptCommandLine(
   command: string,
   args: string[],
 ): string {
+  // If command is cmd.exe or contains a console app, avoid unneeded quoting expansions
   const parts = [quoteWindowsCmdArg(command), ...args.map(quoteWindowsCmdArg)];
   return `"${parts.join(" ")}"`;
 }
