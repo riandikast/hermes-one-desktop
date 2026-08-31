@@ -14,7 +14,6 @@
  */
 
 import { existsSync, readdirSync, statSync } from "fs";
-import { execFileSync } from "child_process";
 
 const IS_WINDOWS = process.platform === "win32";
 
@@ -130,15 +129,5 @@ export function _clearWslCache(): void {
  * output (trimmed) or null on any error.
  */
 export function wslStatus(): string | null {
-  if (!isWindowsHostWithWsl()) return null;
-  try {
-    const out = execFileSync(WSL_EXE, ["--status"], {
-      encoding: "utf-8",
-      timeout: 5000,
-      windowsHide: true,
-    });
-    return String(out).trim();
-  } catch {
-    return null;
-  }
+  return null;
 }
