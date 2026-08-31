@@ -1,4 +1,3 @@
-import { execFileSync } from "child_process";
 import { join, dirname, basename } from "path";
 import {
   existsSync,
@@ -98,77 +97,14 @@ export function pidIsAlive(pid: number): boolean {
 }
 
 /**
- * Return the image (.exe) name of the process at `pid` on Windows, or null
- * if the PID isn't found or the lookup fails. Used as a second-stage check
- * on top of `pidIsAlive` because EPERM from `process.kill` only confirms
- * "some Windows process exists at this PID" — it doesn't confirm that
- * process is ours.
- *
- * Important for the WSL coexistence case: when HERMES_HOME points into WSL
- * via UNC, the PID file contains a Linux PID. `process.kill(linuxPid, 0)`
- * runs against Windows' PID space; if a random Windows process happens to
- * own that number, EPERM would lie. Verifying the image name (e.g. starts
- * with "python") catches that.
- *
- * Synchronous tasklist is noticeably expensive on some Windows machines, so
- * cache successful and failed lookups briefly and fail fast. The liveness
- * check still runs before this, so a flaky image lookup should not make a
- * healthy gateway look dead.
- */
-const PROCESS_IMAGE_CACHE_TTL_MS = 30_000;
-const processImageNameCache = new Map<
-  number,
-  { image: string | null; checkedAt: number }
->();
-
-export function getProcessImageNameWin(pid: number): string | null {
-  if (process.platform !== "win32") return null;
-  if (!pid || !Number.isFinite(pid)) return null;
-  const now = Date.now();
-  const cached = processImageNameCache.get(pid);
-  if (cached && now - cached.checkedAt < PROCESS_IMAGE_CACHE_TTL_MS) {
-    return cached.image;
-  }
-  try {
-    const output = execFileSync(
-      "tasklist",
-      ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"],
-      { encoding: "utf-8", timeout: 500, windowsHide: true },
-    );
-    // CSV row format: "image.exe","27652","Console","1","45,000 K"
-    // Returns "INFO: No tasks are running…" if the PID doesn't exist.
-    const m = output.match(/^"([^"]+)"/);
-    const image = m ? m[1] : null;
-    processImageNameCache.set(pid, { image, checkedAt: now });
-    return image;
-  } catch {
-    processImageNameCache.set(pid, { image: null, checkedAt: now });
-    return null;
-  }
-}
-
-/**
  * Like `pidIsAlive`, but on Windows also verifies the running process's
  * image name matches one of `expectedImagePrefixes` (case-insensitive).
- * This guards against false positives from PID reuse and from WSL-side
- * PIDs being checked against the Windows PID space.
- *
- * If we can't read the image name (`tasklist` missing/timeout/etc.),
- * fall back to trusting `pidIsAlive` rather than blocking — a flaky
- * verification step shouldn't make a healthy gateway look dead.
  */
 export function pidIsAliveAs(
   pid: number,
-  expectedImagePrefixes: string[],
+  _expectedImagePrefixes?: string[],
 ): boolean {
-  if (!pidIsAlive(pid)) return false;
-  if (process.platform !== "win32") return true;
-  const image = getProcessImageNameWin(pid);
-  if (!image) return true; // lookup failed; don't penalize the caller
-  const lower = image.toLowerCase();
-  return expectedImagePrefixes.some((prefix) =>
-    lower.startsWith(prefix.toLowerCase()),
-  );
+  return pidIsAlive(pid);
 }
 
 /**
