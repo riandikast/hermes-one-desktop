@@ -1,14 +1,19 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, ChatBubble, Pencil, X } from "../../assets/icons";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import {
+  Plus,
+  ChatBubble,
+  Pencil,
+  X,
+  Bot,
+  Search,
+  Check,
+} from "../../assets/icons";
+import { Brain, Sliders, Radio } from "lucide-react";
 import ProfileAvatar from "../../components/common/ProfileAvatar";
 import { AppModal, AppModalTitle } from "../../components/modal/AppModal";
 import { useI18n } from "../../components/useI18n";
 import { OrbLoader } from "../../components/OrbLoader";
 import { useProfileModal } from "../../components/profile/ProfileModalContext";
-import type {
-  AgentSyncResult,
-  AgentSyncStatus,
-} from "../../../../shared/agent-sync";
 
 interface ProfileInfo {
   id: string;
@@ -24,6 +29,7 @@ interface ProfileInfo {
   gatewayRunning: boolean;
   color?: string;
   avatar?: string | null;
+  description?: string;
 }
 
 interface AgentsProps {
@@ -32,7 +38,15 @@ interface AgentsProps {
   onChatWith: (name: string) => void;
 }
 
-function Agents({
+function providerLabel(provider: string): string {
+  if (!provider) return "Not set";
+  if (provider === "anthropic") return "Anthropic";
+  if (provider === "openai") return "OpenAI";
+  if (provider === "openrouter") return "OpenRouter";
+  return provider.replace(/^9r-/, "9R ").replace(/-/g, " ");
+}
+
+export function Agents({
   activeProfile,
   onSelectProfile,
   onChatWith,
@@ -42,26 +56,27 @@ function Agents({
   const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
+
+  // New Bot Form State
   const [newName, setNewName] = useState("");
   const [cloneConfig, setCloneConfig] = useState(true);
-  // Source profile to clone config/keys/skills from when `cloneConfig` is on.
   const [cloneSource, setCloneSource] = useState("default");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
-  // Profile whose gateway we're waiting on after a switch — drives the
-  // "Starting…" status while it spins up.
   const [startingProfile, setStartingProfile] = useState<string | null>(null);
 
   const loadProfiles = useCallback(async (): Promise<void> => {
     const list = await window.hermesAPI.listProfiles();
     setProfiles(list);
     setLoading(false);
-  }, []);
+    if (!selectedBotId && list.length > 0) {
+      const active = list.find((p) => p.id === activeProfile) || list[0];
+      setSelectedBotId(active.id);
+    }
+  }, [activeProfile, selectedBotId]);
 
-  // A switched profile starts its gateway asynchronously, so the pid file the
-  // status reads from isn't written yet when the switch returns. Poll the list
-  // until that profile reports running (or we give up) so the row flips to
-  // "Running" on its own instead of only after a manual refresh/revisit.
   const gatewayPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stopGatewayPoll = useCallback((): void => {
@@ -74,7 +89,6 @@ function Agents({
   const pollGatewayReady = useCallback(
     (name: string): void => {
       stopGatewayPoll();
-      // ~15 attempts × 700ms ≈ 10s, enough for a cold gateway to come up.
       let attemptsLeft = 15;
       const settle = (): void =>
         setStartingProfile((current) => (current === name ? null : current));
@@ -87,10 +101,7 @@ function Agents({
             settle();
             return;
           }
-        } catch {
-          // A transient listing failure (e.g. SSH) shouldn't strand the
-          // spinner — fall through to retry or give up like any other miss.
-        }
+        } catch {}
         if (attemptsLeft <= 0) {
           settle();
           return;
@@ -103,207 +114,349 @@ function Agents({
   );
 
   useEffect(() => {
-    loadProfiles();
-  }, [loadProfiles]);
+    void loadProfiles();
+    return stopGatewayPoll;
+  }, [loadProfiles, stopGatewayPoll]);
 
-  // Cancel any in-flight gateway poll when the page unmounts.
-  useEffect(() => stopGatewayPoll, [stopGatewayPoll]);
-
-  // Cloud sync: null while the signed-in state is still loading.
-  const [syncStatus, setSyncStatus] = useState<AgentSyncStatus | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const autoSyncedRef = useRef(false);
-
-  const refreshSyncStatus = useCallback(async (): Promise<void> => {
-    try {
-      setSyncStatus(await window.hermesAPI.getAgentSyncStatus());
-    } catch {
-      // Bridge unavailable (tests/old preload): leave the affordance hidden.
-    }
-  }, []);
-
-  const runSync = useCallback(async (): Promise<void> => {
-    setSyncing(true);
-    try {
-      const result = await window.hermesAPI.syncAgents();
-      setSyncStatus((s) => (s ? { ...s, lastResult: result } : s));
-      if (result.outcomes.some((o) => o.action === "created-local")) {
-        await loadProfiles();
-      }
-    } catch {
-      // Surfaced through lastResult on the next status refresh.
-    } finally {
-      setSyncing(false);
-      void refreshSyncStatus();
-    }
-  }, [loadProfiles, refreshSyncStatus]);
-
-  // Load the signed-in state once, then run one automatic pass per visit so
-  // console-side edits appear without a manual click.
-  useEffect(() => {
-    void (async () => {
+  const handleSelect = useCallback(
+    async (name: string): Promise<void> => {
+      setSelectedBotId(name);
+      if (name === activeProfile) return;
+      setError("");
+      setStartingProfile(name);
       try {
-        const status = await window.hermesAPI.getAgentSyncStatus();
-        setSyncStatus(status);
-        if (status.signedIn && !status.running && !autoSyncedRef.current) {
-          autoSyncedRef.current = true;
-          void runSync();
+        const ok = await window.hermesAPI.setActiveProfile(name);
+        if (!ok) {
+          setError(t("agents.selectFailed"));
+          setStartingProfile(null);
+          return;
         }
-      } catch {
-        // Bridge unavailable: leave the affordance hidden.
+        onSelectProfile(name);
+        await loadProfiles();
+        pollGatewayReady(name);
+      } catch (err) {
+        setError((err as Error).message);
+        setStartingProfile(null);
       }
-    })();
-  }, [runSync]);
+    },
+    [activeProfile, onSelectProfile, loadProfiles, pollGatewayReady, t],
+  );
 
-  // Syncs triggered elsewhere (e.g. right after sign-in) refresh the list too.
-  useEffect(() => {
-    if (!window.hermesAPI.onAgentSyncUpdated) return undefined;
-    return window.hermesAPI.onAgentSyncUpdated((result: AgentSyncResult) => {
-      setSyncStatus((s) => (s ? { ...s, lastResult: result } : s));
-      if (result.outcomes.some((o) => o.action === "created-local")) {
-        void loadProfiles();
-      }
-    });
-  }, [loadProfiles]);
+  const handleChatWith = useCallback(
+    (name: string): void => {
+      onChatWith(name);
+    },
+    [onChatWith],
+  );
 
-  function syncSummary(result: AgentSyncResult): string {
-    if (result.status === "unauthorized") return t("agents.syncUnauthorized");
-    if (result.status === "error")
-      return result.error || t("agents.syncFailed");
-    const counts = { pushed: 0, pulled: 0, created: 0, errors: 0 };
-    for (const o of result.outcomes) {
-      if (o.action === "pushed" || o.action === "created-remote")
-        counts.pushed++;
-      else if (o.action === "pulled") counts.pulled++;
-      if (o.action === "created-local") counts.created++;
-      if (o.action === "error") counts.errors++;
-    }
-    if (counts.errors > 0)
-      return t("agents.syncErrors", { count: counts.errors });
-    if (counts.pushed + counts.pulled + counts.created === 0)
-      return t("agents.syncUpToDate");
-    return t("agents.syncSummary", counts);
-  }
-
-  // Open the create modal, defaulting the clone source to the active profile.
-  function openCreate(): void {
+  const openCreate = (): void => {
     setNewName("");
-    setError("");
     setCloneConfig(true);
     setCloneSource(activeProfile || "default");
+    setError("");
     setShowCreate(true);
-  }
+  };
 
-  function closeCreate(): void {
+  const closeCreate = (): void => {
     setShowCreate(false);
     setError("");
-  }
+  };
 
-  async function handleCreate(): Promise<void> {
-    const name = newName.trim();
-    if (!name) return;
+  const handleCreate = async (): Promise<void> => {
+    const trimmed = newName.trim();
+    if (!trimmed) {
+      setError(t("agents.errorNameRequired"));
+      return;
+    }
     setCreating(true);
     setError("");
-    const result = await window.hermesAPI.createProfile(
-      name,
-      cloneConfig ? cloneSource : null,
-    );
-    setCreating(false);
-    if (result.success) {
-      setShowCreate(false);
-      setNewName("");
-    } else {
-      setError(result.error || t("agents.createFailed"));
+    try {
+      const res = await window.hermesAPI.createProfile(
+        trimmed,
+        cloneConfig ? cloneSource : null,
+      );
+      if (!res.success) {
+        setError(res.error || t("agents.errorCreateFailed"));
+        return;
+      }
+      closeCreate();
+      await loadProfiles();
+      handleSelect(trimmed);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setCreating(false);
     }
-    loadProfiles();
-  }
+  };
 
-  async function handleSelect(name: string): Promise<void> {
-    // Show "Starting…" only when this profile's gateway isn't already up, so
-    // switching to an already-running profile doesn't flash a fake spinner.
-    const alreadyRunning = profiles.find((p) => p.id === name)?.gatewayRunning;
-    setStartingProfile(alreadyRunning ? null : name);
-    await window.hermesAPI.setActiveProfile(name);
-    onSelectProfile(name);
-    loadProfiles();
-    pollGatewayReady(name);
-  }
+  const filteredProfiles = useMemo(() => {
+    if (!searchQuery.trim()) return profiles;
+    const q = searchQuery.toLowerCase();
+    return profiles.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.id.toLowerCase().includes(q) ||
+        p.model.toLowerCase().includes(q) ||
+        p.provider.toLowerCase().includes(q),
+    );
+  }, [profiles, searchQuery]);
 
-  // "Chat" button — make the agent active (starts its gateway) then open a
-  // conversation with it. The only path here that starts a chat.
-  async function handleChatWith(name: string): Promise<void> {
-    await window.hermesAPI.setActiveProfile(name);
-    onChatWith(name);
-    loadProfiles();
-  }
-
-  function providerLabel(provider: string): string {
-    if (!provider || provider === "auto") return t("agents.auto");
-    if (provider === "custom") return t("agents.local");
-    return provider.charAt(0).toUpperCase() + provider.slice(1);
-  }
+  const selectedBot = useMemo(() => {
+    return profiles.find((p) => p.id === selectedBotId) || profiles[0] || null;
+  }, [profiles, selectedBotId]);
 
   if (loading) {
     return (
-      <div className="agents-container">
-        <div className="agents-loading">
-          <OrbLoader state="searching" size={64} />
-        </div>
+      <div className="agents-container agents-loading">
+        <OrbLoader state="searching" size={64} />
       </div>
     );
   }
 
   return (
-    <div className="agents-container">
-      <div className="agents-header">
-        <div>
-          <h2 className="agents-title">{t("agents.title")}</h2>
-          <p className="agents-subtitle">{t("agents.subtitle")}</p>
+    <div className="bot-roster-layout">
+      {/* ── Left Column: Bots List & Roster ───────────────────────────────── */}
+      <div className="bot-roster-sidebar">
+        <div className="bot-roster-header">
+          <div className="bot-roster-header-title">
+            <Bot size={18} className="bot-roster-icon" />
+            <span>{t("navigation.agents")}</span>
+            <span className="bot-roster-count">{profiles.length}</span>
+          </div>
+          <button
+            type="button"
+            className="bot-roster-btn-new"
+            onClick={openCreate}
+            title={t("agents.newAgent")}
+          >
+            <Plus size={15} />
+            <span>{t("agents.newAgent")}</span>
+          </button>
         </div>
-        <div className="agents-header-actions">
-          {syncStatus && !syncStatus.signedIn && (
-            <span
-              className="agents-sync-hint"
-              title={t("agents.syncSignedOutHint")}
-            >
-              {t("agents.syncSignedOut")}
-            </span>
-          )}
-          {syncStatus?.signedIn && (
-            <span
-              className="agents-sync-hint"
-              title={
-                syncStatus.lastResult?.outcomes
-                  .flatMap((o) => o.warnings.map((w) => `${o.profile}: ${w}`))
-                  .join("\n") ||
-                (syncStatus.accountLabel ?? "")
-              }
-            >
-              {syncStatus.lastResult
-                ? syncSummary(syncStatus.lastResult)
-                : (syncStatus.accountLabel ?? "")}
-            </span>
-          )}
-          {syncStatus?.signedIn && (
+
+        <div className="bot-roster-search-bar">
+          <Search size={14} className="bot-search-icon" />
+          <input
+            type="text"
+            className="bot-search-input"
+            placeholder={t("navigation.searchSessions") + "…"}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
             <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => void runSync()}
-              disabled={syncing}
+              type="button"
+              className="bot-search-clear"
+              onClick={() => setSearchQuery("")}
             >
-              {syncing ? t("agents.syncing") : t("agents.sync")}
+              <X size={12} />
             </button>
           )}
-          <button className="btn btn-primary btn-sm" onClick={openCreate}>
-            <Plus size={14} />
-            {t("agents.newAgent")}
-          </button>
+        </div>
+
+        <div className="bot-roster-list">
+          {filteredProfiles.map((p) => {
+            const isSelected = selectedBot?.id === p.id;
+            const isLiveActive = activeProfile === p.id;
+            return (
+              <div
+                key={p.id}
+                role="button"
+                tabIndex={0}
+                className={`bot-roster-item ${isSelected ? "selected" : ""} ${
+                  isLiveActive ? "active-profile" : ""
+                }`}
+                onClick={() => setSelectedBotId(p.id)}
+                onDoubleClick={() => handleChatWith(p.id)}
+              >
+                <div className="bot-item-avatar-wrapper">
+                  <ProfileAvatar
+                    name={p.id}
+                    color={p.color}
+                    avatar={p.avatar}
+                    size={38}
+                  />
+                  <span
+                    className={`bot-status-indicator ${
+                      p.gatewayRunning ? "online" : "offline"
+                    }`}
+                    title={p.gatewayRunning ? "Gateway Active" : "Offline"}
+                  />
+                </div>
+
+                <div className="bot-item-details">
+                  <div className="bot-item-row-top">
+                    <span className="bot-item-name">{p.name}</span>
+                    {isLiveActive && (
+                      <span className="bot-active-badge">Active</span>
+                    )}
+                  </div>
+                  <div className="bot-item-row-bottom">
+                    <span className="bot-item-model">
+                      {p.model ? p.model.split("/").pop() : "No model"}
+                    </span>
+                    <span className="bot-item-provider">
+                      {providerLabel(p.provider)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {!showCreate && error && (
-        <div className="agents-create-error">{error}</div>
-      )}
+      {/* ── Right Column: Bot Details & Actions ────────────────────────────── */}
+      <div className="bot-roster-content">
+        {selectedBot ? (
+          <div className="bot-details-card">
+            <div className="bot-details-hero">
+              <div className="bot-details-avatar-section">
+                <ProfileAvatar
+                  name={selectedBot.id}
+                  color={selectedBot.color}
+                  avatar={selectedBot.avatar}
+                  size={72}
+                />
+                <div>
+                  <h1 className="bot-details-title">{selectedBot.name}</h1>
+                  <div className="bot-details-handle">@{selectedBot.id}</div>
+                </div>
+              </div>
 
+              <div className="bot-details-hero-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-md"
+                  onClick={() =>
+                    openProfile(selectedBot.id, {
+                      onChanged: loadProfiles,
+                      onDeleted: (n) => {
+                        if (activeProfile === n) onSelectProfile("default");
+                        loadProfiles();
+                      },
+                    })
+                  }
+                >
+                  <Pencil size={14} />
+                  <span>Configure Bot</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-md"
+                  onClick={() => handleChatWith(selectedBot.id)}
+                >
+                  <ChatBubble size={14} />
+                  <span>Open Bot Chat</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="bot-details-grid">
+              <div className="bot-info-card">
+                <div className="bot-info-card-header">
+                  <Sliders size={16} />
+                  <span>Runtime Configuration</span>
+                </div>
+                <div className="bot-info-row">
+                  <span className="bot-info-label">Active Model</span>
+                  <code className="bot-info-code">
+                    {selectedBot.model || "Default fallback"}
+                  </code>
+                </div>
+                <div className="bot-info-row">
+                  <span className="bot-info-label">Provider</span>
+                  <span className="bot-info-val">
+                    {providerLabel(selectedBot.provider)}
+                  </span>
+                </div>
+                <div className="bot-info-row">
+                  <span className="bot-info-label">Gateway Status</span>
+                  <span
+                    className={`bot-pill ${
+                      selectedBot.gatewayRunning ? "pill-on" : "pill-off"
+                    }`}
+                  >
+                    <span className="bot-pill-dot" />
+                    {selectedBot.gatewayRunning ? "Running" : "Offline"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bot-info-card">
+                <div className="bot-info-card-header">
+                  <Brain size={16} />
+                  <span>Skills & Capabilities</span>
+                </div>
+                <div className="bot-info-row">
+                  <span className="bot-info-label">Installed Skills</span>
+                  <span className="bot-info-val">
+                    {selectedBot.skillCount} active
+                  </span>
+                </div>
+                <div className="bot-info-row">
+                  <span className="bot-info-label">Custom Persona / Soul</span>
+                  <span className="bot-info-val">
+                    {selectedBot.hasSoul ? (
+                      <span className="text-success flex items-center gap-1">
+                        <Check size={14} /> Yes
+                      </span>
+                    ) : (
+                      "Default"
+                    )}
+                  </span>
+                </div>
+                <div className="bot-info-row">
+                  <span className="bot-info-label">Environment (.env)</span>
+                  <span className="bot-info-val">
+                    {selectedBot.hasEnv ? "Custom keys set" : "Shared"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Switch Active Profile Section */}
+            <div className="bot-footer-switch-box">
+              <div className="bot-switch-desc">
+                <strong>System Workspace Context:</strong>{" "}
+                {activeProfile === selectedBot.id ? (
+                  <span className="text-success">
+                    Currently set as active system profile
+                  </span>
+                ) : (
+                  <span>
+                    Switching system context repoints background CLI and gateway
+                    to this bot.
+                  </span>
+                )}
+              </div>
+              {activeProfile !== selectedBot.id && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => handleSelect(selectedBot.id)}
+                  disabled={startingProfile === selectedBot.id}
+                >
+                  <Radio size={13} />
+                  <span>
+                    {startingProfile === selectedBot.id
+                      ? "Activating…"
+                      : "Make Active Profile"}
+                  </span>
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="bot-roster-empty">
+            <Bot size={48} className="bot-empty-icon" />
+            <h3>No Bot Selected</h3>
+            <p>Choose a bot from the roster on the left or create a new one.</p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Create New Bot Modal ────────────────────────────────────────── */}
       <AppModal
         open={showCreate}
         onOpenChange={(open) => {
@@ -317,7 +470,7 @@ function Agents({
             id="agents-create-title"
             className="agents-create-modal-title"
           >
-            {t("agents.createTitle")}
+            Create New Bot
           </AppModalTitle>
           <button
             className="profile-modal-close"
@@ -329,10 +482,10 @@ function Agents({
         </div>
         <div className="agents-create-modal-body">
           <label className="agents-create-field">
-            <span>{t("agents.nameLabel")}</span>
+            <span>Bot Name / Identifier</span>
             <input
               className="input"
-              placeholder={t("agents.namePlaceholder")}
+              placeholder="e.g. coding-assistant, research-bot"
               value={newName}
               onChange={(e) => {
                 setNewName(e.target.value);
@@ -348,26 +501,22 @@ function Agents({
               checked={cloneConfig}
               onChange={(e) => setCloneConfig(e.target.checked)}
             />
-            <span>{t("agents.cloneConfig")}</span>
+            <span>Clone base settings & provider keys from</span>
+            <select
+              className="select"
+              value={cloneSource}
+              onChange={(e) => setCloneSource(e.target.value)}
+              disabled={!cloneConfig}
+            >
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.id})
+                </option>
+              ))}
+            </select>
           </label>
-          {cloneConfig && (
-            <label className="agents-create-field">
-              <span>{t("agents.cloneFromLabel")}</span>
-              <select
-                className="input"
-                value={cloneSource}
-                onChange={(e) => setCloneSource(e.target.value)}
-              >
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
           {error && <div className="agents-create-error">{error}</div>}
-          <div className="agents-create-modal-actions">
+          <div className="agents-create-actions">
             <button className="btn btn-secondary" onClick={closeCreate}>
               {t("common.cancel")}
             </button>
@@ -376,120 +525,11 @@ function Agents({
               onClick={handleCreate}
               disabled={creating || !newName.trim()}
             >
-              {creating ? t("agents.creating") : t("agents.create")}
+              {creating ? t("agents.creating") : "Create Bot"}
             </button>
           </div>
         </div>
       </AppModal>
-
-      <div className="agents-table">
-        <div className="agents-table-head">
-          <span className="agents-cell-profile">{t("agents.colProfile")}</span>
-          <span className="agents-cell-model">{t("agents.colModel")}</span>
-          <span className="agents-cell-status">{t("agents.colStatus")}</span>
-          <span className="agents-cell-actions">{t("agents.colActions")}</span>
-        </div>
-        {profiles.map((p) => (
-          <div
-            key={p.id}
-            className={`agents-row ${activeProfile === p.id ? "active" : ""}`}
-            onClick={() => handleSelect(p.id)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              // Only the row itself — not Enter bubbling up from the edit/chat
-              // buttons — should switch the profile.
-              if (e.key === "Enter" && e.target === e.currentTarget) {
-                handleSelect(p.id);
-              }
-            }}
-          >
-            <div className="agents-cell-profile">
-              <ProfileAvatar
-                name={p.id}
-                color={p.color}
-                avatar={p.avatar}
-                size={36}
-              />
-              <div className="agents-row-info">
-                <div className="agents-row-name">{p.name}</div>
-                <div className="agents-row-sub">
-                  {p.id !== p.name ? `${p.id} · ` : ""}
-                  {providerLabel(p.provider)} ·{" "}
-                  {t("agents.skillsCount", { count: p.skillCount })}
-                </div>
-              </div>
-            </div>
-            <div className="agents-cell-model">
-              {p.model ? (
-                <code className="agents-model-chip">
-                  {p.model.split("/").pop()}
-                </code>
-              ) : (
-                <span className="agents-model-empty">
-                  {t("agents.noModel")}
-                </span>
-              )}
-            </div>
-            <div className="agents-cell-status">
-              {startingProfile === p.id && !p.gatewayRunning ? (
-                <span className="agents-status-pill starting">
-                  <span className="agents-status-spinner" />
-                  {t("agents.starting")}
-                </span>
-              ) : (
-                <span
-                  className={`agents-status-pill ${
-                    p.gatewayRunning ? "on" : "off"
-                  }`}
-                  title={
-                    p.gatewayRunning
-                      ? t("agents.gatewayRunning")
-                      : t("agents.gatewayOff")
-                  }
-                >
-                  <span className="agents-status-dot" />
-                  {p.gatewayRunning ? t("agents.running") : t("agents.off")}
-                </span>
-              )}
-            </div>
-            <div className="agents-cell-actions">
-              <button
-                type="button"
-                className="agents-row-edit"
-                title={t("agents.editAppearanceFor", {
-                  name: p.name,
-                })}
-                aria-label={t("agents.editAppearanceFor", {
-                  name: p.name,
-                })}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setError("");
-                  openProfile(p.id, {
-                    onChanged: loadProfiles,
-                    onDeleted: (n) => {
-                      if (activeProfile === n) onSelectProfile("default");
-                    },
-                  });
-                }}
-              >
-                <Pencil size={14} />
-              </button>
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleChatWith(p.id);
-                }}
-              >
-                <ChatBubble size={13} />
-                {t("agents.chat")}
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
