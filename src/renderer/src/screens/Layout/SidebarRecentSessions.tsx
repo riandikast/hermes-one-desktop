@@ -20,7 +20,9 @@ import {
   X,
   Search,
   Bot,
+  Plus,
 } from "../../assets/icons";
+import ProfileAvatar from "../../components/common/ProfileAvatar";
 import SidebarSessionMenu, {
   type SidebarMenuProject,
   type SidebarMenuTarget,
@@ -190,7 +192,7 @@ function groupSessionsByWorkspace(sessions: RecentSession[]): {
  *  - while open: refresh on window focus and on a slow interval, throttled
  *  - closed (collapsed section or icon-only sidebar): zero work, renders null
  */
-const SidebarRecentSessions = memo(function SidebarRecentSessions({
+function SidebarRecentSessions({
   open,
   activeProfile,
   currentSessionId,
@@ -199,6 +201,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   onSelect,
   onSessionDeleted,
   onNewChatInProject,
+  onChatWithBot,
   searchOpen,
   onSearchOpenChange,
   scrollRootRef,
@@ -215,6 +218,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   /** Notifies Layout when a row is deleted so it can leave a stale active chat. */
   onSessionDeleted?: (sessionId: string) => void;
   onNewChatInProject?: (folderPath: string) => void;
+  onChatWithBot?: (profileName: string) => void;
   /** Scroll container owned by Layout; nearing its bottom loads the next page. */
   scrollRootRef: RefObject<HTMLDivElement | null>;
   /** Session search: when true, a filter input filters the session lists. */
@@ -222,6 +226,24 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   onSearchOpenChange: (open: boolean) => void;
 }): React.JSX.Element | null {
   const { t } = useI18n();
+  const [sidebarTab, setSidebarTab] = useState<"sessions" | "bots">(() => {
+    try {
+      return (localStorage.getItem("hermes.sidebar.tab") as "sessions" | "bots") || "sessions";
+    } catch {
+      return "sessions";
+    }
+  });
+  const [profiles, setProfiles] = useState<
+    Array<{
+      id: string;
+      name: string;
+      model: string;
+      provider: string;
+      color?: string;
+      avatar?: string | null;
+      gatewayRunning: boolean;
+    }>
+  >([]);
   const [sessions, setSessions] = useState<RecentSession[]>([]);
   // True when the profile has more cache rows than the sidebar has loaded.
   const [hasMore, setHasMore] = useState(false);
@@ -496,6 +518,32 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       cancelled = true;
     };
   }, [open, activeProfile, applyFirstPage]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("hermes.sidebar.tab", sidebarTab);
+    } catch {}
+  }, [sidebarTab]);
+
+  const loadBotProfiles = useCallback(async () => {
+    try {
+      const list = await window.hermesAPI.listProfiles();
+      setProfiles(list);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (open && sidebarTab === "bots") {
+      void loadBotProfiles();
+    }
+  }, [open, sidebarTab, loadBotProfiles]);
+
+  const handleOpenBotChat = useCallback(
+    async (profileId: string) => {
+      onChatWithBot?.(profileId);
+    },
+    [onChatWithBot],
+  );
 
   // While open: pick up background sessions (gateway, cron, other devices)
   // on focus and on a slow timer. No listeners or timers at all when closed.
@@ -1067,7 +1115,88 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       className={`sidebar-recent-sessions-wrap ${expanded ? "expanded" : ""}`}
       aria-hidden={!expanded}
     >
-      <div className="sidebar-recent-sessions">
+      {/* ── Official-style Sessions | Bots segment switcher ── */}
+      <div className="sidebar-mode-segmented-control">
+        <button
+          type="button"
+          className={`sidebar-mode-tab ${
+            sidebarTab === "sessions" ? "active" : ""
+          }`}
+          onClick={() => setSidebarTab("sessions")}
+        >
+          <span>Sessions</span>
+        </button>
+        <button
+          type="button"
+          className={`sidebar-mode-tab ${sidebarTab === "bots" ? "active" : ""}`}
+          onClick={() => setSidebarTab("bots")}
+        >
+          <Bot size={13} />
+          <span>Bots</span>
+        </button>
+      </div>
+
+      {sidebarTab === "bots" ? (
+        <div className="sidebar-bots-rail">
+          <div className="sidebar-bots-rail-header">
+            <span className="sidebar-bots-rail-title">Direct Messages</span>
+            <button
+              type="button"
+              className="sidebar-bots-new-btn"
+              onClick={() => {
+                window.dispatchEvent(
+                  new CustomEvent("navigation:goto", { detail: "agents" }),
+                );
+              }}
+              title="Manage Bots"
+            >
+              <Plus size={12} />
+              <span>New</span>
+            </button>
+          </div>
+
+          <div className="sidebar-bots-rail-list">
+            {profiles.map((p) => {
+              const isCurrentActive = activeProfile === p.id;
+              return (
+                <div
+                  key={p.id}
+                  role="button"
+                  tabIndex={0}
+                  className={`sidebar-bot-row ${isCurrentActive ? "active" : ""}`}
+                  onClick={() => handleOpenBotChat(p.id)}
+                >
+                  <div className="sidebar-bot-avatar-wrap">
+                    <ProfileAvatar
+                      name={p.id}
+                      color={p.color}
+                      avatar={p.avatar}
+                      size={24}
+                    />
+                    <span
+                      className={`sidebar-bot-dot ${
+                        p.gatewayRunning ? "on" : "off"
+                      }`}
+                    />
+                  </div>
+                  <div className="sidebar-bot-info">
+                    <div className="sidebar-bot-name-row">
+                      <span className="sidebar-bot-name">{p.name}</span>
+                      {isCurrentActive && (
+                        <span className="sidebar-bot-active-pill">Active</span>
+                      )}
+                    </div>
+                    <div className="sidebar-bot-model-sub">
+                      {p.model ? p.model.split("/").pop() : "No model"}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="sidebar-recent-sessions">
         {selectMode && (
           <div className="sidebar-recent-selection-toolbar">
             <span>{selectedIds.size} selected</span>
@@ -1346,7 +1475,9 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
             <span>{t("common.loadingShort")}</span>
           </div>
         )}
-      </div>
+        </div>
+      )}
+
       {expanded &&
         projectMenu &&
         createPortal(
@@ -1563,6 +1694,6 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
         )}
     </div>
   );
-});
+}
 
-export default SidebarRecentSessions;
+export default memo(SidebarRecentSessions);

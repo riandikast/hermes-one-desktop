@@ -1199,6 +1199,7 @@ function Layout({
                     if (id === currentSessionId) handleNewChat();
                   }}
                   onNewChatInProject={handleNewChatInProject}
+                  onChatWithBot={handleChatWithProfile}
                   searchOpen={sidebarSearchOpen}
                   onSearchOpenChange={setSidebarSearchOpen}
                   scrollRootRef={sidebarChatScrollRef}
