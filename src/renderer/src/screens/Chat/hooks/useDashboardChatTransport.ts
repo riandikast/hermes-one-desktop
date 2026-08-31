@@ -12,7 +12,6 @@ import {
 } from "../dashboardEventAdapter";
 import {
   extractToolPath,
-  gitChangedDuringTurn,
   changedFilesFromToolRows,
   normalizePathKey,
 } from "../fileChanges";
@@ -1371,46 +1370,10 @@ export function useDashboardChatTransport({
       console.info("[file-changes] transcript", { transcriptPaths });
       for (const p of transcriptPaths) add(p, {});
 
-      // 3. Git working-tree diff vs the turn-start snapshot (authoritative for
-      //    terminal writes / missed captures).
-      if (folder) {
-        try {
-          const gitList =
-            await window.hermesAPI.getGitWorkingTreeChanges(folder);
-          // Only include git entries whose state CHANGED during this turn:
-          // compare against the turn-start snapshot. Files that were already
-          // dirty before the turn (pre-existing edits, line-ending churn) or
-          // only READ never appear — git status alone lists the whole dirty
-          // tree, which falsely "changed" files the agent never touched.
-          const snapshot = gitSnapshotRef.current;
-          gitSnapshotRef.current = null;
-          // No turn-start snapshot (race: turn finished before it loaded, or
-          // no git) → can't tell what changed this turn; rely on the tool
-          // sources only rather than reporting the whole dirty tree.
-          if (snapshot) {
-            const changedPaths = new Set(
-              gitChangedDuringTurn(
-                snapshot,
-                gitList.map((g) => ({
-                  path: g.path,
-                  status: g.status,
-                  after: g.after,
-                })),
-              ),
-            );
-            for (const g of gitList) {
-              if (!changedPaths.has(g.path)) continue;
-              add(g.path, {
-                before: g.before ?? undefined,
-                after: g.after ?? undefined,
-                beforeKnown: true,
-              });
-            }
-          }
-        } catch {
-          /* git detection optional — tool sources still apply */
-        }
-      }
+      // 3. Git working-tree diff disabled: it spawns git.exe multiple times per
+      // turn on Windows and flashes console windows in Electron dev/portable.
+      // Tool-source capture still reports files touched through Hermes tools.
+      gitSnapshotRef.current = null;
 
       // 4. Fill after-content for entries still missing it (async reads —
       //    files that no longer exist stay null; deletions are kept only when
@@ -2745,27 +2708,11 @@ export function useDashboardChatTransport({
         text,
         attachments,
       );
-      // FILE-CHANGES: snapshot the working tree BEFORE the agent runs, so at
-      // finalize only files it actually modified this turn are reported
-      // (pre-existing dirty files / reads never count).
-      const folder = contextFolder?.trim();
-      if (folder) {
-        gitSnapshotRef.current = null;
-        void window.hermesAPI
-          .getGitWorkingTreeChanges(folder)
-          .then((list) => {
-            const snap = new Map<string, string>();
-            for (const g of list) {
-              snap.set(g.path, `${g.status}|${g.after ?? ""}`);
-            }
-            gitSnapshotRef.current = snap;
-          })
-          .catch(() => {
-            gitSnapshotRef.current = null;
-          });
-      } else {
-        gitSnapshotRef.current = null;
-      }
+      // FILE-CHANGES: skip git snapshot. It costs several git.exe subprocesses
+      // per send on Windows and visibly flashes console windows. Tool-source
+      // capture still covers Hermes file-edit tools; direct shell edits may be
+      // omitted from the changed-files attachment.
+      gitSnapshotRef.current = null;
       const mergePendingRecoveredContinuation = (
         existing: DesktopSessionContinuationItem[],
       ): DesktopSessionContinuationItem[] => {
