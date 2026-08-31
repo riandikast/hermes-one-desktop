@@ -443,45 +443,40 @@ export function writeCompatFileAtomically(path: string, source: string): void {
   }
 }
 
-// Patch: add creationflags=CREATE_NO_WINDOW to subprocess calls that spawn
-// git.exe without it, which causes black console window flashes on Windows.
-const WIN_HIDE_CREATIONFLAGS = `
-        import sys as _sys
-        _CREATE_NO_WINDOW = 0x08000000 if _sys.platform == "win32" else 0
-`;
-
-function patchPythonSubprocessCreationFlags(
-  source: string,
-  site: string,
-  matchBefore: string,
-  insertFlag: string,
-): DashboardSourcePatchResult {
-  if (source.includes(insertFlag)) {
-    return { source, changed: false, compatible: true, detail: `${site}: already patched` };
-  }
-  if (!source.includes(matchBefore)) {
-    return { source, changed: false, compatible: true, detail: `${site}: anchor not found, skipped` };
-  }
-  const patched = source.replace(matchBefore, `${WIN_HIDE_CREATIONFLAGS}${matchBefore}${insertFlag}`);
-  return { source: patched, changed: patched !== source, compatible: true, detail: `${site}: added CREATE_NO_WINDOW` };
-}
-
 export function patchComputeHostBuildSha(source: string): DashboardSourcePatchResult {
-  return patchPythonSubprocessCreationFlags(
-    source,
-    "compute_host._build_sha",
-    `        return subprocess.check_output(\n            ["git", "rev-parse", "HEAD"],`,
-    `            creationflags=_CREATE_NO_WINDOW,\n`,
+  if (source.includes("creationflags=_CREATE_NO_WINDOW")) {
+    return { source, changed: false, compatible: true, detail: "compute_host._build_sha: already patched" };
+  }
+  const anchor = `def _build_sha() -> str:\n    try:\n`;
+  if (!source.includes(anchor)) {
+    return { source, changed: false, compatible: true, detail: "compute_host._build_sha: anchor not found, skipped" };
+  }
+  const patched = source.replace(
+    anchor,
+    `def _build_sha() -> str:\n    try:\n        import sys as _sys\n        _CREATE_NO_WINDOW = 0x08000000 if _sys.platform == "win32" else 0\n`,
+  ).replace(
+    `["git", "rev-parse", "HEAD"],`,
+    `["git", "rev-parse", "HEAD"],\n            creationflags=_CREATE_NO_WINDOW,`,
   );
+  return { source: patched, changed: patched !== source, compatible: true, detail: "compute_host._build_sha: added CREATE_NO_WINDOW" };
 }
 
 export function patchBannerGitStdout(source: string): DashboardSourcePatchResult {
-  return patchPythonSubprocessCreationFlags(
-    source,
-    "banner._git_stdout",
-    `            cwd=str(cwd),\n        )`,
-    `            creationflags=_CREATE_NO_WINDOW,\n        )`,
+  if (source.includes("creationflags=_CREATE_NO_WINDOW")) {
+    return { source, changed: false, compatible: true, detail: "banner._git_stdout: already patched" };
+  }
+  const anchor = `def _git_stdout(args: list[str], *, cwd: Path, timeout: int = 5) -> Optional[str]:\n    try:\n`;
+  if (!source.includes(anchor)) {
+    return { source, changed: false, compatible: true, detail: "banner._git_stdout: anchor not found, skipped" };
+  }
+  const patched = source.replace(
+    anchor,
+    `def _git_stdout(args: list[str], *, cwd: Path, timeout: int = 5) -> Optional[str]:\n    try:\n        import sys as _sys\n        _CREATE_NO_WINDOW = 0x08000000 if _sys.platform == "win32" else 0\n`,
+  ).replace(
+    `cwd=str(cwd),`,
+    `cwd=str(cwd),\n            creationflags=_CREATE_NO_WINDOW,`,
   );
+  return { source: patched, changed: patched !== source, compatible: true, detail: "banner._git_stdout: added CREATE_NO_WINDOW" };
 }
 
 export function ensureLocalDashboardCompatibility(): HermesAgentCompatResult {
