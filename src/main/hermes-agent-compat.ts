@@ -443,9 +443,52 @@ export function writeCompatFileAtomically(path: string, source: string): void {
   }
 }
 
+// Patch: add creationflags=CREATE_NO_WINDOW to subprocess calls that spawn
+// git.exe without it, which causes black console window flashes on Windows.
+const WIN_HIDE_CREATIONFLAGS = `
+        import sys as _sys
+        _CREATE_NO_WINDOW = 0x08000000 if _sys.platform == "win32" else 0
+`;
+
+function patchPythonSubprocessCreationFlags(
+  source: string,
+  site: string,
+  matchBefore: string,
+  insertFlag: string,
+): DashboardSourcePatchResult {
+  if (source.includes(insertFlag)) {
+    return { source, changed: false, compatible: true, detail: `${site}: already patched` };
+  }
+  if (!source.includes(matchBefore)) {
+    return { source, changed: false, compatible: true, detail: `${site}: anchor not found, skipped` };
+  }
+  const patched = source.replace(matchBefore, `${WIN_HIDE_CREATIONFLAGS}${matchBefore}${insertFlag}`);
+  return { source: patched, changed: patched !== source, compatible: true, detail: `${site}: added CREATE_NO_WINDOW` };
+}
+
+export function patchComputeHostBuildSha(source: string): DashboardSourcePatchResult {
+  return patchPythonSubprocessCreationFlags(
+    source,
+    "compute_host._build_sha",
+    `        return subprocess.check_output(\n            ["git", "rev-parse", "HEAD"],`,
+    `            creationflags=_CREATE_NO_WINDOW,\n`,
+  );
+}
+
+export function patchBannerGitStdout(source: string): DashboardSourcePatchResult {
+  return patchPythonSubprocessCreationFlags(
+    source,
+    "banner._git_stdout",
+    `            cwd=str(cwd),\n        )`,
+    `            creationflags=_CREATE_NO_WINDOW,\n        )`,
+  );
+}
+
 export function ensureLocalDashboardCompatibility(): HermesAgentCompatResult {
   const webServerPath = join(HERMES_REPO, "hermes_cli", "web_server.py");
   const slashCommandsPath = join(HERMES_REPO, "gateway", "slash_commands.py");
+  const computeHostPath = join(HERMES_REPO, "tui_gateway", "compute_host.py");
+  const bannerPath = join(HERMES_REPO, "hermes_cli", "banner.py");
   const details: string[] = [];
   let totalApplied = false;
 
@@ -483,6 +526,28 @@ export function ensureLocalDashboardCompatibility(): HermesAgentCompatResult {
         totalApplied = true;
       }
       details.push(slashPatched.detail);
+    }
+
+    // 3. tui_gateway/compute_host.py — _build_sha() git subprocess flash
+    if (existsSync(computeHostPath)) {
+      const chSource = readFileSync(computeHostPath, "utf-8");
+      const chPatched = patchComputeHostBuildSha(chSource);
+      if (chPatched.changed) {
+        writeCompatFileAtomically(computeHostPath, chPatched.source);
+        totalApplied = true;
+      }
+      details.push(chPatched.detail);
+    }
+
+    // 4. hermes_cli/banner.py — _git_stdout() git subprocess flash
+    if (existsSync(bannerPath)) {
+      const bnSource = readFileSync(bannerPath, "utf-8");
+      const bnPatched = patchBannerGitStdout(bnSource);
+      if (bnPatched.changed) {
+        writeCompatFileAtomically(bannerPath, bnPatched.source);
+        totalApplied = true;
+      }
+      details.push(bnPatched.detail);
     }
 
     const result: HermesAgentCompatResult = {
