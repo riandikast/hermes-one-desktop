@@ -1,4 +1,4 @@
-import { execFile, spawn } from "child_process";
+import { spawn } from "child_process";
 import {
   accessSync,
   constants,
@@ -7,7 +7,6 @@ import {
   realpathSync,
 } from "fs";
 import { posix, win32 } from "path";
-import { promisify } from "util";
 
 export interface TerminalCommand {
   command: string;
@@ -36,7 +35,6 @@ const LINUX_TERMINALS = [
   "xterm",
 ];
 
-const execFileAsync = promisify(execFile);
 const windowsPackageLocationCache = new Map<string, Promise<string[]>>();
 
 function pathForPlatform(
@@ -109,43 +107,12 @@ async function defaultWindowsPackageInstallLocationsAsync(
 }
 
 async function queryWindowsPackageInstallLocations(
-  packageName: string,
-  systemRoot: string,
+  _packageName: string,
+  _systemRoot: string,
 ): Promise<string[]> {
-  const powershell = win32.join(
-    systemRoot,
-    "System32",
-    "WindowsPowerShell",
-    "v1.0",
-    "powershell.exe",
-  );
-  if (!existsSync(powershell)) return [];
-
-  try {
-    const { stdout } = (await execFileAsync(
-      powershell,
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        [
-          `$packages = Get-AppxPackage -Name '${packageName}'`,
-          "$packages | Sort-Object Version -Descending | Select-Object -ExpandProperty InstallLocation",
-        ].join("; "),
-      ],
-      {
-        encoding: "utf8",
-        timeout: 1500,
-        windowsHide: true,
-      },
-    )) as { stdout: string };
-    return stdout
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
+  // Never spawn powershell.exe Get-AppxPackage subprocesses: on Windows they flash
+  // console windows on screen. Return empty list so static paths and wt.exe are used directly.
+  return [];
 }
 
 function tryRealpath(
