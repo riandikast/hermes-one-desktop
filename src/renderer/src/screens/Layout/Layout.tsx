@@ -79,7 +79,7 @@ type View =
   | "gateway"
   | "usage";
 
-const PINNED_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
+const ALL_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "agents", icon: Bot, labelKey: "navigation.agents" },
   { view: "capabilities", icon: Compass, labelKey: "navigation.tools" },
   { view: "office", icon: Building, labelKey: "navigation.office" },
@@ -87,9 +87,6 @@ const PINNED_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "schedules", icon: Timer, labelKey: "navigation.schedules" },
   { view: "knowledge", icon: BookOpen, labelKey: "navigation.knowledge" },
   { view: "commands", icon: Terminal, labelKey: "navigation.commands" },
-];
-
-const FOOTER_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "providers", icon: KeyRound, labelKey: "navigation.providers" },
   { view: "gateway", icon: Signal, labelKey: "navigation.gateway" },
   { view: "memory", icon: Brain, labelKey: "navigation.memory" },
@@ -100,7 +97,6 @@ const SIDEBAR_COLLAPSED_KEY = "hermes.sidebar.collapsed";
 const SIDEBAR_WIDTH_KEY = "hermes.sidebar.width";
 const TOP_MENU_COLLAPSED_KEY = "hermes.topmenu.collapsed";
 const SIDEBAR_SCROLLBAR_HIDE_MS = 700;
-const PINNED_NAV_COLLAPSED_KEY = "hermes.sidebar.pinnedCollapsed";
 
 /** Sidebar drag-resize bounds: official 237px is the max; can only be narrowed. */
 const SIDEBAR_WIDTH_MIN = 180;
@@ -409,25 +405,7 @@ function Layout({
     });
   }, []);
 
-  const [pinnedNavCollapsed, setPinnedNavCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem(PINNED_NAV_COLLAPSED_KEY) === "true";
-    } catch {
-      return false;
-    }
-  });
 
-  const togglePinnedNavCollapsed = useCallback(() => {
-    setPinnedNavCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(PINNED_NAV_COLLAPSED_KEY, String(next));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  }, []);
 
   const [sessionsModalOpen, setSessionsModalOpen] = useState(false);
   const [visitedViews, setVisitedViews] = useState<Set<View>>(
@@ -1144,44 +1122,6 @@ function Layout({
                   {t("navigation.newChat")}
                 </span>
               </button>
-              <button
-                type="button"
-                className={`sidebar-pinned-toggle ${pinnedNavCollapsed ? "collapsed" : ""}`}
-                onClick={togglePinnedNavCollapsed}
-                title={
-                  pinnedNavCollapsed
-                    ? "Expand navigation menu"
-                    : "Collapse navigation menu"
-                }
-                aria-label={
-                  pinnedNavCollapsed
-                    ? "Expand navigation menu"
-                    : "Collapse navigation menu"
-                }
-              >
-                <ChevronDown
-                  size={14}
-                  className={`sidebar-pinned-chevron ${pinnedNavCollapsed ? "collapsed" : ""}`}
-                />
-              </button>
-            </div>
-            <div
-              className={`sidebar-pinned-items ${pinnedNavCollapsed ? "sidebar-pinned-items--collapsed" : ""}`}
-            >
-              {PINNED_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => {
-                return (
-                  <button
-                    key={v}
-                    className={`sidebar-nav-item ${view === v ? "active" : ""}`}
-                    onClick={() => goTo(v)}
-                    title={t(labelKey)}
-                    aria-label={t(labelKey)}
-                  >
-                    <Icon size={16} />
-                    <span className="sidebar-nav-label">{t(labelKey)}</span>
-                  </button>
-                );
-              })}
             </div>
           </nav>
 
@@ -1285,13 +1225,13 @@ function Layout({
                 </button>
               </div>
               <div className="sidebar-footer-flyout">
-                {FOOTER_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => (
+                {ALL_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => (
                   <button
                     key={v}
                     className={`sidebar-footer-action ${view === v ? "active" : ""}`}
                     onClick={() => goTo(v)}
                     aria-label={t(labelKey)}
-                    data-tooltip={t(labelKey)}
+                    title={t(labelKey)}
                   >
                     <Icon size={16} />
                   </button>

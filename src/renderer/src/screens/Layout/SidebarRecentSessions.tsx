@@ -22,6 +22,7 @@ import {
   Bot,
   Plus,
 } from "../../assets/icons";
+import { Bell, BellOff, Users } from "lucide-react";
 import ProfileAvatar from "../../components/common/ProfileAvatar";
 import SidebarSessionMenu, {
   type SidebarMenuProject,
@@ -233,6 +234,32 @@ function SidebarRecentSessions({
       return "sessions";
     }
   });
+  const [activityToasts, setActivityToasts] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("hermes.activityToasts") !== "false";
+    } catch {
+      return true;
+    }
+  });
+  const [showBotNewMenu, setShowBotNewMenu] = useState(false);
+  const botNewMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("hermes.activityToasts", String(activityToasts));
+    } catch {}
+  }, [activityToasts]);
+
+  useEffect(() => {
+    if (!showBotNewMenu) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (botNewMenuRef.current && !botNewMenuRef.current.contains(e.target as Node)) {
+        setShowBotNewMenu(false);
+      }
+    };
+    window.addEventListener("mousedown", onClickOutside);
+    return () => window.removeEventListener("mousedown", onClickOutside);
+  }, [showBotNewMenu]);
   const [profiles, setProfiles] = useState<
     Array<{
       id: string;
@@ -1163,20 +1190,63 @@ function SidebarRecentSessions({
       {sidebarTab === "bots" ? (
         <div className="sidebar-bots-rail">
           <div className="sidebar-bots-rail-header">
-            <span className="sidebar-bots-rail-title">Direct Messages</span>
-            <button
-              type="button"
-              className="sidebar-bots-new-btn"
-              onClick={() => {
-                window.dispatchEvent(
-                  new CustomEvent("navigation:goto", { detail: "agents" }),
-                );
-              }}
-              title="Manage Bots"
-            >
-              <Plus size={12} />
-              <span>New</span>
-            </button>
+            <span className="sidebar-bots-rail-title">Bots</span>
+            <div className="sidebar-bots-header-actions" ref={botNewMenuRef}>
+              <button
+                type="button"
+                className={`sidebar-bots-icon-btn ${activityToasts ? "active" : ""}`}
+                onClick={() => setActivityToasts((prev) => !prev)}
+                title={
+                  activityToasts
+                    ? "Activity toasts on — click to silence"
+                    : "Activity toasts off — click to enable"
+                }
+                aria-label="Toggle activity toasts"
+              >
+                {activityToasts ? <Bell size={13} /> : <BellOff size={13} />}
+              </button>
+
+              <button
+                type="button"
+                className="sidebar-bots-icon-btn"
+                onClick={() => setShowBotNewMenu((prev) => !prev)}
+                title="New Bot or Group Chat"
+                aria-label="New Bot or Group Chat"
+              >
+                <Plus size={14} />
+              </button>
+
+              {showBotNewMenu && (
+                <div className="sidebar-bots-dropdown-menu">
+                  <button
+                    type="button"
+                    className="sidebar-bots-dropdown-item"
+                    onClick={() => {
+                      setShowBotNewMenu(false);
+                      window.dispatchEvent(
+                        new CustomEvent("navigation:goto", { detail: "agents" }),
+                      );
+                    }}
+                  >
+                    <Bot size={13} />
+                    <span>New Bot</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="sidebar-bots-dropdown-item"
+                    onClick={() => {
+                      setShowBotNewMenu(false);
+                      window.dispatchEvent(
+                        new CustomEvent("navigation:goto", { detail: "agents" }),
+                      );
+                    }}
+                  >
+                    <Users size={13} />
+                    <span>New Group Chat</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="sidebar-bots-rail-list">
