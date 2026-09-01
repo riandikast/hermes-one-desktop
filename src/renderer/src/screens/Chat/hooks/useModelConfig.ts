@@ -205,13 +205,19 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
     let cancelled = false;
     async function loadPickerEnv(): Promise<void> {
       try {
-        const env = await window.hermesAPI.getEnv(profile);
+        const [profileEnv, defaultEnv] = await Promise.all([
+          window.hermesAPI.getEnv(profile),
+          window.hermesAPI.getEnv("default"),
+        ]);
         if (!cancelled) {
-          setPickerEnv(env);
+          setPickerEnv({ ...defaultEnv, ...profileEnv });
           setPickerEnvReady(true);
         }
       } catch {
-        /* ignore */
+        if (!cancelled) {
+          setPickerEnv({});
+          setPickerEnvReady(true);
+        }
       }
     }
     void loadPickerEnv();

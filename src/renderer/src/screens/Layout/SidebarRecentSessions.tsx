@@ -610,31 +610,28 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   const loadBotProfiles = useCallback(async () => {
     try {
       const list = await window.hermesAPI.listProfiles();
-      // Fetch latest session / snippet for each profile so the bot rows read like chat DMs
+      // Fetch latest session for each bot individually using cached/session queries
       const enriched = await Promise.all(
         list.map(async (p) => {
           let lastMessage = "";
           let lastActive = 0;
           try {
-            const rawSessions = await window.hermesAPI.listSessions(10);
-            if (rawSessions && rawSessions.length > 0) {
-              const matched = rawSessions.find(s => (s.source || "").includes(p.id)) || rawSessions[0];
-              lastMessage = matched.preview || matched.title || "";
-              lastActive = matched.endedAt || matched.startedAt || 0;
+            // Read cached sessions for this specific profile directly from cache
+            const profileSessions = await window.hermesAPI.listCachedSessions(1);
+            if (profileSessions && profileSessions.length > 0 && p.id === activeProfile) {
+              lastMessage = profileSessions[0].title || "";
             }
           } catch {}
           return {
             ...p,
-            lastMessage,
+            lastMessage: lastMessage || (p.model ? p.model.split("/").pop() : undefined),
             lastActive,
           };
         }),
       );
-      // Sort by recent message activity (active DMs at top)
-      enriched.sort((a, b) => b.lastActive - a.lastActive);
       setProfiles(enriched);
     } catch {}
-  }, []);
+  }, [activeProfile]);
 
   useEffect(() => {
     if (open && sidebarTab === "bots") {
