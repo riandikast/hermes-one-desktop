@@ -3016,12 +3016,10 @@ body:has(.shell-vibrant),
   color: var(--success, #10b981);
 }
 
-.sidebar-bot-model-sub {
-  font-size: 11px;
+.sidebar-bot-last-msg {
   color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  opacity: 0.9;
+  font-size: 11.5px;
 }
 
 .sidebar-recent-search {

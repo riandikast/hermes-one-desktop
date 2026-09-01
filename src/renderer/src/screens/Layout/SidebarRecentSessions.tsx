@@ -242,6 +242,8 @@ function SidebarRecentSessions({
       color?: string;
       avatar?: string | null;
       gatewayRunning: boolean;
+      lastMessage?: string;
+      lastActive?: number;
     }>
   >([]);
   const [sessions, setSessions] = useState<RecentSession[]>([]);
@@ -528,7 +530,29 @@ function SidebarRecentSessions({
   const loadBotProfiles = useCallback(async () => {
     try {
       const list = await window.hermesAPI.listProfiles();
-      setProfiles(list);
+      // Fetch latest session / snippet for each profile so the bot rows read like chat DMs
+      const enriched = await Promise.all(
+        list.map(async (p) => {
+          let lastMessage = "";
+          let lastActive = 0;
+          try {
+            const rawSessions = await window.hermesAPI.listSessions(10);
+            if (rawSessions && rawSessions.length > 0) {
+              const matched = rawSessions.find(s => (s.source || "").includes(p.id)) || rawSessions[0];
+              lastMessage = matched.preview || matched.title || "";
+              lastActive = matched.endedAt || matched.startedAt || 0;
+            }
+          } catch {}
+          return {
+            ...p,
+            lastMessage,
+            lastActive,
+          };
+        }),
+      );
+      // Sort by recent message activity (active DMs at top)
+      enriched.sort((a, b) => b.lastActive - a.lastActive);
+      setProfiles(enriched);
     } catch {}
   }, []);
 
@@ -1187,7 +1211,11 @@ function SidebarRecentSessions({
                       )}
                     </div>
                     <div className="sidebar-bot-model-sub">
-                      {p.model ? p.model.split("/").pop() : "No model"}
+                      {p.lastMessage ? (
+                        <span className="sidebar-bot-last-msg">{p.lastMessage}</span>
+                      ) : (
+                        <span>{p.model ? p.model.split("/").pop() : "No model"}</span>
+                      )}
                     </div>
                   </div>
                 </div>
