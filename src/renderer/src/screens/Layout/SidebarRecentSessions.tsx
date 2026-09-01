@@ -45,6 +45,31 @@ interface RecentSession {
   parentSessionId?: string | null;
 }
 
+interface GroupChatRecord {
+  id: string;
+  name: string;
+  memberIds: string[];
+  createdAt: number;
+  lastMessage?: string;
+}
+
+const GROUP_CHATS_STORAGE_KEY = "hermes.bots.groupChats";
+
+function loadStoredGroupChats(): GroupChatRecord[] {
+  try {
+    const raw = localStorage.getItem(GROUP_CHATS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredGroupChats(records: GroupChatRecord[]): void {
+  try {
+    localStorage.setItem(GROUP_CHATS_STORAGE_KEY, JSON.stringify(records));
+  } catch {}
+}
+
 // ChatGPT-style paged conversation list under the pinned app navigation.
 export const RECENT_SESSIONS_PAGE_SIZE = 30;
 
@@ -235,6 +260,9 @@ function SidebarRecentSessions({
       return "sessions";
     }
   });
+  const [groupChats, setGroupChats] = useState<GroupChatRecord[]>(() =>
+    loadStoredGroupChats(),
+  );
   const [activityToasts, setActivityToasts] = useState<boolean>(() => {
     try {
       return localStorage.getItem("hermes.activityToasts") !== "false";
@@ -242,6 +270,26 @@ function SidebarRecentSessions({
       return true;
     }
   });
+
+  const handleCreateGroupChat = useCallback(
+    (name: string, memberIds: string[]) => {
+      const record: GroupChatRecord = {
+        id: `group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        memberIds,
+        createdAt: Date.now(),
+        lastMessage: `Group with ${memberIds.length} bots`,
+      };
+      setGroupChats((prev) => {
+        const next = [record, ...prev];
+        saveStoredGroupChats(next);
+        return next;
+      });
+      // Start group chat on first bot's thread
+      onChatWithBot?.(memberIds[0]);
+    },
+    [onChatWithBot],
+  );
   const [showBotNewMenu, setShowBotNewMenu] = useState(false);
   const [showGroupChatModal, setShowGroupChatModal] = useState(false);
   const botNewMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1250,6 +1298,53 @@ function SidebarRecentSessions({
           </div>
 
           <div className="sidebar-bots-rail-list">
+            {/* ── Group Chats Section ── */}
+            {groupChats.length > 0 && (
+              <div className="sidebar-group-chats-wrap">
+                <div className="sidebar-group-chats-heading">
+                  <Users size={12} />
+                  <span>Group Chats ({groupChats.length})</span>
+                </div>
+                {groupChats.map((g) => (
+                  <div
+                    key={g.id}
+                    role="button"
+                    tabIndex={0}
+                    className="sidebar-bot-row group-row"
+                    onClick={() => {
+                      if (g.memberIds.length > 0) {
+                        onChatWithBot?.(g.memberIds[0]);
+                      }
+                    }}
+                  >
+                    <div className="sidebar-bot-avatar-wrap">
+                      <div className="sidebar-group-avatar">
+                        <Users size={14} />
+                      </div>
+                    </div>
+                    <div className="sidebar-bot-info">
+                      <div className="sidebar-bot-name-row">
+                        <span className="sidebar-bot-name">{g.name}</span>
+                        <span className="sidebar-group-count">
+                          {g.memberIds.length} bots
+                        </span>
+                      </div>
+                      <div className="sidebar-bot-model-sub">
+                        <span className="sidebar-bot-last-msg">
+                          {g.memberIds.map((m) => `@${m}`).join(" ")}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ── Direct Bots List ── */}
+            <div className="sidebar-group-chats-heading">
+              <Bot size={12} />
+              <span>Direct Messages</span>
+            </div>
             {profiles.map((p) => {
               const isCurrentActive = activeProfile === p.id;
               return (
@@ -1794,9 +1889,8 @@ function SidebarRecentSessions({
       <CreateGroupChatModal
         open={showGroupChatModal}
         onClose={() => setShowGroupChatModal(false)}
-        onCreated={(_groupName, memberIds) => {
-          // Open group conversation immediately
-          onChatWithBot?.(memberIds[0]);
+        onCreated={(groupName, memberIds) => {
+          handleCreateGroupChat(groupName, memberIds);
         }}
       />
     </div>
