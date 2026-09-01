@@ -81,14 +81,16 @@ type View =
   | "gateway"
   | "usage";
 
-const ALL_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
-  { view: "agents", icon: Bot, labelKey: "navigation.agents" },
+const PINNED_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "capabilities", icon: Compass, labelKey: "navigation.tools" },
   { view: "office", icon: Building, labelKey: "navigation.office" },
   { view: "kanban", icon: KanbanIcon, labelKey: "navigation.kanban" },
   { view: "schedules", icon: Timer, labelKey: "navigation.schedules" },
   { view: "knowledge", icon: BookOpen, labelKey: "navigation.knowledge" },
   { view: "commands", icon: Terminal, labelKey: "navigation.commands" },
+];
+
+const FOOTER_NAV_ITEMS: { view: View; icon: LucideIcon; labelKey: string }[] = [
   { view: "providers", icon: KeyRound, labelKey: "navigation.providers" },
   { view: "gateway", icon: Signal, labelKey: "navigation.gateway" },
   { view: "memory", icon: Brain, labelKey: "navigation.memory" },
@@ -414,7 +416,24 @@ function Layout({
 
 
 
+  const [pinnedNavCollapsed, setPinnedNavCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("hermes.sidebar.pinnedCollapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
   const [sessionsModalOpen, setSessionsModalOpen] = useState(false);
+
+  const togglePinnedNavCollapsed = useCallback(() => {
+    setPinnedNavCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("hermes.sidebar.pinnedCollapsed", String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
   const [visitedViews, setVisitedViews] = useState<Set<View>>(
     () => new Set<View>(["chat"]),
   );
@@ -780,8 +799,11 @@ function Layout({
   );
 
   const handleChatWithProfile = useCallback(
-    (name: string) => {
+    async (name: string) => {
       setActiveProfile(name);
+      try {
+        await window.hermesAPI.setActiveProfile(name);
+      } catch {}
       const active = runs.find((r) => r.runId === activeRunId);
       if (active && isScratchRun(active)) {
         setRuns((prev) =>
@@ -800,8 +822,15 @@ function Layout({
   );
 
   const handleOpenGroupChat = useCallback(
-    (group: { id: string; name: string; memberIds: string[] }) => {
+    async (group: { id: string; name: string; memberIds: string[] }) => {
       setActiveGroupChat(group);
+      if (group.memberIds && group.memberIds.length > 0) {
+        const leadBot = group.memberIds[0];
+        setActiveProfile(leadBot);
+        try {
+          await window.hermesAPI.setActiveProfile(leadBot);
+        } catch {}
+      }
       goTo("group-chat");
     },
     [goTo],
@@ -1138,6 +1167,44 @@ function Layout({
                   {t("navigation.newChat")}
                 </span>
               </button>
+              <button
+                type="button"
+                className={`sidebar-pinned-toggle ${pinnedNavCollapsed ? "collapsed" : ""}`}
+                onClick={togglePinnedNavCollapsed}
+                title={
+                  pinnedNavCollapsed
+                    ? "Expand navigation menu"
+                    : "Collapse navigation menu"
+                }
+                aria-label={
+                  pinnedNavCollapsed
+                    ? "Expand navigation menu"
+                    : "Collapse navigation menu"
+                }
+              >
+                <ChevronDown
+                  size={14}
+                  className={`sidebar-pinned-chevron ${pinnedNavCollapsed ? "collapsed" : ""}`}
+                />
+              </button>
+            </div>
+            <div
+              className={`sidebar-pinned-items ${pinnedNavCollapsed ? "sidebar-pinned-items--collapsed" : ""}`}
+            >
+              {PINNED_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => {
+                return (
+                  <button
+                    key={v}
+                    className={`sidebar-nav-item ${view === v ? "active" : ""}`}
+                    onClick={() => goTo(v)}
+                    title={t(labelKey)}
+                    aria-label={t(labelKey)}
+                  >
+                    <Icon size={16} />
+                    <span className="sidebar-nav-label">{t(labelKey)}</span>
+                  </button>
+                );
+              })}
             </div>
           </nav>
 
@@ -1157,6 +1224,7 @@ function Layout({
                   onNewChatInProject={handleNewChatInProject}
                   onChatWithBot={handleChatWithProfile}
                   onOpenGroupChat={handleOpenGroupChat}
+                  currentGroupChatId={view === "group-chat" ? activeGroupChat?.id : null}
                   searchOpen={sidebarSearchOpen}
                   onSearchOpenChange={setSidebarSearchOpen}
                   scrollRootRef={sidebarChatScrollRef}
@@ -1242,7 +1310,7 @@ function Layout({
                 </button>
               </div>
               <div className="sidebar-footer-flyout">
-                {ALL_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => (
+                {FOOTER_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => (
                   <button
                     key={v}
                     className={`sidebar-footer-action ${view === v ? "active" : ""}`}

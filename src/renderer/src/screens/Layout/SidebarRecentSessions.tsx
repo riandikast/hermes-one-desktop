@@ -230,6 +230,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   onNewChatInProject,
   onChatWithBot,
   onOpenGroupChat,
+  currentGroupChatId,
   searchOpen,
   onSearchOpenChange,
   scrollRootRef,
@@ -248,6 +249,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   onNewChatInProject?: (folderPath: string) => void;
   onChatWithBot?: (profileName: string) => void;
   onOpenGroupChat?: (group: GroupChatRecord) => void;
+  currentGroupChatId?: string | null;
   /** Scroll container owned by Layout; nearing its bottom loads the next page. */
   scrollRootRef: RefObject<HTMLDivElement | null>;
   /** Session search: when true, a filter input filters the session lists. */
@@ -643,8 +645,13 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   const handleOpenBotChat = useCallback(
     async (profileId: string) => {
       onChatWithBot?.(profileId);
+      // Ensure the profile is selected and activated in UI & backend
+      try {
+        await window.hermesAPI.setActiveProfile(profileId);
+      } catch {}
+      void loadBotProfiles();
     },
-    [onChatWithBot],
+    [onChatWithBot, loadBotProfiles],
   );
 
   // While open: pick up background sessions (gateway, cron, other devices)
@@ -1306,36 +1313,39 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                   <Users size={12} />
                   <span>Group Chats ({groupChats.length})</span>
                 </div>
-                {groupChats.map((g) => (
-                  <div
-                    key={g.id}
-                    role="button"
-                    tabIndex={0}
-                    className="sidebar-bot-row group-row"
-                    onClick={() => {
-                      onOpenGroupChat?.(g);
-                    }}
-                  >
-                    <div className="sidebar-bot-avatar-wrap">
-                      <div className="sidebar-group-avatar">
-                        <Users size={14} />
+                {groupChats.map((g) => {
+                  const isGroupActive = currentGroupChatId === g.id;
+                  return (
+                    <div
+                      key={g.id}
+                      role="button"
+                      tabIndex={0}
+                      className={`sidebar-bot-row group-row ${isGroupActive ? "active" : ""}`}
+                      onClick={() => {
+                        onOpenGroupChat?.(g);
+                      }}
+                    >
+                      <div className="sidebar-bot-avatar-wrap">
+                        <div className="sidebar-group-avatar">
+                          <Users size={14} />
+                        </div>
+                      </div>
+                      <div className="sidebar-bot-info">
+                        <div className="sidebar-bot-name-row">
+                          <span className="sidebar-bot-name">{g.name}</span>
+                          <span className="sidebar-group-count">
+                            {g.memberIds.length} bots
+                          </span>
+                        </div>
+                        <div className="sidebar-bot-model-sub">
+                          <span className="sidebar-bot-last-msg">
+                            {g.memberIds.map((m) => `@${m}`).join(" ")}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                    <div className="sidebar-bot-info">
-                      <div className="sidebar-bot-name-row">
-                        <span className="sidebar-bot-name">{g.name}</span>
-                        <span className="sidebar-group-count">
-                          {g.memberIds.length} bots
-                        </span>
-                      </div>
-                      <div className="sidebar-bot-model-sub">
-                        <span className="sidebar-bot-last-msg">
-                          {g.memberIds.map((m) => `@${m}`).join(" ")}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
