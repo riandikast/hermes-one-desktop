@@ -24,6 +24,7 @@ import {
 } from "../../assets/icons";
 import { Bell, BellOff, Users } from "lucide-react";
 import ProfileAvatar from "../../components/common/ProfileAvatar";
+import { CreateGroupChatModal } from "../../components/CreateGroupChatModal";
 import SidebarSessionMenu, {
   type SidebarMenuProject,
   type SidebarMenuTarget,
@@ -242,6 +243,7 @@ function SidebarRecentSessions({
     }
   });
   const [showBotNewMenu, setShowBotNewMenu] = useState(false);
+  const [showGroupChatModal, setShowGroupChatModal] = useState(false);
   const botNewMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -1236,9 +1238,7 @@ function SidebarRecentSessions({
                     className="sidebar-bots-dropdown-item"
                     onClick={() => {
                       setShowBotNewMenu(false);
-                      window.dispatchEvent(
-                        new CustomEvent("navigation:goto", { detail: "agents" }),
-                      );
+                      setShowGroupChatModal(true);
                     }}
                   >
                     <Users size={13} />
@@ -1790,6 +1790,15 @@ function SidebarRecentSessions({
           </div>,
           document.body,
         )}
+
+      <CreateGroupChatModal
+        open={showGroupChatModal}
+        onClose={() => setShowGroupChatModal(false)}
+        onCreated={(_groupName, memberIds) => {
+          // Open group conversation immediately
+          onChatWithBot?.(memberIds[0]);
+        }}
+      />
     </div>
   );
 }
