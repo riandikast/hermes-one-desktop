@@ -32,6 +32,7 @@ import Gateway from "../Gateway/Gateway";
 import Office from "../Office/Office";
 import { FileViewer } from "../Chat/FileViewer";
 import Providers from "../Providers/Providers";
+import { GroupChatScreen } from "../Chat/GroupChatScreen";
 import Schedules from "../Schedules/Schedules";
 import Kanban from "../Kanban/Kanban";
 import KnowledgeScreen from "../Knowledge/KnowledgeScreen";
@@ -66,6 +67,7 @@ import { useI18n } from "../../components/useI18n";
 
 type View =
   | "chat"
+  | "group-chat"
   | "file"
   | "capabilities"
   | "agents"
@@ -120,6 +122,11 @@ function Layout({
   const [activeProfile, setActiveProfile] = useState("default");
   const [runs, setRuns] = useState<ChatRun[]>(() => [mintRun("default")]);
   const [activeRunId, setActiveRunId] = useState<string>(() => runs[0].runId);
+  const [activeGroupChat, setActiveGroupChat] = useState<{
+    id: string;
+    name: string;
+    memberIds: string[];
+  } | null>(null);
   const [resumingSessionId, setResumingSessionId] = useState<string | null>(
     null,
   );
@@ -423,6 +430,7 @@ function Layout({
   const VIEW_LABEL_KEYS: Record<View, string> = useMemo(
     () => ({
       chat: "navigation.chat",
+      "group-chat": "navigation.chats",
       file: "navigation.file",
       capabilities: "navigation.tools",
       office: "navigation.office",
@@ -791,6 +799,14 @@ function Layout({
     [runs, activeRunId, goTo],
   );
 
+  const handleOpenGroupChat = useCallback(
+    (group: { id: string; name: string; memberIds: string[] }) => {
+      setActiveGroupChat(group);
+      goTo("group-chat");
+    },
+    [goTo],
+  );
+
   const handleActivateRun = useCallback(
     (runId: string) => {
       const run = runs.find((r) => r.runId === runId);
@@ -1140,6 +1156,7 @@ function Layout({
                   }}
                   onNewChatInProject={handleNewChatInProject}
                   onChatWithBot={handleChatWithProfile}
+                  onOpenGroupChat={handleOpenGroupChat}
                   searchOpen={sidebarSearchOpen}
                   onSearchOpenChange={setSidebarSearchOpen}
                   scrollRootRef={sidebarChatScrollRef}
@@ -1367,6 +1384,17 @@ function Layout({
               </div>
             ))}
           </div>
+
+          {visitedViews.has("group-chat") && activeGroupChat && (
+            <div style={paneStyle("group-chat")}>
+              <GroupChatScreen
+                groupId={activeGroupChat.id}
+                groupName={activeGroupChat.name}
+                memberIds={activeGroupChat.memberIds}
+                onBack={() => goTo("chat")}
+              />
+            </div>
+          )}
 
           {visitedViews.has("file") && (
             <div style={paneStyle("file")}>

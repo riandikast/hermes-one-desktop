@@ -219,7 +219,7 @@ function groupSessionsByWorkspace(sessions: RecentSession[]): {
  *  - while open: refresh on window focus and on a slow interval, throttled
  *  - closed (collapsed section or icon-only sidebar): zero work, renders null
  */
-function SidebarRecentSessions({
+const SidebarRecentSessions = memo(function SidebarRecentSessions({
   open,
   activeProfile,
   currentSessionId,
@@ -229,6 +229,7 @@ function SidebarRecentSessions({
   onSessionDeleted,
   onNewChatInProject,
   onChatWithBot,
+  onOpenGroupChat,
   searchOpen,
   onSearchOpenChange,
   scrollRootRef,
@@ -246,6 +247,7 @@ function SidebarRecentSessions({
   onSessionDeleted?: (sessionId: string) => void;
   onNewChatInProject?: (folderPath: string) => void;
   onChatWithBot?: (profileName: string) => void;
+  onOpenGroupChat?: (group: GroupChatRecord) => void;
   /** Scroll container owned by Layout; nearing its bottom loads the next page. */
   scrollRootRef: RefObject<HTMLDivElement | null>;
   /** Session search: when true, a filter input filters the session lists. */
@@ -285,10 +287,9 @@ function SidebarRecentSessions({
         saveStoredGroupChats(next);
         return next;
       });
-      // Start group chat on first bot's thread
-      onChatWithBot?.(memberIds[0]);
+      onOpenGroupChat?.(record);
     },
-    [onChatWithBot],
+    [onOpenGroupChat],
   );
   const [showBotNewMenu, setShowBotNewMenu] = useState(false);
   const [showGroupChatModal, setShowGroupChatModal] = useState(false);
@@ -1312,9 +1313,7 @@ function SidebarRecentSessions({
                     tabIndex={0}
                     className="sidebar-bot-row group-row"
                     onClick={() => {
-                      if (g.memberIds.length > 0) {
-                        onChatWithBot?.(g.memberIds[0]);
-                      }
+                      onOpenGroupChat?.(g);
                     }}
                   >
                     <div className="sidebar-bot-avatar-wrap">
@@ -1895,6 +1894,6 @@ function SidebarRecentSessions({
       />
     </div>
   );
-}
+});
 
-export default memo(SidebarRecentSessions);
+export default SidebarRecentSessions;
