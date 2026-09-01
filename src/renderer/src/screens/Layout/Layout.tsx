@@ -801,11 +801,32 @@ function Layout({
   const handleChatWithProfile = useCallback(
     async (name: string) => {
       setActiveProfile(name);
+      setActiveGroupChat(null);
       try {
         await window.hermesAPI.setActiveProfile(name);
       } catch {}
+
+      // Find the most recent session for this specific bot profile
+      let latestSessionId: string | null = null;
+      let historyItems: DbHistoryItem[] = [];
+      try {
+        const profileSessions = await window.hermesAPI.listSessions(5);
+        if (profileSessions && profileSessions.length > 0) {
+          latestSessionId = profileSessions[0].id;
+          historyItems = (await window.hermesAPI.getSessionMessages(
+            latestSessionId,
+          )) as DbHistoryItem[];
+        }
+      } catch {}
+
       const active = runs.find((r) => r.runId === activeRunId);
-      if (active && isScratchRun(active)) {
+      if (latestSessionId && historyItems.length > 0) {
+        const resumedRun = mintRun(name, dbItemsToChatMessages(historyItems));
+        resumedRun.sessionId = latestSessionId;
+        resumedRun.title = `${name} Chat`;
+        setRuns((prev) => openSessionRunTransition(prev, activeRunId, resumedRun).runs);
+        setActiveRunId(resumedRun.runId);
+      } else if (active && isScratchRun(active)) {
         setRuns((prev) =>
           prev.map((r) =>
             r.runId === active.runId ? { ...r, profile: name } : r,

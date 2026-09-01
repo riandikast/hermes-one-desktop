@@ -84,8 +84,15 @@ export function GroupChatScreen({
             };
             setMessages((prev) => [...prev, botMsg]);
           }
-        } catch {
-          // If a bot fails to respond, continue with next member
+        } catch (err) {
+          const errMsg: GroupMessage = {
+            id: `msg-${Date.now()}-${botId}-err`,
+            sender: botId,
+            senderName: botId.replace(/^9r-/, "").replace(/-/g, " "),
+            text: `⚠️ Error: ${(err as Error).message || "Bot did not respond"}`,
+            timestamp: Date.now(),
+          };
+          setMessages((prev) => [...prev, errMsg]);
         }
       }
     } finally {
@@ -146,15 +153,13 @@ export function GroupChatScreen({
                 className={`group-message-row ${isUser ? "user" : "bot"}`}
               >
                 <div className="group-msg-avatar">
-                  {isUser ? (
-                    <div className="group-user-avatar">You</div>
-                  ) : (
+                  {!isUser && (
                     <ProfileAvatar name={m.sender} size={30} />
                   )}
                 </div>
                 <div className="group-msg-bubble-wrap">
                   <div className="group-msg-author-row">
-                    <span className="group-msg-author">{m.senderName}</span>
+                    <span className="group-msg-author">{isUser ? "You" : m.senderName}</span>
                     <span className="group-msg-time">
                       {new Date(m.timestamp).toLocaleTimeString([], {
                         hour: "2-digit",

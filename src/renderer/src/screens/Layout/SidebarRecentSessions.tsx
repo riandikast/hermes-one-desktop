@@ -1355,7 +1355,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
               <span>Direct Messages</span>
             </div>
             {profiles.map((p) => {
-              const isCurrentActive = activeProfile === p.id;
+              const isCurrentActive = !currentGroupChatId && activeProfile === p.id;
               return (
                 <div
                   key={p.id}
