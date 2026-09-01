@@ -227,28 +227,35 @@ export function readEnv(profile?: string): Record<string, string> {
   const cached = getCached<Record<string, string>>(cacheKey);
   if (cached) return cached;
 
-  const { envFile } = profilePaths(profile);
-  if (!existsSync(envFile)) return {};
-
-  const content = readFileSync(envFile, "utf-8");
   const result: Record<string, string> = {};
 
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+  // If this is a named profile, inherit all keys from the default profile's .env first
+  // so API keys and provider credentials are automatically shared across all bots.
+  if (profile && profile !== "default") {
+    const defaultEnv = readEnv("default");
+    Object.assign(result, defaultEnv);
+  }
 
-    const eqIndex = trimmed.indexOf("=");
-    const key = trimmed.substring(0, eqIndex).trim();
-    let value = trimmed.substring(eqIndex + 1).trim();
+  const { envFile } = profilePaths(profile);
+  if (existsSync(envFile)) {
+    const content = readFileSync(envFile, "utf-8");
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("#") || !trimmed.includes("=")) continue;
 
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
+      const eqIndex = trimmed.indexOf("=");
+      const key = trimmed.substring(0, eqIndex).trim();
+      let value = trimmed.substring(eqIndex + 1).trim();
+
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+
+      result[key] = value;
     }
-
-    result[key] = value;
   }
 
   setCache(cacheKey, result);

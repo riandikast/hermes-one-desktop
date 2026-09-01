@@ -799,15 +799,17 @@ function Layout({
   );
 
   const handleChatWithProfile = useCallback(
-    async (name: string) => {
-      setActiveProfile(name);
+    (name: string) => {
       setActiveGroupChat(null);
-      try {
-        await window.hermesAPI.setActiveProfile(name);
-      } catch {}
+      // In Bot Mode / per-bot chats: each chat tab is tagged with its own `profile: name`
+      // WITHOUT switching the global activeProfile / HERMES_HOME context (matches official Desktop).
+      const existing = runs.find((r) => r.profile === name && !r.filePath);
+      if (existing) {
+        setActiveRunId(existing.runId);
+        goTo("chat");
+        return;
+      }
 
-      // Fast-path: switch immediately so UI is responsive (0ms lag),
-      // then load transcript asynchronously into the active conversation.
       const active = runs.find((r) => r.runId === activeRunId);
       const targetRun = mintRun(name);
       targetRun.title = `${name} Chat`;
@@ -823,41 +825,13 @@ function Layout({
         setActiveRunId(targetRun.runId);
       }
       goTo("chat");
-
-      // Lazy-load history without freezing navigation
-      void (async () => {
-        try {
-          const profileSessions = await window.hermesAPI.listCachedSessions(1);
-          if (profileSessions && profileSessions.length > 0) {
-            const sid = profileSessions[0].id;
-            const historyItems = (await window.hermesAPI.getSessionMessages(
-              sid,
-            )) as DbHistoryItem[];
-            if (historyItems.length > 0) {
-              setRuns((prev) =>
-                patchRun(prev, targetRun.runId, {
-                  sessionId: sid,
-                  seed: dbItemsToChatMessages(historyItems),
-                }),
-              );
-            }
-          }
-        } catch {}
-      })();
     },
     [runs, activeRunId, goTo],
   );
 
   const handleOpenGroupChat = useCallback(
-    async (group: { id: string; name: string; memberIds: string[] }) => {
+    (group: { id: string; name: string; memberIds: string[] }) => {
       setActiveGroupChat(group);
-      if (group.memberIds && group.memberIds.length > 0) {
-        const leadBot = group.memberIds[0];
-        setActiveProfile(leadBot);
-        try {
-          await window.hermesAPI.setActiveProfile(leadBot);
-        } catch {}
-      }
       goTo("group-chat");
     },
     [goTo],
@@ -1252,6 +1226,7 @@ function Layout({
                   onChatWithBot={handleChatWithProfile}
                   onOpenGroupChat={handleOpenGroupChat}
                   currentGroupChatId={view === "group-chat" ? activeGroupChat?.id : null}
+                  activeBotProfile={view === "chat" ? runs.find((r) => r.runId === activeRunId)?.profile : null}
                   searchOpen={sidebarSearchOpen}
                   onSearchOpenChange={setSidebarSearchOpen}
                   scrollRootRef={sidebarChatScrollRef}

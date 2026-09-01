@@ -231,6 +231,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   onChatWithBot,
   onOpenGroupChat,
   currentGroupChatId,
+  activeBotProfile,
   searchOpen,
   onSearchOpenChange,
   scrollRootRef,
@@ -250,6 +251,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   onChatWithBot?: (profileName: string) => void;
   onOpenGroupChat?: (group: GroupChatRecord) => void;
   currentGroupChatId?: string | null;
+  activeBotProfile?: string | null;
   /** Scroll container owned by Layout; nearing its bottom loads the next page. */
   scrollRootRef: RefObject<HTMLDivElement | null>;
   /** Session search: when true, a filter input filters the session lists. */
@@ -640,15 +642,10 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   }, [open, sidebarTab, loadBotProfiles]);
 
   const handleOpenBotChat = useCallback(
-    async (profileId: string) => {
+    (profileId: string) => {
       onChatWithBot?.(profileId);
-      // Ensure the profile is selected and activated in UI & backend
-      try {
-        await window.hermesAPI.setActiveProfile(profileId);
-      } catch {}
-      void loadBotProfiles();
     },
-    [onChatWithBot, loadBotProfiles],
+    [onChatWithBot],
   );
 
   // While open: pick up background sessions (gateway, cron, other devices)
@@ -1352,7 +1349,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
               <span>Direct Messages</span>
             </div>
             {profiles.map((p) => {
-              const isCurrentActive = !currentGroupChatId && activeProfile === p.id;
+              const isCurrentActive = !currentGroupChatId && (activeBotProfile ? activeBotProfile === p.id : activeProfile === p.id);
               return (
                 <div
                   key={p.id}
