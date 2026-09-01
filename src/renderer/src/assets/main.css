@@ -3085,6 +3085,77 @@ body:has(.shell-vibrant),
   height: 38px;
 }
 
+.group-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.group-settings-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s ease;
+}
+
+.group-settings-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.group-avatar-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.group-avatar-btn:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.group-header-image {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.group-header-editable {
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s ease;
+}
+
+.group-header-editable:hover {
+  background: var(--bg-tertiary);
+}
+
+.group-rename-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.group-rename-input {
+  width: 200px;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 4px 8px;
+}
+
 .sidebar-group-chats-wrap {
   display: flex;
   flex-direction: column;

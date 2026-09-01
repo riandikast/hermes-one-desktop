@@ -225,7 +225,7 @@ export function invalidateSecretsCache(): void {
 export function readEnv(profile?: string): Record<string, string> {
   const cacheKey = `env:${profile || "default"}`;
   const cached = getCached<Record<string, string>>(cacheKey);
-  if (cached) return cached;
+  if (cached && Object.keys(cached).length > 0) return cached;
 
   const result: Record<string, string> = {};
 
