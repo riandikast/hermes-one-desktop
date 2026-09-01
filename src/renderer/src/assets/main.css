@@ -2936,7 +2936,7 @@ body:has(.shell-vibrant),
 }
 
 .sidebar-bots-icon-btn.active {
-  color: var(--accent);
+  color: var(--text-muted);
 }
 
 .sidebar-bots-dropdown-menu {
@@ -2974,6 +2974,172 @@ body:has(.shell-vibrant),
 .sidebar-bots-dropdown-item:hover {
   background: var(--accent);
   color: #fff;
+}
+
+/* ── Create Group Chat Modal (Official Style) ── */
+.create-group-chat-modal {
+  width: 440px;
+  max-width: 90vw;
+  background: var(--bg-elevated, #24242e);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.group-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+}
+
+.group-modal-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.group-modal-icon {
+  color: var(--accent);
+}
+
+.group-modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.group-modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.group-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.group-field-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.group-members-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.group-members-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.group-search-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.group-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-muted);
+}
+
+.group-search-input {
+  width: 100%;
+  padding-left: 30px;
+  font-size: 12.5px;
+}
+
+.group-bots-list {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  background: var(--bg-secondary);
+}
+
+.group-bot-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s ease;
+}
+
+.group-bot-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.group-bot-item.checked {
+  background: var(--bg-elevated);
+}
+
+.group-bot-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.group-bot-item-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.group-bot-item-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.group-bot-checkbox {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1.5px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  transition: all 0.15s ease;
+}
+
+.group-bot-checkbox.active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.group-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
 }
 
 .sidebar-bots-rail-list {
