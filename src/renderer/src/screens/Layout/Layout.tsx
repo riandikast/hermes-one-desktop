@@ -806,38 +806,44 @@ function Layout({
         await window.hermesAPI.setActiveProfile(name);
       } catch {}
 
-      // Find the most recent session for this specific bot profile
-      let latestSessionId: string | null = null;
-      let historyItems: DbHistoryItem[] = [];
-      try {
-        const profileSessions = await window.hermesAPI.listSessions(5);
-        if (profileSessions && profileSessions.length > 0) {
-          latestSessionId = profileSessions[0].id;
-          historyItems = (await window.hermesAPI.getSessionMessages(
-            latestSessionId,
-          )) as DbHistoryItem[];
-        }
-      } catch {}
-
+      // Fast-path: switch immediately so UI is responsive (0ms lag),
+      // then load transcript asynchronously into the active conversation.
       const active = runs.find((r) => r.runId === activeRunId);
-      if (latestSessionId && historyItems.length > 0) {
-        const resumedRun = mintRun(name, dbItemsToChatMessages(historyItems));
-        resumedRun.sessionId = latestSessionId;
-        resumedRun.title = `${name} Chat`;
-        setRuns((prev) => openSessionRunTransition(prev, activeRunId, resumedRun).runs);
-        setActiveRunId(resumedRun.runId);
-      } else if (active && isScratchRun(active)) {
+      const targetRun = mintRun(name);
+      targetRun.title = `${name} Chat`;
+
+      if (active && isScratchRun(active)) {
         setRuns((prev) =>
           prev.map((r) =>
-            r.runId === active.runId ? { ...r, profile: name } : r,
+            r.runId === active.runId ? { ...r, profile: name, title: `${name} Chat` } : r,
           ),
         );
       } else {
-        const run = mintRun(name);
-        setRuns((prev) => [...prev, run]);
-        setActiveRunId(run.runId);
+        setRuns((prev) => [...prev, targetRun]);
+        setActiveRunId(targetRun.runId);
       }
       goTo("chat");
+
+      // Lazy-load history without freezing navigation
+      void (async () => {
+        try {
+          const profileSessions = await window.hermesAPI.listCachedSessions(1);
+          if (profileSessions && profileSessions.length > 0) {
+            const sid = profileSessions[0].id;
+            const historyItems = (await window.hermesAPI.getSessionMessages(
+              sid,
+            )) as DbHistoryItem[];
+            if (historyItems.length > 0) {
+              setRuns((prev) =>
+                patchRun(prev, targetRun.runId, {
+                  sessionId: sid,
+                  seed: dbItemsToChatMessages(historyItems),
+                }),
+              );
+            }
+          }
+        } catch {}
+      })();
     },
     [runs, activeRunId, goTo],
   );
