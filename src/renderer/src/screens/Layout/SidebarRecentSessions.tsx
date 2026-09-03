@@ -51,6 +51,7 @@ interface GroupChatRecord {
   memberIds: string[];
   createdAt: number;
   lastMessage?: string;
+  avatar?: string | null;
 }
 
 const GROUP_CHATS_STORAGE_KEY = "hermes.bots.groupChats";
@@ -304,6 +305,25 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       localStorage.setItem("hermes.activityToasts", String(activityToasts));
     } catch {}
   }, [activityToasts]);
+
+  useEffect(() => {
+    const handleGroupChatUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        groupId: string;
+        patch: { name?: string; avatar?: string | null };
+      }>).detail;
+      if (!detail?.groupId || !detail.patch) return;
+      setGroupChats((prev) => {
+        const next = prev.map((group) =>
+          group.id === detail.groupId ? { ...group, ...detail.patch } : group,
+        );
+        saveStoredGroupChats(next);
+        return next;
+      });
+    };
+    window.addEventListener("hermes-group-chat-update", handleGroupChatUpdate);
+    return () => window.removeEventListener("hermes-group-chat-update", handleGroupChatUpdate);
+  }, []);
 
   useEffect(() => {
     if (!showBotNewMenu) return;
@@ -1320,9 +1340,13 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
                       }}
                     >
                       <div className="sidebar-bot-avatar-wrap">
-                        <div className="sidebar-group-avatar">
-                          <Users size={14} />
-                        </div>
+                        {g.avatar ? (
+                                                  <img src={g.avatar} alt="" className="sidebar-group-avatar-image" />
+                                                ) : (
+                                                  <div className="sidebar-group-avatar">
+                                                    <Users size={14} />
+                                                  </div>
+                                                )}
                       </div>
                       <div className="sidebar-bot-info">
                         <div className="sidebar-bot-name-row">

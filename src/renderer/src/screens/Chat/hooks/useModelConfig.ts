@@ -100,50 +100,77 @@ function groupModelsByProvider(
   models: (SavedModelForPicker & { providerLabel?: string })[],
 ): ModelGroup[] {
   const groupMap = new Map<string, ModelGroup>();
+  // One bucket per provider, like the Providers page: an unlabelled custom row
+  // whose base URL belongs to a named provider merges into that provider's
+  // group instead of spawning a duplicate "OpenAI Compatible / Local" bucket.
+  const labelGroupByBaseUrl = new Map<string, string>();
+  const seenModelIds = new Set<string>();
+  const normUrl = (u: string): string =>
+    (u || "").trim().replace(/\/+$/, "").toLowerCase();
+
+  const pushModel = (
+    groupKey: string,
+    m: SavedModelForPicker & { providerLabel?: string },
+  ): void => {
+    if (m.id) {
+      if (seenModelIds.has(m.id)) return;
+      seenModelIds.add(m.id);
+    }
+    groupMap.get(groupKey)!.models.push({
+      id: m.id,
+      provider: m.provider,
+      model: m.model,
+      label: m.name,
+      baseUrl: m.baseUrl || "",
+    });
+  };
+
+  // Pass 1: named custom providers get their own group.
   for (const m of models) {
-    // Exactly like Providers.tsx: if provider is custom and has providerLabel, group by label
-    if (m.provider === "custom" && m.providerLabel) {
-      const mapKey = `label:${m.providerLabel}`;
-      if (!groupMap.has(mapKey)) {
-        groupMap.set(mapKey, {
-          provider: "custom",
-          providerLabel: m.providerLabel,
-          models: [],
-        });
-      }
-      groupMap.get(mapKey)!.models.push({
-        id: m.id,
-        provider: m.provider,
-        model: m.model,
-        label: m.name,
-        baseUrl: m.baseUrl || "",
+    if (m.provider !== "custom" || !m.providerLabel) continue;
+    const mapKey = `label:${m.providerLabel}`;
+    if (!groupMap.has(mapKey)) {
+      groupMap.set(mapKey, {
+        provider: "custom",
+        providerLabel: m.providerLabel,
+        models: [],
       });
-    } else {
-      // Standard brand / unlabelled model: group by brand
-      const brand = displayBrandFromConfig(m.provider, m.baseUrl || "");
-      const label = PROVIDERS.labels[brand] || brand;
-      const mapKey = `brand:${brand}`;
-      if (!groupMap.has(mapKey)) {
-        groupMap.set(mapKey, {
-          provider: brand,
-          providerLabel: label,
-          models: [],
-        });
+      const b = normUrl(m.baseUrl || "");
+      if (b) labelGroupByBaseUrl.set(b, mapKey);
+    }
+    pushModel(mapKey, m);
+  }
+
+  // Pass 2: everything else groups by brand; unlabelled custom rows whose
+  // base URL belongs to a named provider merge into that provider's group.
+  for (const m of models) {
+    if (m.provider === "custom" && m.providerLabel) continue;
+    if (m.provider === "custom") {
+      const labelKey = labelGroupByBaseUrl.get(normUrl(m.baseUrl || ""));
+      if (labelKey) {
+        pushModel(labelKey, m);
+        continue;
       }
-      groupMap.get(mapKey)!.models.push({
-        id: m.id,
-        provider: m.provider,
-        model: m.model,
-        label: m.name,
-        baseUrl: m.baseUrl || "",
+    }
+    const brand = displayBrandFromConfig(m.provider, m.baseUrl || "");
+    const label = PROVIDERS.labels[brand] || brand;
+    const mapKey = `brand:${brand}`;
+    if (!groupMap.has(mapKey)) {
+      groupMap.set(mapKey, {
+        provider: brand,
+        providerLabel: label,
+        models: [],
       });
     }
+    pushModel(mapKey, m);
   }
+
   return Array.from(groupMap.values());
 }
 
 export function useModelConfig(profile?: string): UseModelConfigResult {
   const { t } = useI18n();
+  const modelProfile = profile && profile !== "default" ? undefined : profile;
   const [currentModel, setCurrentModel] = useState("");
   const [currentProvider, setCurrentProvider] = useState("auto");
   const [currentBaseUrl, setCurrentBaseUrl] = useState("");
@@ -172,7 +199,7 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
   const reload = useCallback(async (): Promise<void> => {
     const seq = ++loadSeqRef.current;
     const [mc, savedModels] = await Promise.all([
-      window.hermesAPI.getModelConfig(profile),
+      window.hermesAPI.getModelConfig(modelProfile),
       window.hermesAPI.listModels(),
     ]);
     if (seq !== loadSeqRef.current) return;
@@ -182,9 +209,9 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
       setCurrentBaseUrl(mc.baseUrl);
     }
     setSavedModels(savedModels);
-  }, [profile]);
+  }, [modelProfile]);
 
-  // Initial load + reload whenever the profile changes (canonical
+  // Initial load + reload whenever the profile changes
   // load-on-mount; setState happens inside `reload` via an awaited IPC call).
   useEffect(() => {
     reload();
@@ -315,9 +342,9 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
           provider,
           model,
           effectiveBaseUrl,
-          profile,
+          modelProfile,
         );
-        const mc = await window.hermesAPI.getModelConfig(profile);
+        const mc = await window.hermesAPI.getModelConfig(modelProfile);
         if (seq !== loadSeqRef.current) return;
         setCurrentModel(mc.model);
         setCurrentProvider(mc.provider);
@@ -327,7 +354,7 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
         throw err;
       }
     },
-    [profile, reload],
+    [modelProfile, reload],
   );
 
   const displayModel = useMemo(

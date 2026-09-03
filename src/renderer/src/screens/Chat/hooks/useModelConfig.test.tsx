@@ -69,6 +69,12 @@ describe("useModelConfig", () => {
           model: "gpt-5.5",
           baseUrl: "",
         })),
+        // The picker hides provider groups whose key isn't set; supply the
+        // keys the fixtures below rely on (DeepSeek + Hermes One).
+        getEnv: vi.fn(async () => ({
+          DEEPSEEK_API_KEY: "test-key",
+          HERMESONE_API_KEY: "test-key",
+        })),
         listModels: vi.fn(async () => savedModels),
         onConnectionConfigChanged: vi.fn(() => vi.fn()),
         onModelLibraryChanged: vi.fn((callback: () => void) => {

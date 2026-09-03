@@ -128,6 +128,7 @@ function Layout({
     id: string;
     name: string;
     memberIds: string[];
+    avatar?: string | null;
   } | null>(null);
   const [resumingSessionId, setResumingSessionId] = useState<string | null>(
     null,
@@ -830,11 +831,25 @@ function Layout({
   );
 
   const handleOpenGroupChat = useCallback(
-    (group: { id: string; name: string; memberIds: string[] }) => {
+    (group: { id: string; name: string; memberIds: string[]; avatar?: string | null }) => {
       setActiveGroupChat(group);
       goTo("group-chat");
     },
     [goTo],
+  );
+
+  const handleGroupChatUpdate = useCallback(
+    (groupId: string, patch: { name?: string; avatar?: string | null }) => {
+      setActiveGroupChat((current) =>
+        current?.id === groupId ? { ...current, ...patch } : current,
+      );
+      window.dispatchEvent(
+        new CustomEvent("hermes-group-chat-update", {
+          detail: { groupId, patch },
+        }),
+      );
+    },
+    [],
   );
 
   const handleActivateRun = useCallback(
@@ -1461,7 +1476,10 @@ function Layout({
                 groupId={activeGroupChat.id}
                 groupName={activeGroupChat.name}
                 memberIds={activeGroupChat.memberIds}
+                initialAvatar={activeGroupChat.avatar}
                 onBack={() => goTo("chat")}
+                onGroupNameChange={(name) => handleGroupChatUpdate(activeGroupChat.id, { name })}
+                onGroupImageChange={(avatar) => handleGroupChatUpdate(activeGroupChat.id, { avatar })}
               />
             </div>
           )}

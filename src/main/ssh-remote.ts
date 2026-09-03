@@ -941,21 +941,30 @@ export async function sshReadEnv(
   config: SshConfig,
   profile?: string,
 ): Promise<Record<string, string>> {
-  const content = await sshReadFile(config, remoteEnvPath(profile));
+  const [content, defaultContent] = await Promise.all([
+    sshReadFile(config, remoteEnvPath(profile)),
+    profile && profile !== "default"
+      ? sshReadFile(config, remoteEnvPath("default"))
+      : Promise.resolve(""),
+  ]);
   const result: Record<string, string> = {};
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("#") || !trimmed.includes("=")) continue;
-    const eqIdx = trimmed.indexOf("=");
-    const k = trimmed.substring(0, eqIdx).trim();
-    let v = trimmed.substring(eqIdx + 1).trim();
-    if (
-      (v.startsWith('"') && v.endsWith('"')) ||
-      (v.startsWith("'") && v.endsWith("'"))
-    )
-      v = v.slice(1, -1);
-    if (v) result[k] = v;
-  }
+  const parseEnv = (source: string): void => {
+    for (const line of source.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      const k = trimmed.substring(0, eqIdx).trim();
+      let v = trimmed.substring(eqIdx + 1).trim();
+      if (
+        (v.startsWith('"') && v.endsWith('"')) ||
+        (v.startsWith("'") && v.endsWith("'"))
+      )
+        v = v.slice(1, -1);
+      if (v) result[k] = v;
+    }
+  };
+  parseEnv(defaultContent);
+  parseEnv(content);
   // Home Assistant has accumulated three naming conventions across hermes
   // versions: HASS_* (what gateway/config.py currently reads), HOMEASSISTANT_*
   // (legacy), and HA_* (older desktop builds). Mirror all three so the UI

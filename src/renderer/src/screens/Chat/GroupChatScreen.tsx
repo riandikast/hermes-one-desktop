@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Users, Bot, Settings, X, Check } from "../../assets/icons";
+import { Send, Users, Bot, X, Check } from "../../assets/icons";
 import { ArrowLeft, ImagePlus } from "lucide-react";
 import ProfileAvatar from "../../components/common/ProfileAvatar";
 
@@ -15,6 +15,7 @@ interface GroupChatScreenProps {
   groupId: string;
   groupName: string;
   memberIds: string[];
+  initialAvatar?: string | null;
   onBack?: () => void;
   onGroupNameChange?: (newName: string) => void;
   onGroupImageChange?: (dataUrl: string | null) => void;
@@ -40,11 +41,12 @@ export function GroupChatScreen({
   groupId,
   groupName,
   memberIds,
+  initialAvatar,
   onBack,
   onGroupNameChange,
   onGroupImageChange,
 }: GroupChatScreenProps): React.JSX.Element {
-  const [meta, setMeta] = useState(() => loadGroupMeta()[groupId] || {});
+  const [meta, setMeta] = useState(() => loadGroupMeta()[groupId] || { image: initialAvatar });
   const [messages, setMessages] = useState<GroupMessage[]>(() => {
     try {
       const stored = localStorage.getItem(`hermes.groupChat.log.${groupId}`);
@@ -55,7 +57,6 @@ export function GroupChatScreen({
   });
   const [draft, setDraft] = useState("");
   const [isResponding, setIsResponding] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState(groupName);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -245,9 +246,6 @@ export function GroupChatScreen({
               <X size={16} />
             </button>
           )}
-          <button type="button" className="btn-ghost group-settings-btn" onClick={() => setShowSettings(!showSettings)} title="Group settings">
-            <Settings size={16} />
-          </button>
         </div>
       </div>
 

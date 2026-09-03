@@ -270,7 +270,7 @@ export function setEnvValue(
   validateEnvEntry(key, value);
 
   const { envFile } = profilePaths(profile);
-  invalidateCache(`env:${profile || "default"}`);
+  invalidateCache("env:");
   if (key === "API_SERVER_KEY") invalidateCache("apiServerKey:");
 
   if (!existsSync(envFile)) {

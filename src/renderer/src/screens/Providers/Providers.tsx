@@ -242,8 +242,11 @@ function Providers({
       .ensureHermesOneKey(profile)
       .then(async (r) => {
         if (r.status !== "created" || cancelled) return;
-        const envData = await window.hermesAPI.getEnv(profile);
-        if (!cancelled) setEnv(envData);
+        const [envData, defaultEnv] = await Promise.all([
+          window.hermesAPI.getEnv(profile),
+          window.hermesAPI.getEnv("default"),
+        ]);
+        if (!cancelled) setEnv({ ...defaultEnv, ...envData });
       })
       .catch(() => {});
     return () => {
@@ -273,12 +276,13 @@ function Providers({
   const persistedCustomUrl = useRef(false);
 
   const loadConfig = useCallback(async (): Promise<void> => {
-    const [envData, mc, pool] = await Promise.all([
+    const [envData, defaultEnv, mc, pool] = await Promise.all([
       window.hermesAPI.getEnv(profile),
+      window.hermesAPI.getEnv("default"),
       window.hermesAPI.getModelConfig(profile),
       window.hermesAPI.getCredentialPool(),
     ]);
-    setEnv(envData);
+    setEnv({ ...defaultEnv, ...envData });
     setModelProvider(displayProviderFromConfig(mc.provider, mc.baseUrl));
     setModelName(mc.model);
     setModelBaseUrl(mc.baseUrl);
