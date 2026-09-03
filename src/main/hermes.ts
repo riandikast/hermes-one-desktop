@@ -1682,7 +1682,7 @@ function sendMessageViaRuns(
   const bodyObj: Record<string, unknown> = {
     model: mc.model || "hermes-agent",
     input: message,
-    conversation_history: apiHistory(history),
+    ...(resumeSessionId ? {} : { conversation_history: apiHistory(history) }),
   };
   const reasoningEffort = reasoningEffortForProfile(profile);
   if (reasoningEffort) bodyObj.reasoning_effort = reasoningEffort;
