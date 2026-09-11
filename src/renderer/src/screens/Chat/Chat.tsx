@@ -203,6 +203,14 @@ interface ChatProps {
 
   initialContextFolders?: string[];
 
+  /**
+   * SUBAGENT watch window: this run is a delegated child session opened from
+   * history. It attaches lazily so the gateway mirrors the child's live events
+   * into it (see ChatRun.watchChild).
+   */
+
+  watchChild?: boolean;
+
   /** Whether this run is the one currently shown (drives keyboard handlers). */
 
   active?: boolean;
@@ -276,6 +284,8 @@ function Chat({
   onTitleChange,
 
   agentAppearance,
+
+  watchChild,
 
 }: ChatProps): React.JSX.Element {
 
@@ -1706,6 +1716,8 @@ function Chat({
     profile,
 
     provider: chatCurrentProvider,
+
+    watchChild,
 
     setHermesSessionId,
 

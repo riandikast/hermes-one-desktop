@@ -10,7 +10,10 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 import type { DashboardRpcEvent } from "../dashboardGatewayClient";
-import { useDashboardChatTransport } from "./useDashboardChatTransport";
+import {
+  ensureDashboardRuntimeSession,
+  useDashboardChatTransport,
+} from "./useDashboardChatTransport";
 import type { ActiveTurn, ChatMessage, UsageState } from "../types";
 
 type SetUsageMock = Mock<(value: SetStateAction<UsageState | null>) => void>;
@@ -1061,5 +1064,71 @@ describe("useDashboardChatTransport approval prompts", () => {
     expect(
       calls.find((call) => call.method === "approval.respond")?.params,
     ).toMatchObject({ choice: "deny" });
+  });
+});
+
+describe("ensureDashboardRuntimeSession — subagent watch attach", () => {
+  const makeClient = () => {
+    const calls: Array<{ method: string; params: Record<string, unknown> }> =
+      [];
+    const client = {
+      request: vi.fn(
+        async (method: string, params: Record<string, unknown> = {}) => {
+          calls.push({ method, params });
+          if (method === "session.resume") {
+            // The gateway's lazy-resume reply: a live (runtime) session id plus
+            // the stored id it attached to, and the child liveness flags.
+            return {
+              session_id: "live-watch",
+              resumed: "stored-child",
+              running: true,
+              status: "streaming",
+            };
+          }
+          return {};
+        },
+      ),
+    };
+    return { calls, client };
+  };
+
+  const resumeCall = (calls: Array<{ method: string; params: unknown }>) =>
+    calls.find((call) => call.method === "session.resume");
+
+  // A delegated child runs inside its parent's turn, so its window must attach
+  // WITHOUT building an agent -- otherwise the gateway's child-mirror refuses to
+  // stream the child's live events into it and the window looks finished.
+  it("sends lazy:true for a watch window", async () => {
+    const { calls, client } = makeClient();
+
+    const result = await ensureDashboardRuntimeSession({
+      client,
+      lazy: true,
+      messages: [],
+      storedSessionId: "stored-child",
+    });
+
+    expect(resumeCall(calls)?.params).toMatchObject({
+      session_id: "stored-child",
+      lazy: true,
+    });
+    // Attached, not created: the stored session must not be duplicated.
+    expect(result.created).toBe(false);
+    expect(result.runtimeSessionId).toBe("live-watch");
+    expect(result.storedSessionId).toBe("stored-child");
+  });
+
+  it("omits lazy for an ordinary eager resume", async () => {
+    const { calls, client } = makeClient();
+
+    await ensureDashboardRuntimeSession({
+      client,
+      messages: [],
+      storedSessionId: "stored-child",
+    });
+
+    const params = resumeCall(calls)?.params as Record<string, unknown>;
+    expect(params.session_id).toBe("stored-child");
+    expect(params).not.toHaveProperty("lazy");
   });
 });

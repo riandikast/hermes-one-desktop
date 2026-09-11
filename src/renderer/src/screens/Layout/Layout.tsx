@@ -1075,8 +1075,12 @@ function Layout({
           const cached = await window.hermesAPI.listCachedSessions(200);
           const found = cached.find((s) => s.id === sessionId);
           if (found?.title) run.title = found.title;
+          // A session with a parent is a SUBAGENT (delegated child) run. Mark the
+          // tab so the chat attaches LAZILY and receives the live mirror -- see
+          // ChatRun.watchChild.
+          if (found?.parentSessionId) run.watchChild = true;
         } catch {
-          /* title is best-effort */
+          /* title / lineage is best-effort */
         }
         setRuns(
           (prev) => openSessionRunTransition(prev, activeRunId, run).runs,

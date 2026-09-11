@@ -20,6 +20,14 @@ export interface ChatRun {
   seed?: ChatMessage[];
   /** Workspace context folders to pre-attach when mounting. */
   initialContextFolders?: string[];
+  /**
+   * True when this run is a SUBAGENT (delegated child) session opened to watch.
+   * Such a run attaches LAZILY: a delegated child executes inside its parent's
+   * turn, and the gateway only mirrors the child's live events into a session
+   * that does NOT own a real agent. An eager resume builds an agent and the
+   * mirror then refuses to feed it, so the window stays blank until reopened.
+   */
+  watchChild?: boolean;
   /** Target view if this tab represents a pinned tool or destination page (e.g. "kanban", "knowledge"). */
   targetView?: string;
   /** When set, this tab is a standalone file editor (VS Code style): the top

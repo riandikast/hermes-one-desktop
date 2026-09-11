@@ -107,6 +107,11 @@ interface EnsureDashboardRuntimeSessionParams {
   knowledgeIndex?: string;
   model?: string;
   provider?: string;
+  /** Attach as a LAZY watch window (gateway `session.resume` `lazy: true`):
+   *  registers the live session WITHOUT building an agent, so a delegated
+   *  child's live-mirror events can stream into it. The session upgrades to a
+   *  real agent on the first `prompt.submit`. */
+  lazy?: boolean;
 }
 
 interface EnsureDashboardRuntimeSessionResult {
@@ -121,6 +126,12 @@ interface UseDashboardChatTransportArgs {
   connectionMode: DashboardConnectionMode;
   enabled: boolean;
   fallbackOnUnavailable: boolean;
+  /**
+   * SUBAGENT watch window: resume the session LAZILY so the gateway mirrors the
+   * child's live events into this window. An eager resume builds a real agent,
+   * and the child-mirror refuses to feed a session that owns one.
+   */
+  watchChild?: boolean;
   hermesSessionId: string | null;
   messages: ChatMessage[];
   sessionModelOverrideRef?: React.MutableRefObject<SessionModelOverride | undefined>;
@@ -305,6 +316,7 @@ export async function ensureDashboardRuntimeSession(
         {
           session_id: stored,
           cols,
+          ...(params.lazy ? { lazy: true } : {}),
           ...(params.profile ? { profile: params.profile } : {}),
         },
       );
@@ -1021,6 +1033,7 @@ export function useDashboardChatTransport({
   knowledgeBundles,
   planMode,
   rawSystemPrompt,
+  watchChild,
   setHermesSessionId,
   setIsLoading,
   setMessages,
@@ -2366,6 +2379,11 @@ export function useDashboardChatTransport({
           knowledgeIndex: systemParts.join("\n\n"),
           model: selectedModel,
           provider: selectedProvider,
+          // Subagent watch window: attach LAZILY so the gateway mirrors the
+          // child's live events here. An eager resume builds a real agent, and
+          // the child-mirror refuses to feed a session that owns one -- the
+          // window would then stay blank until reopened.
+          lazy: watchChild === true,
         });
 
         if (stored && response.created) {
@@ -2411,7 +2429,7 @@ export function useDashboardChatTransport({
 
       return targetSessionId;
     },
-    [activeTurnRef, contextFolder, profile, setHermesSessionId],
+    [activeTurnRef, contextFolder, profile, setHermesSessionId, watchChild],
   );
 
   const ensureRuntimeSession = useCallback(
