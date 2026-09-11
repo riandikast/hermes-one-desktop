@@ -1071,23 +1071,26 @@ describe("ensureDashboardRuntimeSession — subagent watch attach", () => {
   const makeClient = () => {
     const calls: Array<{ method: string; params: Record<string, unknown> }> =
       [];
+    // Typed generically to match DashboardPromptClient.request<T>, which the
+    // helper accepts.
     const client = {
-      request: vi.fn(
-        async (method: string, params: Record<string, unknown> = {}) => {
-          calls.push({ method, params });
-          if (method === "session.resume") {
-            // The gateway's lazy-resume reply: a live (runtime) session id plus
-            // the stored id it attached to, and the child liveness flags.
-            return {
-              session_id: "live-watch",
-              resumed: "stored-child",
-              running: true,
-              status: "streaming",
-            };
-          }
-          return {};
-        },
-      ),
+      request: <T,>(method: string, params: unknown = {}): Promise<T> => {
+        calls.push({
+          method,
+          params: (params ?? {}) as Record<string, unknown>,
+        });
+        if (method === "session.resume") {
+          // The gateway's lazy-resume reply: a live (runtime) session id plus
+          // the stored id it attached to, and the child liveness flags.
+          return Promise.resolve({
+            session_id: "live-watch",
+            resumed: "stored-child",
+            running: true,
+            status: "streaming",
+          } as unknown as T);
+        }
+        return Promise.resolve({} as unknown as T);
+      },
     };
     return { calls, client };
   };
@@ -1116,6 +1119,8 @@ describe("ensureDashboardRuntimeSession — subagent watch attach", () => {
     expect(result.created).toBe(false);
     expect(result.runtimeSessionId).toBe("live-watch");
     expect(result.storedSessionId).toBe("stored-child");
+    // The busy indicator for a watch window is seeded from this flag.
+    expect(result.running).toBe(true);
   });
 
   it("omits lazy for an ordinary eager resume", async () => {

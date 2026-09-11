@@ -53,6 +53,11 @@ interface SessionResponse {
   resumed?: string;
   session_id: string;
   stored_session_id?: string | null;
+  /** Liveness flags from a LAZY/watch resume. For a subagent watch window the
+   *  gateway reports the delegated child's run state here (`_child_run_active`),
+   *  which is the only way the renderer can see that a child is busy. */
+  running?: boolean;
+  status?: string;
 }
 
 interface ModelOptionsResponse {
@@ -118,6 +123,8 @@ interface EnsureDashboardRuntimeSessionResult {
   created: boolean;
   runtimeSessionId: string;
   storedSessionId: string;
+  /** True while the gateway reports the child still running (watch windows). */
+  running?: boolean;
 }
 
 interface UseDashboardChatTransportArgs {
@@ -327,6 +334,7 @@ export async function ensureDashboardRuntimeSession(
         created: false,
         runtimeSessionId: resumed.session_id,
         storedSessionId: resumed.stored_session_id || resumed.resumed || stored,
+        running: resumed.running === true,
       };
     } catch (err) {
       if (!isDashboardSessionNotFoundError(err)) {
@@ -2386,6 +2394,22 @@ export function useDashboardChatTransport({
           lazy: watchChild === true,
         });
 
+        // SUBAGENT WATCH WINDOW: a delegated child runs INSIDE its parent's
+        // turn, so its session never shows up in `session.active_list` as
+        // working/waiting and the foreign-turn poller below cannot see it --
+        // the window looked like a finished prompt until the first mirrored
+        // event happened to land (the "waiting subagent looks done" bug). The
+        // lazy resume reports the child's run state, so seed the busy indicator
+        // from that. Arm the same stall / quiet-finalize guards a local send
+        // uses, otherwise nothing would ever clear the spinner if the child
+        // finishes without emitting a mirrored completion.
+        if (watchChild && response.running) {
+          setIsLoading(true);
+          resetStallTimer();
+          resetQuietFinalize();
+          lastLocalActivityAtRef.current = Date.now();
+        }
+
         if (stored && response.created) {
           pendingRecoveredContinuationRef.current =
             dashboardContinuationItemsFromTranscript(messagesRef.current, {
@@ -2429,7 +2453,16 @@ export function useDashboardChatTransport({
 
       return targetSessionId;
     },
-    [activeTurnRef, contextFolder, profile, setHermesSessionId, watchChild],
+    [
+      activeTurnRef,
+      contextFolder,
+      profile,
+      resetQuietFinalize,
+      resetStallTimer,
+      setHermesSessionId,
+      setIsLoading,
+      watchChild,
+    ],
   );
 
   const ensureRuntimeSession = useCallback(
