@@ -2034,6 +2034,15 @@ const hermesAPI = {
     lines?: number,
   ): Promise<{ content: string; path: string }> =>
     ipcRenderer.invoke("read-logs", logFile, lines),
+
+  // Mid-turn dangerous-command approval. Main owns the native dialog (and the
+  // taskbar flash); this renderer only needs the user's choice, because the
+  // dashboard chat transport answers `approval.respond` over its own socket.
+  promptApproval: (opts: {
+    choices?: string[];
+    command?: string;
+    description?: string;
+  }): Promise<string> => ipcRenderer.invoke("approval-prompt", opts),
 };
 
 if (process.contextIsolated) {

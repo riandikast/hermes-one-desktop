@@ -321,3 +321,96 @@ describe("applyDashboardStreamEvent — message.complete text reconciliation", (
     );
   });
 });
+
+describe("applyDashboardStreamEvent — clarify.request", () => {
+  const emptyState = (): DashboardEventState => ({
+    messages: [],
+    reasoningSegmentClosed: false,
+  });
+
+  const clarifyCards = (state: DashboardEventState) =>
+    state.messages.filter((m) => m.kind === "clarify");
+
+  // The gateway (tools/clarify_tool.py `_run_batch` -> tui_gateway
+  // `_clarify_block`) ALWAYS sends the batch shape when the callback accepts a
+  // `questions` kwarg — which the gateway bridge does. So every desktop clarify
+  // arrives as `{request_id, questions:[...]}` with no top-level `question`.
+  it("renders a card for the batch `questions` payload", () => {
+    const next = applyDashboardStreamEvent(emptyState(), {
+      type: "clarify.request",
+      payload: {
+        request_id: "r1",
+        questions: [
+          {
+            qid: "q1",
+            question: "How should I proceed?",
+            choices: ["Option A", "Option B"],
+            multi_select: false,
+          },
+        ],
+      },
+    });
+
+    const cards = clarifyCards(next);
+    expect(cards).toHaveLength(1);
+    const card = cards[0] as Extract<ChatMessage, { kind: "clarify" }>;
+    expect(card.question).toBe("How should I proceed?");
+    expect(card.choices).toEqual(["Option A", "Option B"]);
+    expect(card.requestId).toBe("r1");
+    // The qid must survive so the answer can be locked to this question.
+    expect(card.questionId).toBe("q1");
+  });
+
+  it("renders one independent card per batched question", () => {
+    const next = applyDashboardStreamEvent(emptyState(), {
+      type: "clarify.request",
+      payload: {
+        request_id: "r2",
+        questions: [
+          { qid: "q1", question: "First?", choices: ["a"] },
+          { qid: "q2", question: "Second?", choices: ["b"] },
+        ],
+      },
+    });
+
+    const cards = clarifyCards(next);
+    expect(cards).toHaveLength(2);
+    expect(cards.map((c) => (c as { questionId?: string }).questionId)).toEqual([
+      "q1",
+      "q2",
+    ]);
+  });
+
+  it("still renders the legacy single-question shape", () => {
+    const next = applyDashboardStreamEvent(emptyState(), {
+      type: "clarify.request",
+      payload: { request_id: "r3", question: "Pick one", choices: ["x", "y"] },
+    });
+
+    const cards = clarifyCards(next);
+    expect(cards).toHaveLength(1);
+    expect((cards[0] as { question: string }).question).toBe("Pick one");
+    expect(cards[0].id).toBe("clarify-r3");
+  });
+
+  it("de-dupes a replayed batch event onto the same cards", () => {
+    const event = {
+      type: "clarify.request",
+      payload: {
+        request_id: "r4",
+        questions: [{ qid: "q1", question: "Only once?", choices: [] }],
+      },
+    };
+    const once = applyDashboardStreamEvent(emptyState(), event);
+    const twice = applyDashboardStreamEvent(once, event);
+    expect(clarifyCards(twice)).toHaveLength(1);
+  });
+
+  it("ignores a clarify.request with no usable question", () => {
+    const next = applyDashboardStreamEvent(emptyState(), {
+      type: "clarify.request",
+      payload: { request_id: "r5" },
+    });
+    expect(clarifyCards(next)).toHaveLength(0);
+  });
+});

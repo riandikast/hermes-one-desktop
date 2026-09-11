@@ -94,6 +94,13 @@ export interface ClarifyMessage {
   kind: "clarify";
   role: "agent";
   requestId: string;
+  /**
+   * Batch clarify question id (`qid`). The gateway may ask several questions in
+   * one `clarify.request`; each is answered independently by sending this back
+   * as `question_id` on `clarify.respond`. Absent for a single-question ask
+   * (the whole request is then answered at once, with no `question_id`).
+   */
+  questionId?: string;
   question: string;
   choices: string[];
   answer?: string;

@@ -1,4 +1,5 @@
 import type { BrowserWindow } from "electron";
+import { dialog } from "electron";
 import { showPasswordDialog } from "./askpass";
 
 /**
@@ -19,6 +20,20 @@ import { showPasswordDialog } from "./askpass";
  */
 
 let parentWindowGetter: () => BrowserWindow | null = () => null;
+
+/**
+ * Presentation order for approval buttons (mirrors the official desktop:
+ * one-shot run first, then the scoped grants, then the destructive deny).
+ * Anything the backend did not offer is filtered out before rendering.
+ */
+const APPROVAL_CHOICE_ORDER = ["once", "session", "always", "deny"] as const;
+
+const APPROVAL_CHOICE_LABELS: Record<string, string> = {
+  once: "Run once",
+  session: "Allow for this session",
+  always: "Always allow",
+  deny: "Deny",
+};
 
 /** Wire the provider that returns the window to parent the modal to. Called
  *  once from index.ts after the main window is created. */
@@ -66,4 +81,87 @@ export async function promptSecretValue(
       : "Hermes needs a secret value",
   });
   return value ?? "";
+}
+
+/**
+ * Mid-turn dangerous-command / execute_code approval (`approval.request`).
+ *
+ * Unlike sudo/secret (sensitive values that must never reach scrollback), the
+ * approval decision itself is not a secret — what matters is that it is
+ * *visible and answerable*. The gateway parks the agent thread on this request
+ * until it is answered (approval timeout, ~5 min), so an unanswered prompt
+ * shows up to the user as a command that simply hangs.
+ *
+ * A native OS dialog is the right surface here: it appears even when the chat
+ * window is busy streaming or focused on another tile, it cannot be missed
+ * behind the transcript, and `flashFrame` marks the taskbar icon so the prompt
+ * is noticed when the app is in the background.
+ *
+ * Returns one of `once` | `session` | `always` | `deny`. Closing the dialog or
+ * pressing Escape resolves to `deny` — an unanswered approval must never be
+ * read as consent.
+ */
+export interface ApprovalPromptOptions {
+  /** Backend-offered choices; anything not offered is not shown. */
+  choices?: string[];
+  command?: string;
+  description?: string;
+}
+
+export async function promptApproval(
+  opts: ApprovalPromptOptions = {},
+): Promise<string> {
+  const parent = parentWindowGetter();
+  const requested = opts.choices?.length ? opts.choices : ["once", "deny"];
+  // Fixed presentation order (safe affirmative → scoped grants → deny) so the
+  // button row does not reshuffle between prompts.
+  const offered = APPROVAL_CHOICE_ORDER.filter((choice) =>
+    requested.includes(choice),
+  );
+  const choices = offered.length > 0 ? offered : ["once", "deny"];
+
+  const command = (opts.command ?? "").trim();
+  const description =
+    (opts.description ?? "").trim() ||
+    "The agent wants to run a command that needs your approval.";
+
+  // Escape / window-close resolve to the DENY entry, and the dialog's default
+  // (Enter) button is Deny too: a dangerous command must require a deliberate
+  // click, never a stray keypress.
+  const denyIndex = Math.max(0, choices.indexOf("deny"));
+
+  if (parent) {
+    try {
+      parent.flashFrame(true);
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  try {
+    const options = {
+      type: "warning" as const,
+      buttons: choices.map(
+        (choice) => APPROVAL_CHOICE_LABELS[choice] ?? choice,
+      ),
+      cancelId: denyIndex,
+      defaultId: denyIndex,
+      detail: command || undefined,
+      message: description,
+      noLink: true,
+      title: "Hermes needs your approval",
+    };
+    const result = parent
+      ? await dialog.showMessageBox(parent, options)
+      : await dialog.showMessageBox(options);
+    return choices[result.response] ?? "deny";
+  } finally {
+    if (parent) {
+      try {
+        parent.flashFrame(false);
+      } catch {
+        /* non-fatal */
+      }
+    }
+  }
 }

@@ -160,6 +160,57 @@ function isClarifyToolEvent(event: DashboardStreamEvent): boolean {
   return payloadToolName(event.payload).toLowerCase() === "clarify";
 }
 
+/** One question to render as an interactive clarify card. */
+interface ClarifyEntry {
+  /** Batch question id (`qid`) — empty for the legacy single-question shape. */
+  qid: string;
+  question: string;
+  choices: string[];
+}
+
+function clarifyEntries(payload: Record<string, unknown>): ClarifyEntry[] {
+  const entries: ClarifyEntry[] = [];
+  // Batch clarify: the gateway (tools/clarify_tool.py `_run_batch` →
+  // tui_gateway `_clarify_block`) emits
+  // `{request_id, questions:[{qid, question, choices, multi_select}]}` with NO
+  // top-level `question`. Reading only the single-question shape (below) hit
+  // the `!question.trim()` bail and dropped the WHOLE request, so no card
+  // rendered and the agent stayed blocked until the clarify timeout — the
+  // "clarify never shows up / stuck forever" bug.
+  if (Array.isArray(payload.questions)) {
+    for (const item of payload.questions) {
+      if (!isRecord(item)) continue;
+      const question = textFromPayload(item, "question", "message", "text");
+      if (!question.trim()) continue;
+      entries.push({
+        qid: textFromPayload(item, "qid", "question_id", "id"),
+        question,
+        choices: Array.isArray(item.choices)
+          ? item.choices
+              .map((choice) => stringValue(choice))
+              .filter((choice) => choice.trim())
+          : [],
+      });
+    }
+  }
+  if (entries.length > 0) return entries;
+
+  // Legacy single-question shape: `{request_id, question, choices}`.
+  const question = textFromPayload(payload, "question", "message", "text");
+  if (!question.trim()) return [];
+  return [
+    {
+      qid: "",
+      question,
+      choices: Array.isArray(payload.choices)
+        ? payload.choices
+            .map((choice) => stringValue(choice))
+            .filter((choice) => choice.trim())
+        : [],
+    },
+  ];
+}
+
 function appendClarifyRequest(
   messages: ReadonlyArray<ChatMessage>,
   payload: unknown,
@@ -167,36 +218,41 @@ function appendClarifyRequest(
 ): ChatMessage[] {
   if (!isRecord(payload)) return [...messages];
   const requestId = textFromPayload(payload, "request_id", "id");
-  const question = textFromPayload(payload, "question", "message", "text");
-  if (!question.trim()) return [...messages];
+  const fallbackId = `${now}-${messages.length}`;
+  const entries = clarifyEntries(payload);
+  if (entries.length === 0) return [...messages];
 
-  const choices = Array.isArray(payload.choices)
-    ? payload.choices
-        .map((choice) => stringValue(choice))
-        .filter((choice) => choice.trim())
-    : [];
-  const id = `clarify-${requestId || `${now}-${messages.length}`}`;
-  const existingIndex = messages.findIndex((message) => message.id === id);
-  // A `ClarifyMessage` (kind:"clarify") renders the interactive ClarifyCard
-  // (choice buttons / textarea / skip). Emitting a plain agent bubble here was
-  // the "clarify UI never pops up" bug — the question appeared as inert text
-  // with no way to answer it.
-  const card: ClarifyMessage = {
-    id,
-    kind: "clarify",
-    role: "agent",
-    requestId: requestId || `${now}-${messages.length}`,
-    question,
-    choices,
-  };
-  if (existingIndex >= 0) {
-    return [
-      ...messages.slice(0, existingIndex),
-      card,
-      ...messages.slice(existingIndex + 1),
-    ];
-  }
-  return [...messages, card];
+  let next = [...messages];
+  entries.forEach((entry, index) => {
+    // A single question keeps its historical id (`clarify-<requestId>`) so a
+    // duplicated/replayed event de-dupes onto the same card; each question of a
+    // batch is keyed by its qid so the cards stay independent.
+    const suffix = entry.qid ? `-${entry.qid}` : index > 0 ? `-${index}` : "";
+    const id = `clarify-${requestId || fallbackId}${suffix}`;
+    // A `ClarifyMessage` (kind:"clarify") renders the interactive ClarifyCard
+    // (choice buttons / textarea / skip). Emitting a plain agent bubble here was
+    // the "clarify UI never pops up" bug — the question appeared as inert text
+    // with no way to answer it.
+    const card: ClarifyMessage = {
+      id,
+      kind: "clarify",
+      role: "agent",
+      requestId: requestId || fallbackId,
+      ...(entry.qid ? { questionId: entry.qid } : {}),
+      question: entry.question,
+      choices: entry.choices,
+    };
+    const existingIndex = next.findIndex((message) => message.id === id);
+    next =
+      existingIndex >= 0
+        ? [
+            ...next.slice(0, existingIndex),
+            card,
+            ...next.slice(existingIndex + 1),
+          ]
+        : [...next, card];
+  });
+  return next;
 }
 
 function toolEventFromGatewayEvent(event: DashboardStreamEvent): ChatToolEvent {

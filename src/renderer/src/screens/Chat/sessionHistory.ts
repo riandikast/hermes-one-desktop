@@ -76,14 +76,130 @@ export function stripKnowledgeIndexHeader(text: string): string {
   return rest || trimmed;
 }
 
+/** Local structural guards (kept private to this module). */
+function shIsRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function shString(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "";
+}
+
+function shStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((item) => shString(item)).filter((item) => item.trim())
+    : [];
+}
+
+/** Batch clarify results carry `{responses:[{question, user_response}]}` and no
+ *  qid, so answers are keyed by question text. */
+function clarifyAnswersFromResult(content: string): Map<string, string> {
+  const answers = new Map<string, string>();
+  const trimmed = (content || "").trim();
+  if (!trimmed.startsWith("{")) return answers;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (!shIsRecord(parsed) || !Array.isArray(parsed.responses)) return answers;
+    for (const row of parsed.responses) {
+      if (!shIsRecord(row)) continue;
+      const question = shString(row.question).trim();
+      if (question) answers.set(question, shString(row.user_response).trim());
+    }
+  } catch {
+    // Not JSON — a single-question answer arrives as plain text.
+  }
+  return answers;
+}
+
+/**
+ * Re-render a persisted `clarify` tool call as resolved, read-only cards.
+ *
+ * The tool's `args` holds the question JSON and its `tool_result` holds the
+ * answer, so the generic tool rendering showed both as inert JSON: the question
+ * was unreadable and nothing indicated whether it had been answered. Folding
+ * the answer into a card is the reopened-session equivalent of the live
+ * ClarifyCard.
+ */
+function clarifyMessagesFromHistory(
+  item: DbHistoryItem,
+  resultContent: string,
+): ChatMessage[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(item.args || "");
+  } catch {
+    return [];
+  }
+  if (!shIsRecord(parsed)) return [];
+
+  const base = `db-clarify-${item.id}`;
+  if (Array.isArray(parsed.questions)) {
+    const answers = clarifyAnswersFromResult(resultContent);
+    const cards: ChatMessage[] = [];
+    parsed.questions.forEach((entry, index) => {
+      if (!shIsRecord(entry)) return;
+      const question = shString(entry.question);
+      if (!question.trim()) return;
+      const qid = shString(entry.qid);
+      const answer = answers.get(question.trim()) || "";
+      cards.push({
+        id: qid ? `${base}-${qid}` : `${base}-${index}`,
+        kind: "clarify",
+        role: "agent",
+        requestId: base,
+        ...(qid ? { questionId: qid } : {}),
+        question,
+        choices: shStringList(entry.choices),
+        resolved: true,
+        ...(answer ? { answer } : {}),
+      });
+    });
+    return cards;
+  }
+
+  const question = shString(parsed.question);
+  if (!question.trim()) return [];
+  const answer = (resultContent || "").trim();
+  return [
+    {
+      id: base,
+      kind: "clarify",
+      role: "agent",
+      requestId: base,
+      question,
+      choices: shStringList(parsed.choices),
+      resolved: true,
+      ...(answer ? { answer } : {}),
+    },
+  ];
+}
+
 export function dbItemsToChatMessages(
   items: ReadonlyArray<DbHistoryItem>,
 ): ChatMessage[] {
-  return items
-    .map((it): ChatMessage | null => {
-      switch (it.kind) {
-        case "user":
-          return {
+  // Persisted clarify calls render as cards, not raw tool rows (see
+  // clarifyMessagesFromHistory). Collect their call ids first so the paired
+  // tool_result row — the answer JSON — is folded in rather than shown as noise.
+  const clarifyCallIds = new Set<string>();
+  const resultByCallId = new Map<string, string>();
+  for (const it of items) {
+    if (it.callId && (it.name || "").toLowerCase() === "clarify") {
+      clarifyCallIds.add(it.callId);
+    }
+    if (it.kind === "tool_result" && it.callId) {
+      resultByCallId.set(it.callId, it.content || "");
+    }
+  }
+
+  return items.flatMap((it): ChatMessage[] => {
+    switch (it.kind) {
+      case "user":
+        return [
+          {
             id: `db-${it.id}`,
             role: "user",
             content: stripKnowledgeIndexHeader(it.content || ""),
@@ -93,9 +209,11 @@ export function dbItemsToChatMessages(
             ...(it.attachments && it.attachments.length > 0
               ? { attachments: it.attachments }
               : {}),
-          };
-        case "assistant":
-          return {
+          },
+        ];
+      case "assistant":
+        return [
+          {
             id: `db-${it.id}`,
             role: "agent",
             content: it.content || "",
@@ -109,25 +227,38 @@ export function dbItemsToChatMessages(
             ...(it.fileChanges && it.fileChanges.length > 0
               ? { fileChanges: it.fileChanges }
               : {}),
-          };
-        case "reasoning":
-          return {
+          },
+        ];
+      case "reasoning":
+        return [
+          {
             id: `db-r-${it.id}`,
             kind: "reasoning",
             role: "agent",
             text: it.text || "",
-          };
-        case "tool_call":
-          return {
+          },
+        ];
+      case "tool_call":
+        if ((it.name || "").toLowerCase() === "clarify") {
+          return clarifyMessagesFromHistory(
+            it,
+            resultByCallId.get(it.callId || "") || "",
+          );
+        }
+        return [
+          {
             id: `db-tc-${it.id}-${it.callId || "x"}`,
             kind: "tool_call",
             role: "agent",
             callId: it.callId || "",
             name: it.name || "",
             args: it.args || "",
-          };
-        case "tool_result":
-          return {
+          },
+        ];
+      case "tool_result":
+        if (it.callId && clarifyCallIds.has(it.callId)) return [];
+        return [
+          {
             id: `db-tr-${it.id}`,
             kind: "tool_result",
             role: "agent",
@@ -137,12 +268,12 @@ export function dbItemsToChatMessages(
             ...(it.attachments && it.attachments.length > 0
               ? { attachments: it.attachments }
               : {}),
-          };
-        default:
-          return null;
-      }
-    })
-    .filter((m): m is ChatMessage => m !== null);
+          },
+        ];
+      default:
+        return [];
+    }
+  });
 }
 
 /**

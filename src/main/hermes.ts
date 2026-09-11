@@ -47,7 +47,11 @@ import {
   getActiveProfileNameSync,
 } from "./utils";
 import { getProfilePort } from "./gateway-ports";
-import { promptSudoPassword, promptSecretValue } from "./gatewayPrompt";
+import {
+  promptApproval,
+  promptSudoPassword,
+  promptSecretValue,
+} from "./gatewayPrompt";
 import { getSecret } from "./secrets";
 import { readModels } from "./models";
 import { providerListSafe } from "./secrets";
@@ -1660,6 +1664,26 @@ function postRunStop(
   req.end();
 }
 
+/** Answer a pending /v1/runs approval (`POST /v1/runs/{run_id}/approval`). */
+function postRunApproval(
+  apiUrl: string,
+  profile: string | undefined,
+  runId: string,
+  choice: string,
+): void {
+  const url = `${apiUrl}/v1/runs/${encodeURIComponent(runId)}/approval`;
+  const requester = url.startsWith("https") ? https : http;
+  const bodyBuf = Buffer.from(JSON.stringify({ choice }), "utf-8");
+  const req = requester.request(url, {
+    method: "POST",
+    headers: getJsonApiHeaders(profile, bodyBuf),
+    timeout: 10_000,
+  });
+  req.on("error", () => undefined);
+  req.on("timeout", () => req.destroy());
+  req.end(bodyBuf);
+}
+
 function sendMessageViaRuns(
   message: string,
   cb: ChatCallbacks,
@@ -1811,11 +1835,28 @@ function sendMessageViaRuns(
     }
 
     if (eventName === "approval.request") {
-      // The current renderer's approval controls are wired to the legacy chat
-      // flow and only appear after a response finishes. A run pauses before it
-      // can finish, so fall back to the existing path instead of deadlocking
-      // the user on a hidden approval request.
-      stopRunAndFallback();
+      // The run is parked on this approval until it is answered (or the
+      // server-side approval timeout elapses). Showing a prompt and resolving
+      // it through the runs approval endpoint is the only way the run ever
+      // continues; the previous behavior aborted the stream, which left the
+      // approval unanswered and the run waiting out its full timeout.
+      const rawChoices = Array.isArray(raw.choices)
+        ? (raw.choices as unknown[]).filter(
+            (choice): choice is string => typeof choice === "string",
+          )
+        : undefined;
+      void promptApproval({
+        choices: rawChoices,
+        command: typeof raw.command === "string" ? raw.command : "",
+        description:
+          typeof raw.description === "string" ? raw.description : "",
+      })
+        .then((choice) => {
+          if (finished || fallbackStarted) return;
+          postRunApproval(apiUrl, profile, runId, choice);
+        })
+        .catch(() => undefined);
+      return;
     }
   }
 
@@ -2080,19 +2121,63 @@ async function sendMessageViaTuiGateway(
     }
 
     if (event.type === "approval.request") {
-      // Match the existing local chat posture: Hermes One does not expose a
-      // mid-stream approval dialog, so answer the dashboard protocol once and
-      // keep the transcript focused on the resulting tool call/result events.
-      void client
-        .request(
-          "approval.respond",
-          {
-            session_id: activeSessionId,
-            choice: "once",
-            all: false,
-          },
-          30_000,
-        )
+      // Dangerous-command / execute_code approval. The gateway blocks the
+      // agent thread on this request until it is answered (approval timeout
+      // ~5 min), so it must ALWAYS be surfaced and answered — silence reads to
+      // the user as a command that simply hangs.
+      //
+      // This previously auto-answered "once" and threw the reply away. When
+      // the gateway reported resolved: 0 (the request had already expired, or
+      // no pending entry matched) that was still a successful RPC, so nothing
+      // was shown and the agent kept waiting out its timeout.
+      const requestId =
+        typeof event.payload?.request_id === "string"
+          ? event.payload.request_id
+          : "";
+      const rawChoices = Array.isArray(event.payload?.choices)
+        ? event.payload.choices.filter(
+            (choice): choice is string => typeof choice === "string",
+          )
+        : undefined;
+
+      void promptApproval({
+        choices: rawChoices,
+        command:
+          typeof event.payload?.command === "string"
+            ? event.payload.command
+            : "",
+        description:
+          typeof event.payload?.description === "string"
+            ? event.payload.description
+            : "",
+      })
+        .then((choice) => {
+          // The turn can be cancelled while the dialog is open; answering then
+          // would target an approval that no longer belongs to this turn.
+          if (finished) return;
+          return client
+            .request<{ resolved?: number }>(
+              "approval.respond",
+              {
+                session_id: activeSessionId,
+                choice,
+                all: false,
+                ...(requestId ? { request_id: requestId } : {}),
+              },
+              300_000,
+            )
+            .then((response) => {
+              const resolved =
+                typeof response?.resolved === "number" ? response.resolved : 0;
+              if (resolved === 0 && !finished) {
+                // The answer landed nowhere: surface it instead of leaving the
+                // user watching a turn that cannot proceed.
+                cb.onToolProgress?.(
+                  `Approval "${choice}" was not applied — the request had already expired or been resolved.`,
+                );
+              }
+            });
+        })
         .catch((error) => {
           const message =
             error instanceof Error ? error.message : String(error);

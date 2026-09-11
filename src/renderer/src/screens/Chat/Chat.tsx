@@ -1559,13 +1559,17 @@ function Chat({
 
   const handleClarifyResolved = useCallback(
 
-    (requestId: string, answer: string) => {
+    (requestId: string, answer: string, questionId?: string) => {
 
       setMessages((prev) =>
 
         prev.map((m) =>
 
-          m.kind === "clarify" && m.requestId === requestId
+          m.kind === "clarify" &&
+          m.requestId === requestId &&
+          // A batch shares one requestId across all of its questions — resolve
+          // only the card that was actually answered.
+          (questionId ? m.questionId === questionId : true)
 
             ? { ...m, answer, resolved: true }
 

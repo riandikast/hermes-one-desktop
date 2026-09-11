@@ -2086,6 +2086,71 @@ export function useDashboardChatTransport({
         }
       }
 
+      if (event.type === "approval.request") {
+        // Dangerous-command / execute_code approval. The gateway parks the
+        // agent thread on this request until it is answered (approval timeout
+        // ~5 min), so it must ALWAYS be surfaced and answered. There was no
+        // branch for this event at all, so the prompt was dropped and the
+        // command looked like it simply hung.
+        const approval =
+          event.payload && typeof event.payload === "object"
+            ? (event.payload as {
+                request_id?: unknown;
+                command?: unknown;
+                description?: unknown;
+                choices?: unknown;
+              })
+            : {};
+        const approvalRequestId =
+          typeof approval.request_id === "string" ? approval.request_id : "";
+        const approvalChoices = Array.isArray(approval.choices)
+          ? approval.choices.filter(
+              (choice): choice is string => typeof choice === "string",
+            )
+          : undefined;
+
+        // Never block the stream reader on the dialog: the answer is sent
+        // asynchronously, and the turn keeps receiving events meanwhile.
+        void (async () => {
+          let choice = "deny";
+          try {
+            // Fail closed if the bridge is missing (older preload): an
+            // unanswered approval must never be read as consent, and leaving
+            // it unanswered is what caused the stall in the first place.
+            choice =
+              (await window.hermesAPI?.promptApproval?.({
+                choices: approvalChoices,
+                command:
+                  typeof approval.command === "string" ? approval.command : "",
+                description:
+                  typeof approval.description === "string"
+                    ? approval.description
+                    : "",
+              })) ?? "deny";
+          } catch {
+            choice = "deny";
+          }
+
+          const client = clientRef.current;
+          if (!client) return;
+          try {
+            await client.request("approval.respond", {
+              session_id: runtimeSessionIdRef.current ?? undefined,
+              choice,
+              all: false,
+              ...(approvalRequestId
+                ? { request_id: approvalRequestId }
+                : {}),
+            });
+          } catch {
+            // The turn can end (interrupt / timeout) while the dialog is open;
+            // the backend releases the approval on interrupt, so a failed
+            // respond is not actionable here.
+          }
+        })();
+        return;
+      }
+
       if (event.type === "clarify.request") {
         const payload =
           event.payload && typeof event.payload === "object"
@@ -2962,12 +3027,20 @@ export function useDashboardChatTransport({
   );
 
   const respondClarify = useCallback(
-    async (requestId: string, answer: string): Promise<boolean> => {
+    async (
+      requestId: string,
+      answer: string,
+      questionId?: string,
+    ): Promise<boolean> => {
       if (!enabled) return false;
       try {
         const client = await ensureClient();
         await client.request("clarify.respond", {
           request_id: requestId,
+          // Batch clarify: the gateway locks answers one question at a time, so
+          // a question's `qid` must be echoed back as `question_id`. Omitting it
+          // answers/cancels the request as a whole (the single-question shape).
+          ...(questionId ? { question_id: questionId } : {}),
           answer,
         });
         // The turn resumes from the clarify answer; keep loading until the

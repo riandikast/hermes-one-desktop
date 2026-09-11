@@ -900,3 +900,166 @@ describe("useDashboardChatTransport plan mode", () => {
     expect(blockedCount(api)).toBe(1);
   });
 });
+
+describe("useDashboardChatTransport approval prompts", () => {
+  beforeEach(() => {
+    dashboardMock.close.mockClear();
+    dashboardMock.connect.mockClear();
+    dashboardMock.instances.length = 0;
+    dashboardMock.onEvent = null;
+    dashboardMock.request.mockReset();
+    Object.defineProperty(window, "hermesAPI", {
+      configurable: true,
+      value: {
+        freshDashboardWsUrl: vi.fn(async () => "ws://fresh-dashboard"),
+        recordSessionContinuation: vi.fn(async () => true),
+        recordSessionLocalError: vi.fn(async () => true),
+        startDashboard: vi.fn(async () => ({
+          connection: { wsUrl: "ws://127.0.0.1:12345" },
+          running: true,
+        })),
+        getSessionMessages: vi.fn(async () => []),
+        promptApproval: vi.fn(async () => "once"),
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const connect = async (api: HarnessApi): Promise<void> => {
+    dashboardMock.request.mockImplementation(async (method: string) => {
+      if (method === "session.create") {
+        return { session_id: "live-1", stored_session_id: "stored-1" };
+      }
+      return {};
+    });
+    await act(async () => {
+      await api.send?.("hello");
+    });
+    expect(dashboardMock.onEvent).toBeTypeOf("function");
+  };
+
+  const emitApproval = async (
+    payload: Record<string, unknown>,
+  ): Promise<void> => {
+    await act(async () => {
+      dashboardMock.onEvent?.({ payload, type: "approval.request" });
+    });
+  };
+
+  // The gateway parks the agent thread on approval.request until it is
+  // answered, so an ignored event is what made the command look like it hung.
+  it("answers approval.request with the user's choice", async () => {
+    const api: HarnessApi = {};
+    render(<Harness api={api} />);
+    await connect(api);
+
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+    dashboardMock.request.mockImplementation(
+      async (method: string, params: Record<string, unknown>) => {
+        calls.push({ method, params });
+        return { resolved: 1 };
+      },
+    );
+
+    await emitApproval({
+      choices: ["once", "session", "deny"],
+      command: "rm -rf /tmp/x",
+      description: "recursive delete",
+      request_id: "req-1",
+    });
+
+    await waitFor(() => {
+      expect(calls.some((call) => call.method === "approval.respond")).toBe(
+        true,
+      );
+    });
+
+    const respond = calls.find((call) => call.method === "approval.respond");
+    expect(respond?.params).toMatchObject({
+      all: false,
+      choice: "once",
+      request_id: "req-1",
+    });
+
+    // The native dialog is asked for exactly what the backend offered,
+    // including the command being judged.
+    expect(window.hermesAPI.promptApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        choices: ["once", "session", "deny"],
+        command: "rm -rf /tmp/x",
+        description: "recursive delete",
+      }),
+    );
+  });
+
+  it("sends the denied choice back when the user rejects", async () => {
+    const api: HarnessApi = {};
+    render(<Harness api={api} />);
+    await connect(api);
+    (
+      window.hermesAPI.promptApproval as ReturnType<typeof vi.fn>
+    ).mockResolvedValue("deny");
+
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+    dashboardMock.request.mockImplementation(
+      async (method: string, params: Record<string, unknown>) => {
+        calls.push({ method, params });
+        return { resolved: 1 };
+      },
+    );
+
+    await emitApproval({ choices: ["once", "deny"], request_id: "req-2" });
+
+    await waitFor(() => {
+      expect(calls.some((call) => call.method === "approval.respond")).toBe(
+        true,
+      );
+    });
+    expect(
+      calls.find((call) => call.method === "approval.respond")?.params,
+    ).toMatchObject({ choice: "deny", request_id: "req-2" });
+  });
+
+  // An unanswered approval must never be read as consent: without a bridge
+  // the transport still has to answer, and the safe answer is deny.
+  it("fails closed to deny when the prompt bridge is missing", async () => {
+    const api: HarnessApi = {};
+    render(<Harness api={api} />);
+    await connect(api);
+    Object.defineProperty(window, "hermesAPI", {
+      configurable: true,
+      value: {
+        freshDashboardWsUrl: vi.fn(async () => "ws://fresh-dashboard"),
+        getSessionMessages: vi.fn(async () => []),
+        recordSessionContinuation: vi.fn(async () => true),
+        recordSessionLocalError: vi.fn(async () => true),
+        startDashboard: vi.fn(async () => ({
+          connection: { wsUrl: "ws://127.0.0.1:12345" },
+          running: true,
+        })),
+      },
+    });
+
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+    dashboardMock.request.mockImplementation(
+      async (method: string, params: Record<string, unknown>) => {
+        calls.push({ method, params });
+        return { resolved: 1 };
+      },
+    );
+
+    await emitApproval({ choices: ["once", "deny"], request_id: "req-3" });
+
+    await waitFor(() => {
+      expect(calls.some((call) => call.method === "approval.respond")).toBe(
+        true,
+      );
+    });
+    expect(
+      calls.find((call) => call.method === "approval.respond")?.params,
+    ).toMatchObject({ choice: "deny" });
+  });
+});

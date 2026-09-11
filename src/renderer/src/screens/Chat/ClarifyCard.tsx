@@ -12,11 +12,15 @@ const SKIP_ANSWER = "";
 interface ClarifyCardProps {
   msg: ClarifyMessage;
   /** Mark the card resolved in parent state once the user answers/skips. */
-  onResolved: (requestId: string, answer: string) => void;
+  onResolved: (requestId: string, answer: string, questionId?: string) => void;
   /** Optional answer transport. Defaults to the legacy `respondClarify` IPC
    *  (main-process gateway). The dashboard transport passes its own
    *  `respondClarify` here so the answer flows over the live WebSocket. */
-  onRespond?: (requestId: string, answer: string) => Promise<boolean>;
+  onRespond?: (
+    requestId: string,
+    answer: string,
+    questionId?: string,
+  ) => Promise<boolean>;
 }
 
 /**
@@ -42,8 +46,14 @@ export const ClarifyCard = memo(function ClarifyCard({
     setSubmitting(true);
     setError(false);
     try {
+      // A batch question must echo its `qid` back as `question_id` so the
+      // gateway locks only that question. Passed as a third argument ONLY when
+      // present, so the single-question (and legacy IPC) call keeps its exact
+      // historical 2-argument shape.
       const ok = onRespond
-        ? await onRespond(msg.requestId, answer)
+        ? msg.questionId
+          ? await onRespond(msg.requestId, answer, msg.questionId)
+          : await onRespond(msg.requestId, answer)
         : await window.hermesAPI.respondClarify(msg.requestId, answer);
       // The IPC handler returns false when no pending request matched (e.g. the
       // turn already ended). Only flip the card to resolved on a confirmed
@@ -52,7 +62,8 @@ export const ClarifyCard = memo(function ClarifyCard({
         setError(true);
         return;
       }
-      onResolved(msg.requestId, answer);
+      if (msg.questionId) onResolved(msg.requestId, answer, msg.questionId);
+      else onResolved(msg.requestId, answer);
     } catch {
       setError(true);
     } finally {

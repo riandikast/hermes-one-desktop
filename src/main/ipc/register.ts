@@ -26,6 +26,7 @@ import type {
 import { stageAttachment, clearStagedAttachments } from "../attachment-staging";
 import { searchFileContents } from "../file-content-search";
 import { zoomBy, zoomApply } from "../zoom";
+import { promptApproval, type ApprovalPromptOptions } from "../gatewayPrompt";
 import { persistPromptImageAttachments } from "../session-attachment-store";
 import {
   discoverProviderModels,
@@ -785,6 +786,13 @@ export function registerIpcHandlers(context: IpcContext): void {
     setHermesHomeOverride(dir);
     return true;
   });
+  // Mid-turn dangerous-command / execute_code approval. The dashboard chat
+  // transport owns its own gateway WebSocket in the renderer, so the renderer
+  // asks main for the native confirm dialog (which also flags the taskbar
+  // while it waits) and sends `approval.respond` itself.
+  ipcMain.handle("approval-prompt", (_event, opts: unknown) =>
+    promptApproval((opts ?? {}) as ApprovalPromptOptions),
+  );
   ipcMain.handle("quit-app", () => app.quit());
 
   // GPU fallback visibility: lets the Office tab explain SwiftShader slowness

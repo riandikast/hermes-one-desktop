@@ -1624,6 +1624,14 @@ interface HermesAPI {
     logFile?: string,
     lines?: number,
   ) => Promise<{ content: string; path: string }>;
+
+  // Mid-turn dangerous-command approval. Resolves with the chosen outcome
+  // (`once` | `session` | `always` | `deny`); closing the dialog answers deny.
+  promptApproval: (opts: {
+    choices?: string[];
+    command?: string;
+    description?: string;
+  }) => Promise<string>;
 }
 
 declare global {

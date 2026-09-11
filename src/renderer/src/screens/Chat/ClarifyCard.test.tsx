@@ -156,4 +156,46 @@ describe("ClarifyCard", () => {
     );
     expect(onResolved).not.toHaveBeenCalled();
   });
+
+  // A `clarify.request` carrying several questions renders one card per
+  // question, each keyed by its `qid`. Answering must echo that qid back as
+  // `question_id`; without it the gateway cannot tell which question the answer
+  // belongs to and the batch never completes.
+  it("answers a batch question with its qid as question_id", async () => {
+    const onRespond = vi.fn().mockResolvedValue(true);
+    const onResolved = vi.fn();
+    render(
+      <ClarifyCard
+        msg={baseMsg({ choices: ["Once", "Always"], questionId: "q1" })}
+        onResolved={onResolved}
+        onRespond={onRespond}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Once"));
+
+    await vi.waitFor(() =>
+      expect(onRespond).toHaveBeenCalledWith("r1", "Once", "q1"),
+    );
+    await vi.waitFor(() =>
+      expect(onResolved).toHaveBeenCalledWith("r1", "Once", "q1"),
+    );
+  });
+
+  it("keeps the 2-arg call for a single-question card", async () => {
+    const onRespond = vi.fn().mockResolvedValue(true);
+    render(
+      <ClarifyCard
+        msg={baseMsg({ choices: ["Only"] })}
+        onResolved={vi.fn()}
+        onRespond={onRespond}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Only"));
+
+    await vi.waitFor(() =>
+      expect(onRespond).toHaveBeenCalledWith("r1", "Only"),
+    );
+  });
 });
