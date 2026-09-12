@@ -13,6 +13,17 @@ export default {
   allModels: "All models",
   noModelsMatch: "No models match",
   configure: "Configure",
+  customGroups: "Custom groups",
+  customGroupsHint:
+    "Group models however you like — purely a view in this picker. Provider configuration is never touched.",
+  newGroup: "New group",
+  groupNamePlaceholder: "Group name",
+  addModelsToGroup: "Add models to group",
+  groupModels: "Group models",
+  removeFromGroup: "Remove from group",
+  deleteGroup: "Delete group",
+  deleteGroupConfirm: "Delete this group? Models are NOT removed from the picker.",
+  ungrouped: "Ungrouped",
   typeModelName: "Type model name...",
   reasoningEffort: {
     title: "Reasoning Level",

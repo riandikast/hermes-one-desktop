@@ -16,6 +16,9 @@ vi.mock("lucide-react", () => ({
   Search: () => null,
   Pencil: () => null,
   X: () => null,
+  FolderPlus: () => null,
+  FolderMinus: () => null,
+  Trash2: () => null,
 }));
 
 vi.mock("../../components/common/BrandLogo", () => ({
@@ -341,5 +344,136 @@ describe("ModelPicker", () => {
 
     expect(within(dropdown).queryByText("OWL Alpha")).toBeNull();
     expect(within(dropdown).queryByText("Llama 3")).toBeNull();
+  });
+});
+
+// ── frontend-only custom groups ─────────────────────────────────
+describe("ModelPicker custom groups (frontend-only)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("shows custom groups in the rail once created via row menu", () => {
+    const { container } = renderPicker();
+    const dropdown = openPicker(container);
+
+    // Open the group menu on the first row.
+    const folderButtons = dropdown.querySelectorAll(
+      ".chat-model-row-alias",
+    ) as NodeListOf<HTMLElement>;
+    fireEvent.click(folderButtons[0]);
+
+    // Type a group name and create it with the row included.
+    const input = dropdown.querySelector(
+      ".chat-model-group-menu input",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "My Coding Models" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // Rail now shows the group with count 1.
+    expect(within(dropdown).getByText("My Coding Models")).toBeTruthy();
+    expect(
+      within(dropdown).getByText("My Coding Models").closest(".chat-model-rail-item-holder")
+        ?.querySelector(".chat-model-rail-count")?.textContent,
+    ).toBe("1");
+  });
+
+  it("rail shows an Ungrouped section with provider counts reduced", () => {
+    const { container } = renderPicker();
+    const dropdown = openPicker(container);
+
+    expect(within(dropdown).getByText("chat.ungrouped")).toBeTruthy();
+  });
+
+  it("selecting a custom rail group filters rows to its members", () => {
+    const { container } = renderPicker();
+    const dropdown = openPicker(container);
+
+    const folderButtons = dropdown.querySelectorAll(
+      ".chat-model-row-alias",
+    ) as NodeListOf<HTMLElement>;
+    fireEvent.click(folderButtons[0]);
+    const input = dropdown.querySelector(
+      ".chat-model-group-menu input",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Coding" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    fireEvent.click(within(dropdown).getByText("Coding"));
+
+    const titles = Array.from(
+      dropdown.querySelectorAll(".chat-model-row-title"),
+    ).map((el) => el.textContent);
+    expect(titles).toEqual(["OWL Alpha"]);
+  });
+
+  it("picking a grouped row still routes with its own provider/baseUrl", () => {
+    const { container, onSelectModel } = renderPicker();
+    const dropdown = openPicker(container);
+
+    // Create group with first row, then click the row itself.
+    const folderButtons = dropdown.querySelectorAll(
+      ".chat-model-row-alias",
+    ) as NodeListOf<HTMLElement>;
+    fireEvent.click(folderButtons[0]);
+    const input = dropdown.querySelector(
+      ".chat-model-group-menu input",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Coding" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.click(within(dropdown).getByText("OWL Alpha"));
+
+    // providerLabel is passed only when present; openrouter rows send none.
+    expect(onSelectModel).toHaveBeenCalledTimes(1);
+    const [p0, m0, b0] = onSelectModel.mock.calls[0];
+    expect([p0, m0, b0]).toEqual(["openrouter", "owl-alpha", ""]);
+  });
+
+  it("deleting a group keeps its models in the picker", () => {
+    const { container } = renderPicker();
+    let dropdown = openPicker(container);
+
+    // Create a group containing the first row.
+    const folderButtons = dropdown.querySelectorAll(
+      ".chat-model-row-alias",
+    ) as NodeListOf<HTMLElement>;
+    fireEvent.click(folderButtons[0]);
+    const input = dropdown.querySelector(
+      ".chat-model-group-menu input",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Coding" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(within(dropdown).getByText("Coding")).toBeTruthy();
+
+    // Delete the group via the rail trash button.
+    const del = dropdown.querySelector(
+      ".chat-model-rail-delete",
+    ) as HTMLElement;
+    fireEvent.click(del);
+
+    dropdown = container.querySelector(".chat-model-dropdown") as HTMLElement;
+    expect(within(dropdown).queryByText("Coding")).toBeNull();
+    // The model rows are all still there.
+    expect(within(dropdown).getByText("OWL Alpha")).toBeTruthy();
+    expect(within(dropdown).getByText("Llama 3")).toBeTruthy();
+  });
+
+  it("groups persist across picker instances (localStorage)", () => {
+    const first = renderPicker();
+    const dropdown = openPicker(first.container);
+    const folderButtons = dropdown.querySelectorAll(
+      ".chat-model-row-alias",
+    ) as NodeListOf<HTMLElement>;
+    fireEvent.click(folderButtons[0]);
+    const input = dropdown.querySelector(
+      ".chat-model-group-menu input",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Persisted" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // Fresh mount — same storage, no in-memory handoff.
+    const second = renderPicker();
+    const dropdown2 = openPicker(second.container);
+    expect(within(dropdown2).getByText("Persisted")).toBeTruthy();
   });
 });

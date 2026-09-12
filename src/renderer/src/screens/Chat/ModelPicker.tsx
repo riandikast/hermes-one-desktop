@@ -1,8 +1,26 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { ChevronDown, Check, Asterisk, Search, Pencil, X } from "lucide-react";
+import {
+  ChevronDown,
+  Check,
+  Asterisk,
+  Search,
+  Pencil,
+  X,
+  FolderPlus,
+  FolderMinus,
+  Trash2,
+} from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import BrandLogo from "../../components/common/BrandLogo";
 import type { ModelGroup } from "./types";
+import {
+  loadModelGroups,
+  saveModelGroups,
+  subscribeModelGroups,
+  newGroupId,
+  modelKeyOf,
+  type CustomModelGroup,
+} from "./modelGroups";
 
 interface ModelPickerProps {
   active?: boolean;
@@ -37,6 +55,13 @@ export const ModelPicker = memo(function ModelPicker({
   const [selectedBrand, setSelectedBrand] = useState<string | null>(null);
   const [editingModel, setEditingModel] = useState<{ id: string; model: string } | null>(null);
   const [aliasInput, setAliasInput] = useState("");
+  // Frontend-only custom groups (localStorage); rows keep their own
+  // provider/model/baseUrl so selection routing is never affected.
+  const [customGroups, setCustomGroups] = useState<CustomModelGroup[]>([]);
+  // Which group a row is being added to / removed from (row key -> group id).
+  const [groupTarget, setGroupTarget] = useState<string | null>(null);
+  // New-group creation flow.
+  const [newGroupName, setNewGroupName] = useState("");
   const pickerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -80,6 +105,12 @@ export const ModelPicker = memo(function ModelPicker({
       window.removeEventListener("model-picker:open", handleExternalOpen);
   }, [active]);
 
+  useEffect(() => {
+    const sync = (): void => setCustomGroups(loadModelGroups());
+    sync();
+    return subscribeModelGroups(sync);
+  }, []);
+
   const searchQuery = searchInput.trim().toLowerCase();
   const filteredGroups = searchQuery
     ? modelGroups
@@ -119,23 +150,53 @@ export const ModelPicker = memo(function ModelPicker({
   // `groupKey` is the rail identity (brand vs. custom label), `brand` keeps the
   // logo mapping.
   const allRows = filteredGroups.flatMap((g) =>
-    g.models.map((m) => ({
-      ...m,
-      brand: g.provider,
-      providerLabel: g.providerLabel,
-      groupKey: groupKeyOf(g),
-    })),
+    g.models.map((m) => {
+      const key = modelKeyOf(m.provider, m.baseUrl, m.model);
+      return {
+        ...m,
+        brand: g.provider,
+        providerLabel: g.providerLabel,
+        groupKey: groupKeyOf(g),
+        rowKey: key,
+        customGroupId: customGroups.find((cg) => cg.modelKeys.includes(key))?.id,
+      };
+    }),
   );
   // Ignore a stale brand filter once search narrows it away → fall back to All.
   // Named custom providers share brand "custom" so filtering must use groupKey
   // (label:<name>), not brand. `selectedBrand` is kept as the state name for
   // backward compat but now holds a groupKey.
+  // Custom-group rail entries (only groups that still have at least one
+  // live row — a group whose models were all removed from the picker stays
+  // defined but isn't shown as an empty bucket).
+  const customRail = customGroups
+    .map((cg) => {
+      const rows = allRows.filter((r) => r.customGroupId === cg.id);
+      return { id: cg.id, name: cg.name, count: rows.length, rows };
+    })
+    .filter((e) => e.count > 0);
+  const groupedRowKeys = new Set(
+    customRail.flatMap((e) => e.rows.map((r) => r.rowKey)),
+  );
   const activeBrand =
-    selectedBrand && railProviders.some((p) => p.groupKey === selectedBrand)
+    (selectedBrand &&
+      (railProviders.some((p) => p.groupKey === selectedBrand) ||
+        customRail.some((c) => `custom:${c.id}` === selectedBrand))
       ? selectedBrand
-      : null;
+      : null) ||
+    null;
   const filteredRows = activeBrand
-    ? allRows.filter((r) => r.groupKey === activeBrand)
+    ? activeBrand.startsWith("custom:")
+      ? allRows.filter(
+          (r) => r.customGroupId === activeBrand.slice("custom:".length),
+        )
+      // Provider entries live under "Ungrouped": show that provider's rows
+      // EXCEPT ones captured by a custom group (their home is the group or
+      // "All models"), matching the count shown on the rail.
+      : allRows.filter(
+          (r) =>
+            r.groupKey === activeBrand && !groupedRowKeys.has(r.rowKey),
+        )
     : allRows;
 
   // Surface the current selection first. Rank: exact match (provider+model+URL)
@@ -177,6 +238,55 @@ export const ModelPicker = memo(function ModelPicker({
     setIsOpen(false);
     setSearchInput("");
     setSelectedBrand(null);
+  }
+
+  function addToGroup(groupId: string, rowKey: string): void {
+    // Single-membership: adding to a group pulls the row out of any other
+    // first, matching the UI affordance (one folder icon per row).
+    setCustomGroups((prev) => {
+      const next = prev.map((g) => ({
+        ...g,
+        modelKeys:
+          g.id === groupId
+            ? [...new Set([...g.modelKeys, rowKey])]
+            : g.modelKeys.filter((k) => k !== rowKey),
+      }));
+      saveModelGroups(next);
+      return next;
+    });
+  }
+
+  function removeFromGroup(groupId: string, rowKey: string): void {
+    setCustomGroups((prev) => {
+      const next = prev.map((g) =>
+        g.id === groupId
+          ? { ...g, modelKeys: g.modelKeys.filter((k) => k !== rowKey) }
+          : g,
+      );
+      saveModelGroups(next);
+      return next;
+    });
+  }
+
+  function createGroup(name: string): string | null {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const id = newGroupId();
+    setCustomGroups((prev) => {
+      const next = [...prev, { id, name: trimmed, modelKeys: [] }];
+      saveModelGroups(next);
+      return next;
+    });
+    return id;
+  }
+
+  function deleteGroup(id: string): void {
+    setCustomGroups((prev) => {
+      const next = prev.filter((g) => g.id !== id);
+      saveModelGroups(next);
+      return next;
+    });
+    if (selectedBrand === `custom:${id}`) setSelectedBrand(null);
   }
 
   function openAliasEditor(model: { id?: string; model: string; label: string }): void {
@@ -256,22 +366,78 @@ export const ModelPicker = memo(function ModelPicker({
                     {allRows.length}
                   </span>
                 </button>
-                {railProviders.map((p) => (
-                  <button
-                    key={p.groupKey}
-                    type="button"
-                    className={`chat-model-rail-item ${activeBrand === p.groupKey ? "active" : ""}`}
-                    onClick={() =>
-                      setSelectedBrand((cur) =>
-                        cur === p.groupKey ? null : p.groupKey,
-                      )
-                    }
-                  >
-                    <BrandLogo provider={p.brand} size={16} matchTheme />
-                    <span className="chat-model-rail-label">{t(p.label)}</span>
-                    <span className="chat-model-rail-count">{p.count}</span>
-                  </button>
-                ))}
+                {customRail.length > 0 && (
+                  <>
+                    <div className="chat-model-rail-section">
+                      {t("chat.customGroups")}
+                    </div>
+                    {customRail.map((c) => (
+                      <div
+                        key={c.id}
+                        className={`chat-model-rail-item-holder ${activeBrand === `custom:${c.id}` ? "active" : ""}`}
+                      >
+                        <button
+                          type="button"
+                          className={`chat-model-rail-item ${activeBrand === `custom:${c.id}` ? "active" : ""}`}
+                          onClick={() =>
+                            setSelectedBrand((cur) =>
+                              cur === `custom:${c.id}` ? null : `custom:${c.id}`,
+                            )
+                          }
+                        >
+                          <span className="chat-model-rail-all-icon" aria-hidden>
+                            <FolderPlus size={12} />
+                          </span>
+                          <span className="chat-model-rail-label">{c.name}</span>
+                          <span className="chat-model-rail-count">{c.count}</span>
+                        </button>
+                        <span
+                          className="chat-model-rail-delete"
+                          role="button"
+                          tabIndex={0}
+                          title={t("chat.deleteGroup")}
+                          aria-label={t("chat.deleteGroup")}
+                          onClick={() => deleteGroup(c.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              deleteGroup(c.id);
+                            }
+                          }}
+                        >
+                          <Trash2 size={12} />
+                        </span>
+                      </div>
+                    ))}
+                  </>
+                )}
+                <div className="chat-model-rail-section">
+                  {t("chat.ungrouped")}
+                </div>
+                {railProviders.map((p) => {
+                  const ungroupedCount =
+                    p.count -
+                    allRows.filter(
+                      (r) =>
+                        r.groupKey === p.groupKey && groupedRowKeys.has(r.rowKey),
+                    ).length;
+                  return (
+                    <button
+                      key={p.groupKey}
+                      type="button"
+                      className={`chat-model-rail-item ${activeBrand === p.groupKey ? "active" : ""}`}
+                      onClick={() =>
+                        setSelectedBrand((cur) =>
+                          cur === p.groupKey ? null : p.groupKey,
+                        )
+                      }
+                    >
+                      <BrandLogo provider={p.brand} size={16} matchTheme />
+                      <span className="chat-model-rail-label">{t(p.label)}</span>
+                      <span className="chat-model-rail-count">{ungroupedCount}</span>
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Pinned footer — manage keys + the model library on Providers */}
@@ -312,6 +478,111 @@ export const ModelPicker = memo(function ModelPicker({
                           {t(m.providerLabel)} · {m.model}
                         </span>
                       </span>
+                      <span
+                        className="chat-model-row-alias"
+                        role="button"
+                        tabIndex={0}
+                        title={t("chat.groupModels")}
+                        aria-label={t("chat.groupModels")}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (m.customGroupId) {
+                            removeFromGroup(m.customGroupId, m.rowKey);
+                          } else {
+                            setGroupTarget((cur) =>
+                              cur === m.rowKey ? null : m.rowKey,
+                            );
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (m.customGroupId) {
+                              removeFromGroup(m.customGroupId, m.rowKey);
+                            } else {
+                              setGroupTarget((cur) =>
+                                cur === m.rowKey ? null : m.rowKey,
+                              );
+                            }
+                          }
+                        }}
+                      >
+                        {m.customGroupId ? (
+                          <FolderMinus size={13} />
+                        ) : (
+                          <FolderPlus size={13} />
+                        )}
+                      </span>
+                      {groupTarget === m.rowKey && (
+                        <div
+                          className="chat-model-group-menu"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {customGroups.length === 0 && (
+                            <div className="chat-model-group-menu-hint">
+                              {t("chat.customGroupsHint")}
+                            </div>
+                          )}
+                          {customGroups.map((cg) =>
+                            cg.modelKeys.includes(m.rowKey) ? (
+                              <button
+                                key={cg.id}
+                                type="button"
+                                className="chat-model-group-menu-item danger"
+                                onClick={() => {
+                                  removeFromGroup(cg.id, m.rowKey);
+                                  setGroupTarget(null);
+                                }}
+                              >
+                                {t("chat.removeFromGroup")} · {cg.name}
+                              </button>
+                            ) : (
+                              <button
+                                key={cg.id}
+                                type="button"
+                                className="chat-model-group-menu-item"
+                                onClick={() => {
+                                  addToGroup(cg.id, m.rowKey);
+                                  setGroupTarget(null);
+                                }}
+                              >
+                                {t("chat.addModelsToGroup")} · {cg.name}
+                              </button>
+                            ),
+                          )}
+                          <button
+                            type="button"
+                            className="chat-model-group-menu-item"
+                            onClick={() => {
+                              const id = createGroup(newGroupName);
+                              if (id) {
+                                addToGroup(id, m.rowKey);
+                                setNewGroupName("");
+                                setGroupTarget(null);
+                              }
+                            }}
+                          >
+                            {t("chat.newGroup")}…
+                          </button>
+                          <input
+                            className="input"
+                            value={newGroupName}
+                            onChange={(e) => setNewGroupName(e.target.value)}
+                            placeholder={t("chat.groupNamePlaceholder")}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                const id = createGroup(newGroupName);
+                                if (id) {
+                                  addToGroup(id, m.rowKey);
+                                  setNewGroupName("");
+                                  setGroupTarget(null);
+                                }
+                              }
+                            }}
+                          />
+                        </div>
+                      )}
                       <span
                         className="chat-model-row-alias"
                         role="button"
