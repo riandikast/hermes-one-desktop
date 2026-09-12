@@ -9,24 +9,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockState = {
   flashCalls: [] as boolean[],
-  lastArgs: null as unknown[] | null,
   lastOptions: null as Record<string, unknown> | null,
-  response: 0,
+  response: "once",
 };
 
 vi.mock("electron", () => ({
   BrowserWindow: class {},
-  ipcMain: { on: () => undefined, removeListener: () => undefined },
-  dialog: {
-    showMessageBox: (...args: unknown[]) => {
-      mockState.lastArgs = args;
-      mockState.lastOptions = (args.length > 1 ? args[1] : args[0]) as Record<
-        string,
-        unknown
-      >;
-      return Promise.resolve({ response: mockState.response });
-    },
-  },
+}));
+
+vi.mock("./askpass", () => ({
+  showPasswordDialog: vi.fn(),
+  showApprovalDialog: vi.fn(async (_parent: unknown, options: Record<string, unknown>) => {
+    mockState.lastOptions = options;
+    const choices = options.choices as string[];
+    return choices.includes(mockState.response) ? mockState.response : "deny";
+  }),
 }));
 
 type FakeWindow = { flashFrame: (flag: boolean) => void };
@@ -46,9 +43,8 @@ function fakeParent(): FakeWindow {
 
 beforeEach(() => {
   mockState.flashCalls = [];
-  mockState.lastArgs = null;
   mockState.lastOptions = null;
-  mockState.response = 0;
+  mockState.response = "once";
 });
 
 describe("promptApproval", () => {
@@ -62,14 +58,20 @@ describe("promptApproval", () => {
       description: "recursive delete",
     });
 
-    expect(mockState.lastOptions?.buttons).toEqual([
-      "Run once",
-      "Allow for this session",
-      "Always allow",
-      "Deny",
+    expect(mockState.lastOptions?.choices).toEqual([
+      "once",
+      "session",
+      "always",
+      "deny",
     ]);
-    expect(mockState.lastOptions?.detail).toBe("rm -rf /tmp/x");
-    expect(mockState.lastOptions?.message).toBe("recursive delete");
+    expect(mockState.lastOptions?.command).toBe("rm -rf /tmp/x");
+    expect(mockState.lastOptions?.description).toBe("recursive delete");
+    expect(mockState.lastOptions?.labels).toEqual({
+      once: "Run once",
+      session: "Allow for this session",
+      always: "Always allow",
+      deny: "Deny",
+    });
   });
 
   it("hides choices the backend did not offer", async () => {
@@ -79,35 +81,35 @@ describe("promptApproval", () => {
     // A smart-denied approval only offers once/deny — no session grant.
     await mod.promptApproval({ choices: ["once", "deny"] });
 
-    expect(mockState.lastOptions?.buttons).toEqual(["Run once", "Deny"]);
+    expect(mockState.lastOptions?.choices).toEqual(["once", "deny"]);
   });
 
   it("returns the choice for the clicked button", async () => {
     const mod = await loadModule();
     mod.setGatewayPromptParent(() => fakeParent() as never);
 
-    mockState.response = 2;
+    mockState.response = "always";
     await expect(
       mod.promptApproval({ choices: ["once", "session", "always", "deny"] }),
     ).resolves.toBe("always");
   });
 
-  it("defaults Enter and Escape/close to deny, never to run", async () => {
+  it("uses deny as the safe fallback for an invalid renderer response", async () => {
     const mod = await loadModule();
     mod.setGatewayPromptParent(() => fakeParent() as never);
 
-    await mod.promptApproval({ choices: ["once", "session", "deny"] });
-
-    // deny is last of the three, and is both the default and the cancel id.
-    expect(mockState.lastOptions?.defaultId).toBe(2);
-    expect(mockState.lastOptions?.cancelId).toBe(2);
+    mockState.response = "not-a-choice";
+    await expect(
+      mod.promptApproval({ choices: ["once", "session", "deny"] }),
+    ).resolves.toBe("deny");
+    expect(mockState.lastOptions?.choices).toEqual(["once", "session", "deny"]);
   });
 
   it("falls back to deny when the dialog reports nothing usable", async () => {
     const mod = await loadModule();
     mod.setGatewayPromptParent(() => fakeParent() as never);
 
-    mockState.response = 99;
+    mockState.response = "not-a-choice";
     await expect(mod.promptApproval({ choices: ["once", "deny"] })).resolves.toBe(
       "deny",
     );
@@ -126,12 +128,11 @@ describe("promptApproval", () => {
     const mod = await loadModule();
     mod.setGatewayPromptParent(() => null);
 
-    mockState.response = 0;
+    mockState.response = "once";
     await expect(mod.promptApproval({ choices: ["once", "deny"] })).resolves.toBe(
       "once",
     );
     // No window to flash — the call must not throw.
     expect(mockState.flashCalls).toEqual([]);
-    expect(mockState.lastArgs).toHaveLength(1);
   });
 });

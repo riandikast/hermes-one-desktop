@@ -3,7 +3,10 @@ import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import * as net from "net";
-import { ASKPASS_SUBMIT_CHANNEL } from "../shared/askpass";
+import {
+  APPROVAL_SUBMIT_CHANNEL,
+  ASKPASS_SUBMIT_CHANNEL,
+} from "../shared/askpass";
 
 export interface AskpassHandle {
   env: Record<string, string>;
@@ -190,6 +193,139 @@ export async function showPasswordDialog(
         Buffer.from(html).toString("base64"),
     );
   });
+}
+
+export interface ApprovalDialogOptions {
+  choices: string[];
+  command: string;
+  description: string;
+  labels: Record<string, string>;
+}
+
+/** Show a themed, renderer-backed approval modal. Approval is not sensitive,
+ * but it still uses the same isolated, ephemeral window boundary as askpass. */
+export async function showApprovalDialog(
+  parent: BrowserWindow | null,
+  opts: ApprovalDialogOptions,
+): Promise<string> {
+  return new Promise((resolve) => {
+    const win = new BrowserWindow({
+      width: 520,
+      height: 360,
+      parent: parent ?? undefined,
+      modal: !!parent,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      frame: false,
+      title: "Hermes needs your approval",
+      backgroundColor: "#212121",
+      webPreferences: {
+        preload: join(__dirname, "../preload/approval.js"),
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        webSecurity: true,
+        allowRunningInsecureContent: false,
+        webviewTag: false,
+      },
+    });
+
+    let settled = false;
+    function finish(value: string): void {
+      if (settled) return;
+      settled = true;
+      ipcMain.removeListener(APPROVAL_SUBMIT_CHANNEL, onSubmit);
+      try {
+        if (!win.isDestroyed()) win.close();
+      } catch {
+        /* non-fatal */
+      }
+      resolve(opts.choices.includes(value) ? value : "deny");
+    }
+
+    function onSubmit(event: IpcMainEvent, value: unknown): void {
+      if (event.sender !== win.webContents) return;
+      if (typeof value === "string") finish(value);
+    }
+
+    ipcMain.on(APPROVAL_SUBMIT_CHANNEL, onSubmit);
+    win.on("closed", () => finish("deny"));
+    win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    win.webContents.on("will-navigate", (event) => event.preventDefault());
+    win.webContents.on("will-attach-webview", (event) => event.preventDefault());
+
+    const html = buildApprovalDialogHtml(opts);
+    win.loadURL(
+      "data:text/html;charset=UTF-8;base64," +
+        Buffer.from(html).toString("base64"),
+    );
+  });
+}
+
+function buildApprovalDialogHtml(opts: ApprovalDialogOptions): string {
+  const esc = (s: string): string =>
+    s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  const buttons = opts.choices
+    .map((choice) => {
+      const label = esc(opts.labels[choice] ?? choice);
+      const kind = choice === "deny" ? "secondary" : "primary";
+      return `<button class="button ${kind}" data-choice="${esc(choice)}">${label}</button>`;
+    })
+    .join("");
+  return `<!doctype html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'none'; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+<style>
+  :root { color-scheme: dark light; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 100%; height: 100%; }
+  body { background: #212121; color: #f4f4f5; font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .window { min-height: 100%; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  .titlebar { height: 22px; display: flex; align-items: center; justify-content: space-between; -webkit-app-region: drag; }
+  .brand { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 650; letter-spacing: .01em; }
+  .brand-mark { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 7px; background: #7c5cff; color: white; font-size: 11px; font-weight: 800; }
+  .close { -webkit-app-region: no-drag; border: 0; background: transparent; color: #a1a1aa; font-size: 18px; line-height: 18px; cursor: pointer; padding: 0 3px; }
+  .close:hover { color: #fff; }
+  .card { flex: 1; padding: 18px; border: 1px solid #3f3f46; border-radius: 14px; background: #2a2a2d; box-shadow: 0 12px 30px rgb(0 0 0 / 24%); }
+  .eyebrow { color: #a78bfa; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  h1 { margin: 7px 0 8px; font-size: 18px; line-height: 1.25; font-weight: 650; }
+  .description { margin: 0 0 14px; color: #c4c4cc; line-height: 1.45; }
+  .command { max-height: 92px; overflow: auto; padding: 11px 12px; border: 1px solid #45454d; border-radius: 9px; background: #1f1f22; color: #e4e4e7; font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+  .button { min-height: 34px; padding: 0 13px; border-radius: 8px; border: 1px solid transparent; font: 600 12px inherit; cursor: pointer; }
+  .button.primary { background: #7c5cff; color: white; }
+  .button.primary:hover, .button.primary:focus-visible { background: #8b70ff; }
+  .button.secondary { border-color: #55555f; background: #35353a; color: #f4f4f5; }
+  .button.secondary:hover, .button.secondary:focus-visible { background: #44444b; }
+  button:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }
+  @media (prefers-color-scheme: light) {
+    body { background: #f5f5f7; color: #202024; }
+    .card { border-color: #dedee5; background: #fff; box-shadow: 0 12px 30px rgb(0 0 0 / 12%); }
+    .description { color: #5d5d68; }
+    .command { border-color: #dedee5; background: #f4f4f6; color: #303039; }
+    .close { color: #777783; }
+    .close:hover { color: #202024; }
+    .button.secondary { border-color: #d0d0d8; background: #f0f0f3; color: #303039; }
+    .button.secondary:hover { background: #e4e4e9; }
+  }
+</style></head>
+<body>
+  <main class="window">
+    <header class="titlebar"><div class="brand"><span class="brand-mark">H</span><span>Hermes One</span></div><button class="close" id="approval-deny" aria-label="Close">×</button></header>
+    <section class="card">
+      <div class="eyebrow">Approval required</div>
+      <h1>${esc(opts.description)}</h1>
+      <div class="command">${esc(opts.command || "The agent requested permission to continue.")}</div>
+      <div class="actions" id="approval-actions">${buttons}</div>
+    </section>
+  </main>
+</body></html>`;
 }
 
 function buildDialogHtml(prompt: string, heading: string): string {

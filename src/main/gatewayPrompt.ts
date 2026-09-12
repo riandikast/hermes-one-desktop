@@ -1,6 +1,5 @@
 import type { BrowserWindow } from "electron";
-import { dialog } from "electron";
-import { showPasswordDialog } from "./askpass";
+import { showApprovalDialog, showPasswordDialog } from "./askpass";
 
 /**
  * Mid-turn gateway credential prompts (`sudo.request` / `secret.request`).
@@ -92,7 +91,7 @@ export async function promptSecretValue(
  * until it is answered (approval timeout, ~5 min), so an unanswered prompt
  * shows up to the user as a command that simply hangs.
  *
- * A native OS dialog is the right surface here: it appears even when the chat
+ * A dedicated Electron modal is the right surface here: it appears even when the chat
  * window is busy streaming or focused on another tile, it cannot be missed
  * behind the transcript, and `flashFrame` marks the taskbar icon so the prompt
  * is noticed when the app is in the background.
@@ -128,7 +127,7 @@ export async function promptApproval(
   // Escape / window-close resolve to the DENY entry, and the dialog's default
   // (Enter) button is Deny too: a dangerous command must require a deliberate
   // click, never a stray keypress.
-  const denyIndex = Math.max(0, choices.indexOf("deny"));
+
 
   if (parent) {
     try {
@@ -139,22 +138,12 @@ export async function promptApproval(
   }
 
   try {
-    const options = {
-      type: "warning" as const,
-      buttons: choices.map(
-        (choice) => APPROVAL_CHOICE_LABELS[choice] ?? choice,
-      ),
-      cancelId: denyIndex,
-      defaultId: denyIndex,
-      detail: command || undefined,
-      message: description,
-      noLink: true,
-      title: "Hermes needs your approval",
-    };
-    const result = parent
-      ? await dialog.showMessageBox(parent, options)
-      : await dialog.showMessageBox(options);
-    return choices[result.response] ?? "deny";
+    return await showApprovalDialog(parent, {
+      choices,
+      command,
+      description,
+      labels: APPROVAL_CHOICE_LABELS,
+    });
   } finally {
     if (parent) {
       try {
