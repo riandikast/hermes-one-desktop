@@ -240,52 +240,50 @@ export const ModelPicker = memo(function ModelPicker({
     setSelectedBrand(null);
   }
 
+  function mutateGroups(
+    updater: (prev: CustomModelGroup[]) => CustomModelGroup[],
+  ): CustomModelGroup[] {
+    const prev = loadModelGroups();
+    const next = updater(prev);
+    saveModelGroups(next);
+    setCustomGroups(next);
+    return next;
+  }
+
   function addToGroup(groupId: string, rowKey: string): void {
     // Single-membership: adding to a group pulls the row out of any other
     // first, matching the UI affordance (one folder icon per row).
-    setCustomGroups((prev) => {
-      const next = prev.map((g) => ({
+    mutateGroups((prev) =>
+      prev.map((g) => ({
         ...g,
         modelKeys:
           g.id === groupId
             ? [...new Set([...g.modelKeys, rowKey])]
             : g.modelKeys.filter((k) => k !== rowKey),
-      }));
-      saveModelGroups(next);
-      return next;
-    });
+      })),
+    );
   }
 
   function removeFromGroup(groupId: string, rowKey: string): void {
-    setCustomGroups((prev) => {
-      const next = prev.map((g) =>
+    mutateGroups((prev) =>
+      prev.map((g) =>
         g.id === groupId
           ? { ...g, modelKeys: g.modelKeys.filter((k) => k !== rowKey) }
           : g,
-      );
-      saveModelGroups(next);
-      return next;
-    });
+      ),
+    );
   }
 
   function createGroup(name: string): string | null {
     const trimmed = name.trim();
     if (!trimmed) return null;
     const id = newGroupId();
-    setCustomGroups((prev) => {
-      const next = [...prev, { id, name: trimmed, modelKeys: [] }];
-      saveModelGroups(next);
-      return next;
-    });
+    mutateGroups((prev) => [...prev, { id, name: trimmed, modelKeys: [] }]);
     return id;
   }
 
   function deleteGroup(id: string): void {
-    setCustomGroups((prev) => {
-      const next = prev.filter((g) => g.id !== id);
-      saveModelGroups(next);
-      return next;
-    });
+    mutateGroups((prev) => prev.filter((g) => g.id !== id));
     if (selectedBrand === `custom:${id}`) setSelectedBrand(null);
   }
 
@@ -460,43 +458,35 @@ export const ModelPicker = memo(function ModelPicker({
                 visibleRows.map((m) => {
                   const isActive = isSelected(m);
                   return (
-                    <button
-                      type="button"
+                    <div
                       key={m.id || `${m.provider}:${m.providerLabel}:${m.model}:${m.baseUrl}`}
-                      className={`chat-model-row ${isActive ? "active" : ""}`}
-                      onClick={() => {
-                        if (m.provider === "custom" && m.providerLabel) {
-                          select(m.provider, m.model, m.baseUrl, m.providerLabel);
-                        } else {
-                          select(m.provider, m.model, m.baseUrl);
-                        }
-                      }}
+                      className="chat-model-row-wrap"
+                      style={{ position: "relative" }}
                     >
-                      <span className="chat-model-row-body">
-                        <span className="chat-model-row-title">{m.label}</span>
-                        <span className="chat-model-row-sub">
-                          {t(m.providerLabel)} · {m.model}
-                        </span>
-                      </span>
-                      <span
-                        className="chat-model-row-alias"
-                        role="button"
-                        tabIndex={0}
-                        title={t("chat.groupModels")}
-                        aria-label={t("chat.groupModels")}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (m.customGroupId) {
-                            removeFromGroup(m.customGroupId, m.rowKey);
+                      <button
+                        type="button"
+                        className={`chat-model-row ${isActive ? "active" : ""}`}
+                        onClick={() => {
+                          if (m.provider === "custom" && m.providerLabel) {
+                            select(m.provider, m.model, m.baseUrl, m.providerLabel);
                           } else {
-                            setGroupTarget((cur) =>
-                              cur === m.rowKey ? null : m.rowKey,
-                            );
+                            select(m.provider, m.model, m.baseUrl);
                           }
                         }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
+                      >
+                        <span className="chat-model-row-body">
+                          <span className="chat-model-row-title">{m.label}</span>
+                          <span className="chat-model-row-sub">
+                            {t(m.providerLabel)} · {m.model}
+                          </span>
+                        </span>
+                        <span
+                          className="chat-model-row-alias"
+                          role="button"
+                          tabIndex={0}
+                          title={t("chat.groupModels")}
+                          aria-label={t("chat.groupModels")}
+                          onClick={(e) => {
                             e.stopPropagation();
                             if (m.customGroupId) {
                               removeFromGroup(m.customGroupId, m.rowKey);
@@ -505,15 +495,55 @@ export const ModelPicker = memo(function ModelPicker({
                                 cur === m.rowKey ? null : m.rowKey,
                               );
                             }
-                          }
-                        }}
-                      >
-                        {m.customGroupId ? (
-                          <FolderMinus size={13} />
-                        ) : (
-                          <FolderPlus size={13} />
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (m.customGroupId) {
+                                removeFromGroup(m.customGroupId, m.rowKey);
+                              } else {
+                                setGroupTarget((cur) =>
+                                  cur === m.rowKey ? null : m.rowKey,
+                                );
+                              }
+                            }
+                          }}
+                        >
+                          {m.customGroupId ? (
+                            <FolderMinus size={13} />
+                          ) : (
+                            <FolderPlus size={13} />
+                          )}
+                        </span>
+                        <span
+                          className="chat-model-row-alias"
+                          role="button"
+                          tabIndex={0}
+                          title="Rename model"
+                          aria-label="Rename model"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openAliasEditor(m);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              openAliasEditor(m);
+                            }
+                          }}
+                        >
+                          <Pencil size={13} />
+                        </span>
+                        {isActive && (
+                          <Check
+                            size={16}
+                            className="chat-model-row-check"
+                            aria-hidden
+                          />
                         )}
-                      </span>
+                      </button>
                       {groupTarget === m.rowKey && (
                         <div
                           className="chat-model-group-menu"
@@ -583,34 +613,7 @@ export const ModelPicker = memo(function ModelPicker({
                           />
                         </div>
                       )}
-                      <span
-                        className="chat-model-row-alias"
-                        role="button"
-                        tabIndex={0}
-                        title="Rename model"
-                        aria-label="Rename model"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openAliasEditor(m);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            openAliasEditor(m);
-                          }
-                        }}
-                      >
-                        <Pencil size={13} />
-                      </span>
-                      {isActive && (
-                        <Check
-                          size={16}
-                          className="chat-model-row-check"
-                          aria-hidden
-                        />
-                      )}
-                    </button>
+                    </div>
                   );
                 })
               )}

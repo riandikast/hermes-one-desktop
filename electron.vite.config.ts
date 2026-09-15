@@ -19,6 +19,7 @@ export default defineConfig({
         input: {
           index: resolve("src/preload/index.ts"),
           askpass: resolve("src/preload/askpass.ts"),
+          approval: resolve("src/preload/approval.ts"),
         },
       },
     },

@@ -1,5 +1,6 @@
 import type { BrowserWindow } from "electron";
-import { showApprovalDialog, showPasswordDialog } from "./askpass";
+import { showPasswordDialog } from "./askpass";
+import { showApprovalDialog } from "./askpass";
 
 /**
  * Mid-turn gateway credential prompts (`sudo.request` / `secret.request`).

@@ -1,5 +1,5 @@
 import { BrowserWindow, ipcMain, type IpcMainEvent } from "electron";
-import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "fs";
+import { mkdtempSync, writeFileSync, chmodSync, rmSync, existsSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import * as net from "net";
@@ -209,9 +209,16 @@ export async function showApprovalDialog(
   opts: ApprovalDialogOptions,
 ): Promise<string> {
   return new Promise((resolve) => {
+    const width = 520;
+    const height = 360;
+    const preload = existsSync(join(__dirname, "../preload/approval.js"))
+      ? join(__dirname, "../preload/approval.js")
+      : join(__dirname, "../preload/askpass.js");
+
     const win = new BrowserWindow({
-      width: 520,
-      height: 360,
+      width,
+      height,
+      show: false,
       parent: parent ?? undefined,
       modal: !!parent,
       resizable: false,
@@ -220,9 +227,9 @@ export async function showApprovalDialog(
       fullscreenable: false,
       frame: false,
       title: "Hermes needs your approval",
-      backgroundColor: "#212121",
+      backgroundColor: "#09090b",
       webPreferences: {
-        preload: join(__dirname, "../preload/approval.js"),
+        preload,
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: true,
@@ -256,6 +263,22 @@ export async function showApprovalDialog(
     win.webContents.on("will-navigate", (event) => event.preventDefault());
     win.webContents.on("will-attach-webview", (event) => event.preventDefault());
 
+    win.webContents.on("before-input-event", (_event, input) => {
+      if (input.type === "keyDown" && input.key === "Escape") {
+        finish("deny");
+      }
+    });
+
+    if (parent && !parent.isDestroyed()) {
+      const parentBounds = parent.getBounds();
+      const x = Math.round(parentBounds.x + (parentBounds.width - width) / 2);
+      const y = Math.round(parentBounds.y + (parentBounds.height - height) / 2);
+      win.setPosition(x, y);
+    } else {
+      win.center();
+    }
+    win.show();
+
     const html = buildApprovalDialogHtml(opts);
     win.loadURL(
       "data:text/html;charset=UTF-8;base64," +
@@ -274,57 +297,87 @@ function buildApprovalDialogHtml(opts: ApprovalDialogOptions): string {
   const buttons = opts.choices
     .map((choice) => {
       const label = esc(opts.labels[choice] ?? choice);
-      const kind = choice === "deny" ? "secondary" : "primary";
-      return `<button class="button ${kind}" data-choice="${esc(choice)}">${label}</button>`;
+      let btnClass = "btn btn-secondary";
+      if (choice === "deny") {
+        btnClass = "btn btn-outline";
+      } else if (choice === "once") {
+        btnClass = "btn btn-primary";
+      }
+      return `<button class="${btnClass}" data-choice="${esc(choice)}" type="button">${label}</button>`;
     })
     .join("");
+
   return `<!doctype html>
 <html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; img-src 'none'; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
 <style>
-  :root { color-scheme: dark light; }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; width: 100%; height: 100%; }
-  body { background: #212121; color: #f4f4f5; font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-  .window { min-height: 100%; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
-  .titlebar { height: 22px; display: flex; align-items: center; justify-content: space-between; -webkit-app-region: drag; }
-  .brand { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 650; letter-spacing: .01em; }
-  .brand-mark { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 7px; background: #7c5cff; color: white; font-size: 11px; font-weight: 800; }
-  .close { -webkit-app-region: no-drag; border: 0; background: transparent; color: #a1a1aa; font-size: 18px; line-height: 18px; cursor: pointer; padding: 0 3px; }
-  .close:hover { color: #fff; }
-  .card { flex: 1; padding: 18px; border: 1px solid #3f3f46; border-radius: 14px; background: #2a2a2d; box-shadow: 0 12px 30px rgb(0 0 0 / 24%); }
-  .eyebrow { color: #a78bfa; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-  h1 { margin: 7px 0 8px; font-size: 18px; line-height: 1.25; font-weight: 650; }
-  .description { margin: 0 0 14px; color: #c4c4cc; line-height: 1.45; }
-  .command { max-height: 92px; overflow: auto; padding: 11px 12px; border: 1px solid #45454d; border-radius: 9px; background: #1f1f22; color: #e4e4e7; font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-  .button { min-height: 34px; padding: 0 13px; border-radius: 8px; border: 1px solid transparent; font: 600 12px inherit; cursor: pointer; }
-  .button.primary { background: #7c5cff; color: white; }
-  .button.primary:hover, .button.primary:focus-visible { background: #8b70ff; }
-  .button.secondary { border-color: #55555f; background: #35353a; color: #f4f4f5; }
-  .button.secondary:hover, .button.secondary:focus-visible { background: #44444b; }
-  button:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }
-  @media (prefers-color-scheme: light) {
-    body { background: #f5f5f7; color: #202024; }
-    .card { border-color: #dedee5; background: #fff; box-shadow: 0 12px 30px rgb(0 0 0 / 12%); }
-    .description { color: #5d5d68; }
-    .command { border-color: #dedee5; background: #f4f4f6; color: #303039; }
-    .close { color: #777783; }
-    .close:hover { color: #202024; }
-    .button.secondary { border-color: #d0d0d8; background: #f0f0f3; color: #303039; }
-    .button.secondary:hover { background: #e4e4e9; }
+  :root {
+    --bg: #09090b;
+    --fg: #fafafa;
+    --muted: #a1a1aa;
+    --border: #27272a;
+    --surface: #09090b;
+    --primary: #fafafa;
+    --primary-fg: #18181b;
+    --secondary: #18181b;
   }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #ffffff;
+      --fg: #09090b;
+      --muted: #71717a;
+      --border: #e4e4e7;
+      --surface: #ffffff;
+      --primary: #18181b;
+      --primary-fg: #fafafa;
+      --secondary: #f4f4f5;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; user-select: none; overflow: hidden; }
+  .dialog { display: flex; flex-direction: column; height: 100%; padding: 20px 22px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); position: relative; }
+  .header { -webkit-app-region: drag; padding-right: 36px; margin-bottom: 12px; }
+  .badge { display: inline-flex; align-items: center; border-radius: 9999px; border: 1px solid var(--border); background: var(--secondary); padding: 2px 8px; font-size: 11px; font-weight: 500; color: var(--muted); margin-bottom: 8px; }
+  .title { font-size: 16px; font-weight: 600; line-height: 1.3; letter-spacing: -0.015em; color: var(--fg); margin-bottom: 4px; }
+  .description { font-size: 13px; line-height: 1.4; color: var(--muted); }
+  .command-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; margin-bottom: 16px; }
+  .command-label { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 6px; }
+  .command { flex: 1; -webkit-app-region: no-drag; background: #000; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; line-height: 1.45; color: #38bdf8; overflow-y: auto; white-space: pre-wrap; word-break: break-all; user-select: text; }
+  .command::-webkit-scrollbar { width: 6px; }
+  .command::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .footer { -webkit-app-region: no-drag; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+  .btn { -webkit-app-region: no-drag; height: 34px; padding: 0 14px; border-radius: 6px; font-size: 13px; font-weight: 500; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; outline: none; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+  .btn:focus-visible { outline: 2px solid #a1a1aa; outline-offset: 2px; }
+  .btn-primary { background: var(--primary); color: var(--primary-fg); border: 1px solid var(--primary); font-weight: 600; }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-secondary { background: var(--secondary); color: var(--fg); border: 1px solid var(--border); }
+  .btn-secondary:hover { opacity: 0.85; }
+  .btn-outline { background: transparent; color: var(--fg); border: 1px solid var(--border); }
+  .btn-outline:hover { background: var(--secondary); }
+  .close-btn { -webkit-app-region: no-drag; position: absolute; top: 16px; right: 16px; width: 28px; height: 28px; border-radius: 6px; border: none; background: transparent; color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s, color 0.15s; }
+  .close-btn:hover { background: var(--border); color: var(--fg); }
 </style></head>
 <body>
-  <main class="window">
-    <header class="titlebar"><div class="brand"><span class="brand-mark">H</span><span>Hermes One</span></div><button class="close" id="approval-deny" aria-label="Close">×</button></header>
-    <section class="card">
-      <div class="eyebrow">Approval required</div>
-      <h1>${esc(opts.description)}</h1>
-      <div class="command">${esc(opts.command || "The agent requested permission to continue.")}</div>
-      <div class="actions" id="approval-actions">${buttons}</div>
-    </section>
-  </main>
+  <div class="dialog">
+    <button class="close-btn" id="approval-deny" aria-label="Close" type="button">
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M11.78 3.22a.75.75 0 0 0-1.06 0L7.5 6.44 4.28 3.22a.75.75 0 0 0-1.06 1.06L6.44 7.5l-3.22 3.28a.75.75 0 1 0 1.06 1.06L7.5 8.56l3.22 3.22a.75.75 0 0 0 1.06-1.06L8.56 7.5l3.22-3.22a.75.75 0 0 0 0-1.06Z" fill="currentColor"/>
+      </svg>
+    </button>
+    <div class="header">
+      <div class="badge">Security Prompt</div>
+      <h2 class="title">${esc(opts.description)}</h2>
+      <p class="description">Permission is requested to run this command.</p>
+    </div>
+    <div class="command-wrap">
+      <div class="command-label">Command</div>
+      <div class="command">${esc(opts.command || "(no command details)")}</div>
+    </div>
+    <div class="footer" id="approval-actions">
+      ${buttons}
+    </div>
+  </div>
 </body></html>`;
 }
 

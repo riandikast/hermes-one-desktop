@@ -1,27 +1,56 @@
 import { ipcRenderer } from "electron";
-import { ASKPASS_SUBMIT_CHANNEL } from "../shared/askpass";
+import {
+  ASKPASS_SUBMIT_CHANNEL,
+  APPROVAL_SUBMIT_CHANNEL,
+} from "../shared/askpass";
 
-function submit(value: string | null): void {
+function submitAskpass(value: string | null): void {
   ipcRenderer.send(ASKPASS_SUBMIT_CHANNEL, value);
 }
 
-window.addEventListener("DOMContentLoaded", () => {
+function submitApproval(choice: string): void {
+  ipcRenderer.send(APPROVAL_SUBMIT_CHANNEL, choice);
+}
+
+function attach(): void {
   const passwordInput = document.getElementById(
     "pw",
   ) as HTMLInputElement | null;
   const okButton = document.getElementById("ok");
   const cancelButton = document.getElementById("cancel");
 
-  if (!passwordInput || !okButton || !cancelButton) {
-    submit(null);
+  if (passwordInput && okButton && cancelButton) {
+    okButton.addEventListener("click", () => submitAskpass(passwordInput.value));
+    cancelButton.addEventListener("click", () => submitAskpass(null));
+    passwordInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") submitAskpass(passwordInput.value);
+      if (event.key === "Escape") submitAskpass(null);
+    });
+    passwordInput.focus();
     return;
   }
 
-  okButton.addEventListener("click", () => submit(passwordInput.value));
-  cancelButton.addEventListener("click", () => submit(null));
-  passwordInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") submit(passwordInput.value);
-    if (event.key === "Escape") submit(null);
+  const root = document.getElementById("approval-actions");
+  const fallback = document.getElementById("approval-deny");
+
+  if (root) {
+    root.querySelectorAll<HTMLButtonElement>("button[data-choice]").forEach((button) => {
+      button.addEventListener("click", () => submitApproval(button.dataset.choice || "deny"));
+    });
+  }
+  if (fallback) {
+    fallback.addEventListener("click", () => submitApproval("deny"));
+  }
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      submitApproval("deny");
+    }
   });
-  passwordInput.focus();
-});
+}
+
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", attach);
+} else {
+  attach();
+}
