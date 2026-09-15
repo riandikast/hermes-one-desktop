@@ -32,6 +32,10 @@ vi.mock("electron", () => ({
     webContents = {
       setWindowOpenHandler: () => undefined,
       on: () => undefined,
+      once: (event: string, handler: () => void) => {
+        if (event === "did-finish-load") handler();
+      },
+      focus: () => undefined,
     };
 
     constructor(options: Record<string, unknown>) {
@@ -53,6 +57,10 @@ vi.mock("electron", () => ({
       this.actions.push("setPosition");
     }
 
+    focus() {
+      this.actions.push("focus");
+    }
+
     center() {
       this.centered = true;
       this.actions.push("center");
@@ -60,6 +68,14 @@ vi.mock("electron", () => ({
 
     show() {
       this.actions.push("show");
+    }
+
+    moveTop() {
+      this.actions.push("moveTop");
+    }
+
+    setAlwaysOnTop(value: boolean) {
+      this.actions.push(value ? "alwaysOnTop:on" : "alwaysOnTop:off");
     }
 
     isDestroyed() {

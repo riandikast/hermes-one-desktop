@@ -277,7 +277,18 @@ export async function showApprovalDialog(
     } else {
       win.center();
     }
-    win.show();
+
+    const showFocused = (): void => {
+      if (settled || win.isDestroyed()) return;
+      win.setAlwaysOnTop(true, "floating");
+      win.show();
+      win.moveTop();
+      win.focus();
+      win.webContents.focus();
+      win.setAlwaysOnTop(false);
+    };
+    win.webContents.once("did-finish-load", showFocused);
+    win.webContents.once("did-fail-load", () => finish("deny"));
 
     const html = buildApprovalDialogHtml(opts);
     win.loadURL(
