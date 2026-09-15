@@ -1,8 +1,7 @@
 import { ipcRenderer } from "electron";
-import {
-  ASKPASS_SUBMIT_CHANNEL,
-  APPROVAL_SUBMIT_CHANNEL,
-} from "../shared/askpass";
+// ponytail: keep sandbox preloads self-contained; shared imports emit unsupported require(chunk).
+const ASKPASS_SUBMIT_CHANNEL = "askpass-submit";
+const APPROVAL_SUBMIT_CHANNEL = "approval-submit";
 
 function submitAskpass(value: string | null): void {
   ipcRenderer.send(ASKPASS_SUBMIT_CHANNEL, value);
