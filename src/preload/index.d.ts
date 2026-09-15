@@ -631,7 +631,7 @@ interface HermesAPI {
       preview: string;
     }>
   >;
-  getSessionMessages: (sessionId: string) => Promise<
+  getSessionMessages: (sessionId: string, afterId?: number) => Promise<
     Array<
       | {
           kind: "user";

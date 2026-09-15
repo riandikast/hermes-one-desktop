@@ -2115,27 +2115,34 @@ export function registerIpcHandlers(context: IpcContext): void {
     return listSessions(limit, offset);
   });
 
-  ipcMain.handle("get-session-messages", (_event, sessionId: string) => {
-    const conn = getConnectionConfig();
-    if (conn.mode === "remote")
-      return remoteGetSessionMessages(conn, sessionId).then((items) =>
-        applySessionLocalOverlays(sessionId, items),
-      );
-    if (conn.mode === "ssh" && conn.ssh)
-      return withSshDashboardSessions(
-        conn,
-        (config) =>
-          remoteGetSessionMessages(config, sessionId).then((items) =>
-            applySessionLocalOverlays(sessionId, items),
-          ),
-        () =>
-          sshGetSessionMessages(conn.ssh, sessionId).then((items) =>
-            applySessionLocalOverlays(sessionId, items),
-          ),
-        activeSshProfile(),
-      );
-    return getSessionMessages(sessionId);
-  });
+  ipcMain.handle(
+    "get-session-messages",
+    (_event, sessionId: string, afterId?: number) => {
+      // `afterId` scopes a LOCAL read to rows newer than that state.db id so an
+      // end-of-turn refresh doesn't re-scan (and re-serialize) the whole
+      // session on the main process — 235 ms / 35 MB on a 21k-row session. The
+      // remote/ssh helpers don't take a cursor, so they keep the full read.
+      const conn = getConnectionConfig();
+      if (conn.mode === "remote")
+        return remoteGetSessionMessages(conn, sessionId).then((items) =>
+          applySessionLocalOverlays(sessionId, items),
+        );
+      if (conn.mode === "ssh" && conn.ssh)
+        return withSshDashboardSessions(
+          conn,
+          (config) =>
+            remoteGetSessionMessages(config, sessionId).then((items) =>
+              applySessionLocalOverlays(sessionId, items),
+            ),
+          () =>
+            sshGetSessionMessages(conn.ssh, sessionId).then((items) =>
+              applySessionLocalOverlays(sessionId, items),
+            ),
+          activeSshProfile(),
+        );
+      return getSessionMessages(sessionId, afterId);
+    },
+  );
 
   ipcMain.handle(
     "record-session-continuation",

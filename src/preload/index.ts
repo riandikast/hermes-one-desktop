@@ -896,6 +896,7 @@ const hermesAPI = {
 
   getSessionMessages: (
     sessionId: string,
+    afterId?: number,
   ): Promise<
     Array<{
       id: number;
@@ -904,7 +905,7 @@ const hermesAPI = {
       timestamp: number;
       attachments?: Attachment[];
     }>
-  > => ipcRenderer.invoke("get-session-messages", sessionId),
+  > => ipcRenderer.invoke("get-session-messages", sessionId, afterId),
 
   recordSessionContinuation: (
     sessionId: string,

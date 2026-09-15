@@ -18,6 +18,8 @@ import {
 import {
   dbItemsToChatMessages,
   reconcileAfterDbRefresh,
+  reconcileTailAfterDbRefresh,
+  highestDbId,
   type DbHistoryItem,
 } from "../sessionHistory";
 import { DashboardGatewayClient } from "../dashboardGatewayClient";
@@ -1091,6 +1093,12 @@ export function useDashboardChatTransport({
   const completeSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  // Highest state.db message id the renderer knows is canonical in
+  // `messagesRef`. Lets the end-of-turn refresh read and reconcile only the
+  // rows newer than this instead of re-reading + re-reconciling the whole
+  // transcript (the ~1.5 s completion lock — see lat.md/chat-completion-latency.md).
+  // Reset on any session/connection change; 0 means "no canonical prefix yet".
+  const lastSyncedDbIdRef = useRef<number>(0);
   // Per-turn file-change capture: path → latest before/after pair. Reset on
   // each new user turn; attached to the assistant bubble on message.complete.
   const fileChangesRef = useRef<Map<string, FileChange>>(new Map());
@@ -1184,6 +1192,7 @@ export function useDashboardChatTransport({
     lastRuntimeSessionWasCreatedRef.current = false;
     pendingClarifyRequestIdRef.current = null;
     lastSyncedCwdRef.current = null;
+    lastSyncedDbIdRef.current = 0;
     if (completeSyncTimerRef.current !== null) {
       clearTimeout(completeSyncTimerRef.current);
       completeSyncTimerRef.current = null;
@@ -1209,6 +1218,7 @@ export function useDashboardChatTransport({
     pendingClarifyRequestIdRef.current = null;
     pendingRecoveredContinuationRef.current = [];
     lastSyncedCwdRef.current = null;
+    lastSyncedDbIdRef.current = 0;
     // Foreign-turn bookkeeping: re-baseline so a stale tail signature from a
     // previous session can't flag loading on the new one.
     foreignTurnRef.current = false;
@@ -1551,6 +1561,11 @@ export function useDashboardChatTransport({
             confirmMessages,
             { activeTurn },
           );
+          // This path reads/keeps the FULL DB rows (its catch-up guard needs
+          // whole-session user counts), so re-baseline the tail cursor to the
+          // ids it just reconciled — the next completion can then read only
+          // the new tail instead of the whole session again.
+          lastSyncedDbIdRef.current = highestDbId(messagesRef.current);
           setMessages(messagesRef.current);
           activeTurnRef.current = null;
           setToolProgress(null);
@@ -2062,16 +2077,24 @@ export function useDashboardChatTransport({
           if (!stored) return;
           void (async () => {
             try {
+              // Read only the rows newer than the highest id already in the
+              // transcript. On a long session the full read was ~235 ms of
+              // blocking main-process sqlite plus a ~35 MB IPC payload, and
+              // the full reconcile below was another ~700 ms on the renderer
+              // thread; both are O(tail) when a canonical prefix is known.
+              const afterId = lastSyncedDbIdRef.current;
               const items = (await window.hermesAPI.getSessionMessages(
                 stored,
+                afterId,
               )) as DbHistoryItem[];
               const dbMessages = dbItemsToChatMessages(items);
-              const next = reconcileAfterDbRefresh(
+              const next = reconcileTailAfterDbRefresh(
                 messagesRef.current,
                 dbMessages,
-                {},
+                { lastSyncedDbId: afterId },
               );
               messagesRef.current = next;
+              lastSyncedDbIdRef.current = highestDbId(next);
               setMessages(next);
             } catch {
               /* a later sessions.changed broadcast retries */
@@ -2661,16 +2684,19 @@ export function useDashboardChatTransport({
       if (!stored) return;
       const seq = ++foreignRefreshSeqRef.current;
       try {
+        const afterId = lastSyncedDbIdRef.current;
         const items = (await window.hermesAPI.getSessionMessages(
           stored,
+          afterId,
         )) as DbHistoryItem[];
         if (disposed || seq !== foreignRefreshSeqRef.current) return;
         const dbMessages = dbItemsToChatMessages(items);
-        messagesRef.current = reconcileAfterDbRefresh(
+        messagesRef.current = reconcileTailAfterDbRefresh(
           messagesRef.current,
           dbMessages,
-          { activeTurn: activeTurnRef.current },
+          { activeTurn: activeTurnRef.current, lastSyncedDbId: afterId },
         );
+        lastSyncedDbIdRef.current = highestDbId(messagesRef.current);
         setMessages(messagesRef.current);
       } catch {
         /* transient — the next tick retries */

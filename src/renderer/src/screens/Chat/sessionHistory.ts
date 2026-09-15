@@ -905,6 +905,170 @@ export function reconcileAfterDbRefresh(
 }
 
 /**
+ * End-of-turn reconcile when the renderer already holds a canonical prefix.
+ *
+ * The full [[reconcileAfterDbRefresh]] is O(whole transcript): it re-derives a
+ * normalized reconciliation key for EVERY message and every DB row, so on a
+ * 21k-row session it costs ~700 ms of blocking renderer work even though only
+ * the last turn changed (measured — see lat.md/chat-completion-latency.md). This
+ * variant reconciles ONLY the region from the last user row before the synced
+ * boundary onward, then splices the untouched prefix back BY IDENTITY.
+ *
+ * `db` is the id-scoped tail returned by the main process (`getSessionMessages`
+ * with `afterId`), so the caller never re-reads or re-normalizes the prefix.
+ *
+ * Correctness rests on the prefix being canonical: every prefix row already
+ * comes from state.db with an id <= `lastSyncedDbId`, and the merge can only
+ * ever add/move rows within the active turn (which the tail slice contains).
+ * Anything else falls back to the full reconcile.
+ */
+export function reconcileTailAfterDbRefresh(
+  current: ReadonlyArray<ChatMessage>,
+  db: ReadonlyArray<ChatMessage>,
+  options: {
+    activeTurn?: ActiveTurn | null;
+    lastSyncedDbId?: number;
+  } = {},
+): ChatMessage[] {
+  const { lastSyncedDbId = 0 } = options;
+  // No synced prefix yet (fresh session / resume) — the full reconcile is the
+  // only correct answer.
+  if (!(lastSyncedDbId > 0)) {
+    return reconcileAfterDbRefresh(current, db, { activeTurn: options.activeTurn });
+  }
+
+  // The in-memory prefix is everything the renderer already knows came from
+  // state.db (id <= lastSyncedDbId). Walk BACKWARD from the end only until the
+  // first such row — that and everything before it is the untouched prefix.
+  // NOTE: this must stop at the very first canonical prefix row, not merely at
+  // the first *user* row, or the scan itself becomes O(transcript).
+  let tailStart = current.length;
+  for (let i = current.length - 1; i >= 0; i--) {
+    const id = messageDbId(current[i]);
+    if (id > 0 && id <= lastSyncedDbId) {
+      tailStart = i + 1;
+      break;
+    }
+  }
+
+  // Walk back to the start of the in-flight turn so the merge sees its user
+  // row (reconciliation is per-turn). This is a short, bounded backward scan —
+  // it stops at the last user row, which is always within the tail.
+  for (let i = tailStart - 1; i >= 0; i--) {
+    const m = current[i];
+    if (isBubbleMessage(m) && m.role === "user") {
+      tailStart = i;
+      break;
+    }
+    if (i === 0) tailStart = 0;
+  }
+
+  // A prefix row that isn't a canonical DB row (local-only overlay, clarify
+  // card, file-changes chip, pending bubble) means the prefix self-heals in
+  // ways the tail slice can't see — defer to the full reconcile.
+  if (!isCanonicalPrefix(current, tailStart)) {
+    return reconcileAfterDbRefresh(current, db, { activeTurn: options.activeTurn });
+  }
+
+  const prefix = current.slice(0, tailStart);
+  const tailCurrent = current.slice(tailStart);
+
+  // The main process rebuilds `db` per read, so it re-prepends session-scoped
+  // overlays (continuation history, local errors) with their synthetic negative
+  // ids on EVERY call — even a cursor-scoped tail read. Those rows already sit
+  // in the prefix; leaving them in `db` would have the merge re-append them to
+  // the tail (duplicating the continuation block). Keep only rows that belong
+  // to the tail region: real ids newer than the cursor, plus any renderer-side
+  // row the merge may legitimately need.
+  const tailDb = db.filter((m) => {
+    const id = messageDbId(m);
+    if (id < 0) return false; // synthetic overlay — always prefix
+    if (id > 0 && id <= lastSyncedDbId) return false; // settled prefix row
+    return true;
+  });
+
+  const reconciledTail = reconcileAfterDbRefresh(tailCurrent, tailDb, {
+    activeTurn: options.activeTurn,
+  });
+
+  return [...prefix, ...reconciledTail];
+}
+
+/**
+ * Numeric state.db id carried by a renderer message, or 0 for renderer-only
+ * ids. `dbItemsToChatMessages` namespaces every canonical row off the DB id:
+ *   db-<n>            user / assistant bubble
+ *   db-r-<n>          reasoning row
+ *   db-tc-<n>-<cid>   tool call
+ *   db-tr-<n>         tool result
+ *   db-clarify-<n>    replayed clarify card (derived from canonical rows)
+ *
+ * Persisted synthetic rows (session-continuation / local-error overlays) carry
+ * NEGATIVE ids from the store's synthetic ranges and are just as canonical, so
+ * their magnitude is returned as a NEGATIVE number — a plain state.db id is
+ * always positive, which keeps the two spaces from colliding.
+ */
+export function messageDbId(message: ChatMessage): number {
+  const match = /^db-(?:r-|tc-|tr-|clarify-)?(-?\d+)(?:$|-)/.exec(
+    String(message?.id ?? ""),
+  );
+  if (!match) return 0;
+  const n = Number(match[1]);
+  if (!Number.isInteger(n) || n === 0) return 0;
+  return n;
+}
+
+/**
+ * Highest real state.db id present in `messages` (0 when none). Negative
+ * synthetic ids from the continuation / local-error overlays are ignored —
+ * they always sort to the head of the transcript and never represent new rows.
+ */
+export function highestDbId(messages: ReadonlyArray<ChatMessage>): number {
+  let max = 0;
+  for (const m of messages) {
+    const id = messageDbId(m);
+    if (id > max) max = id;
+  }
+  return max;
+}
+
+/**
+ * True when every row in `current.slice(0, tailStart)` is a plain canonical
+ * message (no renderer-only overlay). Such a prefix is untouched by a tail
+ * reconcile, so it can be spliced back by identity.
+ */
+function isCanonicalPrefix(
+  current: ReadonlyArray<ChatMessage>,
+  tailStart: number,
+): boolean {
+  for (let i = 0; i < tailStart; i++) {
+    const m = current[i];
+    const id = messageDbId(m);
+    if (id === 0) return false;
+    if ("kind" in m) {
+      // Reasoning / tool rows and DB-replayed clarify cards are all derived
+      // from canonical state.db rows; only renderer-only overlays (a live
+      // clarify card, a file_changes chip) carry no db id and were rejected
+      // above.
+      if (
+        m.kind !== "reasoning" &&
+        m.kind !== "tool_call" &&
+        m.kind !== "tool_result" &&
+        m.kind !== "clarify"
+      ) {
+        return false;
+      }
+      continue;
+    }
+    const bubble = m as ChatBubbleMessage;
+    if (bubble.localOnly) return false;
+    if (bubble.pending) return false;
+    if (bubble.error) return false;
+  }
+  return true;
+}
+
+/**
  * Merge an in-memory streamed transcript with the canonical state.db
  * transcript at end-of-stream.
  *

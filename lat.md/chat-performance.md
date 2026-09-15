@@ -20,6 +20,8 @@ The symptom this guards against: in conversations with many messages, each keyst
 
 Duplicate IDs retain the first current message, matching `find` semantics. The regression in `sessionHistory.test.ts` counts ID getter reads rather than timing; it also checks duplicate-ID precedence, row identity, and pending/error preservation. Full-history refresh and missing-error insertion remain unchanged.
 
+> **End-of-turn refresh is O(tail), not O(transcript):** the completion path reads only rows newer than the renderer's id cursor and reconciles only the last turn — see [[chat-completion-latency]]. This supersedes the full-history refresh described in the paragraph above for the completion path; resume / reopen still do a full read and reconcile.
+
 ## Off-screen rows are skipped with content-visibility
 
 Every transcript row (`.chat-message`) sets `content-visibility: auto` with `contain-intrinsic-size: auto 120px`, so the browser skips layout and paint for off-screen rows. That turns a forced reflow from O(all messages) into O(visible rows).

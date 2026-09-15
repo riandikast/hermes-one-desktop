@@ -568,6 +568,33 @@ export interface RawMessageRow {
 }
 
 /**
+ * Build the SELECT used by [[getSessionMessages]]. Pure so the id-scoping is
+ * testable without the Electron-only native sqlite module.
+ *
+ * `afterId > 0` scopes the read to rows newer than that id; 0 / negative keeps
+ * the original full-history read (used by resume / reopen).
+ */
+export function buildSessionMessagesQuery(afterId = 0): {
+  sql: string;
+  params: number[];
+} {
+  // A cursor of 0 / negative means "no cursor" — the full-history read the
+  // resume path still needs. Any positive id scopes the read to rows newer
+  // than it, so an end-of-turn refresh touches only the new tail instead of
+  // re-scanning the whole session (see lat.md/chat-completion-latency.md).
+  const scoped = Number.isFinite(afterId) && afterId > 0;
+  return {
+    sql: `SELECT id, role, content, timestamp,
+              tool_call_id, tool_calls, tool_name,
+              reasoning, reasoning_content, reasoning_details
+       FROM messages
+       WHERE ${scoped ? "id > ? AND " : ""}session_id = ? AND role IN ('user', 'assistant', 'tool')
+       ORDER BY timestamp, id`,
+    params: scoped ? [afterId] : [],
+  };
+}
+
+/**
  * Pure expansion of DB rows → renderer-facing HistoryItem list. Kept pure
  * (no I/O) so we can exercise the ordering and edge-case logic directly
  * without booting sqlite.
@@ -687,20 +714,15 @@ export function mergeStoredPromptImageAttachments(
   });
 }
 
-export function getSessionMessages(sessionId: string): HistoryItem[] {
+export function getSessionMessages(
+  sessionId: string,
+  afterId = 0,
+): HistoryItem[] {
   const db = getDb();
   if (!db) return [];
 
-  const rows = db
-    .prepare(
-      `SELECT id, role, content, timestamp,
-              tool_call_id, tool_calls, tool_name,
-              reasoning, reasoning_content, reasoning_details
-       FROM messages
-       WHERE session_id = ? AND role IN ('user', 'assistant', 'tool')
-       ORDER BY timestamp, id`,
-    )
-    .all(sessionId) as RawMessageRow[];
+  const query = buildSessionMessagesQuery(afterId);
+  const rows = db.prepare(query.sql).all(...query.params, sessionId) as RawMessageRow[];
 
   const items = expandRowsToHistory(rows);
   const canonical = mergeStoredPromptImageAttachments(
