@@ -14,6 +14,12 @@ Tab switches do NOT remount the target run: [[src/renderer/src/screens/Layout/La
 
 The symptom this guards against: in conversations with many messages, each keystroke took up to ~2.6s with an empty JS profile — the cost was entirely in Chromium's layout engine, recalculating the whole transcript on every keystroke. CPU and memory were normal; new sessions were instant.
 
+## History refresh error lookup
+
+[[src/renderer/src/screens/Chat/sessionHistory.ts#preserveLocalAssistantErrors]] indexes current messages once by ID before restoring local errors, avoiding a quadratic scan even when history contains no errors.
+
+Duplicate IDs retain the first current message, matching `find` semantics. The regression in `sessionHistory.test.ts` counts ID getter reads rather than timing; it also checks duplicate-ID precedence, row identity, and pending/error preservation. Full-history refresh and missing-error insertion remain unchanged.
+
 ## Off-screen rows are skipped with content-visibility
 
 Every transcript row (`.chat-message`) sets `content-visibility: auto` with `contain-intrinsic-size: auto 120px`, so the browser skips layout and paint for off-screen rows. That turns a forced reflow from O(all messages) into O(visible rows).

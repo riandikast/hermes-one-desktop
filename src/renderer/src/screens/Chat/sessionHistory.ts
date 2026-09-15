@@ -723,8 +723,13 @@ export function preserveLocalAssistantErrors(
   nextMessages: ReadonlyArray<ChatMessage>,
   currentMessages: ReadonlyArray<ChatMessage>,
 ): ChatMessage[] {
+  const currentById = new Map<string, ChatMessage>();
+  for (const message of currentMessages) {
+    // Preserve find's first-match behavior for duplicate IDs.
+    if (!currentById.has(message.id)) currentById.set(message.id, message);
+  }
   let output = nextMessages.map((message) => {
-    const local = currentMessages.find((m) => m.id === message.id);
+    const local = currentById.get(message.id);
     if (
       isBubbleMessage(message) &&
       message.role === "agent" &&

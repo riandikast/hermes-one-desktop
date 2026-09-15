@@ -1,6 +1,60 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { dbItemsToChatMessages, type DbHistoryItem } from "./sessionHistory";
+import {
+  dbItemsToChatMessages,
+  preserveLocalAssistantErrors,
+  type DbHistoryItem,
+} from "./sessionHistory";
+import type { ChatMessage } from "./types";
+
+describe("preserveLocalAssistantErrors", () => {
+  it("uses linear ID reads when history has no local errors", () => {
+    const count = 1000;
+    let idReads = 0;
+    const current: ChatMessage[] = Array.from({ length: count }, (_, i) => ({
+      get id() {
+        idReads++;
+        return `message-${i}`;
+      },
+      role: "agent",
+      content: "answer",
+    }));
+    const next: ChatMessage[] = Array.from({ length: count }, (_, i) => ({
+      id: `message-${i}`,
+      role: "agent",
+      content: "answer",
+    }));
+
+    const output = preserveLocalAssistantErrors(next, current);
+
+    expect(idReads).toBeLessThanOrEqual(count * 3);
+    expect(output).not.toBe(next);
+    output.forEach((message, i) => expect(message).toBe(next[i]));
+  });
+
+  it("uses the first local match even when duplicate IDs disagree on errors", () => {
+    const first: ChatMessage = {
+      id: "duplicate",
+      role: "agent",
+      content: "answer",
+      error: "first error",
+    };
+    const later: ChatMessage = { ...first, error: "later error" };
+    const next: ChatMessage = {
+      id: "duplicate",
+      role: "agent",
+      content: "persisted answer",
+      pending: true,
+    };
+
+    expect(preserveLocalAssistantErrors([next], [first, later])).toEqual([
+      { ...next, error: "first error", pending: false },
+    ]);
+    expect(preserveLocalAssistantErrors([next], [next, first])[0]).toBe(next);
+    expect(preserveLocalAssistantErrors([first], [later])[0]).toBe(first);
+    expect(next.pending).toBe(true);
+  });
+});
 
 const QUESTION = "How should I proceed?";
 
