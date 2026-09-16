@@ -2803,7 +2803,7 @@ function Chat({
 
       <div className="chat-input-area">
 
-        <ChatTurnStatus isLoading={isLoading} messages={messages} />
+        <ChatTurnStatus isLoading={isLoading} messages={messages} activeSubagentCount={dashboardTransport.activeSubagents.length} />
 
         <QueuedMessages
 

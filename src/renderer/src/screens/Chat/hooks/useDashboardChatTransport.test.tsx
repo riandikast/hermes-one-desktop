@@ -48,6 +48,7 @@ vi.mock("../dashboardGatewayClient", () => ({
 }));
 
 interface HarnessApi {
+  activeSubagents?: { subagent_id: string }[];
   activeTurnRef?: MutableRefObject<ActiveTurn | null>;
   messages?: ChatMessage[];
   send?: (text: string) => Promise<boolean>;
@@ -129,6 +130,7 @@ function Harness({
     Object.assign(api, {
       activeTurnRef,
       messages,
+      activeSubagents: transport.activeSubagents,
       send: transport.sendMessage,
       setConnectionMode,
       setMessages,
@@ -142,6 +144,7 @@ function Harness({
     messages,
     setConnectionMode,
     setMessages,
+    transport.activeSubagents,
     transport.sendMessage,
   ]);
 
@@ -168,6 +171,24 @@ describe("useDashboardChatTransport recovery", () => {
         getSessionMessages: vi.fn(async () => []),
       },
     });
+  });
+
+  it("retains the parent child roster after message.complete", async () => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider", providers: [] };
+      return {};
+    });
+    const api: HarnessApi = {};
+    render(<Harness api={api} />);
+    await act(async () => { await api.send?.("hello"); });
+    expect(api.activeTurnRef?.current?.status).toBe("running");
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "subagent.start", session_id: "live", payload: { subagent_id: "child" } });
+      dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { content: "done" } });
+    });
+    expect(api.activeTurnRef?.current).toBeNull();
+    expect(api.activeSubagents).toEqual([{ subagent_id: "child" }]);
   });
 
   it("tracks a foreign turn via session.active_list polling", async () => {
@@ -1064,6 +1085,79 @@ describe("useDashboardChatTransport approval prompts", () => {
     expect(
       calls.find((call) => call.method === "approval.respond")?.params,
     ).toMatchObject({ choice: "deny" });
+  });
+});
+
+describe("subagent watch lifecycle", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it.each([false, true])("keeps child work busy until completion (resume running=%s)", async (running) => {
+    vi.useFakeTimers();
+    dashboardMock.request.mockReset();
+    dashboardMock.connect.mockResolvedValue(undefined);
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.resume") {
+        return { session_id: "live-child", resumed: "stored-child", running, status: running ? "streaming" : "idle" };
+      }
+      if (method === "session.active_list") {
+        return { sessions: [{ id: "live-child", status: "idle" }] };
+      }
+      return {};
+    });
+    const setIsLoading = vi.fn();
+    const activeTurnRef: MutableRefObject<ActiveTurn | null> = { current: null };
+    const rows = [
+      { id: 1, role: "user", content: "child task" },
+      { id: 2, role: "assistant", content: "Checking the files." },
+    ];
+    Object.defineProperty(window, "hermesAPI", {
+      configurable: true,
+      value: {
+        startDashboard: vi.fn(async () => ({ running: true, connection: { wsUrl: "ws://test" } })),
+        getSessionMessages: vi.fn(async () => rows),
+      },
+    });
+    function WatchHarness(): null {
+      const [messages, setMessages] = useState<ChatMessage[]>([
+        { id: "db-1", role: "user", content: "child task" },
+      ]);
+      useDashboardChatTransport({
+        activeTurnRef, contextFolder: null, connectionMode: "local", enabled: true,
+        fallbackOnUnavailable: false, hermesSessionId: "stored-child", watchChild: true,
+        messages, setMessages, setIsLoading, setHermesSessionId: vi.fn(),
+        setToolProgress: vi.fn(), setUsage: vi.fn(),
+      });
+      return null;
+    }
+    const view = render(<WatchHarness />);
+    await act(async () => {});
+    if (running) {
+      expect(setIsLoading).toHaveBeenLastCalledWith(true);
+      expect(activeTurnRef.current?.status).toBe("running");
+    } else {
+      await act(async () => {
+        dashboardMock.onEvent?.({ type: "message.start", session_id: "other-child" });
+        dashboardMock.onEvent?.({ type: "sessions.changed" });
+      });
+      expect(setIsLoading).not.toHaveBeenCalled();
+      expect(activeTurnRef.current).toBeNull();
+    }
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "message.start", session_id: "live-child" });
+      dashboardMock.onEvent?.({ type: "tool.start", session_id: "live-child", payload: { name: "read_file", tool_id: "t1" } });
+      dashboardMock.onEvent?.({ type: "tool.complete", session_id: "live-child", payload: { name: "read_file", tool_id: "t1", result: "file" } });
+    });
+    expect(setIsLoading).toHaveBeenLastCalledWith(true);
+    expect(activeTurnRef.current?.status).toBe("running");
+    await act(async () => { await vi.advanceTimersByTimeAsync(130_000); });
+    expect(setIsLoading).toHaveBeenLastCalledWith(true);
+    expect(activeTurnRef.current?.status).toBe("running");
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "message.complete", session_id: "live-child", payload: { text: "done" } });
+    });
+    expect(setIsLoading).toHaveBeenLastCalledWith(false);
+    expect(activeTurnRef.current).toBeNull();
+    view.unmount();
   });
 });
 

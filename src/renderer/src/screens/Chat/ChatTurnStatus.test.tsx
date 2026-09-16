@@ -10,6 +10,43 @@ function msg(partial: Partial<ChatMessage> & { id: string }): ChatMessage {
 }
 
 describe("ChatTurnStatus", () => {
+  it("shows waiting children while idle; retains parent activity while loading", () => {
+    const { rerender } = render(
+      <ChatTurnStatus
+        isLoading={false}
+        messages={[]}
+        activeSubagentCount={2}
+      />,
+    );
+    expect(screen.getByRole("status").textContent).toContain(
+      "Waiting for 2 subagents",
+    );
+    rerender(
+      <ChatTurnStatus isLoading messages={[]} activeSubagentCount={2} />,
+    );
+    expect(screen.getByRole("status").textContent).toContain("Working…");
+    expect(screen.getByRole("status").textContent).toContain(
+      "2 subagents running",
+    );
+    rerender(
+      <ChatTurnStatus
+        isLoading={false}
+        messages={[]}
+        activeSubagentCount={1}
+      />,
+    );
+    expect(screen.getByRole("status").textContent).toContain(
+      "Waiting for 1 subagent",
+    );
+    rerender(
+      <ChatTurnStatus
+        isLoading={false}
+        messages={[]}
+        activeSubagentCount={0}
+      />,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+  });
   it("renders nothing when the turn is not loading", () => {
     const { container } = render(
       <ChatTurnStatus isLoading={false} messages={[]} />,

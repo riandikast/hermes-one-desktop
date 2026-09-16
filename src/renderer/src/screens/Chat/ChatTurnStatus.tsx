@@ -54,9 +54,11 @@ function runningTool(messages: ChatMessage[]): { name: string } | null {
 export const ChatTurnStatus = memo(function ChatTurnStatus({
   isLoading,
   messages,
+  activeSubagentCount = 0,
 }: {
   isLoading: boolean;
   messages: ChatMessage[];
+  activeSubagentCount?: number;
 }): React.JSX.Element | null {
   const startRef = useRef<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -71,16 +73,19 @@ export const ChatTurnStatus = memo(function ChatTurnStatus({
     return () => window.clearInterval(t);
   }, [isLoading]);
 
-  if (!isLoading) return null;
+  if (!isLoading && !activeSubagentCount) return null;
 
   const tool = runningTool(messages);
   const last = messages[messages.length - 1];
   const lastKind = last ? (last as { kind?: string }).kind : undefined;
-  const label = tool
-    ? `Running ${tool.name}`
-    : lastKind === "reasoning"
-      ? "Thinking…"
-      : "Working…";
+  const childrenLabel = `${activeSubagentCount} subagent${activeSubagentCount === 1 ? "" : "s"}`;
+  const label = !isLoading
+    ? `Waiting for ${childrenLabel}`
+    : tool
+      ? `Running ${tool.name}`
+      : lastKind === "reasoning"
+        ? "Thinking…"
+        : "Working…";
   const elapsed =
     startRef.current !== null ? Math.max(0, now - startRef.current) : 0;
 
@@ -88,7 +93,10 @@ export const ChatTurnStatus = memo(function ChatTurnStatus({
     <div className="chat-turn-status" role="status" aria-live="polite">
       <Loader2 size={13} className="chat-turn-status-spinner" />
       <span className="chat-turn-status-label">{label}</span>
-      {elapsed >= 1000 && (
+      {isLoading && activeSubagentCount > 0 && (
+        <span> · {childrenLabel} running</span>
+      )}
+      {isLoading && elapsed >= 1000 && (
         <span className="chat-turn-status-elapsed">
           {formatElapsed(elapsed)}
         </span>

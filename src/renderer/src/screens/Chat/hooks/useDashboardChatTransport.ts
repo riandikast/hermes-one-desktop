@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { useActiveSubagents, type ActiveSubagent } from "./useActiveSubagents";
 import { LOCAL_PRESETS } from "../../../constants";
 import {
   isBubbleMessage,
@@ -168,6 +169,7 @@ interface UseDashboardChatTransportArgs {
 }
 
 interface UseDashboardChatTransportResult {
+  activeSubagents: ActiveSubagent[];
   abort: () => void;
   enabled: boolean;
   sendMessage: (text: string, attachments?: Attachment[]) => Promise<boolean>;
@@ -1027,6 +1029,7 @@ export function dashboardContinuationItemsFromTranscript(
   return items;
 }
 
+
 export function useDashboardChatTransport({
   activeTurnRef,
   contextFolder,
@@ -1062,6 +1065,7 @@ export function useDashboardChatTransport({
   // immediately. Reset on connection change (see the effect below).
   const dashboardUnavailableRef = useRef(false);
   const runtimeSessionIdRef = useRef<string | null>(null);
+  const { activeSubagents, onSubagentEvent } = useActiveSubagents(enabled, runtimeSessionIdRef, clientRef);
   const runtimeSessionPromiseRef = useRef<Promise<string> | null>(null);
   const storedSessionIdRef = useRef<string | null>(hermesSessionId);
   const messagesRef = useRef<ChatMessage[]>(messages);
@@ -1088,6 +1092,19 @@ export function useDashboardChatTransport({
   const foreignTurnRef = useRef(false);
   const foreignRefreshSeqRef = useRef(0);
   const lastLocalActivityAtRef = useRef(0);
+  const childTurnRef = useRef<ActiveTurn | null>(null);
+  const beginChildTurn = useCallback((): void => {
+    if (!activeTurnRef.current) {
+      activeTurnRef.current = {
+        turnId: `child-${Date.now()}`,
+        userId: "",
+        startIndex: messagesRef.current.length,
+        status: "running",
+      };
+      childTurnRef.current = activeTurnRef.current;
+    }
+    setIsLoading(true);
+  }, [activeTurnRef, setIsLoading]);
   // Delayed post-complete DB reconcile (intermediate answers) — cleared on
   // transport reset so it can't fire into a different session.
   const completeSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -1245,7 +1262,8 @@ export function useDashboardChatTransport({
     stallTimerRef.current = setTimeout(() => {
       stallTimerRef.current = null;
       const activeTurn = activeTurnRef.current;
-      if (!activeTurn) return;
+      // Watch runs can legitimately be silent; only their completion ends them.
+      if (!activeTurn || activeTurn === childTurnRef.current) return;
       // A TOOL may be legitimately running for a long time with no stream
       // events (multi-minute flutter build, slow network op). That is not a
       // stall — failing the turn here would flip isLoading false (spinner
@@ -1449,7 +1467,8 @@ export function useDashboardChatTransport({
       quietFinalizeTimerRef.current = null;
       const activeTurn = activeTurnRef.current;
       const storedSessionId = storedSessionIdRef.current;
-      if (!activeTurn || !storedSessionId) return;
+      // A stable DB tail can be interim commentary while the child still runs.
+      if (!activeTurn || activeTurn === childTurnRef.current || !storedSessionId) return;
       void (async () => {
         try {
           console.info("[quiet-finalize] firing", {
@@ -1603,6 +1622,10 @@ export function useDashboardChatTransport({
 
   const handleGatewayEvent = useCallback(
     (event: DashboardStreamEvent): void => {
+      if (event.type.startsWith("subagent.")) {
+        onSubagentEvent(event);
+        return;
+      }
       const runtimeSessionId = runtimeSessionIdRef.current;
       if (
         event.session_id &&
@@ -1623,6 +1646,16 @@ export function useDashboardChatTransport({
         }
       }
       logDashboardEvent(event, "accepted", runtimeSessionId);
+      if (
+        watchChild &&
+        event.session_id &&
+        (event.session_id === runtimeSessionId ||
+          event.session_id === storedSessionIdRef.current) &&
+        ["message.start", "message.delta", "reasoning.delta", "thinking.delta",
+          "tool.start", "tool.progress", "tool.complete"].includes(event.type)
+      ) {
+        beginChildTurn();
+      }
       // Any accepted event = the turn is alive; push the stall deadline out.
       resetStallTimer();
       // Also re-arm the quiet-finalize fallback (fires if NO further events
@@ -2216,6 +2249,9 @@ export function useDashboardChatTransport({
     },
     [
       activeTurnRef,
+      beginChildTurn,
+      onSubagentEvent,
+      watchChild,
       clearQuietFinalize,
       connectionMode,
       finalizeFileChanges,
@@ -2417,21 +2453,9 @@ export function useDashboardChatTransport({
           lazy: watchChild === true,
         });
 
-        // SUBAGENT WATCH WINDOW: a delegated child runs INSIDE its parent's
-        // turn, so its session never shows up in `session.active_list` as
-        // working/waiting and the foreign-turn poller below cannot see it --
-        // the window looked like a finished prompt until the first mirrored
-        // event happened to land (the "waiting subagent looks done" bug). The
-        // lazy resume reports the child's run state, so seed the busy indicator
-        // from that. Arm the same stall / quiet-finalize guards a local send
-        // uses, otherwise nothing would ever clear the spinner if the child
-        // finishes without emitting a mirrored completion.
-        if (watchChild && response.running) {
-          setIsLoading(true);
-          resetStallTimer();
-          resetQuietFinalize();
-          lastLocalActivityAtRef.current = Date.now();
-        }
+        // Lazy children own no run loop: active_list can report idle mid-run.
+        // Seed a watch turn; mirrored message.complete is its completion signal.
+        if (watchChild && response.running) beginChildTurn();
 
         if (stored && response.created) {
           pendingRecoveredContinuationRef.current =
@@ -2478,12 +2502,10 @@ export function useDashboardChatTransport({
     },
     [
       activeTurnRef,
+      beginChildTurn,
       contextFolder,
       profile,
-      resetQuietFinalize,
-      resetStallTimer,
       setHermesSessionId,
-      setIsLoading,
       watchChild,
     ],
   );
@@ -3255,6 +3277,7 @@ export function useDashboardChatTransport({
   );
 
   return {
+    activeSubagents,
     abort,
     enabled,
     sendMessage,
