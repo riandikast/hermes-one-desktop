@@ -31,6 +31,21 @@ type HighlightRegistry = {
 type HighlightCtor = new (...ranges: Range[]) => unknown;
 
 /**
+ * The transcript row for a message. Prefers the copy inside the scroll
+ * container: a pinned bubble renders the SAME `chat-msg-<id>` in the pinned bar
+ * above the transcript, and scrolling that copy would scroll nothing.
+ */
+function findRow(
+  container: HTMLElement | null,
+  messageId: string,
+): HTMLElement | null {
+  const selector = `[id="chat-msg-${messageId.replace(/"/g, '\\"')}"]`;
+  const scoped = container?.querySelector<HTMLElement>(selector);
+  if (scoped) return scoped;
+  return document.querySelector<HTMLElement>(selector);
+}
+
+/**
  * The CSS Custom Highlight API is Chromium-only and absent under jsdom, so it
  * is resolved defensively — highlighting is a progressive enhancement over the
  * match counter, which always works.
@@ -78,6 +93,7 @@ export function ChatSearch({
   const [query, setQuery] = useState("");
   const [deferredQuery, setDeferredQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [paintTick, setPaintTick] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -119,20 +135,28 @@ export function ChatSearch({
   const scrollToMatch = useCallback(
     (match: ChatSearchMatch | undefined): void => {
       if (!match) return;
+      // Break the transcript's stick-to-bottom lock first, otherwise the
+      // auto-follow yanks the viewport back to the bottom mid-jump.
       onBeforeScroll?.();
+      const container = containerRef?.current ?? null;
       let attempts = 0;
       const attempt = (): void => {
-        const el = document.getElementById(`chat-msg-${match.messageId}`);
-        if (el) {
-          el.scrollIntoView?.({ block: "center", behavior: "smooth" });
+        const row = findRow(container, match.messageId);
+        if (row) {
+          row.scrollIntoView?.({ block: "center", behavior: "smooth" });
+          // Repaint once the jump lands: rows that mount as the rendered
+          // window expands can hold stale highlight ranges.
+          setPaintTick((tick) => tick + 1);
           return;
         }
-        // The row may not be mounted yet (collapsed turn being revealed).
-        if (attempts++ < 8) window.setTimeout(attempt, 50);
+        // The row may not be mounted yet (collapsed turn being revealed), and
+        // expanding the window on a long session can take a few hundred ms.
+        if (attempts++ < 20) window.setTimeout(attempt, 80);
       };
-      attempt();
+      // Wait a frame so a just-revealed window has committed.
+      window.requestAnimationFrame(attempt);
     },
-    [onBeforeScroll],
+    [containerRef, onBeforeScroll],
   );
 
   const go = useCallback(
@@ -177,7 +201,7 @@ export function ChatSearch({
       for (const match of matches) {
         if (seen.has(match.messageId)) continue;
         seen.add(match.messageId);
-        const row = document.getElementById(`chat-msg-${match.messageId}`);
+        const row = findRow(container, match.messageId);
         if (!row || !container.contains(row)) continue;
         const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
         let occurrence = 0;
@@ -236,7 +260,7 @@ export function ChatSearch({
       window.cancelAnimationFrame(frame);
       clearPaint();
     };
-  }, [activeIndex, containerRef, deferredQuery, matches, open]);
+  }, [activeIndex, containerRef, deferredQuery, matches, open, paintTick]);
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>): void => {

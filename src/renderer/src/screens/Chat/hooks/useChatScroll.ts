@@ -26,8 +26,17 @@ export function useChatScroll(messages: ChatMessage[]): {
   bottomRef: React.RefObject<HTMLDivElement | null>;
   jumpToPresent: (force?: boolean) => () => void;
   scrolledUpAtom: ReturnType<typeof createAtom<boolean>>;
+  /**
+   * Break the stick-to-bottom lock WITHOUT scrolling. This is the correct way
+   * for a programmatic scroll elsewhere in the chat (in-chat search jumping to
+   * a match) to stop the auto-follow: `scrolledUpAtom.set(true)` alone is
+   * overwritten by the `isAtBottom` sync effect, but `stopScroll()` escapes the
+   * library's scroll lock so `isAtBottom` itself flips false and the atom
+   * follows. Restick by scrolling back to the bottom (or jumpToPresent).
+   */
+  stopFollow: () => void;
 } {
-  const { scrollRef, contentRef, isAtBottom, scrollToBottom } =
+  const { scrollRef, contentRef, isAtBottom, scrollToBottom, stopScroll } =
     useStickToBottom({
       initial: "instant",
       resize: "instant",
@@ -68,6 +77,7 @@ export function useChatScroll(messages: ChatMessage[]): {
     bottomRef,
     jumpToPresent,
     scrolledUpAtom: scrolledUpAtom.current,
+    stopFollow: stopScroll,
   };
 }
 

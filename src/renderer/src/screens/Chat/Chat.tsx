@@ -962,7 +962,7 @@ function Chat({
 
 
 
-  const { containerRef, contentRef, bottomRef, jumpToPresent, scrolledUpAtom } =
+  const { containerRef, contentRef, bottomRef, jumpToPresent, scrolledUpAtom, stopFollow } =
 
     useChatScroll(messages);
 
@@ -2676,7 +2676,7 @@ function Chat({
             if (next) setDisplayControlsOpen(false);
           }}
           onRevealMessage={setSearchRevealId}
-          onBeforeScroll={() => scrolledUpAtom.set(true)}
+          onBeforeScroll={stopFollow}
         />
         <button type="button" className="chat-display-controls-trigger" aria-label="Display controls" aria-expanded={displayControlsOpen} onClick={() => { setDisplayControlsOpen((open) => !open); setChatSearchOpen(false); }}>
           <SlidersHorizontal size={16} />

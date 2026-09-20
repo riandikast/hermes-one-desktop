@@ -131,4 +131,50 @@ describe("ChatSearch", () => {
       expect(screen.queryByRole("search")).not.toBeInTheDocument(),
     );
   });
+
+  it("scrolls the transcript row, not a same-id pinned copy outside the container", async () => {
+    // A pinned bubble renders the same `chat-msg-<id>` above the transcript.
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const pinnedCopy = document.createElement("div");
+    pinnedCopy.id = "chat-msg-a1";
+    document.body.appendChild(pinnedCopy);
+    const transcriptRow = document.createElement("div");
+    transcriptRow.id = "chat-msg-a1";
+    container.appendChild(transcriptRow);
+    const pinnedScroll = vi.fn();
+    pinnedCopy.scrollIntoView = pinnedScroll;
+    const rowScroll = vi.fn();
+    transcriptRow.scrollIntoView = rowScroll;
+
+    try {
+      const onBeforeScroll = vi.fn();
+      const containerRef = {
+        current: container,
+      } as React.RefObject<HTMLDivElement | null>;
+      render(
+        <ChatSearch
+          messages={[agent("a1", "needle")]}
+          containerRef={containerRef}
+          open
+          onOpenChange={() => undefined}
+          onBeforeScroll={onBeforeScroll}
+        />,
+      );
+
+      await typeQuery("needle");
+      await waitFor(() => expect(countText()).toBe("1/1"));
+      fireEvent.keyDown(screen.getByLabelText("Search text in chat"), {
+        key: "Enter",
+      });
+
+      // The auto-follow must be released BEFORE the jump, or it yanks back.
+      await waitFor(() => expect(onBeforeScroll).toHaveBeenCalled());
+      await waitFor(() => expect(rowScroll).toHaveBeenCalled());
+      expect(pinnedScroll).not.toHaveBeenCalled();
+    } finally {
+      container.remove();
+      pinnedCopy.remove();
+    }
+  });
 });
