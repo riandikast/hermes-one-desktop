@@ -9578,6 +9578,9 @@ body:has(.shell-vibrant),
   top: 76px;
   right: 18px;
   z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .chat-display-controls-trigger {
@@ -9596,6 +9599,130 @@ body:has(.shell-vibrant),
 .chat-display-controls-trigger:hover {
   color: var(--text-primary);
   border-color: var(--accent, #8b7cf6);
+}
+
+/* ── In-chat search (Chrome-style find bar) ─────────────────────────────── */
+.chat-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.chat-search-trigger {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+  border-radius: 50%;
+  background: var(--bg-elevated, #17171b);
+  color: var(--text-secondary);
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+.chat-search-trigger:hover,
+.chat-search-trigger--active {
+  color: var(--text-primary);
+  border-color: var(--accent, #8b7cf6);
+}
+
+.chat-search-bar {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 340px;
+  padding: 6px 8px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+  border-radius: 10px;
+  background: var(--bg-elevated, #17171b);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+}
+
+.chat-search-bar:focus-within {
+  border-color: var(--accent, #8b7cf6);
+}
+
+.chat-search-glyph {
+  flex: none;
+  color: var(--text-secondary);
+  margin-right: 6px;
+}
+
+.chat-search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+
+.chat-search-count {
+  flex: none;
+  padding: 0 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.chat-search-step,
+.chat-search-close {
+  display: grid;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.chat-search-step:hover:not(:disabled),
+.chat-search-close:hover {
+  background: var(--hover, rgba(127, 127, 127, 0.08));
+  color: var(--text-primary);
+}
+
+.chat-search-step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.chat-search-divider {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border, rgba(127, 127, 127, 0.2));
+}
+
+/* All matches / the current one. Chromium CSS Custom Highlight API — later
+   registrations paint on top, so the active match wins. */
+::highlight(chat-search-all) {
+  background-color: rgba(250, 204, 21, 0.32);
+  color: inherit;
+}
+
+::highlight(chat-search-active) {
+  background-color: rgba(249, 115, 22, 0.85);
+  color: #16130c;
+}
+
+/* Fallback marker for the active match's row: markdown rewrites text before it
+   reaches the DOM, so the exact occurrence can be unlocatable. */
+.chat-search-hit {
+  outline: 1px solid var(--accent, #8b7cf6);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 .chat-display-controls-menu {

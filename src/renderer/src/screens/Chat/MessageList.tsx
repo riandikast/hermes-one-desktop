@@ -161,6 +161,12 @@ interface MessageListProps {
   modelRef?: React.MutableRefObject<MessageListModel | null>;
   /** Session key for first-paint budget resets (e.g. hermesSessionId). */
   sessionKey?: string | null;
+  /**
+   * In-chat search: the message whose row must enter the rendered window. The
+   * transcript only mounts a budgeted tail, so a match inside a collapsed older
+   * turn has no DOM to scroll to or highlight until that turn is included.
+   */
+  revealMessageId?: string | null;
 }
 
 function TypingIndicator({
@@ -445,6 +451,7 @@ export const MessageList = memo(function MessageList({
   containerRef,
   modelRef,
   sessionKey,
+  revealMessageId,
 }: MessageListProps): React.JSX.Element {
   const isGatewaySystemMarker = (m: ChatMessage): boolean =>
     m.role === 'user' && typeof m.content === 'string' && m.content.trimStart().startsWith('[System:');
@@ -520,6 +527,29 @@ export const MessageList = memo(function MessageList({
     });
     return () => cancelAnimationFrame(raf);
   }, [anchorBeforePrepend, renderBudget]);
+
+  // In-chat search: include a collapsed turn in the rendered window so its
+  // match has a row to scroll to and highlight. The budget is raised to exactly
+  // the weight needed for that group; the auto-raise effect above only ever
+  // raises (Math.max), so this is never undone.
+  useEffect(() => {
+    if (!revealMessageId) return;
+    const index = visibleMessages.findIndex((m) => m.id === revealMessageId);
+    if (index < 0) return;
+    let group = -1;
+    for (let g = 0; g < groups.length; g++) {
+      if (groups[g]!.indices.includes(index)) {
+        group = g;
+        break;
+      }
+    }
+    if (group < 0) return;
+    let needed = 0;
+    for (let g = group; g < groups.length; g++) needed += groups[g]!.weight ?? 1;
+    if (needed <= renderBudget) return;
+    anchorBeforePrepend();
+    startTransition(() => setRenderBudget((b) => Math.max(b, needed)));
+  }, [anchorBeforePrepend, groups, renderBudget, revealMessageId, visibleMessages]);
 
   // Groups are already weighted; derive hiddenCount from the real group weights.
   const realHiddenCount = useMemo(

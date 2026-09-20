@@ -84,6 +84,7 @@ import { useUsageTracker } from "./hooks/useUsageTracker";
 import { QueuedMessages } from "./QueuedMessages";
 
 import { ChatTurnStatus } from "./ChatTurnStatus";
+import { ChatSearch } from "./ChatSearch";
 
 import { SLASH_COMMANDS, type SlashCommand } from "./slashCommands";
 
@@ -446,6 +447,10 @@ function Chat({
   const [displayControlsOpen, setDisplayControlsOpen] = useState(false);
   const [showAllThoughts, setShowAllThoughts] = useState(false);
   const [showAllTools, setShowAllTools] = useState(false);
+  // In-chat search (floating find bar next to the display controls).
+  const [chatSearchOpen, setChatSearchOpen] = useState(false);
+  // Message the search wants brought into the rendered window.
+  const [searchRevealId, setSearchRevealId] = useState<string | null>(null);
 
 
   const [usage, setUsage] = useState<UsageState | null>(null);
@@ -2662,7 +2667,18 @@ function Chat({
 
       <ConfigHealthBanner profile={profile} onOpenDiagnose={onOpenDiagnose} />
       <div className="chat-display-controls">
-        <button type="button" className="chat-display-controls-trigger" aria-label="Display controls" aria-expanded={displayControlsOpen} onClick={() => setDisplayControlsOpen((open) => !open)}>
+        <ChatSearch
+          messages={messages}
+          containerRef={containerRef}
+          open={chatSearchOpen}
+          onOpenChange={(next) => {
+            setChatSearchOpen(next);
+            if (next) setDisplayControlsOpen(false);
+          }}
+          onRevealMessage={setSearchRevealId}
+          onBeforeScroll={() => scrolledUpAtom.set(true)}
+        />
+        <button type="button" className="chat-display-controls-trigger" aria-label="Display controls" aria-expanded={displayControlsOpen} onClick={() => { setDisplayControlsOpen((open) => !open); setChatSearchOpen(false); }}>
           <SlidersHorizontal size={16} />
         </button>
         {displayControlsOpen && (
@@ -2740,6 +2756,8 @@ function Chat({
               modelRef={messageListModelRef}
 
               sessionKey={hermesSessionId}
+
+              revealMessageId={searchRevealId}
 
             />
 
