@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  ON_FINISH_CHANGE_EVENT,
   ON_FINISH_SELECTION_KEY,
+  isOnFinishArmed,
   moveOnFinishSelection,
-  readOnFinishArmed,
   readOnFinishSelection,
   resolveOnFinishCommands,
   toggleOnFinishSelection,
-  writeOnFinishArmed,
   writeOnFinishSelection,
 } from "./onFinish";
 
@@ -142,14 +142,46 @@ describe("resolveOnFinishCommands", () => {
   });
 });
 
-describe("arm flag is per-session", () => {
-  it("does not leak arming between sessions", () => {
-    writeOnFinishArmed("session-1", true);
-    expect(readOnFinishArmed("session-1")).toBe(true);
-    expect(readOnFinishArmed("session-2")).toBe(false);
+describe("arming is DERIVED from the selection", () => {
+  it("is armed exactly when the queue is non-empty", () => {
+    expect(isOnFinishArmed([])).toBe(false);
+    expect(isOnFinishArmed(["a"])).toBe(true);
+    expect(isOnFinishArmed(["a", "b"])).toBe(true);
   });
 
-  it("defaults to disarmed", () => {
-    expect(readOnFinishArmed("never-set")).toBe(false);
+  it("disarms itself when the last command is unticked", () => {
+    // The failure this prevents: user ticks commands, later unticks them all,
+    // and believes auto-run is still on. With a stored flag that is possible;
+    // derived, it is not expressible.
+    let sel = toggleOnFinishSelection([], "a");
+    expect(isOnFinishArmed(sel)).toBe(true);
+    sel = toggleOnFinishSelection(sel, "a");
+    expect(isOnFinishArmed(sel)).toBe(false);
+  });
+});
+
+describe("selection change notification", () => {
+  it("dispatches the change event on every write", () => {
+    const seen: string[] = [];
+    const listener = (): void => {
+      seen.push("fired");
+    };
+    window.addEventListener(ON_FINISH_CHANGE_EVENT, listener);
+    try {
+      writeOnFinishSelection(["a"]);
+      writeOnFinishSelection([]);
+    } finally {
+      window.removeEventListener(ON_FINISH_CHANGE_EVENT, listener);
+    }
+    // Both writes notify: the dock must appear AND disappear without a remount.
+    expect(seen).toEqual(["fired", "fired"]);
+  });
+});
+
+describe("writeOnFinishSelection / readOnFinishSelection wiring", () => {
+  it("uses the same storage key the chip and chat share", () => {
+    writeOnFinishSelection(["x"]);
+    expect(localStorage.getItem(ON_FINISH_SELECTION_KEY)).toBeTruthy();
+    expect(readOnFinishSelection()).toEqual(["x"]);
   });
 });

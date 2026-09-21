@@ -17,6 +17,16 @@
 export const ON_FINISH_SELECTION_KEY = "hermes.onFinish.selectedCommands";
 export const ON_FINISH_ARM_KEY = "hermes.onFinish.armed";
 
+/**
+ * Fired on `window` whenever the ordered selection changes.
+ *
+ * A `storage` event cannot be used: it only fires in OTHER documents, so a
+ * same-page writer (the On-Finish chip) would never notify the chat that owns
+ * the auto-run. A CustomEvent keeps the chip and the chat in sync within one
+ * renderer while still persisting through localStorage.
+ */
+export const ON_FINISH_CHANGE_EVENT = "hermes:onFinishChanged";
+
 /** Minimal shape the runner needs; the Commands page passes fuller objects. */
 export interface OnFinishCommand {
   id: string;
@@ -82,6 +92,13 @@ export function writeOnFinishSelection(ids: readonly string[]): void {
     );
   } catch {
     /* storage unavailable — the in-memory state still works for this session */
+  }
+  // Always notify same-page listeners, even when storage failed: the chat must
+  // still arm/disarm for this session.
+  try {
+    window.dispatchEvent(new CustomEvent(ON_FINISH_CHANGE_EVENT));
+  } catch {
+    /* non-browser environment (tests without jsdom) */
   }
 }
 
@@ -151,4 +168,19 @@ export function writeOnFinishArmed(identity: string, armed: boolean): void {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * ARMING IS DERIVED, NOT STORED SEPARATELY.
+ *
+ * An armed-but-empty queue is unobservable from the chat: the user ticked
+ * commands, they remember ticking them, and nothing runs. Deriving the arm
+ * state from "is the queue non-empty?" makes that state impossible to express —
+ * ticking a command arms, unticking the last one disarms.
+ *
+ * The identity argument is kept so the arm state stays per-session if a
+ * persisted override is ever reintroduced, but it does not gate this.
+ */
+export function isOnFinishArmed(selectedIds: readonly string[]): boolean {
+  return selectedIds.length > 0;
 }

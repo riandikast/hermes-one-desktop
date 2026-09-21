@@ -2,16 +2,17 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import toast from "react-hot-toast";
 
-import { Zap, Globe, ClipboardList, Hammer, SlidersHorizontal, Terminal, Eye, Play, Loader } from "lucide-react";
+import { Zap, Globe, ClipboardList, Hammer, SlidersHorizontal, Terminal, Eye } from "lucide-react";
 
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import {
-  readOnFinishArmed,
+  ON_FINISH_CHANGE_EVENT,
+  isOnFinishArmed,
   readOnFinishSelection,
-  writeOnFinishArmed,
   type OnFinishCommand,
 } from "./onFinish";
 import { useOnFinishRunner } from "./useOnFinishRunner";
+import { OnFinishChip } from "./OnFinishChip";
 import type { TerminalDockHandle } from "../Command/TerminalDock";
 import { TerminalDock } from "../Command/TerminalDock";
 
@@ -597,16 +598,17 @@ function Chat({
     }
   });
 
-  // ── On-Finish: auto-run the selected Commands-page commands after a turn ──
-  // ARMED is per-session, so one conversation cannot arm another. The
-  // SELECTION (an ordered id list) lives in localStorage and is edited on the
-  // Commands page; here we only read it when a turn completes.
-  const onFinishIdentityRef = useRef<string>(initialSessionId ?? runId);
-  const [onFinishArmed, setOnFinishArmed] = useState<boolean>(() =>
-    readOnFinishArmed(initialSessionId ?? runId),
+  // ── On-Finish: auto-run the ticked commands after every completed turn ──
+  // The SELECTION is the single source of truth: an ordered id list persisted
+  // in localStorage and edited from the On-Finish chip's dropdown (and mirrored
+  // on the Commands page). ARMED is DERIVED from it — a non-empty queue means
+  // armed — so "armed but nothing ticks" cannot happen.
+  const [onFinishSelected, setOnFinishSelected] = useState<string[]>(() =>
+    readOnFinishSelection(),
   );
-  // Commands are read fresh on each finish so edits on the Commands page take
-  // effect without remounting the chat.
+  const onFinishArmed = isOnFinishArmed(onFinishSelected);
+  // Commands are read fresh on each finish so Commands-page edits apply without
+  // remounting the chat.
   const onFinishCommandsRef = useRef<OnFinishCommand[]>([]);
   const onFinishDockRef = useRef<TerminalDockHandle | null>(null);
   // The chat's On-Finish dock is fixed-height (the chat layout owns the rest of
@@ -629,6 +631,19 @@ function Chat({
   useEffect(() => {
     onFinishArmedRef.current = onFinishArmed;
   }, [onFinishArmed]);
+
+  // The chip's dropdown owns selection edits. It lives in this same tree, so it
+  // cannot raise a `storage` event (those only fire cross-document) — instead
+  // the chip dispatches a CustomEvent and we re-read. Without this the dock
+  // would not appear/disappear until the chat remounted.
+  useEffect(() => {
+    const syncSelection = (): void => {
+      setOnFinishSelected(readOnFinishSelection());
+    };
+    window.addEventListener(ON_FINISH_CHANGE_EVENT, syncSelection);
+    return () =>
+      window.removeEventListener(ON_FINISH_CHANGE_EVENT, syncSelection);
+  }, []);
   const onFinishRunnerRef = useRef(onFinishRunner);
   useEffect(() => {
     onFinishRunnerRef.current = onFinishRunner;
@@ -642,14 +657,6 @@ function Chat({
       } catch {
         /* ignore */
       }
-      return next;
-    });
-  }, []);
-
-  const toggleOnFinish = useCallback((): void => {
-    setOnFinishArmed((prev) => {
-      const next = !prev;
-      writeOnFinishArmed(onFinishIdentityRef.current, next);
       return next;
     });
   }, []);
@@ -3064,6 +3071,8 @@ function Chat({
 
               </div>
 
+              <OnFinishChip running={onFinishRunner.state.running} />
+
               <ContextFolderChip
 
                 contextFolders={contextFolders}
@@ -3185,41 +3194,10 @@ function Chat({
                 </span>
               </button>
 
-              <button
-                type="button"
-                className={`btn-ghost chat-tool-btn ${
-                  onFinishArmed ? "chat-tool-btn-active" : ""
-                }`}
-                onClick={toggleOnFinish}
-                title={
-                  onFinishArmed
-                    ? "On-Finish ARMED — selected commands run after every reply. Click to disarm."
-                    : "On-Finish OFF — click to run the commands selected on the Commands page after each reply."
-                }
-                aria-pressed={onFinishArmed}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  height: 28,
-                  padding: "0 6px",
-                  borderRadius: 6,
-                  gap: 4,
-                  color: onFinishArmed
-                    ? "var(--accent-text)"
-                    : "var(--text-secondary)",
-                  background: onFinishArmed
-                    ? "color-mix(in srgb, var(--accent-text) 12%, transparent)"
-                    : "transparent",
-                }}
-              >
-                {onFinishRunner.state.running ? (
-                  <Loader size={13} className="chat-onfinish-spin" />
-                ) : (
-                  <Play size={13} />
-                )}
-                <span style={{ fontSize: 10, fontWeight: 600 }}>On-Finish</span>
-              </button>
+              {/* On-Finish lives in the input footer next to the folder chip
+                  (see OnFinishChip), not as a toolbar toggle: the chip is the
+                  picker AND the switch, so one click both opens the command
+                  list and (on tick) arms the auto-run. */}
 
               <button
                 type="button"

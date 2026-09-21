@@ -21060,42 +21060,11 @@ body:has(.shell-vibrant),
   filter: brightness(1.1);
 }
 
-/* ── On-Finish selection ─────────────────────────────────────────────────────
-   A checkbox per command, where the CHECKED state shows the command's
-   position in the run queue. Order is the feature, so the number must be
-   visible on the row itself — not only in the queue bar. */
-.command-row-check {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid var(--border-color, rgba(127, 127, 127, 0.28));
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  flex-shrink: 0;
-  font-size: 11px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
-}
-.command-row-check:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.command-row-check.checked {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
-}
-.command-row-check-order {
-  line-height: 1;
-}
+/* ── On-Finish selection (Commands page is READ-ONLY; see OnFinishChip) ─────
+   The queue is edited from the chat's On-Finish chip. The page shows a
+   numbered summary so the order is inspectable where commands are managed. */
 
-/* The queue bar: the single place the FULL order is visible and editable. */
+/* The queue bar: a numbered read-only summary of the run order. */
 .command-onfinish-bar {
   margin: 8px 0 12px;
   padding: 10px 12px;
@@ -21159,29 +21128,8 @@ body:has(.shell-vibrant),
   white-space: nowrap;
   color: var(--text-primary);
 }
-.command-onfinish-move {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-.command-onfinish-move:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.09);
-  color: var(--text-primary);
-}
-.command-onfinish-move:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
 
-/* Spinner shown on the chartoolbar button while the queue executes. */
+/* Spinner shown on the chip while the queue executes. */
 @keyframes chat-onfinish-spin {
   to {
     transform: rotate(360deg);
@@ -21192,6 +21140,129 @@ body:has(.shell-vibrant),
 }
 @media (prefers-reduced-motion: reduce) {
   .chat-onfinish-spin {
+    animation: none;
+  }
+}
+
+/* ── On-Finish chip dropdown ─────────────────────────────────────────────────
+   Reuses the context-folder dropdown shell (.chat-ctxfolder-dropdown) so the
+   two chips in the input footer behave identically. Only the queue/group
+   specifics live here. */
+.chat-onfinish-dropdown {
+  min-width: 260px;
+  max-width: 340px;
+}
+
+/* Run order, at the top of the dropdown: numbered chips, click to remove. */
+.chat-onfinish-queue {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 8px 8px;
+}
+.chat-onfinish-queue-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 5px 2px 2px;
+  border: 1px solid var(--border-color, rgba(127, 127, 127, 0.2));
+  border-radius: 999px;
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.04));
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+}
+.chat-onfinish-queue-chip:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+/* The number carries the run order, so it gets the accent fill. */
+.chat-onfinish-queue-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.chat-onfinish-queue-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Long command lists must not push the footer chip off screen. */
+.chat-onfinish-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+}
+.chat-onfinish-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+}
+.chat-onfinish-group:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+.chat-onfinish-group-label {
+  flex: 1;
+}
+.chat-onfinish-group-count {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+/* Per-item run position, shown next to the command name when ticked. */
+.chat-onfinish-item-order {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+/* Busy dot on the chip while the queue runs (the chip is text, so a dot reads
+   better than a rotating glyph next to the label). */
+.chat-onfinish-spin-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  animation: chat-onfinish-pulse 1s ease-in-out infinite;
+}
+@keyframes chat-onfinish-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-onfinish-spin-dot {
     animation: none;
   }
 }

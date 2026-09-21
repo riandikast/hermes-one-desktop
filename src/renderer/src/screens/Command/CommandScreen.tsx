@@ -12,16 +12,13 @@ import {
   Search,
   Copy,
   Terminal,
-  Check,
 } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
 import type { TerminalDockHandle } from "./TerminalDock";
 import { TerminalDock } from "./TerminalDock";
 import {
-  moveOnFinishSelection,
+  ON_FINISH_CHANGE_EVENT,
   readOnFinishSelection,
-  toggleOnFinishSelection,
-  writeOnFinishSelection,
 } from "../Chat/onFinish";
 
 export interface CommandItem {
@@ -297,29 +294,16 @@ export function CommandScreen(): React.JSX.Element {
     }
   };
 
-  // ── On-Finish selection ──────────────────────────────────────────────────
-  // Order matters: selecting appends, so the first command picked runs first.
-  // Every mutation persists immediately so the chatbox sees it on next mount.
-  const toggleOnFinish = (id: string): void => {
-    setOnFinishIds((prev) => {
-      const next = toggleOnFinishSelection(prev, id);
-      writeOnFinishSelection(next);
-      return next;
-    });
-  };
-
-  const moveOnFinish = (id: string, delta: number): void => {
-    setOnFinishIds((prev) => {
-      const next = moveOnFinishSelection(prev, id, delta);
-      writeOnFinishSelection(next);
-      return next;
-    });
-  };
-
-  const clearOnFinish = (): void => {
-    setOnFinishIds([]);
-    writeOnFinishSelection([]);
-  };
+  // ── On-Finish queue: READ-ONLY here ─────────────────────────────────────
+  // The queue is edited from the chat's On-Finish chip. This page only mirrors
+  // it, so the two can never disagree about the order. A CustomEvent (not
+  // `storage`, which does not fire in the writing document) keeps the mirror
+  // live while the queue is changed in another tab/view.
+  useEffect(() => {
+    const sync = (): void => setOnFinishIds(readOnFinishSelection());
+    window.addEventListener(ON_FINISH_CHANGE_EVENT, sync);
+    return () => window.removeEventListener(ON_FINISH_CHANGE_EVENT, sync);
+  }, []);
 
   const toggleFolder = (folder: string): void => {
     setCollapsedFolders((prev) => {
@@ -393,24 +377,19 @@ export function CommandScreen(): React.JSX.Element {
         {error && <div className="command-error">{error}</div>}
 
         {onFinishIds.length > 0 && (
-          // The ONLY place the run order is visible. Numbered chips, reorder
-          // with the arrows, click a chip to remove. Order = run order.
+          // READ-ONLY reflection of the On-Finish queue. The queue is edited
+          // from the chat's On-Finish chip, so this is status, not a control —
+          // two editable surfaces for one ordered list is how the order gets
+          // out of sync.
           <div className="command-onfinish-bar">
             <div className="command-onfinish-head">
               <span className="command-onfinish-title">
                 On-Finish queue ({onFinishIds.length})
               </span>
               <span className="command-onfinish-hint">
-                runs in this order after each reply
+                set from the On-Finish chip in the chat · runs in this order
+                after each reply
               </span>
-              <button
-                type="button"
-                className="btn btn-ghost btn-xs"
-                onClick={clearOnFinish}
-                title="Clear the On-Finish queue"
-              >
-                Clear
-              </button>
             </div>
             <ol className="command-onfinish-list">
               {onFinishIds.map((id, index) => {
@@ -423,35 +402,6 @@ export function CommandScreen(): React.JSX.Element {
                     <span className="command-onfinish-chip-name">
                       {cmd?.name ?? "(deleted)"}
                     </span>
-                    <button
-                      type="button"
-                      className="command-onfinish-move"
-                      onClick={() => moveOnFinish(id, -1)}
-                      disabled={index === 0}
-                      title="Run earlier"
-                      aria-label={`Move ${cmd?.name ?? id} earlier`}
-                    >
-                      <ChevronDown size={11} style={{ transform: "rotate(180deg)" }} />
-                    </button>
-                    <button
-                      type="button"
-                      className="command-onfinish-move"
-                      onClick={() => moveOnFinish(id, 1)}
-                      disabled={index === onFinishIds.length - 1}
-                      title="Run later"
-                      aria-label={`Move ${cmd?.name ?? id} later`}
-                    >
-                      <ChevronDown size={11} />
-                    </button>
-                    <button
-                      type="button"
-                      className="command-onfinish-move"
-                      onClick={() => toggleOnFinish(id)}
-                      title="Remove from queue"
-                      aria-label={`Remove ${cmd?.name ?? id} from On-Finish`}
-                    >
-                      <X size={11} />
-                    </button>
                   </li>
                 );
               })}
@@ -518,26 +468,6 @@ export function CommandScreen(): React.JSX.Element {
                             dragIdRef.current = null;
                           }}
                         >
-                          <button
-                            type="button"
-                            className={`command-row-check ${onFinishIds.includes(cmd.id) ? "checked" : ""}`}
-                            onClick={() => toggleOnFinish(cmd.id)}
-                            title={
-                              onFinishIds.includes(cmd.id)
-                                ? `Runs #${onFinishIds.indexOf(cmd.id) + 1} on finish — click to remove`
-                                : "Add to On-Finish (runs after the agent finishes)"
-                            }
-                            aria-label={`Toggle ${cmd.name} for On-Finish`}
-                            aria-pressed={onFinishIds.includes(cmd.id)}
-                          >
-                            {onFinishIds.includes(cmd.id) ? (
-                              <span className="command-row-check-order">
-                                {onFinishIds.indexOf(cmd.id) + 1}
-                              </span>
-                            ) : (
-                              <Check size={12} />
-                            )}
-                          </button>
                           <button
                             type="button"
                             className="command-row-run"

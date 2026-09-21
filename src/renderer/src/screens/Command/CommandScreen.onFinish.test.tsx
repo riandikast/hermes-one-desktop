@@ -1,14 +1,17 @@
 // @vitest-environment jsdom
 //
-// The Commands page half of On-Finish: a checkbox per row whose checked state
-// shows the command's RUN POSITION, and a queue bar that reflects selection
-// order. The order is the whole feature, so it is asserted explicitly —
-// including that selecting in a non-alphabetical order is preserved.
+// The Commands page no longer EDITS the On-Finish queue — the chat's On-Finish
+// chip does. These assert the page only MIRRORS it (read-only), because two
+// editable surfaces for one ordered list is how an order silently diverges.
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CommandScreen } from "./CommandScreen";
-import { ON_FINISH_SELECTION_KEY } from "../Chat/onFinish";
+import {
+  ON_FINISH_CHANGE_EVENT,
+  ON_FINISH_SELECTION_KEY,
+  writeOnFinishSelection,
+} from "../Chat/onFinish";
 import { I18nProvider } from "../../components/I18nProvider";
 
 const COMMANDS = [
@@ -32,16 +35,6 @@ const COMMANDS = [
     createdAt: 2,
     updatedAt: 2,
   },
-  {
-    id: "m",
-    name: "Mango",
-    command: "echo m",
-    description: "",
-    cwd: "",
-    folder: "",
-    createdAt: 3,
-    updatedAt: 3,
-  },
 ];
 
 beforeEach(() => {
@@ -62,128 +55,99 @@ beforeEach(() => {
   };
 });
 
-/** Rows start collapsed; expand Ungrouped so the command rows render. */
 async function renderExpanded(): Promise<void> {
-  // CommandScreen calls useI18n(), which requires the provider.
   const { container } = render(
     <I18nProvider>
       <CommandScreen />
     </I18nProvider>,
   );
-  // The first open collapses EVERY group (including Ungrouped), so the rows
-  // only exist after clicking the group header. Target it by class: the header
-  // is a button whose title is "Move to Ungrouped", not the group name.
   await waitFor(() =>
     expect(container.querySelector(".command-group-header")).not.toBeNull(),
   );
   fireEvent.click(container.querySelector(".command-group-header")!);
   await waitFor(() =>
-    expect(container.querySelectorAll(".command-row").length).toBe(3),
+    expect(container.querySelectorAll(".command-row").length).toBe(2),
   );
 }
 
-function checkboxFor(name: string): HTMLElement {
-  return screen.getByLabelText(`Toggle ${name} for On-Finish`);
-}
+describe("Commands page mirrors the On-Finish queue", () => {
+  it("shows no queue bar when the queue is empty", async () => {
+    await renderExpanded();
+    expect(screen.queryByText(/On-Finish queue/)).toBeNull();
+  });
 
-describe("On-Finish selection on the Commands page", () => {
-  it("assigns positions in the order the commands were selected", async () => {
+  it("mirrors a queue set from the chat, in order", async () => {
+    writeOnFinishSelection(["a", "z"]);
     await renderExpanded();
 
-    // Deliberately select in reverse-alphabetical order.
-    fireEvent.click(checkboxFor("Zebra"));
-    fireEvent.click(checkboxFor("Alpha"));
-    fireEvent.click(checkboxFor("Mango"));
-
-    // The numbers on the rows must reflect selection order, not list order.
     await waitFor(() =>
-      expect(checkboxFor("Zebra").textContent).toBe("1"),
+      expect(screen.getByText(/On-Finish queue \(2\)/)).toBeDefined(),
     );
-    expect(checkboxFor("Alpha").textContent).toBe("2");
-    expect(checkboxFor("Mango").textContent).toBe("3");
+    // Order must come from the selection, not the command list.
+    const chips = document.querySelectorAll(".command-onfinish-chip-name");
+    expect([...chips].map((c) => c.textContent)).toEqual(["Alpha", "Zebra"]);
   });
 
-  it("removes a command from the queue and renumbers the rest", async () => {
+  it("offers no editing controls — the chat chip owns the queue", async () => {
+    writeOnFinishSelection(["a"]);
     await renderExpanded();
-    fireEvent.click(checkboxFor("Zebra"));
-    fireEvent.click(checkboxFor("Alpha"));
-    fireEvent.click(checkboxFor("Mango"));
+    await waitFor(() =>
+      expect(screen.getByText(/On-Finish queue \(1\)/)).toBeDefined(),
+    );
 
-    // Deselect the middle one: Mango must move up to position 2.
-    fireEvent.click(checkboxFor("Alpha"));
-    await waitFor(() => expect(checkboxFor("Mango").textContent).toBe("2"));
-    expect(checkboxFor("Zebra").textContent).toBe("1");
+    // No checkboxes, no clear button, no reorder buttons on this page.
+    expect(document.querySelectorAll(".command-row-check").length).toBe(0);
+    expect(screen.queryByTitle("Clear the On-Finish queue")).toBeNull();
+    expect(screen.queryByLabelText(/Move .* earlier/)).toBeNull();
   });
 
-  it("persists the ordered selection for the chatbox to read", async () => {
+  it("updates live when the queue changes elsewhere", async () => {
     await renderExpanded();
-    fireEvent.click(checkboxFor("Mango"));
-    fireEvent.click(checkboxFor("Zebra"));
+    expect(screen.queryByText(/On-Finish queue/)).toBeNull();
 
-    await waitFor(() => {
-      const raw = localStorage.getItem(ON_FINISH_SELECTION_KEY);
-      expect(raw).toBeTruthy();
-      expect(JSON.parse(raw!)).toEqual([
-        { id: "m", order: 0 },
-        { id: "z", order: 1 },
-      ]);
-    });
-  });
-
-  it("shows a numbered queue bar listing the run order", async () => {
-    await renderExpanded();
-    fireEvent.click(checkboxFor("Zebra"));
-    fireEvent.click(checkboxFor("Mango"));
+    // Simulate the chip writing a new queue while this page is open.
+    writeOnFinishSelection(["z", "a"]);
 
     await waitFor(() =>
       expect(screen.getByText(/On-Finish queue \(2\)/)).toBeDefined(),
     );
     const chips = document.querySelectorAll(".command-onfinish-chip-name");
-    expect([...chips].map((c) => c.textContent)).toEqual(["Zebra", "Mango"]);
+    expect([...chips].map((c) => c.textContent)).toEqual(["Zebra", "Alpha"]);
   });
 
-  it("reorders the queue with the move controls", async () => {
+  it("drops the bar when the queue is cleared", async () => {
+    writeOnFinishSelection(["a"]);
     await renderExpanded();
-    fireEvent.click(checkboxFor("Zebra"));
-    fireEvent.click(checkboxFor("Mango"));
-
-    // Move Mango earlier: it should become first.
-    fireEvent.click(screen.getByLabelText("Move Mango earlier"));
-    await waitFor(() => {
-      const chips = document.querySelectorAll(".command-onfinish-chip-name");
-      expect([...chips].map((c) => c.textContent)).toEqual(["Mango", "Zebra"]);
-    });
-    // And the row badges follow.
-    expect(checkboxFor("Mango").textContent).toBe("1");
-    expect(checkboxFor("Zebra").textContent).toBe("2");
-  });
-
-  it("clears the whole queue", async () => {
-    await renderExpanded();
-    fireEvent.click(checkboxFor("Zebra"));
     await waitFor(() =>
       expect(screen.getByText(/On-Finish queue \(1\)/)).toBeDefined(),
     );
 
-    fireEvent.click(screen.getByTitle("Clear the On-Finish queue"));
-    await waitFor(() =>
-      expect(screen.queryByText(/On-Finish queue/)).toBeNull(),
-    );
+    writeOnFinishSelection([]);
+    await waitFor(() => expect(screen.queryByText(/On-Finish queue/)).toBeNull());
   });
 
-  it("restores a saved queue on mount", async () => {
-    localStorage.setItem(
-      ON_FINISH_SELECTION_KEY,
-      JSON.stringify([
-        { id: "m", order: 0 },
-        { id: "z", order: 1 },
-      ]),
-    );
+  it("labels a command deleted from the queue rather than dropping a slot", async () => {
+    writeOnFinishSelection(["gone", "a"]);
     await renderExpanded();
     await waitFor(() =>
       expect(screen.getByText(/On-Finish queue \(2\)/)).toBeDefined(),
     );
-    expect(checkboxFor("Mango").textContent).toBe("1");
-    expect(checkboxFor("Zebra").textContent).toBe("2");
+    expect(screen.getByText("(deleted)")).toBeDefined();
+  });
+
+  it("announces changes on the shared event name", async () => {
+    // Guards against a typo in the event string breaking live sync silently.
+    const seen: string[] = [];
+    const listener = (): void => {
+      seen.push("fired");
+    };
+    window.addEventListener(ON_FINISH_CHANGE_EVENT, listener);
+    try {
+      writeOnFinishSelection(["a"]);
+    } finally {
+      window.removeEventListener(ON_FINISH_CHANGE_EVENT, listener);
+    }
+    expect(seen).toEqual(["fired"]);
+    expect(localStorage.getItem(ON_FINISH_SELECTION_KEY)).toBeTruthy();
   });
 });
