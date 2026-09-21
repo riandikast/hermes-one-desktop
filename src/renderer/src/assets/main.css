@@ -6229,6 +6229,25 @@ body:has(.shell-vibrant),
    marks EVERY match as `.cm-searchMatch-all`. The active match keeps CM's own
    `.cm-searchMatch.cm-searchMatch-selected`, which must stay the visually
    dominant one — hence the softer fill here and a stronger one below. */
+
+/* Match counter, injected into CodeMirror's search panel row next to the
+   input (see editorSearch.ts). Styled for both editor hosts. */
+.cm-search-count-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  margin: 0 6px;
+  padding: 1px 7px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #c6c6cd;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .file-viewer-cm-host .cm-searchMatch-all {
   background: rgba(250, 204, 21, 0.28);
   border-radius: 2px;

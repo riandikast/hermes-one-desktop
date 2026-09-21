@@ -152,6 +152,18 @@ export function SearchBar({
       if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "f") {
         // Ctrl+Shift+F = content search → Layout opens the Find-in-Files dialog.
         if (e.shiftKey) return;
+        // A CodeMirror editor owns Ctrl+F while the caret is inside it: the
+        // FILE editor's search must open its own panel rather than stealing
+        // focus up to this global search bar. Let the event reach CodeMirror.
+        const focused = document.activeElement;
+        if (focused instanceof HTMLElement && focused.closest(".cm-editor")) {
+          return;
+        }
+        // Same when an editor search panel is already open: its input lives
+        // outside .cm-editor in some layouts, so check the panel directly too.
+        if (document.querySelector(".cm-panel.cm-search")) {
+          return;
+        }
         e.preventDefault();
         inputRef.current?.focus();
         return;

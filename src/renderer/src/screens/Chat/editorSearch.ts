@@ -1,6 +1,7 @@
 import {
   EditorView,
   Decoration,
+  ViewPlugin,
   type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
@@ -148,6 +149,10 @@ export function searchHighlights(
   let lastKey = "";
   return [
     highlightLayer,
+    // Show the counter IN the search panel row, like VS Code. Rendering it in
+    // app chrome elsewhere (a status bar) was invisible in practice: the panel
+    // is where the user is looking while searching.
+    searchCountPanel,
     EditorView.updateListener.of((update) => {
       if (
         !update.docChanged &&
@@ -166,6 +171,64 @@ export function searchHighlights(
         lastKey = key;
         onInfo(info);
       }
+      updateCountBadge(update.view, info);
     }),
   ];
 }
+
+/**
+ * The counter element injected into CodeMirror's search panel.
+ *
+ * The panel is rebuilt by CodeMirror whenever the query changes, so the badge
+ * is re-appended rather than assumed to persist. A module-level WeakMap keeps
+ * one badge per editor view without leaking DOM references.
+ */
+const countBadges = new WeakMap<EditorView, HTMLElement>();
+
+function updateCountBadge(view: EditorView, info: SearchMatchInfo): void {
+  const panelInput = view.dom.querySelector(".cm-panel.cm-search input[name=search]");
+  if (!panelInput) return; // panel closed
+  const row = panelInput.closest(".cm-search") ?? panelInput.parentElement;
+  if (!row) return;
+
+  let badge = countBadges.get(view);
+  if (!badge || !badge.isConnected) {
+    badge = document.createElement("span");
+    badge.className = "cm-search-count-badge";
+    badge.setAttribute("role", "status");
+    badge.setAttribute("aria-live", "polite");
+    // Sit immediately after the search input, as VS Code does.
+    panelInput.insertAdjacentElement("afterend", badge);
+    countBadges.set(view, badge);
+  }
+  const text =
+    info.total === 0 ? "0/0" : `${info.index > 0 ? info.index : 1}/${info.total}`;
+  if (badge.textContent !== text) badge.textContent = text;
+  badge.setAttribute(
+    "title",
+    info.total === 0
+      ? "No matches"
+      : `Match ${info.index > 0 ? info.index : 1} of ${info.total}`,
+  );
+}
+
+/**
+ * Re-asserts the counter badge after CodeMirror rebuilds its search panel.
+ *
+ * A `ViewPlugin` (rather than the update listener) so it also runs on the
+ * update where the panel first appears — the badge must exist the moment the
+ * panel is open, not only after the next keystroke.
+ */
+const searchCountPanel: Extension = ViewPlugin.fromClass(
+  class {
+    constructor(view: EditorView) {
+      updateCountBadge(view, searchMatchInfo(view.state));
+    }
+    update(update: ViewUpdate): void {
+      // Cheap (a query + a text write), and it recovers the badge whenever
+      // CodeMirror replaces the panel row.
+      updateCountBadge(update.view, searchMatchInfo(update.state));
+    }
+  },
+);
+
