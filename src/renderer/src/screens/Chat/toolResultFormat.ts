@@ -114,9 +114,18 @@ function formatMetaValue(key: string, value: unknown): string | null {
       return value === true ? "binary" : null;
     case "is_image":
       return value === true ? "image" : null;
+    case "verification_evidence":
+      // Free prose, not a chip.
+      return null;
     case "status":
+      // "exited" on every terminal result is noise next to the exit code.
+      return typeof value === "string" && value && value !== "exited"
+        ? value
+        : null;
     case "resolved_path":
-      return typeof value === "string" && value ? String(value) : null;
+      // Already the body of a file section when present; only chip it for
+      // envelopes that carry no other payload.
+      return null;
     default:
       return null;
   }
@@ -138,6 +147,89 @@ function errorText(record: Record<string, unknown>): string | null {
   if (typeof raw === "string" && raw.trim()) return raw;
   if (raw && typeof raw === "object") return JSON.stringify(raw, null, 2);
   return null;
+}
+
+/** Render a list of strings as a column. */
+function asList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) =>
+      typeof item === "string"
+        ? item
+        : item && typeof item === "object" && "path" in item
+          ? String((item as { path: unknown }).path)
+          : null,
+    )
+    .filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+/**
+ * Structured payloads that read better as purpose-built text than as JSON:
+ *   - todo lists:      {todos: [{content, status}]}
+ *   - skill ops:       {operations_applied, results: [{name, action, success}]}
+ *   - file listings:   {files: [...]} / {files_modified: [...]}
+ * Returns [] when none match, so the caller falls through to the plain keys.
+ */
+function structuredSections(record: Record<string, unknown>): ResultSection[] {
+  const sections: ResultSection[] = [];
+
+  // Todo list — a checked list reads far better than the raw objects.
+  const todos = record.todos;
+  if (Array.isArray(todos) && todos.length > 0) {
+    const lines = todos.map((entry) => {
+      const row = asRecord(entry);
+      if (!row) return null;
+      const status = typeof row.status === "string" ? row.status : "";
+      const mark =
+        status === "completed" ? "[x]" : status === "in_progress" ? "[~]" : "[ ]";
+      const content = typeof row.content === "string" ? row.content : "";
+      return `${mark} ${content}${status ? `  (${status})` : ""}`;
+    });
+    const body = lines.filter((l): l is string => l !== null).join("\n");
+    if (body) sections.push({ label: "Todos", body, language: "text" });
+  }
+
+  // Skill-manage operations — one line per op, with the target.
+  const operations = record.results;
+  const applied = record.operations_applied;
+  if (
+    typeof applied === "number" &&
+    Array.isArray(operations) &&
+    operations.length > 0
+  ) {
+    const lines = operations.map((entry) => {
+      const row = asRecord(entry);
+      if (!row) return null;
+      const name = typeof row.name === "string" ? row.name : "skill";
+      const action = typeof row.action === "string" ? row.action : "applied";
+      const target = typeof row.file_path === "string" ? ` · ${row.file_path}` : "";
+      const mark = row.success === false ? "✗" : "✓";
+      return `${mark} ${action} ${name}${target}`;
+    });
+    const body = lines.filter((l): l is string => l !== null).join("\n");
+    if (body) {
+      sections.push({
+        label: `Skills (${applied} operation${applied === 1 ? "" : "s"})`,
+        body,
+        language: "text",
+      });
+    }
+  }
+
+  // File listings — one path per line instead of a JSON array on one line.
+  for (const key of ["files_modified", "files", "files_read", "files_written"] as const) {
+    const list = asList(record[key]);
+    if (list.length === 0) continue;
+    const label =
+      key === "files_modified" || key === "files_written"
+        ? `Files (${list.length})`
+        : key === "files_read"
+          ? `Read (${list.length})`
+          : `Files (${list.length})`;
+    sections.push({ label, body: list.join("\n"), language: "text" });
+  }
+
+  return sections;
 }
 
 function looksFailed(text: string): boolean {
@@ -169,7 +261,23 @@ export function formatToolResult(content: string): FormattedToolResult {
   const failed =
     error !== null || (typeof exitCode === "number" && exitCode !== 0);
 
+  // Background/wait results echo the command back. Showing it as a section
+  // beats burying the invocation in a metadata chip.
+  const echoedCommand =
+    typeof record.command === "string" && record.command.trim()
+      ? record.command
+      : null;
+
   const sections: ResultSection[] = [];
+  if (echoedCommand) {
+    sections.push({ label: "Command", body: echoedCommand, language: "bash" });
+  }
+
+  // A structured payload we know how to render nicely (todos, skill ops,
+  // file lists). Checked before the plain string keys below.
+  const structured = structuredSections(record);
+  if (structured.length > 0) sections.push(...structured);
+
   for (const { key, label, language } of BODY_KEYS) {
     const value = record[key];
     if (typeof value === "string" && value.length > 0) {

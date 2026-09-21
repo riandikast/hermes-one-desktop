@@ -430,7 +430,14 @@ function TerminalToolBody({
     <div className="chat-terminal-view">
       <div className="chat-terminal-section">
         <div className="chat-terminal-section-label">Command</div>
-        <pre className="chat-history-pre chat-history-pre--code">{command}</pre>
+        {/* Shell-style prompt so the invocation reads as a terminal line
+            rather than a generic code block. */}
+        <div className="chat-terminal-command">
+          <span className="chat-terminal-prompt" aria-hidden>
+            $
+          </span>
+          <code>{command}</code>
+        </div>
       </div>
       {cwd && (
         <div className="chat-terminal-cwd">
