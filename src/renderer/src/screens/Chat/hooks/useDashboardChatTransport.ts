@@ -1475,6 +1475,12 @@ export function useDashboardChatTransport({
             storedSessionId,
             isLoading: true,
           });
+          // NOTE: deliberately a FULL read. The catch-up guard below compares
+          // whole-session user COUNTS, which a tail slice cannot provide, and
+          // this path also re-baselines the tail cursor from what it reconciles
+          // (see below). It runs ONCE per turn end — not on a 750ms timer — so
+          // the ~180ms read is a single one-off cost rather than the recurring
+          // stall that the mid-turn poll caused. Left as-is on purpose.
           const items = (await window.hermesAPI.getSessionMessages(
             storedSessionId,
           )) as DbHistoryItem[];
@@ -1497,23 +1503,33 @@ export function useDashboardChatTransport({
           // The live/DB arrays are ChatMessage unions; only the user variant
           // carries role/content, so view them through a user-shaped lens for
           // the catch-up comparison (FileChangesMessage etc. have neither).
+          //
+          // Scanned BACKWARD in place rather than `[...arr].reverse().find()`:
+          // that copied the whole transcript twice per attempt (~21k-element
+          // arrays on a long session) purely to read the last user row.
           type UserShaped = { role: string; content?: unknown };
-          const liveLastUser = ([...messagesRef.current] as UserShaped[])
-            .reverse()
-            .find((m) => m.role === "user");
-          const dbLastUser = ([...dbMessages] as UserShaped[])
-            .reverse()
-            .find((m) => m.role === "user");
+          const lastUserOf = (arr: ReadonlyArray<unknown>): UserShaped | null => {
+            for (let i = arr.length - 1; i >= 0; i--) {
+              const m = arr[i] as UserShaped;
+              if (m?.role === "user") return m;
+            }
+            return null;
+          };
           // Content match alone has a hole: sending the SAME message twice
-          // matches while the DB only persisted the FIRST occurrence. Require
-          // an equal user-message count so the DB must actually contain the
-          // current turn's user row.
-          const liveUserCount = messagesRef.current.filter(
-            (m) => m.role === "user",
-          ).length;
-          const dbUserCount = dbMessages.filter(
-            (m) => m.role === "user",
-          ).length;
+          // matches while the DB only persisted the FIRST occurrence, so an
+          // equal user-message COUNT is required too. Both counts are simple
+          // zero-allocation loops (the old `.filter()` allocated an array per
+          // call just to take its length).
+          let liveUserCount = 0;
+          for (const m of messagesRef.current) {
+            if ((m as UserShaped).role === "user") liveUserCount += 1;
+          }
+          let dbUserCount = 0;
+          for (const m of dbMessages) {
+            if ((m as UserShaped).role === "user") dbUserCount += 1;
+          }
+          const liveLastUser = lastUserOf(messagesRef.current);
+          const dbLastUser = lastUserOf(dbMessages);
           const dbCaughtUp =
             !!liveLastUser &&
             !!dbLastUser &&

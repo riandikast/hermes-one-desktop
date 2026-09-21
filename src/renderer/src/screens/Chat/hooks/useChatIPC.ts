@@ -3,7 +3,9 @@ import { isBubbleMessage, markActiveTurnFailed } from "../chatMessages";
 import type { ActiveTurn, ChatMessage, UsageState } from "../types";
 import {
   dbItemsToChatMessages,
+  highestDbId,
   reconcileAfterDbRefresh,
+  reconcileTailAfterDbRefresh,
   type DbHistoryItem,
 } from "../sessionHistory";
 import {
@@ -56,6 +58,17 @@ export function useChatIPC({
   const dbPollRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
   const dbPollInFlightRef = useRef(false);
   const acceptedSessionIdRef = useRef<string | null>(sessionScopeId);
+  /**
+   * Highest state.db id the renderer has already reconciled.
+   *
+   * The mid-turn poll only ever needs rows NEWER than this, so it reads and
+   * reconciles a BOUNDED tail instead of the whole transcript. Measured on real
+   * sessions: a full read is ~180 ms of blocking SQLite on a 21k-row session,
+   * versus ~0.2 ms for the id-scoped tail — and this poll runs every 750 ms, so
+   * the full read was stalling the main thread ~240 ms/sec (the visible stutter,
+   * worst during prompt processing because that is when the poll is active).
+   */
+  const lastSyncedDbIdRef = useRef(0);
 
   const stopDbPolling = useCallback((): void => {
     if (dbPollRef.current !== null) {
@@ -69,6 +82,10 @@ export function useChatIPC({
     if (sessionScopeId === acceptedSessionIdRef.current) return;
     acceptedSessionIdRef.current = sessionScopeId;
     reasoningSegmentClosedRef.current = false;
+    // Reset the tail cursor: it is a per-session high-water mark, and carrying
+    // it across a session switch would make the next read skip every row up to
+    // the previous session's last id — silently dropping new messages.
+    lastSyncedDbIdRef.current = 0;
     stopDbPolling();
   }, [sessionScopeId, stopDbPolling]);
 
@@ -87,8 +104,14 @@ export function useChatIPC({
       dbPollInFlightRef.current = true;
       const activeTurn = activeTurnRef.current ?? undefined;
       try {
+        // CURSOR-SCOPED read. Passing the highest id we have already merged
+        // keeps this O(new rows) instead of O(transcript): the poll runs every
+        // 750ms and a full read measured ~180ms of blocking SQLite on a 21k-row
+        // session (the stutter), versus ~0.2ms for the tail.
+        const afterId = lastSyncedDbIdRef.current;
         const items = (await window.hermesAPI.getSessionMessages(
           sessionId,
+          afterId > 0 ? afterId : undefined,
         )) as DbHistoryItem[];
         if (
           disposed ||
@@ -99,10 +122,25 @@ export function useChatIPC({
         }
         const dbMessages = dbItemsToChatMessages(items);
         if (dbMessages.length === 0) return;
+        // Capture the cursor BEFORE advancing it: the tail reconcile needs to
+        // know where the already-merged prefix ends, and the incoming rows are
+        // exactly what falls after it. Advancing first would make the merge
+        // treat the new rows as already-settled prefix and drop them.
+        const cursor = lastSyncedDbIdRef.current;
+        const highest = highestDbId(dbMessages);
         setMessages((prev) => {
           if (prev.length === 0) return dbMessages;
-          return reconcileAfterDbRefresh(prev, dbMessages, { activeTurn });
+          // The tail reconcile avoids re-deriving a merge key for every message
+          // in the transcript (measured ~700ms on a 21k-row session).
+          return reconcileTailAfterDbRefresh(prev, dbMessages, {
+            activeTurn,
+            lastSyncedDbId: cursor,
+          });
         });
+        // Advance only after handing the cursor to the merge.
+        if (highest > lastSyncedDbIdRef.current) {
+          lastSyncedDbIdRef.current = highest;
+        }
       } catch {
         // Mid-stream DB refresh is opportunistic; final refresh still runs.
       } finally {
