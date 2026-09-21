@@ -9442,18 +9442,21 @@ body:has(.shell-vibrant),
 }
 
 .chat-tool-result-view--failed .chat-tool-result-chip {
-  border-color: color-mix(in srgb, var(--danger, #e56b6f) 45%, var(--border));
+  border-color: color-mix(in srgb, var(--error, #ef4444) 45%, var(--border));
 }
 
+/* Tool result body: NO background fill. The code-block fill read as
+   "selected text" in lighter themes; the tool row already supplies the visual
+   container, so the payload itself stays on the row surface. */
 .chat-tool-result-view .chat-history-pre {
-  padding: 10px 12px;
-  border: 1px solid var(--border, rgba(127, 127, 127, 0.16));
-  border-radius: 7px;
-  background: var(--bg-tertiary, rgba(0, 0, 0, 0.18));
+  padding: 2px 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
 }
 
 .chat-tool-result-view--failed .chat-history-pre {
-  border-color: color-mix(in srgb, var(--danger, #e56b6f) 50%, var(--border));
+  color: var(--error, #ef4444);
 }
 
 .chat-file-tool-view {
@@ -9518,15 +9521,14 @@ body:has(.shell-vibrant),
   background: var(--bg-tertiary, rgba(0, 0, 0, 0.18));
 }
 
-/* Shell-style command line: a `$` prompt gutter plus the command, wrapping
-   rather than scrolling sideways so long invocations stay readable. */
+/* Shell-style command line: a `$` prompt gutter plus the command. No
+   container fill/border — the tool row is the container; only the glyphs are
+   coloured (bash grammar via Prism). Wraps rather than scrolling sideways so
+   long invocations stay readable. */
 .chat-terminal-command {
   display: flex;
   gap: 8px;
-  padding: 9px 12px;
-  border: 1px solid var(--border, rgba(127, 127, 127, 0.16));
-  border-radius: 7px;
-  background: var(--bg-tertiary, rgba(0, 0, 0, 0.18));
+  min-width: 0;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 12px;
   line-height: 1.55;
@@ -9540,9 +9542,46 @@ body:has(.shell-vibrant),
 
 .chat-terminal-command code {
   min-width: 0;
-  color: var(--text-primary);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Terminal output: monospace on the row surface, no fill, per-line colour. */
+.chat-terminal-output {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* Terminal semantics rather than code syntax: these are the classes of line a
+   real terminal colours, which is what makes output scannable. */
+.chat-terminal-line--error,
+.chat-terminal-line--fail,
+.chat-terminal-line--remove {
+  color: var(--error, #ef4444);
+}
+
+.chat-terminal-line--warn {
+  color: var(--warning, #f59e0b);
+}
+
+.chat-terminal-line--add,
+.chat-terminal-line--ok {
+  color: var(--success, #22c55e);
+}
+
+.chat-terminal-line--prompt {
+  color: var(--accent-text, var(--text-muted));
+}
+
+.chat-terminal-line--summary {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .chat-terminal-cwd {

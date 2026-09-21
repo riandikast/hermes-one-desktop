@@ -18,6 +18,7 @@ import type {
   ToolResultMessage,
 } from "./types";
 import { formatToolResult } from "./toolResultFormat";
+import { TerminalCommand, TerminalOutput } from "./TerminalView";
 
 /* ── Reasoning ────────────────────────────────────────────────────────── */
 // Collapse/expand state persists across unmounts (module-scoped, like
@@ -379,7 +380,15 @@ function ToolResultBody({ msg }: { msg: ToolResultMessage }): React.JSX.Element 
           {result.sections.length > 1 && (
             <div className="chat-terminal-section-label">{section.label}</div>
           )}
-          <CodeBlock language={section.language}>{section.body}</CodeBlock>
+          {section.language === "bash" ? (
+            <TerminalCommand command={section.body} />
+          ) : section.label === "Output" ? (
+            // Command output is terminal text, not a code snippet: no fill and
+            // no code-block chrome, coloured by line instead.
+            <TerminalOutput body={section.body} />
+          ) : (
+            <CodeBlock language={section.language}>{section.body}</CodeBlock>
+          )}
         </div>
       ))}
     </div>
@@ -432,12 +441,7 @@ function TerminalToolBody({
         <div className="chat-terminal-section-label">Command</div>
         {/* Shell-style prompt so the invocation reads as a terminal line
             rather than a generic code block. */}
-        <div className="chat-terminal-command">
-          <span className="chat-terminal-prompt" aria-hidden>
-            $
-          </span>
-          <code>{command}</code>
-        </div>
+        <TerminalCommand command={command} />
       </div>
       {cwd && (
         <div className="chat-terminal-cwd">
