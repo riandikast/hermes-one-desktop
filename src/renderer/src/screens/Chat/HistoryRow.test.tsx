@@ -4,7 +4,7 @@
 // not dumped as raw JSON. The bug this guards: `{"output": "a\nb"}` used to
 // render as pretty-printed JSON with the payload still escaped as one string.
 
-import { render } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 // HistoryRow renders payloads through CodeBlock, which pulls translations via
@@ -87,5 +87,62 @@ describe("tool result rendering", () => {
     const text = container.textContent ?? "";
     expect(text).toContain("just some output");
     expect(text).toContain("second line");
+  });
+});
+
+describe("auto-expand tool calls", () => {
+  const isExpanded = (container: HTMLElement): boolean =>
+    container
+      .querySelector(".chat-tool-item-header")
+      ?.getAttribute("aria-expanded") === "true";
+
+  it("keeps tool rows collapsed by default", () => {
+    localStorage.removeItem("hermes.autoExpandToolCalls");
+    const { container } = render(group("output"));
+    expect(isExpanded(container)).toBe(false);
+  });
+
+  it("expands tool rows on mount when the preference is on", () => {
+    localStorage.setItem("hermes.autoExpandToolCalls", "true");
+    const { container } = render(group("output"));
+    expect(isExpanded(container)).toBe(true);
+    localStorage.removeItem("hermes.autoExpandToolCalls");
+  });
+
+  it("expands an ALREADY-MOUNTED row when the setting is switched on", () => {
+    localStorage.removeItem("hermes.autoExpandToolCalls");
+    const { container } = render(group("output"));
+    expect(isExpanded(container)).toBe(false);
+
+    // The Appearance pane writes the key then broadcasts this exact event;
+    // without the listener the row would stay collapsed until a remount.
+    localStorage.setItem("hermes.autoExpandToolCalls", "true");
+    act(() => {
+      window.dispatchEvent(
+        new Event("hermes-auto-expand-tool-calls-changed"),
+      );
+    });
+
+    expect(isExpanded(container)).toBe(true);
+    localStorage.removeItem("hermes.autoExpandToolCalls");
+  });
+
+  it("does not expand when only the REASONING preference is on", () => {
+    // Guards against the two settings sharing a key or an event name.
+    localStorage.setItem("hermes.autoExpandReasoning", "true");
+    localStorage.removeItem("hermes.autoExpandToolCalls");
+    const { container } = render(group("output"));
+    expect(isExpanded(container)).toBe(false);
+    localStorage.removeItem("hermes.autoExpandReasoning");
+  });
+
+  it("still collapses on click after being auto-expanded", () => {
+    localStorage.setItem("hermes.autoExpandToolCalls", "true");
+    const { container } = render(group("output"));
+    const header = container.querySelector<HTMLElement>(".chat-tool-item-header")!;
+    expect(isExpanded(container)).toBe(true);
+    fireEvent.click(header);
+    expect(isExpanded(container)).toBe(false);
+    localStorage.removeItem("hermes.autoExpandToolCalls");
   });
 });

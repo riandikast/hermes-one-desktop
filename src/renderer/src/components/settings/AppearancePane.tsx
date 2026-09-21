@@ -30,6 +30,13 @@ export default function AppearancePane(): React.JSX.Element {
       return false;
     }
   });
+  const [autoExpandToolCalls, setAutoExpandToolCalls] = useState(() => {
+    try {
+      return localStorage.getItem("hermes.autoExpandToolCalls") === "true";
+    } catch {
+      return false;
+    }
+  });
   // Installed font families, listed from the main process (the renderer cannot
   // enumerate system fonts). Empty until loaded; also empty on a platform we
   // could not enumerate, in which case only the built-in presets render.
@@ -180,8 +187,36 @@ export default function AppearancePane(): React.JSX.Element {
                 }
                 // Broadcast so already-mounted ReasoningRows re-read the setting.
                 window.dispatchEvent(new Event("hermes-auto-expand-reasoning-changed"));
-                // Broadcast so already-mounted ReasoningRows re-read the setting.
-                window.dispatchEvent(new Event("hermes-auto-expand-reasoning-changed"));
+              }}
+            />
+            <span className="tools-toggle-track" />
+          </label>
+        </div>
+
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <div className="settings-row-label">Auto-expand tool calls</div>
+            <div className="settings-row-hint">
+              Show tool call blocks expanded, revealing their arguments and
+              results without clicking
+            </div>
+          </div>
+          <label className="tools-toggle" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={autoExpandToolCalls}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setAutoExpandToolCalls(next);
+                try {
+                  localStorage.setItem("hermes.autoExpandToolCalls", String(next));
+                } catch {
+                  /* ignore */
+                }
+                // Broadcast so already-mounted ToolActivityItems re-read it.
+                window.dispatchEvent(
+                  new Event("hermes-auto-expand-tool-calls-changed"),
+                );
               }}
             />
             <span className="tools-toggle-track" />

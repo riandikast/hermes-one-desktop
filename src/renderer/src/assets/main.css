@@ -14751,7 +14751,9 @@ body:has(.shell-vibrant),
   height: 80vh;
   max-width: 1000px;
   max-height: 780px;
-  /* Frosted glass — same material as the pickers/profile modal. */
+  /* Frosted glass — same material as the pickers/profile modal.
+     NOTE: this is now the LEFT rail's shade (see .settings-modal-sidebar);
+     the content side is the lifted one. */
   background: color-mix(in srgb, var(--bg-secondary) 97%, transparent);
   backdrop-filter: blur(30px) saturate(1.5);
   -webkit-backdrop-filter: blur(30px) saturate(1.5);
@@ -14768,26 +14770,32 @@ body:has(.shell-vibrant),
   user-select: none;
 }
 
-/* Full-height left sidebar: title head + grouped nav, spanning top to bottom
-   with a distinct lifted (lighter) rail shade. */
+/* Full-height left sidebar: title head + grouped nav, spanning top to bottom.
+   Shade roles are SWAPPED from the original: the rail now takes the modal's
+   base shade (it reads as the docked/darker edge) and the content column takes
+   the lifted lighter shade. */
 .settings-modal-sidebar {
   flex-shrink: 0;
   width: 210px;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  background: transparent;
 }
 .settings-modal-sidebar-head {
   padding: 18px 20px 12px;
   flex-shrink: 0;
 }
+/* Content column: the lifted (lighter) shade, which used to be the rail's.
+   The topbar lives inside this column and must share the shade, otherwise a
+   band of the darker modal base shows above it. */
 .settings-modal-main {
   flex: 1;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 .settings-modal-topbar {
   display: flex;

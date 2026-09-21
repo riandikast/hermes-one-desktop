@@ -458,7 +458,16 @@ const ToolActivityItem = memo(function ToolActivityItem({
 }: {
   msg: ToolItem;
 }): React.JSX.Element {
-  const [open, setOpen] = useState(() => toolItemOpenById.has(msg.id));
+  const [open, setOpen] = useState(() => {
+    try {
+      return (
+        toolItemOpenById.has(msg.id) ||
+        localStorage.getItem("hermes.autoExpandToolCalls") === "true"
+      );
+    } catch {
+      return false;
+    }
+  });
   const toggleOpen = (): void =>
     setOpen((o) => {
       const next = !o;
@@ -466,6 +475,27 @@ const ToolActivityItem = memo(function ToolActivityItem({
       else toolItemOpenById.delete(msg.id);
       return next;
     });
+  // Auto-expand tool calls when the preference is on, mirroring
+  // autoExpandReasoning: expanded on mount, and re-expanded when the setting is
+  // toggled on from Settings (broadcast via a window event).
+  useEffect(() => {
+    const checkAutoExpand = (): void => {
+      try {
+        if (localStorage.getItem("hermes.autoExpandToolCalls") === "true") {
+          setOpen(true);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    checkAutoExpand();
+    window.addEventListener("hermes-auto-expand-tool-calls-changed", checkAutoExpand);
+    return () =>
+      window.removeEventListener(
+        "hermes-auto-expand-tool-calls-changed",
+        checkAutoExpand,
+      );
+  }, []);
   useEffect(() => {
     const handleDisplayControl = (event: Event): void => {
       const detail = (event as CustomEvent<Partial<ChatDisplayControls>>).detail;
