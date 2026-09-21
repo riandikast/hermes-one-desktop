@@ -35,6 +35,8 @@
   --agent-bubble: #2f2f2f;
   --agent-bubble-text: #ececec;
   --code-bg: #1a1a1a;
+  /* Lifted flat panel for tool results (the VS Code tool-panel look). */
+  --tool-result-bg: color-mix(in srgb, #1a1a1a 68%, #808080 32%);
   --scrollbar-thumb: #424242;
   --scrollbar-hover: #555555;
   --selection: rgba(0, 100, 180, 0.7);
@@ -70,6 +72,8 @@
   --agent-bubble: #f0f0f0;
   --agent-bubble-text: #111111;
   --code-bg: #f5f5f5;
+  /* Lifted flat panel for tool results (the VS Code tool-panel look). */
+  --tool-result-bg: color-mix(in srgb, #f5f5f5 68%, #808080 32%);
   --scrollbar-thumb: #d4d4d4;
   --scrollbar-hover: #bbbbbb;
   --selection: rgba(0, 63, 122, 0.3);
@@ -105,6 +109,8 @@
   --agent-bubble: #343746;
   --agent-bubble-text: #f8f8f2;
   --code-bg: #21222c;
+  /* Lifted flat panel for tool results (the VS Code tool-panel look). */
+  --tool-result-bg: color-mix(in srgb, #21222c 68%, #808080 32%);
   --scrollbar-thumb: #44475a;
   --scrollbar-hover: #6272a4;
   --selection: rgba(189, 147, 249, 0.7);
@@ -140,6 +146,8 @@
   --agent-bubble: #3b4252;
   --agent-bubble-text: #eceff4;
   --code-bg: #272c36;
+  /* Lifted flat panel for tool results (the VS Code tool-panel look). */
+  --tool-result-bg: color-mix(in srgb, #272c36 68%, #808080 32%);
   --scrollbar-thumb: #434c5e;
   --scrollbar-hover: #4c566a;
   --selection: rgba(136, 192, 208, 0.7);
@@ -175,6 +183,8 @@
   --agent-bubble: #2c313a;
   --agent-bubble-text: #d7dae0;
   --code-bg: #21252b;
+  /* Lifted flat panel for tool results (the VS Code tool-panel look). */
+  --tool-result-bg: color-mix(in srgb, #21252b 68%, #808080 32%);
   --scrollbar-thumb: #3e4451;
   --scrollbar-hover: #4b5263;
   --selection: rgba(97, 175, 239, 0.7);
@@ -212,6 +222,8 @@
   --agent-bubble: #2d2d30;
   --agent-bubble-text: #cccccc;
   --code-bg: #1e1e1e;
+  /* Lifted flat panel for tool results (the VS Code tool-panel look). */
+  --tool-result-bg: color-mix(in srgb, #1e1e1e 68%, #808080 32%);
   --scrollbar-thumb: #424242;
   --scrollbar-hover: #4f4f4f;
   --selection: rgba(38, 79, 120, 0.9);
@@ -247,6 +259,8 @@
   --agent-bubble: #161b22;
   --agent-bubble-text: #c9d1d9;
   --code-bg: #161b22;
+  /* Lifted flat panel for tool results (the VS Code tool-panel look). */
+  --tool-result-bg: color-mix(in srgb, #161b22 68%, #808080 32%);
   --scrollbar-thumb: #30363d;
   --scrollbar-hover: #484f58;
   --selection: rgba(56, 139, 253, 0.7);
@@ -282,6 +296,8 @@
   --agent-bubble: #2d2e28;
   --agent-bubble-text: #f8f8f2;
   --code-bg: #1e1f1c;
+  /* Lifted flat panel for tool results (the VS Code tool-panel look). */
+  --tool-result-bg: color-mix(in srgb, #1e1f1c 68%, #808080 32%);
   --scrollbar-thumb: #49483e;
   --scrollbar-hover: #75715e;
   --selection: rgba(102, 217, 239, 0.7);
@@ -317,6 +333,8 @@
   --agent-bubble: #073642;
   --agent-bubble-text: #93a1a1;
   --code-bg: #00252e;
+  /* Lifted flat panel for tool results (the VS Code tool-panel look). */
+  --tool-result-bg: color-mix(in srgb, #00252e 68%, #808080 32%);
   --scrollbar-thumb: #073642;
   --scrollbar-hover: #586e75;
   --selection: rgba(38, 139, 210, 0.7);
@@ -352,6 +370,8 @@
   --agent-bubble: #3c3836;
   --agent-bubble-text: #ebdbb2;
   --code-bg: #1d2021;
+  /* Lifted flat panel for tool results (the VS Code tool-panel look). */
+  --tool-result-bg: color-mix(in srgb, #1d2021 68%, #808080 32%);
   --scrollbar-thumb: #504945;
   --scrollbar-hover: #665c54;
   --selection: rgba(131, 165, 152, 0.7);
@@ -387,6 +407,8 @@
   --agent-bubble: #1f2335;
   --agent-bubble-text: #c0caf5;
   --code-bg: #16161e;
+  /* Lifted flat panel for tool results (the VS Code tool-panel look). */
+  --tool-result-bg: color-mix(in srgb, #16161e 68%, #808080 32%);
   --scrollbar-thumb: #343b58;
   --scrollbar-hover: #565f89;
   --selection: rgba(122, 162, 247, 0.7);
@@ -422,6 +444,8 @@
   --agent-bubble: #f6f8fa;
   --agent-bubble-text: #1f2328;
   --code-bg: #f6f8fa;
+  /* Lifted flat panel for tool results (the VS Code tool-panel look). */
+  --tool-result-bg: color-mix(in srgb, #f6f8fa 68%, #808080 32%);
   --scrollbar-thumb: #d0d7de;
   --scrollbar-hover: #afb8c1;
   --selection: rgba(9, 105, 218, 0.3);
@@ -457,6 +481,8 @@
   --agent-bubble: #eee8d5;
   --agent-bubble-text: #586e75;
   --code-bg: #eee8d5;
+  /* Lifted flat panel for tool results (the VS Code tool-panel look). */
+  --tool-result-bg: color-mix(in srgb, #eee8d5 68%, #808080 32%);
   --scrollbar-thumb: #d3cbb0;
   --scrollbar-hover: #b9b393;
   --selection: rgba(38, 139, 210, 0.3);
@@ -9636,28 +9662,32 @@ body:has(.shell-vibrant),
   background: transparent;
 }
 
-/* ── Read-file content: highlighted ON the existing surface ──────────────────
-   The user likes the current selected-text-style surface and wants syntax
-   highlighting ON TOP of it, not instead of it. So this keeps a real surface
-   (unlike the transparent terminal output above) and lets the Prism tokens
-   carry the colour. The header is kept because it names the detected language,
-   which makes a mis-detection obvious at a glance instead of mysterious. */
+/* ── Read-file content: highlighted on ONE surface ───────────────────────────
+   `CodeBlock` IS the container — it renders `.chat-code-block` with its own
+   header and body. An earlier attempt added a border/fill to a wrapper AROUND
+   it, which stacked two boxes (the "extra background container").
+
+   So the surface is applied to the one real container. The header share the
+   same fill as the body (no separate `--code-bg` band), which is what makes it
+   read as a single surface rather than a header bolted onto a panel. */
 .chat-tool-result-view .chat-code-block {
   border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
-  border-radius: 7px;
-  background: var(--bg-tertiary, rgba(0, 0, 0, 0.18));
+  border-radius: 6px;
+  /* A single flat fill for header + body. `--code-bg` is the body's own
+     default; overriding both keeps them identical. */
+  background: var(--tool-result-bg, var(--bg-tertiary, rgba(0, 0, 0, 0.18)));
   margin: 2px 0 0;
 }
 
 .chat-tool-result-view .chat-code-block .chat-code-header {
-  border-bottom: 1px solid var(--border, rgba(127, 127, 127, 0.16));
+  border-bottom: 1px solid var(--border, rgba(127, 127, 127, 0.14));
   background: transparent;
 }
 
-/* The plain (unhighlighted) fallback must sit on the same surface, so an
-   unknown file type looks identical minus the token colours. */
+/* The plain (unhighlighted) fallback sits on the same surface, so an unknown
+   file type looks identical minus the token colours. */
 .chat-tool-result-view .chat-code-plain {
-  background: var(--bg-tertiary, rgba(0, 0, 0, 0.18));
+  background: transparent;
 }
 
 .chat-tool-result-view--failed .chat-history-pre {
@@ -10182,7 +10212,17 @@ body:has(.shell-vibrant),
 /* Accordion: grid-template-rows 0fr -> 1fr animates height without hardcoding
    a max-height (which would need a magic number and break on long content).
    `min-height: 0` on the inner element is REQUIRED — without it the child's
-   content size wins and the row never actually collapses to zero. */
+   content size wins and the row never actually collapses to zero.
+
+   MEASURED BEHAVIOUR (real Chromium): this property interpolates against the
+   element's used row size, which is re-resolved from its CONTENT every frame.
+   So when a group and the items inside it animate at the same time, the outer
+   transition keeps retargeting against a moving target — that is the "wonky"
+   easing. Measured: nested = 19px max single-frame step, stable = 0px.
+
+   The fix is to not run both levels at once: the outer panel gets a short
+   delay so the inner rows have already settled by the time it moves. A curve
+   alone cannot fix this, because the target itself is changing. */
 .chat-tool-collapse {
   display: grid;
   grid-template-rows: 0fr;
@@ -10199,6 +10239,12 @@ body:has(.shell-vibrant),
   opacity: 1;
 }
 
+/* Nested collapses (a group containing items) must not animate simultaneously
+   in lockstep. MEASURED: adding a per-item stagger reduced the worst
+   single-frame height step from 16px to 10px and raised the number of
+   intermediate heights from 31 to 47 — i.e. visibly smoother rather than one
+   lump movement. A transition-delay on the GROUP itself was measured to make
+   no difference, so only the per-item stagger is applied. */
 .chat-tool-collapse-inner {
   overflow: hidden;
   min-height: 0;

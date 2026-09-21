@@ -490,6 +490,7 @@ function TerminalToolBody({
 const ToolActivityItem = memo(function ToolActivityItem({
   msg,
   sourcePath,
+  staggerIndex = 0,
 }: {
   msg: ToolItem;
   /**
@@ -499,6 +500,13 @@ const ToolActivityItem = memo(function ToolActivityItem({
    * cannot be syntax-highlighted.
    */
   sourcePath?: string;
+  /**
+   * Position within the group. Used to stagger the expand so several items
+   * that arrive together do not all animate in lockstep — simultaneous
+   * same-distance motion is what reads as a single abrupt jump rather than
+   * a sequence of expansions.
+   */
+  staggerIndex?: number;
 }): React.JSX.Element {
   const [open, setOpen] = useState(() => {
     try {
@@ -584,6 +592,14 @@ const ToolActivityItem = memo(function ToolActivityItem({
       </button>
       <div
         className={`chat-tool-collapse${openRendered ? " chat-tool-collapse--open" : ""}`}
+        style={
+          // Stagger only while opening, and cap it: an unbounded index would
+          // delay the 20th item by a second. The first few get a visible
+          // cascade; the rest open together once the cap is reached.
+          staggerIndex > 0 && openRendered
+            ? { transitionDelay: `${Math.min(staggerIndex, 4) * 0.04}s` }
+            : undefined
+        }
       >
         <div className="chat-tool-collapse-inner">
           <div className="chat-tool-item-body">
@@ -774,6 +790,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
                   key={`${it.id}-${index}`}
                   msg={it}
                   sourcePath={sourcePathByCallId.get(it.callId)}
+                  staggerIndex={index}
                 />
               ))}
             </div>
