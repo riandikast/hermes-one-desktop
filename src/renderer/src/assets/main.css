@@ -9671,11 +9671,10 @@ body:has(.shell-vibrant),
    same fill as the body (no separate `--code-bg` band), which is what makes it
    read as a single surface rather than a header bolted onto a panel. */
 .chat-tool-result-view .chat-code-block {
-  border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
-  border-radius: 6px;
+  
   /* A single flat fill for header + body. `--code-bg` is the body's own
      default; overriding both keeps them identical. */
-  background: var(--tool-result-bg, var(--bg-tertiary, rgba(0, 0, 0, 0.18)));
+
   margin: 2px 0 0;
 }
 
