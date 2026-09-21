@@ -10055,6 +10055,137 @@ body:has(.shell-vibrant),
   border-color: var(--accent, #8b7cf6);
 }
 
+/* On-Finish terminal trigger: same floating circle as its neighbours, with an
+   active state while the dialog is open and a pulsing ring while a queue runs
+   (so progress is visible with the terminal closed). */
+.chat-onfinish-trigger.is-active {
+  color: var(--text-primary);
+  border-color: var(--accent, #8b7cf6);
+  background: color-mix(in srgb, var(--accent, #8b7cf6) 16%, var(--bg-elevated, #17171b));
+}
+
+.chat-onfinish-trigger.is-running {
+  border-color: var(--accent, #8b7cf6);
+  color: var(--accent-text, #4fc1ff);
+  animation: chat-onfinish-trigger-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes chat-onfinish-trigger-pulse {
+  0%,
+  100% {
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  }
+  50% {
+    box-shadow:
+      0 4px 14px rgba(0, 0, 0, 0.16),
+      0 0 0 3px color-mix(in srgb, var(--accent, #8b7cf6) 28%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-onfinish-trigger.is-running {
+    animation: none;
+  }
+}
+
+/* ── On-Finish terminal dialog ───────────────────────────────────────────────
+   A floating panel, not a dock in the layout flow: the terminal used to sit
+   below the input box and compete with the transcript for vertical space. */
+.terminal-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  /* No dimming: the chat stays readable behind it and the terminal is a
+     tool, not a modal decision. Pointer events are off while hidden so a
+     closed dialog can never swallow a click. */
+  background: transparent;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.16s ease, visibility 0.16s;
+}
+
+.terminal-dialog-overlay.is-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.terminal-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(880px, 92vw);
+  height: min(520px, 76vh);
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.24));
+  border-radius: 12px;
+  background: var(--bg-elevated, #17171b);
+  box-shadow: 0 24px 60px -16px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.terminal-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid var(--border, rgba(127, 127, 127, 0.18));
+  flex-shrink: 0;
+}
+
+.terminal-dialog-title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.terminal-dialog-close {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.terminal-dialog-close:hover {
+  background: var(--hover, rgba(127, 127, 127, 0.12));
+  color: var(--text-primary);
+}
+
+/* The dock fills the panel; its own fixed height is neutralised here so the
+   dialog's size governs (the dock keeps its height prop for the Commands page
+   usage, which is a real dock in the layout). */
+.terminal-dialog-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-dialog-holder {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-dialog-holder[hidden] {
+  display: none;
+}
+
+.terminal-dialog-holder .terminal-dock {
+  flex: 1;
+  min-height: 0;
+}
+
 /* ── In-chat search (Chrome-style find bar) ─────────────────────────────── */
 .chat-search {
   position: relative;

@@ -13,6 +13,13 @@ import { Plus, X } from "../../assets/icons";
 
 export interface TerminalDockHandle {
   attachSession(id: string, title: string): void;
+  /**
+   * Re-fit the active terminal to its container and push the new geometry to
+   * the pty. Required after the dock has been hidden: xterm measures zero/tiny
+   * dimensions while `display: none`, so a stale geometry would wrap output at
+   * the wrong column count until the next resize.
+   */
+  refit(): void;
 }
 
 interface SessionState {
@@ -41,7 +48,12 @@ export const TerminalDock = forwardRef<
   TerminalDockHandle,
   {
     onNewSession: () => void;
-    dockHeight: number;
+    /**
+     * Fixed dock height in px. OMIT to let CSS size the dock instead — the
+     * On-Finish dialog does this so the panel controls the terminal's size
+     * rather than an inline height overriding the dialog's layout.
+     */
+    dockHeight?: number;
     onResizeStart: (e: React.PointerEvent<HTMLDivElement>) => void;
     onResizeMove: (e: React.PointerEvent<HTMLDivElement>) => void;
     onResizeEnd: (e: React.PointerEvent<HTMLDivElement>) => void;
@@ -142,7 +154,26 @@ export const TerminalDock = forwardRef<
     [createXterm, registerDataListeners],
   );
 
-  useImperativeHandle(ref, () => ({ attachSession }), [attachSession]);
+  const refit = useCallback((): void => {
+    const id = activeId;
+    const dock = id ? sessionsRef.current.get(id) : null;
+    if (!dock) return;
+    // One frame: the container must be laid out at its visible size before
+    // measuring, otherwise fit() reads the hidden geometry again.
+    requestAnimationFrame(() => {
+      dock.fit.fit();
+      window.hermesAPI.terminalResize({
+        id: dock.state.id,
+        cols: dock.term.cols,
+        rows: dock.term.rows,
+      });
+    });
+  }, [activeId]);
+
+  useImperativeHandle(ref, () => ({ attachSession, refit }), [
+    attachSession,
+    refit,
+  ]);
 
   // Tab switch: toggle pane visibility, fit the newly active terminal, keep
   // the pty in sync with the dock size. Terminals are NEVER disposed here —
@@ -203,7 +234,10 @@ export const TerminalDock = forwardRef<
   );
 
   return (
-    <div className="terminal-dock" style={{ height: dockHeight }}>
+    <div
+      className="terminal-dock"
+      style={dockHeight === undefined ? undefined : { height: dockHeight }}
+    >
       <div
         className="terminal-dock-resize"
         onPointerDown={onResizeStart}

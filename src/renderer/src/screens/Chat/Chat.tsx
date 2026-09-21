@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import toast from "react-hot-toast";
 
 import { Zap, Globe, ClipboardList, Hammer, SlidersHorizontal, Terminal, Eye } from "lucide-react";
+import { Spinner } from "../../assets/icons";
 
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import {
@@ -13,6 +14,7 @@ import {
 } from "./onFinish";
 import { useOnFinishRunner } from "./useOnFinishRunner";
 import { OnFinishChip } from "./OnFinishChip";
+import { TerminalDialog } from "./TerminalDialog";
 import type { TerminalDockHandle } from "../Command/TerminalDock";
 import { TerminalDock } from "../Command/TerminalDock";
 
@@ -611,10 +613,23 @@ function Chat({
   // remounting the chat.
   const onFinishCommandsRef = useRef<OnFinishCommand[]>([]);
   const onFinishDockRef = useRef<TerminalDockHandle | null>(null);
-  // The chat's On-Finish dock is fixed-height (the chat layout owns the rest of
-  // the column; a drag-resize handle here would need its own persisted value
-  // and would compete with the message list for space).
-  const onFinishDockHeight = 220;
+  // The terminal now lives in a dialog, opened from a floating icon. Kept as
+  // state (not just CSS) so opening can trigger a refit — see below.
+  const [onFinishDockOpen, setOnFinishDockOpen] = useState(false);
+
+  // Re-fit when the dialog opens. xterm measures ~zero while hidden, so
+  // without this the first output after reopening wraps at the wrong column
+  // count until something else resizes the window.
+  useEffect(() => {
+    if (!onFinishDockOpen) return;
+    onFinishDockRef.current?.refit();
+  }, [onFinishDockOpen]);
+
+  // Collapse the dialog if the feature is disarmed, so a hidden terminal
+  // cannot be left "open" behind the UI and reappear unexpectedly later.
+  useEffect(() => {
+    if (!onFinishArmed) setOnFinishDockOpen(false);
+  }, [onFinishArmed]);
 
   const attachOnFinishSession = useCallback(
     (id: string, title: string): void => {
@@ -2798,6 +2813,35 @@ function Chat({
             <button type="button" onClick={() => { const next = !showAllTools; setShowAllTools(next); setChatDisplayControls({ tools: next ? "show" : "hide" }); }}>{showAllTools ? "Hide all tools" : "Show all tools"}</button>
           </div>
         )}
+        {/* On-Finish terminal: a floating icon in the SAME group as the search
+            and display-controls icons. It replaces an in-flow dock pinned under
+            the input box, which stole vertical space from the transcript. */}
+        {onFinishArmed && (
+          <button
+            type="button"
+            className={`chat-display-controls-trigger chat-onfinish-trigger${
+              onFinishDockOpen ? " is-active" : ""
+            }${onFinishRunner.state.running ? " is-running" : ""}`}
+            onClick={() => {
+              setOnFinishDockOpen((v) => !v);
+              setDisplayControlsOpen(false);
+              setChatSearchOpen(false);
+            }}
+            aria-label="On-Finish terminal"
+            aria-expanded={onFinishDockOpen}
+            title={
+              onFinishRunner.state.running
+                ? `On-Finish: running ${onFinishRunner.state.current}/${onFinishRunner.state.total}`
+                : "On-Finish terminal"
+            }
+          >
+            {onFinishRunner.state.running ? (
+              <Spinner size={15} className="chat-onfinish-spin" />
+            ) : (
+              <Terminal size={15} />
+            )}
+          </button>
+        )}
       </div>
 
 
@@ -3316,18 +3360,27 @@ function Chat({
 
       )}
 
-      {/* On-Finish terminal dock. Mounted only while armed so xterm instances
-          (which cannot be re-shown once disposed) are not created for users who
-          never use the feature; unmounting also frees the ptys' panes. */}
+      {/* The dialog lives outside the floating control group so its overlay is
+          not clipped by that group's stacking context. It stays mounted while
+          the feature is armed: xterm cannot be re-shown once disposed, so
+          closing hides it rather than unmounting. */}
       {onFinishArmed && (
-        <TerminalDock
-          ref={onFinishDockRef}
-          onNewSession={() => undefined}
-          dockHeight={onFinishDockHeight}
-          onResizeStart={() => undefined}
-          onResizeMove={() => undefined}
-          onResizeEnd={() => undefined}
-        />
+        <TerminalDialog
+          open={onFinishDockOpen}
+          onClose={() => setOnFinishDockOpen(false)}
+          title="On-Finish terminal"
+        >
+          {/* Hidden, not unmounted, while closed. */}
+          <div className="terminal-dialog-holder" hidden={!onFinishDockOpen}>
+            <TerminalDock
+              ref={onFinishDockRef}
+              onNewSession={() => undefined}
+              onResizeStart={() => undefined}
+              onResizeMove={() => undefined}
+              onResizeEnd={() => undefined}
+            />
+          </div>
+        </TerminalDialog>
       )}
 
     </div>
