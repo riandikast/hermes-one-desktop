@@ -1095,6 +1095,50 @@ function Layout({
     [runs, activeRunId, handleActivateRun, activeProfile, goTo],
   );
 
+  /**
+   * Open a subagent's session from the chat's subagent panel. Subagent sessions
+   * are opened READ-ONLY: the delegated child owns its own turn, so a second
+   * writer would be fighting the parent run for the same session.
+   */
+  const handleOpenSubagent = useCallback(
+    async (sessionId: string) => {
+      const live = findRunBySession(runs, sessionId);
+      if (live) {
+        handleActivateRun(live.runId);
+        goTo("chat");
+        return;
+      }
+      if (resumingRef.current.has(sessionId)) return;
+      resumingRef.current.add(sessionId);
+      setResumingSessionId(sessionId);
+      try {
+        const items = (await window.hermesAPI.getSessionMessages(
+          sessionId,
+        )) as DbHistoryItem[];
+        const run = mintRun(activeProfile, dbItemsToChatMessages(items));
+        run.sessionId = sessionId;
+        // A watched child must attach lazily (see ChatRun.watchChild) and must
+        // never accept input (ChatRun.readOnly).
+        run.watchChild = true;
+        run.readOnly = true;
+        try {
+          const cached = await window.hermesAPI.listCachedSessions(200);
+          const found = cached.find((s) => s.id === sessionId);
+          if (found?.title) run.title = found.title;
+        } catch {
+          /* title is best-effort */
+        }
+        setRuns((prev) => openSessionRunTransition(prev, activeRunId, run).runs);
+        setActiveRunId(run.runId);
+        goTo("chat");
+      } finally {
+        resumingRef.current.delete(sessionId);
+        setResumingSessionId(null);
+      }
+    },
+    [runs, activeRunId, handleActivateRun, activeProfile, goTo],
+  );
+
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed((collapsed) => {
       const next = !collapsed;
@@ -1461,6 +1505,9 @@ function Layout({
                   initialContextFolders={run.initialContextFolders}
                   active={run.runId === activeRunId}
                   profile={run.profile}
+                  watchChild={run.watchChild}
+                  readOnly={run.readOnly}
+                  onOpenSubagent={handleOpenSubagent}
                   onNewChat={handleNewChat}
                   onOpenDiagnose={(section?: string) =>
                     openSettings(section, { profile: run.profile })

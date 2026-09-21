@@ -10,7 +10,25 @@ import type { DashboardRpcEvent } from "../dashboardGatewayClient";
 export interface ActiveSubagent {
   subagent_id: string;
   goal?: string;
+  /** The child's own session id — the handle needed to open its transcript. */
   child_session_id?: string;
+  /** Last started tool (NOT necessarily in-flight — backend contract). */
+  last_tool?: string;
+  tool_count?: number;
+  /** Backend status string while live (e.g. "running"). */
+  status?: string;
+  /** Epoch ms the child started, when the backend reports it. */
+  started_at?: number;
+  /** Whether the child currently accepts a steer message. */
+  accepting_steer?: boolean;
+}
+
+function strOrUndefined(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
+
+function numOrUndefined(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function childRecord(value: unknown): ActiveSubagent | null {
@@ -19,9 +37,25 @@ function childRecord(value: unknown): ActiveSubagent | null {
   if (typeof row.subagent_id !== "string" || !row.subagent_id) return null;
   return {
     subagent_id: row.subagent_id,
-    ...(typeof row.goal === "string" ? { goal: row.goal } : {}),
-    ...(typeof row.child_session_id === "string"
-      ? { child_session_id: row.child_session_id }
+    ...(strOrUndefined(row.goal) ? { goal: row.goal as string } : {}),
+    ...(strOrUndefined(row.child_session_id)
+      ? { child_session_id: row.child_session_id as string }
+      : {}),
+    ...(strOrUndefined(row.last_tool)
+      ? { last_tool: row.last_tool as string }
+      : {}),
+    ...(strOrUndefined(row.status)
+      ? { status: row.status as string }
+      : {}),
+    ...(numOrUndefined(row.tool_count)
+      ? { tool_count: row.tool_count as number }
+      : {}),
+    // Backend reports started_at as epoch seconds; convert for display.
+    ...(numOrUndefined(row.started_at)
+      ? { started_at: (row.started_at as number) * 1000 }
+      : {}),
+    ...(typeof row.accepting_steer === "boolean"
+      ? { accepting_steer: row.accepting_steer }
       : {}),
   };
 }

@@ -28,6 +28,12 @@ export interface ChatRun {
    * mirror then refuses to feed it, so the window stays blank until reopened.
    */
   watchChild?: boolean;
+  /**
+   * READ-ONLY viewer. Set when a session is opened purely to WATCH a writer
+   * owned elsewhere (a subagent's View button). The chat hides its composer so
+   * this tab can never submit into a turn it does not own.
+   */
+  readOnly?: boolean;
   /** Target view if this tab represents a pinned tool or destination page (e.g. "kanban", "knowledge"). */
   targetView?: string;
   /** When set, this tab is a standalone file editor (VS Code style): the top

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import toast from "react-hot-toast";
 
-import { Zap, Globe, ClipboardList, Hammer, SlidersHorizontal, Terminal } from "lucide-react";
+import { Zap, Globe, ClipboardList, Hammer, SlidersHorizontal, Terminal, Eye } from "lucide-react";
 
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 
@@ -84,6 +84,7 @@ import { useUsageTracker } from "./hooks/useUsageTracker";
 import { QueuedMessages } from "./QueuedMessages";
 
 import { ChatTurnStatus } from "./ChatTurnStatus";
+import { ChatSubagentPanel } from "./ChatSubagentPanel";
 import { ChatSearch } from "./ChatSearch";
 
 import { SLASH_COMMANDS, type SlashCommand } from "./slashCommands";
@@ -212,6 +213,16 @@ interface ChatProps {
 
   watchChild?: boolean;
 
+  /**
+   * READ-ONLY viewer: this run shows a transcript another writer owns (a
+   * delegated child opened to watch). The composer is replaced by a notice so a
+   * second client can never submit into a turn it does not own.
+   */
+  readOnly?: boolean;
+
+  /** Open a subagent's own session in a new tab (subagent panel View button). */
+  onOpenSubagent?: (sessionId: string) => void;
+
   /** Whether this run is the one currently shown (drives keyboard handlers). */
 
   active?: boolean;
@@ -287,6 +298,10 @@ function Chat({
   agentAppearance,
 
   watchChild,
+
+  readOnly,
+
+  onOpenSubagent,
 
 }: ChatProps): React.JSX.Element {
 
@@ -2823,6 +2838,23 @@ function Chat({
 
         <ChatTurnStatus isLoading={isLoading} messages={messages} activeSubagentCount={dashboardTransport.activeSubagents.length} />
 
+        {!readOnly && (
+          <ChatSubagentPanel
+            subagents={dashboardTransport.activeSubagents}
+            onOpenSubagent={onOpenSubagent}
+          />
+        )}
+
+        {readOnly ? (
+          <div className="chat-readonly-notice" role="note">
+            <Eye size={13} />
+            <span>
+              Viewing this subagent&rsquo;s session read-only &mdash; it is
+              driven by the parent run.
+            </span>
+          </div>
+        ) : (
+        <>
         <QueuedMessages
 
           messages={queuedMessages}
@@ -3125,6 +3157,9 @@ function Chat({
           }}
 
         />
+
+        </>
+        )}
 
       </div>
 
