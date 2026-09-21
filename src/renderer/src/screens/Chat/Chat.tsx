@@ -1894,6 +1894,8 @@ function Chat({
 
   const dashboardTransport = useDashboardChatTransport({
 
+    active,
+
     activeTurnRef,
 
     contextFolder: contextFolders[0] ?? null,

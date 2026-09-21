@@ -74,6 +74,7 @@ const activeRecoveryTurn: ActiveTurn = {
 };
 
 function Harness({
+  active = true,
   api,
   fallbackOnUnavailable = false,
   initialConnectionMode = "local",
@@ -81,6 +82,7 @@ function Harness({
   onDashboardUnavailable,
   setUsage = vi.fn() as SetUsageMock,
 }: {
+  active?: boolean;
   api: HarnessApi;
   fallbackOnUnavailable?: boolean;
   initialConnectionMode?: "local" | "remote" | "ssh";
@@ -104,6 +106,7 @@ function Harness({
   >(initialConnectionMode);
   const activeTurnRef = useRef<ActiveTurn | null>({ ...activeBadTurn });
   const transport = useDashboardChatTransport({
+    active,
     activeTurnRef,
     contextFolder: null,
     connectionMode,
@@ -198,6 +201,13 @@ describe("useDashboardChatTransport recovery", () => {
         if (method === "session.create") {
           return { session_id: "live", stored_session_id: "stored" };
         }
+        if (method === "model.options") {
+          // Match the harness model, or ensureSelectedModel resets the runtime
+          // session (close + resume) and the poller never re-arms. Regression
+          // guard: this mock line went missing and silently killed this test
+          // for weeks (see the harness-repair note in the gate test below).
+          return { model: "bad-model", provider: "bad-provider", providers: [] };
+        }
         if (method === "session.active_list") {
           return { sessions: [{ id: "live", status: "working" }] };
         }
@@ -230,11 +240,70 @@ describe("useDashboardChatTransport recovery", () => {
         vi.advanceTimersByTime(7200);
       });
       expect(dashboardMock.request).toHaveBeenCalledWith("session.active_list");
-      expect(getMessages).toHaveBeenCalledWith("stored");
+      // The reconcile reads the TAIL slice since ff2883fa: (stored, afterId).
+      expect(getMessages).toHaveBeenCalledWith("stored", expect.any(Number));
     } finally {
       vi.useRealTimers();
     }
   });
+
+  it("does not poll session.active_list while the tab is hidden", async () => {
+    // Visibility-gate regression: every open tab keeps a mounted <Chat>
+    // (Layout hides inactive ones with display:none), so a hidden long-history
+    // tab used to keep running this 2s poll — an active_list RPC plus a tail
+    // reconcile per tick, per tab. That is the periodic main-thread stutter
+    // that scaled with the number of long sessions left open. Mirrors the
+    // foreign-turn test exactly (same runtime-session setup, same 7200ms
+    // advance past interval + grace window) and changes ONLY active=false,
+    // so a gate regression flips this from green to red.
+    vi.useFakeTimers();
+    try {
+      dashboardMock.request.mockImplementation(async (method) => {
+        if (method === "session.create") {
+          return { session_id: "live", stored_session_id: "stored" };
+        }
+        if (method === "model.options") {
+          return { model: "bad-model", provider: "bad-provider", providers: [] };
+        }
+        if (method === "session.active_list") {
+          return { sessions: [{ id: "live", status: "working" }] };
+        }
+        return {};
+      });
+      const api: HarnessApi = {};
+      render(<Harness active={false} api={api} initialConnectionMode="local" />);
+
+      await act(async () => {
+        await api.send?.("hello");
+      });
+      await act(async () => {
+        dashboardMock.onEvent?.({
+          type: "message.complete",
+          payload: { content: "done" },
+          session_id: "live",
+        });
+      });
+      dashboardMock.request.mockClear();
+
+      const getMessages = vi.fn(async () => []);
+      (window.hermesAPI as unknown as { getSessionMessages: typeof getMessages }).getSessionMessages = getMessages;
+
+      await act(async () => {
+        // Same advance the visible-tab test uses to trigger the poll.
+        vi.advanceTimersByTime(7200);
+      });
+
+      // LOAD-BEARING: the poller always RPCs active_list BEFORE any tail read,
+      // so zero active_list calls means the 2s beat never ran while hidden.
+      expect(dashboardMock.request).not.toHaveBeenCalledWith("session.active_list");
+      // The one-shot post-complete sync (400ms, transport completeSyncTimer)
+      // may fire at most once per turn end; a RECURRING read would exceed it.
+      expect(getMessages.mock.calls.length).toBeLessThanOrEqual(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("requests a fresh WebSocket URL immediately before connecting", async () => {
     dashboardMock.request.mockImplementation(async (method) => {
       if (method === "session.create") {
@@ -361,16 +430,33 @@ describe("useDashboardChatTransport recovery", () => {
       await api.send?.("recovery turn");
     });
 
-    expect(requests).not.toContainEqual({
+    // Recovery behavior since 657fbbb (no-new-sidebar-row fix): the poisoned
+    // runtime is closed and the SAME stored session is resumed to a fresh
+    // runtime id — recovery must NOT mint a second stored session row.
+    expect(requests).toContainEqual({
       method: "session.resume",
       params: { session_id: "stored-chat", cols: 96 },
     });
-    expect(
-      requests.filter((request) => request.method === "session.create"),
-    ).toEqual([
-      { method: "session.create", params: { cols: 96 } },
-      { method: "session.create", params: { cols: 96 } },
-    ]);
+    // Exactly ONE create (the initial session). Since the seeding/model commits
+    // it legitimately carries seed messages + model/provider, so assert the
+    // load-bearing shape instead of deep equality on params.
+    expect(requests.filter((request) => request.method === "session.create"))
+      .toEqual([
+        expect.objectContaining({
+          method: "session.create",
+          params: expect.objectContaining({ cols: 96 }),
+        }),
+      ]);
+    // The recovery turn submits on the FRESH runtime (live-recovery), never
+    // on the failed one (live-bad) — the "clean runtime" part of this test.
+    expect(requests).toContainEqual({
+      method: "prompt.submit",
+      params: { session_id: "live-recovery", text: "recovery turn" },
+    });
+    expect(requests).not.toContainEqual({
+      method: "prompt.submit",
+      params: { session_id: "live-bad", text: "recovery turn" },
+    });
     expect(requests).not.toContainEqual({
       method: "session.create",
       params: {
@@ -388,13 +474,11 @@ describe("useDashboardChatTransport recovery", () => {
         userContent: "bad provider turn",
       },
     );
-    expect(window.hermesAPI.recordSessionContinuation).toHaveBeenCalledWith(
-      "stored-chat",
-      [
-        { kind: "user", content: "bad provider turn" },
-        { kind: "assistant", content: "", error: "Invalid API Key" },
-      ],
-    );
+    // Since 657fbbb recovery RESUMES the stored session (created=false), so
+    // continuation re-seeding is intentionally skipped — the failure row is
+    // already persisted via recordSessionLocalError above; re-feeding the
+    // transcript would duplicate the turn in the reopened session.
+    expect(window.hermesAPI.recordSessionContinuation).not.toHaveBeenCalled();
   });
 
   it("sends when model.options lags behind an accepted slash switch", async () => {

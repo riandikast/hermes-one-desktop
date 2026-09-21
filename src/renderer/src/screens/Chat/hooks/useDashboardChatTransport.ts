@@ -132,6 +132,18 @@ interface EnsureDashboardRuntimeSessionResult {
 
 interface UseDashboardChatTransportArgs {
   activeTurnRef: React.MutableRefObject<ActiveTurn | null>;
+  /**
+   * Whether this run's tab is the VISIBLE one. Every open tab keeps a mounted
+   * <Chat> (Layout hides inactive ones with `display: none`), so without this
+   * flag each open tab would keep polling the gateway forever: the 2s
+   * foreign-turn poller does a `session.active_list` RPC plus a full
+   * `getSessionMessages` + transcript reconcile per tick, per tab. On a
+   * long-history session that derivation is exactly the periodic main-thread
+   * stutter, multiplied by the number of long tabs left open. An inactive tab
+   * needs no foreign-turn detection its own visibility will not show; it
+   * reconciles once on activation (and Chat already jumps to present).
+   */
+  active: boolean;
   contextFolder: string | null;
   connectionMode: DashboardConnectionMode;
   enabled: boolean;
@@ -1031,6 +1043,7 @@ export function dashboardContinuationItemsFromTranscript(
 
 
 export function useDashboardChatTransport({
+  active,
   activeTurnRef,
   contextFolder,
   connectionMode,
@@ -2713,7 +2726,13 @@ export function useDashboardChatTransport({
   const FOREIGN_TURN_GRACE_MS = 5_000;
 
   useEffect(() => {
-    if (!enabled) return;
+    // Only the VISIBLE tab polls. Inactive tabs stay mounted (Layout hides them
+    // with `display: none`), so without this guard every open long-history tab
+    // would run this 2s tick forever — an `session.active_list` RPC plus a full
+    // tail reconcile per tick, per tab. That is the periodic stutter that scales
+    // with how many long sessions are left open. An inactive tab reconciles on
+    // activation instead (Chat jumps to present when it becomes active).
+    if (!enabled || !active) return;
     let disposed = false;
     let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -2815,7 +2834,7 @@ export function useDashboardChatTransport({
         setIsLoading(false);
       }
     };
-  }, [enabled, ensureClient, setMessages, setIsLoading, setToolProgress]);
+  }, [active, enabled, ensureClient, setMessages, setIsLoading, setToolProgress]);
 
   const sendMessage = useCallback(
     async (text: string, attachments?: Attachment[]): Promise<boolean> => {
@@ -2877,7 +2896,13 @@ export function useDashboardChatTransport({
       setMessages(messagesRef.current);
       activeTurnRef.current = {
         turnId: `send-${Date.now()}`,
-        userId: "",
+        // Adopt the optimistic row's id (f0b8b10 regressed this to ""): the
+        // failure path resolves the user text BY this id to persist the error
+        // overlay (recordSessionLocalError), and recovery re-seeding excludes
+        // the in-flight user row by it. Empty string made both no-ops — failed
+        // dashboard turns lost their error row on reopen and the user message
+        // was double-seeded after a provider failure.
+        userId: optimisticUser.id,
         startIndex: messagesRef.current.length - 1,
         status: "running",
       };
