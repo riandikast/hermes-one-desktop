@@ -91,39 +91,50 @@ describe("tool result rendering", () => {
 });
 
 describe("auto-expand tool calls", () => {
-  const isExpanded = (container: HTMLElement): boolean =>
+  // BOTH levels matter: the group summary is the PARENT and the item header is
+  // the child. Asserting only the child is what let a half-working
+  // implementation ship — the setting appeared to do nothing because the
+  // visible parent stayed collapsed.
+  const groupExpanded = (container: HTMLElement): boolean =>
+    container
+      .querySelector(".chat-tool-group-summary")
+      ?.getAttribute("aria-expanded") === "true";
+
+  const itemExpanded = (container: HTMLElement): boolean =>
     container
       .querySelector(".chat-tool-item-header")
       ?.getAttribute("aria-expanded") === "true";
 
-  it("keeps tool rows collapsed by default", () => {
+  it("keeps the group and item collapsed by default", () => {
     localStorage.removeItem("hermes.autoExpandToolCalls");
     const { container } = render(group("output"));
-    expect(isExpanded(container)).toBe(false);
+    expect(groupExpanded(container)).toBe(false);
+    expect(itemExpanded(container)).toBe(false);
   });
 
-  it("expands tool rows on mount when the preference is on", () => {
+  it("expands the PARENT group on mount when the preference is on", () => {
+    // The reported bug: only the inner item expanded, so the tool calls were
+    // still hidden behind a collapsed parent that needed a manual click.
     localStorage.setItem("hermes.autoExpandToolCalls", "true");
     const { container } = render(group("output"));
-    expect(isExpanded(container)).toBe(true);
+    expect(groupExpanded(container)).toBe(true);
+    expect(itemExpanded(container)).toBe(true);
     localStorage.removeItem("hermes.autoExpandToolCalls");
   });
 
-  it("expands an ALREADY-MOUNTED row when the setting is switched on", () => {
+  it("expands an ALREADY-MOUNTED group when the setting is switched on", () => {
     localStorage.removeItem("hermes.autoExpandToolCalls");
     const { container } = render(group("output"));
-    expect(isExpanded(container)).toBe(false);
+    expect(groupExpanded(container)).toBe(false);
 
-    // The Appearance pane writes the key then broadcasts this exact event;
-    // without the listener the row would stay collapsed until a remount.
+    // The Appearance pane writes the key then broadcasts this exact event.
     localStorage.setItem("hermes.autoExpandToolCalls", "true");
     act(() => {
-      window.dispatchEvent(
-        new Event("hermes-auto-expand-tool-calls-changed"),
-      );
+      window.dispatchEvent(new Event("hermes-auto-expand-tool-calls-changed"));
     });
 
-    expect(isExpanded(container)).toBe(true);
+    expect(groupExpanded(container)).toBe(true);
+    expect(itemExpanded(container)).toBe(true);
     localStorage.removeItem("hermes.autoExpandToolCalls");
   });
 
@@ -132,17 +143,32 @@ describe("auto-expand tool calls", () => {
     localStorage.setItem("hermes.autoExpandReasoning", "true");
     localStorage.removeItem("hermes.autoExpandToolCalls");
     const { container } = render(group("output"));
-    expect(isExpanded(container)).toBe(false);
+    expect(groupExpanded(container)).toBe(false);
+    expect(itemExpanded(container)).toBe(false);
     localStorage.removeItem("hermes.autoExpandReasoning");
   });
 
-  it("still collapses on click after being auto-expanded", () => {
+  it("still collapses the group on click after auto-expanding", () => {
     localStorage.setItem("hermes.autoExpandToolCalls", "true");
     const { container } = render(group("output"));
-    const header = container.querySelector<HTMLElement>(".chat-tool-item-header")!;
-    expect(isExpanded(container)).toBe(true);
+    const summary = container.querySelector<HTMLElement>(
+      ".chat-tool-group-summary",
+    )!;
+    expect(groupExpanded(container)).toBe(true);
+    fireEvent.click(summary);
+    expect(groupExpanded(container)).toBe(false);
+    localStorage.removeItem("hermes.autoExpandToolCalls");
+  });
+
+  it("still collapses the inner item on click after auto-expanding", () => {
+    localStorage.setItem("hermes.autoExpandToolCalls", "true");
+    const { container } = render(group("output"));
+    const header = container.querySelector<HTMLElement>(
+      ".chat-tool-item-header",
+    )!;
+    expect(itemExpanded(container)).toBe(true);
     fireEvent.click(header);
-    expect(isExpanded(container)).toBe(false);
+    expect(itemExpanded(container)).toBe(false);
     localStorage.removeItem("hermes.autoExpandToolCalls");
   });
 });

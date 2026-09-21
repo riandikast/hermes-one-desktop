@@ -592,9 +592,16 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
   waitForReasoningId?: string;
 }): React.JSX.Element {
   const groupKey = items[0]?.id;
-  const [open, setOpen] = useState(() =>
-    groupKey ? toolGroupOpenById.has(groupKey) : false,
-  );
+  const [open, setOpen] = useState(() => {
+    try {
+      return (
+        (groupKey ? toolGroupOpenById.has(groupKey) : false) ||
+        localStorage.getItem("hermes.autoExpandToolCalls") === "true"
+      );
+    } catch {
+      return false;
+    }
+  });
   const toggleOpen = (): void =>
     setOpen((o) => {
       const next = !o;
@@ -604,6 +611,33 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
       }
       return next;
     });
+  // Auto-expand the GROUP too, not only the items inside it.
+  //
+  // The item-level listener was not enough: with only it, the setting opened
+  // the inner rows of a collapsed group — invisible work, and the user still
+  // had to click the parent summary to reveal anything, which is exactly what
+  // "auto-expand" is supposed to save them. Both levels read the setting.
+  useEffect(() => {
+    const checkAutoExpand = (): void => {
+      try {
+        if (localStorage.getItem("hermes.autoExpandToolCalls") === "true") {
+          setOpen(true);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    checkAutoExpand();
+    window.addEventListener(
+      "hermes-auto-expand-tool-calls-changed",
+      checkAutoExpand,
+    );
+    return () =>
+      window.removeEventListener(
+        "hermes-auto-expand-tool-calls-changed",
+        checkAutoExpand,
+      );
+  }, []);
   useEffect(() => {
     const handleDisplayControl = (event: Event): void => {
       const detail = (event as CustomEvent<Partial<ChatDisplayControls>>).detail;
