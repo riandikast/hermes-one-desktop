@@ -3,8 +3,13 @@ import {
   BLANK_URL,
   BROWSER_TABS_KEY,
   activeTab,
+  canCloseOthers,
+  canCloseToRight,
+  closeOtherTabs,
   closeTab,
+  closeTabsToRight,
   createTab,
+  duplicateTab,
   initialTabsState,
   loadTabs,
   normaliseUrlInput,
@@ -279,5 +284,143 @@ describe("persistence", () => {
 describe("createTab", () => {
   it("defaults to blank", () => {
     expect(createTab().url).toBe(BLANK_URL);
+  });
+});
+
+describe("duplicateTab", () => {
+  it("places the copy immediately to the right of its source", () => {
+    const next = duplicateTab(three(), "a");
+    const ids = next.tabs.map((t) => t.id);
+    // a, COPY, b, c — the copy sits directly after "a".
+    expect(ids[0]).toBe("a");
+    expect(ids[2]).toBe("b");
+    expect(ids[3]).toBe("c");
+    expect(ids[1]).not.toBe("a");
+  });
+
+  it("copies the url rather than sharing the tab", () => {
+    const next = duplicateTab(three(), "b");
+    expect(next.tabs).toHaveLength(4);
+    const original = next.tabs.find((t) => t.id === "b")!;
+    const copy = next.tabs.filter((t) => t.id !== "b" && t.url === original.url);
+    expect(copy).toHaveLength(1);
+    expect(copy[0].id).not.toBe("b");
+  });
+
+  it("activates the copy", () => {
+    const next = duplicateTab(three(), "a");
+    const copyId = next.tabs[1].id;
+    expect(next.activeId).toBe(copyId);
+  });
+
+  it("duplicates a blank tab", () => {
+    const state: BrowserTabsState = {
+      tabs: [{ id: "z", url: BLANK_URL }],
+      activeId: "z",
+    };
+    const next = duplicateTab(state, "z");
+    expect(next.tabs).toHaveLength(2);
+    expect(next.tabs[1].url).toBe(BLANK_URL);
+  });
+
+  it("ignores an unknown id", () => {
+    const before = three();
+    expect(duplicateTab(before, "nope")).toBe(before);
+  });
+
+  it("gives the duplicate a distinct id", () => {
+    const next = duplicateTab(three(), "c");
+    const ids = next.tabs.map((t) => t.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("closeTabsToRight", () => {
+  it("keeps the anchor and everything left of it", () => {
+    const next = closeTabsToRight(three(), "a");
+    expect(next.tabs.map((t) => t.id)).toEqual(["a"]);
+  });
+
+  it("keeps later tabs when the anchor is last", () => {
+    const before = three();
+    const next = closeTabsToRight(before, "c");
+    // Nothing to the right: state is returned unchanged.
+    expect(next).toBe(before);
+  });
+
+  it("moves focus to the anchor when the active tab is closed", () => {
+    // activeId is "b" and closing right of "a" removes b and c, so focus falls
+    // back to the anchor the user right-clicked.
+    const next = closeTabsToRight(three(), "a");
+    expect(next.tabs.some((t) => t.id === next.activeId)).toBe(true);
+    expect(next.activeId).toBe("a");
+  });
+
+  it("leaves focus alone when the active tab survives", () => {
+    // three() has activeId "b", and the anchor is "b" itself, so b survives and
+    // focus must NOT move to the anchor's neighbour.
+    const next = closeTabsToRight(three(), "b");
+    expect(next.tabs.map((t) => t.id)).toEqual(["a", "b"]);
+    expect(next.activeId).toBe("b");
+  });
+
+  it("keeps focus when the active tab is LEFT of the anchor", () => {
+    // activeId "a", anchor "b": a survives, so focus stays on a.
+    const next = closeTabsToRight(
+      { ...three(), activeId: "a" },
+      "b",
+    );
+    expect(next.tabs.map((t) => t.id)).toEqual(["a", "b"]);
+    expect(next.activeId).toBe("a");
+  });
+
+  it("ignores an unknown id", () => {
+    const before = three();
+    expect(closeTabsToRight(before, "nope")).toBe(before);
+  });
+});
+
+describe("closeOtherTabs", () => {
+  it("keeps only the anchor, which becomes active", () => {
+    const next = closeOtherTabs(three(), "c");
+    expect(next.tabs.map((t) => t.id)).toEqual(["c"]);
+    expect(next.activeId).toBe("c");
+  });
+
+  it("preserves the anchor's url", () => {
+    const next = closeOtherTabs(three(), "a");
+    expect(next.tabs[0].url).toBe("https://one.test");
+  });
+
+  it("is a no-op with a single tab", () => {
+    const state: BrowserTabsState = {
+      tabs: [{ id: "solo", url: "https://solo.test" }],
+      activeId: "solo",
+    };
+    expect(closeOtherTabs(state, "solo")).toBe(state);
+  });
+
+  it("ignores an unknown id rather than emptying the strip", () => {
+    const before = three();
+    expect(closeOtherTabs(before, "nope")).toBe(before);
+    expect(before.tabs).toHaveLength(3);
+  });
+});
+
+describe("menu enablement", () => {
+  it("offers close-to-right only when tabs exist to the right", () => {
+    expect(canCloseToRight(three(), "a")).toBe(true);
+    expect(canCloseToRight(three(), "b")).toBe(true);
+    expect(canCloseToRight(three(), "c")).toBe(false);
+    expect(canCloseToRight(three(), "nope")).toBe(false);
+  });
+
+  it("offers close-others only when more than one tab exists", () => {
+    expect(canCloseOthers(three())).toBe(true);
+    const solo: BrowserTabsState = {
+      tabs: [{ id: "s", url: BLANK_URL }],
+      activeId: "s",
+    };
+    expect(canCloseOthers(solo)).toBe(false);
   });
 });

@@ -324,3 +324,255 @@ describe("browser tabs: toolbar acts on the active tab", () => {
     ).not.toBeNull();
   });
 });
+
+describe("new-tab button placement", () => {
+  it("renders the + BEFORE the tab list, so it holds the left edge", () => {
+    // Placement is a DOM-order property here (the strip is a flex row), so it
+    // is asserted structurally rather than by pixel position.
+    const { container } = renderPanel();
+    const strip = container.querySelector(".web-preview-tabs")!;
+    const children = [...strip.children];
+    const plusIndex = children.findIndex((el) =>
+      el.classList.contains("web-preview-tab-new"),
+    );
+    const scrollIndex = children.findIndex((el) =>
+      el.classList.contains("web-preview-tabs-scroll"),
+    );
+    expect(plusIndex).toBe(0);
+    expect(scrollIndex).toBeGreaterThan(plusIndex);
+  });
+
+  it("keeps the + first even with several tabs open", () => {
+    const { container } = renderPanel();
+    act(() => {
+      fireEvent.click(newTabButton(container));
+    });
+    act(() => {
+      fireEvent.click(newTabButton(container));
+    });
+    const strip = container.querySelector(".web-preview-tabs")!;
+    expect(strip.children[0].classList.contains("web-preview-tab-new")).toBe(
+      true,
+    );
+  });
+});
+
+/** Right-click the tab at `index` and return the menu element. */
+function openMenu(container: HTMLElement, index = 0): HTMLElement | null {
+  const tab = tabStrip(container)[index];
+  act(() => {
+    fireEvent.contextMenu(tab, { clientX: 120, clientY: 80 });
+  });
+  return document.querySelector<HTMLElement>(".web-preview-tab-menu");
+}
+
+/** Menu item labels, in order. */
+function menuItems(): string[] {
+  return [
+    ...document.querySelectorAll<HTMLElement>(".web-preview-tab-menu-item"),
+  ].map((el) => el.textContent ?? "");
+}
+
+describe("tab context menu", () => {
+  it("opens on right-click with the four requested actions", () => {
+    const { container } = renderPanel();
+    const menu = openMenu(container, 0);
+    expect(menu).not.toBeNull();
+    expect(menuItems()).toEqual([
+      "Duplicate",
+      "Close",
+      "Close other tabs",
+      "Close tabs to the right",
+    ]);
+  });
+
+  it("does not open the browser's own menu", () => {
+    // preventDefault on contextmenu — otherwise Electron's default menu (or
+    // nothing) appears over ours.
+    const { container } = renderPanel();
+    const tab = tabStrip(container)[0];
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 10,
+      clientY: 10,
+    });
+    act(() => {
+      tab.dispatchEvent(event);
+    });
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("selects the right-clicked tab so menu actions target it", () => {
+    const { container } = renderPanel();
+    act(() => {
+      fireEvent.click(newTabButton(container));
+    });
+    // Tab 1 is active; right-click tab 0.
+    openMenu(container, 0);
+    const selected = tabStrip(container).map((el) =>
+      el.getAttribute("aria-selected"),
+    );
+    expect(selected).toEqual(["true", "false"]);
+  });
+
+  it("Duplicate adds a copy and leaves the original in place", () => {
+    const { container } = renderPanel("https://dup-me.test");
+    openMenu(container, 0);
+    act(() => {
+      fireEvent.click(
+        [...document.querySelectorAll<HTMLElement>(".web-preview-tab-menu-item")][0],
+      );
+    });
+    expect(tabStrip(container)).toHaveLength(2);
+    expect(tabViews(container)).toHaveLength(2);
+    expect(
+      container.querySelector<HTMLInputElement>(".web-preview-address-input")!
+        .value,
+    ).toBe("https://dup-me.test");
+  });
+
+  it("closes the menu after an action runs", () => {
+    const { container } = renderPanel();
+    openMenu(container, 0);
+    act(() => {
+      fireEvent.click(
+        [...document.querySelectorAll<HTMLElement>(".web-preview-tab-menu-item")][0],
+      );
+    });
+    expect(document.querySelector(".web-preview-tab-menu")).toBeNull();
+  });
+
+  it("Close removes only that tab", () => {
+    const { container } = renderPanel();
+    act(() => {
+      fireEvent.click(newTabButton(container));
+    });
+    openMenu(container, 0);
+    act(() => {
+      fireEvent.click(
+        [...document.querySelectorAll<HTMLElement>(".web-preview-tab-menu-item")][1],
+      );
+    });
+    expect(tabStrip(container)).toHaveLength(1);
+  });
+
+  it("Close other tabs leaves exactly the right-clicked tab", () => {
+    const { container } = renderPanel("https://keep.test");
+    act(() => {
+      fireEvent.click(newTabButton(container));
+    });
+    act(() => {
+      fireEvent.click(newTabButton(container));
+    });
+    expect(tabStrip(container)).toHaveLength(3);
+
+    openMenu(container, 0);
+    act(() => {
+      fireEvent.click(
+        [...document.querySelectorAll<HTMLElement>(".web-preview-tab-menu-item")][2],
+      );
+    });
+    expect(tabStrip(container)).toHaveLength(1);
+    // The survivor is the tab that was right-clicked.
+    expect(
+      container.querySelector<HTMLInputElement>(".web-preview-address-input")!
+        .value,
+    ).toBe("https://keep.test");
+  });
+
+  it("Close tabs to the right keeps the clicked tab and earlier ones", () => {
+    const { container } = renderPanel("https://first-kept.test");
+    act(() => {
+      fireEvent.click(newTabButton(container));
+    });
+    act(() => {
+      fireEvent.click(newTabButton(container));
+    });
+    // Right-click the MIDDLE tab: it and the first survive, the third goes.
+    openMenu(container, 1);
+    act(() => {
+      fireEvent.click(
+        [...document.querySelectorAll<HTMLElement>(".web-preview-tab-menu-item")][3],
+      );
+    });
+    expect(tabStrip(container)).toHaveLength(2);
+  });
+
+  it("disables close-to-right on the last tab", () => {
+    const { container } = renderPanel();
+    act(() => {
+      fireEvent.click(newTabButton(container));
+    });
+    openMenu(container, 1); // the last tab
+    const items = [
+      ...document.querySelectorAll<HTMLButtonElement>(
+        ".web-preview-tab-menu-item",
+      ),
+    ];
+    expect(items[3].disabled).toBe(true);
+    // The others remain available.
+    expect(items[0].disabled).toBe(false);
+    expect(items[2].disabled).toBe(false);
+  });
+
+  it("disables Close, Close other tabs and close-to-right on a lone tab", () => {
+    const { container } = renderPanel();
+    openMenu(container, 0);
+    const items = [
+      ...document.querySelectorAll<HTMLButtonElement>(
+        ".web-preview-tab-menu-item",
+      ),
+    ];
+    // Duplicate always works; the three closing actions cannot.
+    expect(items[0].disabled).toBe(false);
+    expect(items[1].disabled).toBe(true);
+    expect(items[2].disabled).toBe(true);
+    expect(items[3].disabled).toBe(true);
+  });
+
+  it("closes on Escape without closing the dialog", () => {
+    const { container } = renderPanel();
+    openMenu(container, 0);
+    act(() => {
+      fireEvent.keyDown(document, { key: "Escape" });
+    });
+    expect(document.querySelector(".web-preview-tab-menu")).toBeNull();
+  });
+
+  it("closes when clicking outside", () => {
+    const { container } = renderPanel();
+    openMenu(container, 0);
+    act(() => {
+      fireEvent.mouseDown(document.body);
+    });
+    expect(document.querySelector(".web-preview-tab-menu")).toBeNull();
+  });
+
+  it("stays open when clicking inside the menu", () => {
+    const { container } = renderPanel();
+    const menu = openMenu(container, 0)!;
+    act(() => {
+      fireEvent.mouseDown(menu);
+    });
+    expect(document.querySelector(".web-preview-tab-menu")).not.toBeNull();
+  });
+
+  it("persists bulk closes so they survive a reopen", () => {
+    const { container, unmount } = renderPanel("https://persist.test");
+    act(() => {
+      fireEvent.click(newTabButton(container));
+    });
+    openMenu(container, 0);
+    act(() => {
+      fireEvent.click(
+        [...document.querySelectorAll<HTMLElement>(".web-preview-tab-menu-item")][2],
+      );
+    });
+    expect(tabStrip(container)).toHaveLength(1);
+    unmount();
+
+    const saved = JSON.parse(localStorage.getItem(BROWSER_TABS_KEY) ?? "{}");
+    expect(saved.tabs).toHaveLength(1);
+  });
+});

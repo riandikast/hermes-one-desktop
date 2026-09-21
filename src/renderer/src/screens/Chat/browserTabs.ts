@@ -115,6 +115,78 @@ export function closeTab(state: BrowserTabsState, id: string): BrowserTabsState 
   return { tabs, activeId: tabs[nextIndex].id };
 }
 
+/**
+ * Close tabs to the RIGHT of `id`.
+ *
+ * The clicked tab and everything left of it survive. Focus is preserved when
+ * the active tab survives; if the active tab was one of the closed ones, focus
+ * moves to `id` — the anchor the user right-clicked, which is the same
+ * behaviour Chrome uses.
+ */
+export function closeTabsToRight(
+  state: BrowserTabsState,
+  id: string,
+): BrowserTabsState {
+  const index = state.tabs.findIndex((t) => t.id === id);
+  if (index === -1) return state;
+  const tabs = state.tabs.slice(0, index + 1);
+  if (tabs.length === state.tabs.length) return state;
+  const activeId = tabs.some((t) => t.id === state.activeId)
+    ? state.activeId
+    : id;
+  return { tabs, activeId };
+}
+
+/**
+ * Close every tab except `id`.
+ *
+ * Returns the ORIGINAL state when only one tab would remain, because a tab
+ * strip with a single tab is the floor — see `closeTab`, which refuses the same
+ * thing for the same reason.
+ */
+export function closeOtherTabs(
+  state: BrowserTabsState,
+  id: string,
+): BrowserTabsState {
+  const keep = state.tabs.find((t) => t.id === id);
+  if (!keep) return state;
+  if (state.tabs.length <= 1) return state;
+  return { tabs: [keep], activeId: id };
+}
+
+/** Whether closing to the right of `id` would actually remove anything. */
+export function canCloseToRight(state: BrowserTabsState, id: string): boolean {
+  const index = state.tabs.findIndex((t) => t.id === id);
+  return index !== -1 && index < state.tabs.length - 1;
+}
+
+/** Whether closing other tabs would actually remove anything. */
+export function canCloseOthers(state: BrowserTabsState): boolean {
+  return state.tabs.length > 1;
+}
+
+/**
+ * Duplicate a tab: same URL, placed immediately to the RIGHT of its source.
+ *
+ * The copy becomes active, matching Chrome. A duplicate of a blank tab is just
+ * another blank tab, which is fine and is why no special case exists here.
+ */
+export function duplicateTab(
+  state: BrowserTabsState,
+  id: string,
+): BrowserTabsState {
+  const index = state.tabs.findIndex((t) => t.id === id);
+  if (index === -1) return state;
+  const source = state.tabs[index];
+  const copy: BrowserTab = { id: newTabId(), url: source.url };
+  const tabs = [
+    ...state.tabs.slice(0, index + 1),
+    copy,
+    ...state.tabs.slice(index + 1),
+  ];
+  return { tabs, activeId: copy.id };
+}
+
 export function selectTab(
   state: BrowserTabsState,
   id: string,

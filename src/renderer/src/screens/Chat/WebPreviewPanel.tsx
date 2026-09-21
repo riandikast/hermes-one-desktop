@@ -18,7 +18,12 @@ import {
 import {
   BLANK_URL,
   activeTab,
+  canCloseOthers,
+  canCloseToRight,
+  closeOtherTabs,
   closeTab,
+  closeTabsToRight,
+  duplicateTab,
   loadTabs,
   normaliseUrlInput,
   openTab,
@@ -28,6 +33,7 @@ import {
   updateTab,
   type BrowserTabsState,
 } from "./browserTabs";
+import { TabContextMenu, type TabMenuAction } from "./TabContextMenu";
 import {
   INSPECTOR_CLEANUP_SCRIPT,
   INSPECTOR_SCRIPT,
@@ -113,6 +119,12 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
 
   const [address, setAddress] = useState(() => activeTab(state)?.url ?? "");
   const [isInspecting, setIsInspecting] = useState(false);
+  /** Open right-click menu: which tab, and where to anchor it. */
+  const [tabMenu, setTabMenu] = useState<{
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   // Resizable width, for the standalone (non-embedded) case.
   const [width, setWidth] = useState<number>(() => {
@@ -275,6 +287,85 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
     runtimeRef.current.delete(id);
   };
 
+  /**
+   * Apply a tab-list transform, persisting the result and tearing down the
+   * guest for any tab that disappeared.
+   *
+   * Centralised so every bulk operation (duplicate / close others / close to
+   * the right) shares the two things that are easy to forget: writing the new
+   * list to storage, and releasing the webviews of removed tabs. A leaked entry
+   * in `runtimeRef` would keep a dead guest alive and, worse, leave a stale
+   * handle that later toolbar clicks would target.
+   */
+  const applyTabChange = useCallback(
+    (transform: (prev: BrowserTabsState) => BrowserTabsState): void => {
+      setState((prev) => {
+        const next = transform(prev);
+        if (next === prev) return prev;
+        const survivors = new Set(next.tabs.map((t) => t.id));
+        for (const id of [...runtimeRef.current.keys()]) {
+          if (!survivors.has(id)) runtimeRef.current.delete(id);
+        }
+        saveTabs(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const duplicate = (id: string): void =>
+    applyTabChange((prev) => duplicateTab(prev, id));
+
+  const closeOthers = (id: string): void =>
+    applyTabChange((prev) => closeOtherTabs(prev, id));
+
+  const closeToRight = (id: string): void =>
+    applyTabChange((prev) => closeTabsToRight(prev, id));
+
+  /**
+   * Menu items for the currently right-clicked tab.
+   *
+   * Disabled rather than hidden when an action is impossible, so the menu keeps
+   * a stable shape and the user can see WHY something is unavailable. "Close"
+   * is disabled on a lone tab for the same reason the strip hides its × then:
+   * the last tab is the floor, and closing it would leave no way back.
+   */
+  const menuActions = useMemo<TabMenuAction[]>(() => {
+    const id = tabMenu?.id;
+    if (!id) return [];
+    const inStrip = state.tabs.some((t) => t.id === id);
+    return [
+      {
+        label: "Duplicate",
+        enabled: inStrip,
+        onSelect: () => duplicate(id),
+      },
+      {
+        label: "Close",
+        enabled: canCloseOthers(state) && inStrip,
+        onSelect: () => closeOne(id),
+      },
+      {
+        label: "Close other tabs",
+        enabled: canCloseOthers(state) && inStrip,
+        onSelect: () => closeOthers(id),
+      },
+      {
+        label: "Close tabs to the right",
+        enabled: canCloseToRight(state, id),
+        onSelect: () => closeToRight(id),
+      },
+    ];
+  }, [tabMenu, state, duplicate, closeOne, closeOthers, closeToRight]);
+
+  // A menu whose tab disappeared (closed elsewhere, or by a bulk action) must
+  // not linger pointing at nothing.
+  useEffect(() => {
+    if (tabMenu && !state.tabs.some((t) => t.id === tabMenu.id)) {
+      setTabMenu(null);
+    }
+  }, [state, tabMenu]);
+
   const startResize = (e: React.PointerEvent): void => {
     e.preventDefault();
     const startX = e.clientX;
@@ -344,6 +435,17 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
 
       {/* ── Tab strip ────────────────────────────────────────────────────── */}
       <div className="web-preview-tabs" role="tablist" aria-label="Browser tabs">
+        {/* The + sits on the LEFT, before the tabs: it stays put as tabs are
+            added and the strip scrolls, instead of drifting with the edge. */}
+        <button
+          type="button"
+          className="web-preview-tab-new"
+          onClick={addTab}
+          aria-label="New tab"
+          title="New tab"
+        >
+          <Plus size={14} />
+        </button>
         <div className="web-preview-tabs-scroll">
           {tabs.map((tab) => (
             <div
@@ -355,6 +457,14 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
                 tab.id === state.activeId ? " is-active" : ""
               }`}
               onClick={() => setState((prev) => selectTab(prev, tab.id))}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                // Right-clicking an inactive tab also selects it, so the menu's
+                // "close others"/"to the right" act on what the user pointed at
+                // rather than on whatever was active before.
+                setState((prev) => selectTab(prev, tab.id));
+                setTabMenu({ id: tab.id, x: e.clientX, y: e.clientY });
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
@@ -380,15 +490,6 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
             </div>
           ))}
         </div>
-        <button
-          type="button"
-          className="web-preview-tab-new"
-          onClick={addTab}
-          aria-label="New tab"
-          title="New tab"
-        >
-          <Plus size={14} />
-        </button>
       </div>
 
       {/* ── Toolbar (shared across tabs; acts on the active one) ─────────── */}
@@ -481,6 +582,15 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
           />
         ))}
       </div>
+
+      {tabMenu && menuActions.length > 0 && (
+        <TabContextMenu
+          x={tabMenu.x}
+          y={tabMenu.y}
+          actions={menuActions}
+          onClose={() => setTabMenu(null)}
+        />
+      )}
     </div>
   );
 });
