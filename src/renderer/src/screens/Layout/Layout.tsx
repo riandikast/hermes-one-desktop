@@ -1302,8 +1302,18 @@ function Layout({
               </button>
             </div>
             )}
+            {/* The pinned nav list (Tools / Office / Kanban / …) is a Sessions
+                concern: on the Bots tab the rail shows bots, so this expanded
+                menu is noise. Derived, NOT written back — collapsing here must
+                not overwrite the user's saved preference, or switching tabs
+                would permanently destroy it. */}
             <div
-              className={`sidebar-pinned-items ${pinnedNavCollapsed ? "sidebar-pinned-items--collapsed" : ""}`}
+              className={`sidebar-pinned-items ${
+                pinnedNavCollapsed || sidebarTab === "bots"
+                  ? "sidebar-pinned-items--collapsed"
+                  : ""
+              }`}
+              aria-hidden={sidebarTab === "bots"}
             >
               {PINNED_NAV_ITEMS.map(({ view: v, icon: Icon, labelKey }) => {
                 return (
