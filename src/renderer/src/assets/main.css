@@ -2863,7 +2863,9 @@ body:has(.shell-vibrant),
   border: 1px solid var(--border-subtle, var(--border));
   border-radius: var(--radius-sm);
   padding: 2px;
-  margin: 6px 12px 10px;
+  /* Sits in the pinned navigation block: align with the nav items' gutter
+     (they pad 8px) and separate it from New chat / the pinned list below. */
+  margin: 0 8px 8px;
 }
 
 .sidebar-mode-tab {

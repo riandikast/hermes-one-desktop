@@ -425,6 +425,25 @@ function Layout({
     }
   });
   const [sessionsModalOpen, setSessionsModalOpen] = useState(false);
+  // Sessions | Bots list choice. Owned here (not in SidebarRecentSessions) so
+  // the switcher can render in the navigation block above the list.
+  const [sidebarTab, setSidebarTab] = useState<"sessions" | "bots">(() => {
+    try {
+      const stored = localStorage.getItem("hermes.sidebar.tab");
+      return stored === "bots" ? "bots" : "sessions";
+    } catch {
+      return "sessions";
+    }
+  });
+
+  const selectSidebarTab = useCallback((tab: "sessions" | "bots") => {
+    setSidebarTab(tab);
+    try {
+      localStorage.setItem("hermes.sidebar.tab", tab);
+    } catch {
+      /* ignore persistence failures */
+    }
+  }, []);
 
   const togglePinnedNavCollapsed = useCallback(() => {
     setPinnedNavCollapsed((prev) => {
@@ -1217,6 +1236,32 @@ function Layout({
           </div>
 
           <nav className="sidebar-nav sidebar-nav-pinned">
+            {/* Sessions | Bots list switcher. Sits with the main navigation
+                (above New chat + the pinned items) so choosing the list is a
+                navigation action, not something that scrolls away with it. */}
+            {!sidebarCollapsed && (
+              <div className="sidebar-mode-segmented-control">
+                <button
+                  type="button"
+                  className={`sidebar-mode-tab ${
+                    sidebarTab === "sessions" ? "active" : ""
+                  }`}
+                  onClick={() => selectSidebarTab("sessions")}
+                >
+                  <span>{t("navigation.sessions")}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`sidebar-mode-tab ${
+                    sidebarTab === "bots" ? "active" : ""
+                  }`}
+                  onClick={() => selectSidebarTab("bots")}
+                >
+                  <Bot size={13} />
+                  <span>{t("navigation.bots")}</span>
+                </button>
+              </div>
+            )}
             <div className="sidebar-new-chat-row">
               <button
                 className={`sidebar-nav-item sidebar-new-chat ${
@@ -1292,6 +1337,7 @@ function Layout({
                   activeBotProfile={view === "chat" ? runs.find((r) => r.runId === activeRunId)?.profile : null}
                   searchOpen={sidebarSearchOpen}
                   onSearchOpenChange={setSidebarSearchOpen}
+                  sidebarTab={sidebarTab}
                   scrollRootRef={sidebarChatScrollRef}
                 />
               </div>

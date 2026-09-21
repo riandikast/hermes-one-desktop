@@ -2,6 +2,7 @@ export default {
   chat: "Chat",
   newChat: "New Chat",
   sessions: "Sessions",
+  bots: "Bots",
   discover: "Discover",
   agents: "Bots",
   office: "Office",

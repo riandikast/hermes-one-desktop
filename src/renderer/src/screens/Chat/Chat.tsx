@@ -18,6 +18,7 @@ import { ModelPicker } from "./ModelPicker";
 
 import { ReasoningEffortPicker } from "./ReasoningEffortPicker";
 import { setChatDisplayControls } from "./HistoryRow";
+import { migratePlanMode, readPlanMode, writePlanMode } from "./planMode";
 
 import { ContextFolderChip } from "./ContextFolderChip";
 
@@ -408,7 +409,6 @@ function Chat({
   }, [isLoading]);
 
   const [hermesSessionId, setHermesSessionId] = useState<string | null>(
-
     initialSessionId ?? null,
 
   );
@@ -420,6 +420,21 @@ function Chat({
     onSessionIdChange?.(runId, hermesSessionId);
 
   }, [runId, hermesSessionId, onSessionIdChange]);
+
+  // A draft chat has no session id until its first turn, so the PLAN/BUILD
+  // toggle writes under the run id. Once the session id exists, move that value
+  // across and re-key future writes to the session (see planMode.ts).
+  useEffect(() => {
+
+    if (!hermesSessionId) return;
+
+    if (planModeIdentityRef.current === hermesSessionId) return;
+
+    migratePlanMode(planModeIdentityRef.current, hermesSessionId);
+
+    planModeIdentityRef.current = hermesSessionId;
+
+  }, [hermesSessionId]);
 
   // Best-effort title from the first user bubble (for the active-sessions bar).
 
@@ -524,19 +539,25 @@ function Chat({
 
   >([]);
 
-  // PLAN / BUILD mode toggle. Persisted per session so a re-opened
+  // PLAN / BUILD mode toggle. Persisted PER SESSION so a re-opened
 
-  // conversation restores its mode. When PLAN, the agent is instructed (via a
+  // conversation restores its own mode and toggling it never affects another
 
-  // system message) to never mutate files.
+  // open session (see planMode.ts). When PLAN, write/exec tool.start events are
 
-  const [planMode, setPlanMode] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem("hermes.session.planMode") === "true";
-    } catch {
-      return false;
-    }
-  });
+  // blocked live by the transport, and the legacy transport also injects a
+
+  // system instruction.
+
+  // Identity the mode is stored under: the session id when known, else the run
+
+  // id (a new chat has no session id until its first turn).
+
+  const planModeIdentityRef = useRef<string>(initialSessionId ?? runId);
+
+  const [planMode, setPlanMode] = useState<boolean>(() =>
+    readPlanMode(initialSessionId ?? runId),
+  );
 
   // Raw / minimal system prompt mode toggle (ideal for small / local models).
   const [rawSystemPrompt, setRawSystemPrompt] = useState<boolean>(() => {
@@ -565,15 +586,10 @@ function Chat({
 
       const next = !prev;
 
-      try {
-
-        localStorage.setItem("hermes.session.planMode", String(next));
-
-      } catch {
-
-        /* ignore */
-
-      }
+      // Persist against THIS conversation's identity (session id once known,
+      // else the run id for a draft). A global key made PLAN leak into every
+      // other open session -- see planMode.ts.
+      writePlanMode(planModeIdentityRef.current, next);
 
       return next;
 

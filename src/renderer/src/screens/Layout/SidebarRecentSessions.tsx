@@ -236,6 +236,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   searchOpen,
   onSearchOpenChange,
   scrollRootRef,
+  sidebarTab,
 }: {
   open: boolean;
   /** Active profile — the list is per-profile, so switching forces a reload. */
@@ -258,15 +259,13 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   /** Session search: when true, a filter input filters the session lists. */
   searchOpen: boolean;
   onSearchOpenChange: (open: boolean) => void;
+  /**
+   * Which list to show. Owned by Layout because the switcher renders in the
+   * navigation block above this list, not inside it.
+   */
+  sidebarTab: "sessions" | "bots";
 }): React.JSX.Element | null {
   const { t } = useI18n();
-  const [sidebarTab, setSidebarTab] = useState<"sessions" | "bots">(() => {
-    try {
-      return (localStorage.getItem("hermes.sidebar.tab") as "sessions" | "bots") || "sessions";
-    } catch {
-      return "sessions";
-    }
-  });
   const [groupChats, setGroupChats] = useState<GroupChatRecord[]>(() =>
     loadStoredGroupChats(),
   );
@@ -622,12 +621,6 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       cancelled = true;
     };
   }, [open, activeProfile, applyFirstPage]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("hermes.sidebar.tab", sidebarTab);
-    } catch {}
-  }, [sidebarTab]);
 
   const loadBotProfiles = useCallback(async () => {
     try {
@@ -1238,27 +1231,9 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       className={`sidebar-recent-sessions-wrap ${expanded ? "expanded" : ""}`}
       aria-hidden={!expanded}
     >
-      {/* ── Official-style Sessions | Bots segment switcher ── */}
-      <div className="sidebar-mode-segmented-control">
-        <button
-          type="button"
-          className={`sidebar-mode-tab ${
-            sidebarTab === "sessions" ? "active" : ""
-          }`}
-          onClick={() => setSidebarTab("sessions")}
-        >
-          <span>Sessions</span>
-        </button>
-        <button
-          type="button"
-          className={`sidebar-mode-tab ${sidebarTab === "bots" ? "active" : ""}`}
-          onClick={() => setSidebarTab("bots")}
-        >
-          <Bot size={13} />
-          <span>Bots</span>
-        </button>
-      </div>
-
+      {/* The Sessions | Bots switcher now lives in Layout, above the main
+          navigation, so the mode choice sits with the other navigation rather
+          than scrolling with the list. The tab state is supplied as a prop. */}
       {sidebarTab === "bots" ? (
         <div className="sidebar-bots-rail">
           <div className="sidebar-bots-rail-header">
