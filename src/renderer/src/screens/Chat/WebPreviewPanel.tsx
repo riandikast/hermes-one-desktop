@@ -243,8 +243,11 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
     if (!url || !currentId) return;
     // A blank tab navigates in place; a real page gets the URL applied.
     setState((prev) => updateTab(prev, currentId, { url, title: undefined }));
-    const view = runtimeRef.current.get(currentId)?.view;
-    view?.execute(`window.location.href = ${JSON.stringify(url)};`);
+    // Navigate via the webview's own loadURL, NOT `execute("location = ...")`:
+    // executeJavaScript throws until dom-ready, so typing in the address bar on
+    // a freshly opened tab crashed with "The WebView must be attached to the
+    // DOM...". The handle is feature-checked and queued until the guest is up.
+    runtimeRef.current.get(currentId)?.view?.loadURL(url);
     setAddress(url);
   };
 

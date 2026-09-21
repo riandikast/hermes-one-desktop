@@ -10022,6 +10022,14 @@ body:has(.shell-vibrant),
   align-items: center;
   justify-content: center;
   padding: 24px;
+  /* CRITICAL, and the same fix .file-changes-overlay needed: the top band of
+     the window (the tab strip / .active-sessions-bar) is a
+     `-webkit-app-region: drag` region, and a drag region swallows NATIVE mouse
+     events over its bounds REGARDLESS of DOM z-order. A dialog header parked in
+     that band therefore became window-drag territory: dragging the dialog
+     dragged the whole Hermes window instead. Opting the overlay out of the drag
+     region reclaims those events for the dialog. */
+  -webkit-app-region: no-drag;
   /* No dimming: the chat stays readable behind it and the terminal is a
      tool, not a modal decision. Pointer events are off while hidden so a
      closed dialog can never swallow a click. */
@@ -10085,6 +10093,12 @@ body:has(.shell-vibrant),
   cursor: grab;
   touch-action: none;
   user-select: none;
+  /* Belt and braces: the overlay already opts out of the window drag region,
+     but the HEADER is the element the user actually grabs, and it is the one
+     landing in the title-bar band. Stating it here means a future change to the
+     overlay cannot silently reintroduce "dragging the dialog moves the whole
+     window". */
+  -webkit-app-region: no-drag;
 }
 
 .terminal-dialog-head:active {
