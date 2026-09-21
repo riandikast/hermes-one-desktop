@@ -6874,116 +6874,6 @@ body:has(.shell-vibrant),
   opacity: 1;
 }
 
-.chat-fast-wrapper {
-  position: relative;
-}
-
-.chat-fast-btn {
-  opacity: 0.5;
-  transition:
-    opacity 0.15s,
-    color 0.15s;
-}
-
-.chat-fast-btn:hover {
-  opacity: 0.8;
-}
-
-.chat-fast-active {
-  opacity: 1;
-  color: #f59e0b;
-  background: color-mix(in srgb, #f59e0b 14%, transparent);
-}
-
-.chat-fast-active:hover {
-  opacity: 1;
-  background: color-mix(in srgb, #f59e0b 20%, transparent);
-}
-
-.chat-fast-popover {
-  position: absolute;
-  bottom: calc(100% + 10px);
-  right: 0;
-  z-index: 100;
-  width: 244px;
-  padding: 12px 14px;
-  /* Same floating glass material as the pickers. */
-  background: color-mix(in srgb, var(--bg-secondary) 97%, transparent);
-  backdrop-filter: blur(28px) saturate(1.5);
-  -webkit-backdrop-filter: blur(28px) saturate(1.5);
-  border: 0.5px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 24px 60px -16px rgba(0, 0, 0, 0.6),
-    0 8px 24px -12px rgba(0, 0, 0, 0.45);
-  /* Fade + settle instead of a hard show/hide. */
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(4px) scale(0.98);
-  transform-origin: bottom right;
-  transition:
-    opacity 0.16s ease,
-    transform 0.16s cubic-bezier(0.16, 1, 0.3, 1),
-    visibility 0.16s;
-  pointer-events: none;
-}
-
-.chat-fast-popover-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.chat-fast-popover-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  flex-shrink: 0;
-  /* Off state: a quiet neutral chip so the bolt reads clearly. */
-  color: var(--text-secondary);
-  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
-}
-/* `display:block` removes the inline-SVG baseline gap that otherwise makes the
-   bolt sit low. The lucide Zap is geometrically centred in its viewBox, but its
-   thin right arm pulls the geometric centre right of the visual mass, so the
-   bolt reads as left-shifted — a 1px nudge optically re-centres it in the chip. */
-.chat-fast-popover-icon svg {
-  display: block;
-  transform: translateX(1px);
-}
-/* On state: a solid amber badge with a dark glyph — high contrast, and it
-   signals "active" the way the toggle button does. */
-.chat-fast-active-popover .chat-fast-popover-icon {
-  color: #3a2900;
-  background: #f59e0b;
-  box-shadow: 0 0 0 3px color-mix(in srgb, #f59e0b 20%, transparent);
-}
-
-.chat-fast-popover strong {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.chat-fast-popover span {
-  display: block;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-}
-
-.chat-fast-wrapper:hover .chat-fast-popover,
-.chat-fast-wrapper:focus-within .chat-fast-popover {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0) scale(1);
-}
-
 /* Context folder control (issue #27) */
 .chat-ctxfolder {
   display: flex;
@@ -10121,7 +10011,13 @@ body:has(.shell-vibrant),
 .terminal-dialog-overlay {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  /* Above ALL app chrome, or dialogs render behind it. The relevant layers:
+     .top-menu-wrapper (the tab strip) 1001, the in-chat search bar 1002,
+     .app-modal-overlay 200, .sidebar-footer-flyout 1000. 1100 clears them with
+     room to spare while staying under .splash-screen (9999), which must win.
+     A value below 1002 was the original bug: the tab strip painted OVER the
+     dialog. */
+  z-index: 1100;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -11067,6 +10963,74 @@ body:has(.shell-vibrant),
   justify-content: space-between;
   font-size: 10px;
   color: var(--text-muted);
+}
+
+/* ── Fast mode, inside the reasoning dropdown ────────────────────────────────
+   Moved here from the composer toolbar to reclaim a slot. Styled as a row with
+   a track+knob switch so it reads as a stateful toggle rather than an action,
+   matching the rail's existing controls. */
+.chat-effort-fast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.chat-effort-fast:hover {
+  background: var(--hover, rgba(127, 127, 127, 0.08));
+  color: var(--text-primary);
+}
+
+.chat-effort-fast.is-on {
+  border-color: var(--accent, #8b7cf6);
+  color: var(--text-primary);
+}
+
+.chat-effort-fast-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Track + knob: a real affordance for on/off, not just a text label change. */
+.chat-effort-fast-track {
+  position: relative;
+  flex: none;
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted, #888) 30%, transparent);
+  transition: background var(--transition);
+}
+
+.chat-effort-fast.is-on .chat-effort-fast-track {
+  background: var(--accent, #8b7cf6);
+}
+
+.chat-effort-fast-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bg-elevated, #17171b);
+  transition: transform var(--transition);
+}
+
+.chat-effort-fast.is-on .chat-effort-fast-knob {
+  transform: translateX(12px);
 }
 
 .chat-model-search-input,
@@ -20319,6 +20283,145 @@ body:has(.shell-vibrant),
   background: transparent;
 }
 
+/* ── Tab strip ───────────────────────────────────────────────────────────────
+   Chrome-style: a horizontally scrolling row of tabs plus a "+", pinned above
+   the toolbar. `min-width: 0` on the scroll area is required so the row can
+   shrink and scroll instead of pushing the "+" off the panel. */
+.web-preview-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px 0;
+  background: var(--bg-tertiary);
+  flex-shrink: 0;
+}
+
+.web-preview-tabs-scroll {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.web-preview-tabs-scroll::-webkit-scrollbar {
+  height: 3px;
+}
+
+.web-preview-tabs-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+.web-preview-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* Bounded so many tabs scroll rather than shrinking to nothing. */
+  min-width: 90px;
+  max-width: 190px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 7px 7px 0 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition), color var(--transition);
+}
+
+.web-preview-tab:hover {
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  color: var(--text-primary);
+}
+
+.web-preview-tab.is-active {
+  background: var(--bg-secondary);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+.web-preview-tab-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.web-preview-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.web-preview-tab-close:hover {
+  background: color-mix(in srgb, var(--error, #ef4444) 22%, transparent);
+  opacity: 1;
+}
+
+.web-preview-tab-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  margin-bottom: 3px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.web-preview-tab-new:hover {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-primary);
+}
+
+/* The stack of per-tab bodies. Each tab is its own webview; only the active one
+   is displayed, but ALL stay mounted so switching never reloads the page. */
+.web-preview-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  background: #ffffff;
+}
+
+.web-preview-tab-view {
+  position: absolute;
+  inset: 0;
+}
+
+/* Hidden tabs leave the layout entirely, but stay in the DOM (see the
+   hidden attribute in BrowserTabView — this is the belt to that pair of
+   braces, so a stray class cannot make two webviews visible at once). */
+.web-preview-tab-view[hidden] {
+  display: none;
+}
+
+.web-preview-webview {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
 /* Drag handle on the left edge to free-resize the panel width. */
 .web-preview-resize-handle {
   position: absolute;
@@ -20410,19 +20513,6 @@ body:has(.shell-vibrant),
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
-}
-
-.web-preview-webview-container {
-  flex: 1;
-  position: relative;
-  background: #ffffff;
-}
-
-.web-preview-webview-container webview {
-  width: 100%;
-  height: 100%;
-  border: none;
-  background: #ffffff;
 }
 
 .web-preview-btn-active {

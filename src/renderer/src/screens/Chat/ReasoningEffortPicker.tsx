@@ -1,11 +1,20 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { Brain, ChevronDown, HelpCircle } from "lucide-react";
+import { Brain, ChevronDown, HelpCircle, Zap } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import type { ReasoningEffort } from "./hooks/useReasoningEffort";
 
 interface ReasoningEffortPickerProps {
   value: ReasoningEffort;
   onChange: (value: ReasoningEffort) => void | Promise<void>;
+  /**
+   * Fast mode, rendered INSIDE this dropdown to save toolbar space: it is a
+   * reasoning-shaping control, so it belongs with the effort rail rather than
+   * floating as a separate toolbar button with its own popover.
+   *
+   * Optional so the picker still works standalone (e.g. in tests).
+   */
+  fastMode?: boolean;
+  onToggleFastMode?: () => void;
 }
 
 const OPTIONS: Array<{
@@ -48,6 +57,8 @@ const OPTIONS: Array<{
 export const ReasoningEffortPicker = memo(function ReasoningEffortPicker({
   value,
   onChange,
+  fastMode = false,
+  onToggleFastMode,
 }: ReasoningEffortPickerProps): React.JSX.Element {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
@@ -231,6 +242,31 @@ export const ReasoningEffortPicker = memo(function ReasoningEffortPicker({
             <span>{t("chat.reasoningEffort.faster")}</span>
             <span>{t("chat.reasoningEffort.smarter")}</span>
           </div>
+
+          {/* Fast mode lives here rather than as its own toolbar button: it
+              shapes reasoning, so it belongs beside the effort rail. A toggle
+              ROW (not a checkbox input) so the whole row is one click target
+              and it matches the rail's existing controls. */}
+          {onToggleFastMode && (
+            <button
+              type="button"
+              className={`chat-effort-fast${fastMode ? " is-on" : ""}`}
+              onClick={onToggleFastMode}
+              role="switch"
+              aria-checked={fastMode}
+              title={
+                fastMode ? t("chat.fastModeActive") : t("chat.fastModeInactive")
+              }
+            >
+              <span className="chat-effort-fast-label">
+                <Zap size={13} aria-hidden="true" />
+                <span>{t("chat.fastMode")}</span>
+              </span>
+              <span className="chat-effort-fast-track" aria-hidden="true">
+                <span className="chat-effort-fast-knob" />
+              </span>
+            </button>
+          )}
 
           {saveError && (
             <div className="chat-reasoning-error" role="alert">

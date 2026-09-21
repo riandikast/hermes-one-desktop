@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useRef } from "react";
-import { FolderOpen, FolderTree, X, Check, BookOpen } from "lucide-react";
+import { FolderOpen, X, Check, BookOpen } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 
 interface ContextFolderChipProps {
@@ -9,11 +9,9 @@ interface ContextFolderChipProps {
   attachedKnowledgeBundles?: string[];
   /** Hidden in remote/SSH mode, where the picker browses the wrong machine. */
   show: boolean;
-  worktreeVisible: boolean;
   onPickFolder: () => void;
   onRemoveFolder: (path: string) => void;
   onToggleKnowledgeBundle?: (bundleName: string) => void;
-  onToggleWorktree: () => void;
   onSelectRecentFolder?: (path: string) => void;
 }
 
@@ -32,11 +30,9 @@ export const ContextFolderChip = memo(function ContextFolderChip({
   contextFolders,
   attachedKnowledgeBundles = [],
   show,
-  worktreeVisible,
   onPickFolder,
   onRemoveFolder,
   onToggleKnowledgeBundle,
-  onToggleWorktree,
   onSelectRecentFolder,
 }: ContextFolderChipProps): React.JSX.Element | null {
   const { t } = useI18n();
@@ -289,18 +285,10 @@ export const ContextFolderChip = memo(function ContextFolderChip({
         </span>
       </button>
 
-      <button
-        className={`chat-meta-chip-icon${
-          worktreeVisible ? " chat-meta-chip-icon--active" : ""
-        }`}
-        onClick={onToggleWorktree}
-        title={
-          worktreeVisible ? t("chat.hideWorktree") : t("chat.showWorktree")
-        }
-        type="button"
-      >
-        <FolderTree size={13} />
-      </button>
+      {/* The file-explorer toggle that used to sit here was removed: it
+          duplicated the floating rail icon, and two controls for one panel
+          disagreed about state whenever the dialog was open. */}
+
       {isOpen && renderDropdown()}
       {isKnowledgeOpen && renderKnowledgeDropdown()}
     </div>

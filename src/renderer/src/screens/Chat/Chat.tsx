@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import toast from "react-hot-toast";
 
-import { Zap, Globe, ClipboardList, Hammer, SlidersHorizontal, Terminal, Eye, FolderSearch } from "lucide-react";
+import { Globe, ClipboardList, Hammer, SlidersHorizontal, Terminal, Eye, FolderSearch } from "lucide-react";
 import { Spinner } from "../../assets/icons";
 
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
@@ -2395,11 +2395,6 @@ function Chat({
 
 
 
-  const handleToggleWorktree = useCallback(() => {
-
-    setWorktreeVisible((v) => !v);
-
-  }, []);
 
 
 
@@ -3160,59 +3155,15 @@ function Chat({
 
                 onChange={setReasoningEffort}
 
+                fastMode={fastMode}
+
+                onToggleFastMode={toggleFastMode}
+
               />
 
-              <div className="chat-fast-wrapper">
-
-                <button
-
-                  type="button"
-
-                  className={`btn-ghost chat-fast-btn ${fastMode ? "chat-fast-active" : ""}`}
-
-                  onClick={toggleFastMode}
-
-                >
-
-                  <Zap size={14} />
-
-                </button>
-
-                <div
-
-                  className={`chat-fast-popover ${fastMode ? "chat-fast-active-popover" : ""}`}
-
-                >
-
-                  <div className="chat-fast-popover-head">
-
-                    <span className="chat-fast-popover-icon" aria-hidden="true">
-
-                      <Zap size={13} />
-
-                    </span>
-
-                    <strong>
-
-                      {fastMode ? t("chat.fastModeOn") : t("chat.fastMode")}
-
-                    </strong>
-
-                  </div>
-
-                  <span>
-
-                    {fastMode
-
-                      ? t("chat.fastModeActive")
-
-                      : t("chat.fastModeInactive")}
-
-                  </span>
-
-                </div>
-
-              </div>
+              {/* Fast mode moved INSIDE the reasoning dropdown (see
+                  ReasoningEffortPicker): it shapes reasoning, so it sits with
+                  the effort rail instead of occupying its own toolbar slot. */}
 
               <OnFinishChip
                 running={onFinishRunner.state.running}
@@ -3227,15 +3178,11 @@ function Chat({
 
                 show
 
-                worktreeVisible={worktreeVisible}
-
                 onPickFolder={handlePickFolder}
 
                 onRemoveFolder={handleRemoveFolder}
 
                 onToggleKnowledgeBundle={handleToggleKnowledgeBundle}
-
-                onToggleWorktree={handleToggleWorktree}
 
                 onSelectRecentFolder={handleSelectRecentFolder}
 
