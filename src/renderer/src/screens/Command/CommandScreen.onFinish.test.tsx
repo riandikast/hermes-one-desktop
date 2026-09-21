@@ -148,6 +148,6 @@ describe("Commands page mirrors the On-Finish queue", () => {
       window.removeEventListener(ON_FINISH_CHANGE_EVENT, listener);
     }
     expect(seen).toEqual(["fired"]);
-    expect(localStorage.getItem(ON_FINISH_SELECTION_KEY)).toBeTruthy();
+    expect(localStorage.getItem(`${ON_FINISH_SELECTION_KEY}.default`)).toBeTruthy();
   });
 });

@@ -9,6 +9,7 @@ import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import {
   ON_FINISH_CHANGE_EVENT,
   isOnFinishArmed,
+  migrateOnFinishSelection,
   readOnFinishSelection,
   type OnFinishCommand,
 } from "./onFinish";
@@ -468,6 +469,20 @@ function Chat({
 
   }, [hermesSessionId]);
 
+  // Same re-keying for the On-Finish queue: it was written under the run id
+  // while this chat was still a draft, so move it to the session id. Without
+  // this the queue would be orphaned under a run id that disappears with the
+  // tab, and the user would lose their selection on the first turn.
+  useEffect(() => {
+    if (!hermesSessionId) return;
+    if (onFinishIdentityRef.current === hermesSessionId) return;
+    migrateOnFinishSelection(onFinishIdentityRef.current, hermesSessionId);
+    onFinishIdentityRef.current = hermesSessionId;
+    // Re-read so the chip and dock reflect the migrated queue immediately.
+    setOnFinishSelected(readOnFinishSelection(hermesSessionId));
+  }, [hermesSessionId]);
+
+
   // Best-effort title from the first user bubble (for the active-sessions bar).
 
   // Suppressed when a persisted title was restored (e.g. user-renamed) — the
@@ -605,8 +620,14 @@ function Chat({
   // in localStorage and edited from the On-Finish chip's dropdown (and mirrored
   // on the Commands page). ARMED is DERIVED from it — a non-empty queue means
   // armed — so "armed but nothing ticks" cannot happen.
+  //
+  // PER SESSION: the queue is keyed by this chat's identity, mirroring
+  // planMode. A new chat has no session id until its first turn, so it is keyed
+  // by runId and MIGRATED when the session id arrives (see the effect below) —
+  // otherwise every new chat would share one queue and silently arm each other.
+  const onFinishIdentityRef = useRef<string>(initialSessionId ?? runId);
   const [onFinishSelected, setOnFinishSelected] = useState<string[]>(() =>
-    readOnFinishSelection(),
+    readOnFinishSelection(initialSessionId ?? runId),
   );
   const onFinishArmed = isOnFinishArmed(onFinishSelected);
   // Commands are read fresh on each finish so Commands-page edits apply without
@@ -673,11 +694,17 @@ function Chat({
 
   // The chip's dropdown owns selection edits. It lives in this same tree, so it
   // cannot raise a `storage` event (those only fire cross-document) — instead
-  // the chip dispatches a CustomEvent and we re-read. Without this the dock
-  // would not appear/disappear until the chat remounted.
+  // the chip dispatches a CustomEvent and we re-read.
+  //
+  // SCOPE-FILTERED: the event carries the scope it was written for, and a chat
+  // only reacts to its OWN scope. Without this, editing the queue in one chat
+  // would rewrite every other open chat's chip state — the same cross-session
+  // bleed the per-session queue exists to prevent.
   useEffect(() => {
-    const syncSelection = (): void => {
-      setOnFinishSelected(readOnFinishSelection());
+    const syncSelection = (event: Event): void => {
+      const detail = (event as CustomEvent<{ scope?: string }>).detail;
+      if (detail?.scope && detail.scope !== onFinishIdentityRef.current) return;
+      setOnFinishSelected(readOnFinishSelection(onFinishIdentityRef.current));
     };
     window.addEventListener(ON_FINISH_CHANGE_EVENT, syncSelection);
     return () =>
@@ -3139,7 +3166,10 @@ function Chat({
 
               </div>
 
-              <OnFinishChip running={onFinishRunner.state.running} />
+              <OnFinishChip
+                running={onFinishRunner.state.running}
+                scope={onFinishIdentityRef.current}
+              />
 
               <ContextFolderChip
 

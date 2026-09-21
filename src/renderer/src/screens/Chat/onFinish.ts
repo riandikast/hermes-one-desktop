@@ -18,6 +18,25 @@ export const ON_FINISH_SELECTION_KEY = "hermes.onFinish.selectedCommands";
 export const ON_FINISH_ARM_KEY = "hermes.onFinish.armed";
 
 /**
+ * Scope for the LEGACY global queue (written before per-session support).
+ * Kept as its own scope so an existing user's queue is not silently lost: it
+ * is read as the fallback for a session that has never saved its own.
+ */
+export const ON_FINISH_DEFAULT_SCOPE = "default";
+
+/**
+ * Per-session storage keys.
+ *
+ * Each chat has its OWN ordered queue, keyed by the chat's identity. A session
+ * with no saved queue falls back to the legacy unscoped value (see
+ * ON_FINISH_DEFAULT_SCOPE) and then to "empty", so upgrading does not wipe
+ * whatever was already configured.
+ */
+function selectionKey(scope: string): string {
+  return `${ON_FINISH_SELECTION_KEY}.${scope}`;
+}
+
+/**
  * Fired on `window` whenever the ordered selection changes.
  *
  * A `storage` event cannot be used: it only fires in OTHER documents, so a
@@ -43,9 +62,20 @@ export interface OnFinishCommand {
  * corrupt is dropped rather than throwing, so a bad value can never break the
  * chatbox on boot.
  */
-export function readOnFinishSelection(): string[] {
+export function readOnFinishSelection(
+  scope: string = ON_FINISH_DEFAULT_SCOPE,
+): string[] {
   try {
-    const raw = localStorage.getItem(ON_FINISH_SELECTION_KEY);
+    // Prefer this session's own queue. Fall back to the legacy global value
+    // ONLY when this scope has never been written, so an explicit "no
+    // commands" (empty array) is not overridden by stale global state.
+    const scoped = localStorage.getItem(selectionKey(scope));
+    const raw =
+      scoped !== null
+        ? scoped
+        : scope === ON_FINISH_DEFAULT_SCOPE
+          ? localStorage.getItem(ON_FINISH_SELECTION_KEY)
+          : null;
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -83,11 +113,62 @@ export function readOnFinishSelection(): string[] {
   }
 }
 
+/**
+ * Move a queue from one identity scope to another.
+ *
+ * Used when a draft chat (keyed by runId) receives its real session id. The
+ * source scope is only removed when the destination did not already have its
+ * own queue — otherwise reopening an existing session would clobber its saved
+ * queue with a stale draft one.
+ */
+export function migrateOnFinishSelection(from: string, to: string): void {
+  if (from === to) return;
+  try {
+    if (localStorage.getItem(selectionKey(to)) !== null) return;
+    const value = localStorage.getItem(selectionKey(from));
+    if (value === null) return;
+    localStorage.setItem(selectionKey(to), value);
+    localStorage.removeItem(selectionKey(from));
+  } catch {
+    /* storage unavailable — nothing to migrate */
+  }
+}
+
+/**
+ * Every command id selected in ANY session scope, de-duplicated.
+ *
+ * The Commands page is a global view of which commands are queued somewhere.
+ * With per-session queues a single scope would be misleading — a command ticked
+ * in one chat would appear unticked here — so it unions all scopes.
+ */
+export function readAllOnFinishSelections(): string[] {
+  const ids = new Set<string>();
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      const isScoped = key.startsWith(`${ON_FINISH_SELECTION_KEY}.`);
+      // The unscoped legacy key holds the same shape, without the prefix.
+      if (!isScoped && key !== ON_FINISH_SELECTION_KEY) continue;
+      const scope = isScoped
+        ? key.slice(ON_FINISH_SELECTION_KEY.length + 1)
+        : ON_FINISH_DEFAULT_SCOPE;
+      for (const id of readOnFinishSelection(scope)) ids.add(id);
+    }
+  } catch {
+    /* storage unavailable — nothing to report */
+  }
+  return [...ids];
+}
+
 /** Persist the ordered selection, writing explicit indices. */
-export function writeOnFinishSelection(ids: readonly string[]): void {
+export function writeOnFinishSelection(
+  ids: readonly string[],
+  scope: string = ON_FINISH_DEFAULT_SCOPE,
+): void {
   try {
     localStorage.setItem(
-      ON_FINISH_SELECTION_KEY,
+      selectionKey(scope),
       JSON.stringify(ids.map((id, order) => ({ id, order }))),
     );
   } catch {
@@ -96,7 +177,9 @@ export function writeOnFinishSelection(ids: readonly string[]): void {
   // Always notify same-page listeners, even when storage failed: the chat must
   // still arm/disarm for this session.
   try {
-    window.dispatchEvent(new CustomEvent(ON_FINISH_CHANGE_EVENT));
+    window.dispatchEvent(
+      new CustomEvent(ON_FINISH_CHANGE_EVENT, { detail: { scope } }),
+    );
   } catch {
     /* non-browser environment (tests without jsdom) */
   }

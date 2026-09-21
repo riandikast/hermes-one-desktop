@@ -15,6 +15,9 @@ import {
   writeOnFinishSelection,
 } from "./onFinish";
 
+/** The scope this suite mounts the chip under. */
+const SCOPE = "test-scope";
+
 const COMMANDS = [
   {
     id: "z",
@@ -54,7 +57,7 @@ function chip(): HTMLElement {
 }
 
 async function openDropdown(): Promise<void> {
-  render(<OnFinishChip running={false} />);
+  render(<OnFinishChip running={false} scope={SCOPE} />);
   fireEvent.click(chip());
   // Wait on a GROUP header, not a command name: groups start collapsed (as on
   // the Commands page), so no command row exists until a group is expanded.
@@ -105,7 +108,7 @@ describe("On-Finish chip", () => {
     fireEvent.click(item("Zebra"));
 
     await waitFor(() => expect(chip().textContent).toContain("On-Finish (1)"));
-    expect(readOnFinishSelection()).toEqual(["z"]);
+    expect(readOnFinishSelection(SCOPE)).toEqual(["z"]);
   });
 
   it("numbers the queue by selection order, first picked runs first", async () => {
@@ -118,14 +121,14 @@ describe("On-Finish chip", () => {
     fireEvent.click(item("Alpha"));
 
     await waitFor(() =>
-      expect(readOnFinishSelection()).toEqual(["z", "a"]),
+      expect(readOnFinishSelection(SCOPE)).toEqual(["z", "a"]),
     );
     const indices = [...document.querySelectorAll(".chat-onfinish-item-order")];
     expect(indices.map((el) => el.textContent).sort()).toEqual(["1", "2"]);
   });
 
   it("shows the queue in run order at the top of the dropdown", async () => {
-    writeOnFinishSelection(["z", "a"]);
+    writeOnFinishSelection(["z", "a"], SCOPE);
     await openDropdown();
 
     const queueChips = document.querySelectorAll(".chat-onfinish-queue-name");
@@ -144,28 +147,28 @@ describe("On-Finish chip", () => {
     fireEvent.click(item("Zebra"));
 
     await waitFor(() => expect(chip().textContent).toBe("On-Finish"));
-    expect(readOnFinishSelection()).toEqual([]);
+    expect(readOnFinishSelection(SCOPE)).toEqual([]);
   });
 
   it("persists across a remount", async () => {
-    writeOnFinishSelection(["a", "z"]);
-    render(<OnFinishChip running={false} />);
+    writeOnFinishSelection(["a", "z"], SCOPE);
+    render(<OnFinishChip running={false} scope={SCOPE} />);
     await waitFor(() => expect(chip().textContent).toContain("On-Finish (2)"));
   });
 
   it("clears the queue from the dropdown footer", async () => {
-    writeOnFinishSelection(["a", "z"]);
+    writeOnFinishSelection(["a", "z"], SCOPE);
     await openDropdown();
 
     fireEvent.click(screen.getByText(/Clear queue/));
 
-    await waitFor(() => expect(readOnFinishSelection()).toEqual([]));
+    await waitFor(() => expect(readOnFinishSelection(SCOPE)).toEqual([]));
     expect(chip().textContent).toBe("On-Finish");
   });
 
   it("shows a busy label while the queue is running", () => {
-    writeOnFinishSelection(["a"]);
-    render(<OnFinishChip running={true} />);
+    writeOnFinishSelection(["a"], SCOPE);
+    render(<OnFinishChip running={true} scope={SCOPE} />);
     expect(chip().textContent).toContain("On-Finish (1)…");
   });
 
@@ -175,7 +178,7 @@ describe("On-Finish chip", () => {
     };
     // Cannot use openDropdown() here: it waits on a group header, and with no
     // commands there are no groups at all.
-    render(<OnFinishChip running={false} />);
+    render(<OnFinishChip running={false} scope={SCOPE} />);
     fireEvent.click(chip());
     await waitFor(() =>
       expect(screen.getByText("No saved commands yet")).toBeDefined(),
@@ -183,7 +186,7 @@ describe("On-Finish chip", () => {
   });
 
   it("labels a deleted command in the queue instead of dropping a slot", async () => {
-    writeOnFinishSelection(["gone", "a"]);
+    writeOnFinishSelection(["gone", "a"], SCOPE);
     await openDropdown();
     expect(screen.getByText("(deleted)")).toBeDefined();
   });
@@ -194,8 +197,8 @@ describe("On-Finish chip", () => {
     fireEvent.click(item("Zebra"));
 
     await waitFor(() =>
-      expect(localStorage.getItem(ON_FINISH_SELECTION_KEY)).toBeTruthy(),
+      expect(localStorage.getItem(`${ON_FINISH_SELECTION_KEY}.test-scope`)).toBeTruthy(),
     );
-    expect(readOnFinishSelection()).toEqual(["z"]);
+    expect(readOnFinishSelection(SCOPE)).toEqual(["z"]);
   });
 });

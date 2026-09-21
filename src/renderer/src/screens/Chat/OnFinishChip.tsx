@@ -10,6 +10,11 @@ import {
 interface OnFinishChipProps {
   /** True while the queue is executing (drives the spinner/label). */
   running: boolean;
+  /**
+   * This chat's identity scope. Each session owns its own ordered queue, so
+   * the chip must read/write under the same key the chat reads.
+   */
+  scope: string;
 }
 
 /**
@@ -30,11 +35,12 @@ interface OnFinishChipProps {
  */
 export const OnFinishChip = memo(function OnFinishChip({
   running,
+  scope,
 }: OnFinishChipProps): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false);
   const [commands, setCommands] = useState<OnFinishCommand[]>([]);
   const [selected, setSelected] = useState<string[]>(() =>
-    readOnFinishSelection(),
+    readOnFinishSelection(scope),
   );
   // Folders start collapsed (matching the Commands page default).
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
@@ -57,8 +63,9 @@ export const OnFinishChip = memo(function OnFinishChip({
         }));
         setCommands(items);
         // Re-read the selection too: it may have been edited on the Commands
-        // page while this chat was open.
-        const fresh = readOnFinishSelection();
+        // page while this chat was open. Scoped, so another chat's queue is
+        // never picked up here.
+        const fresh = readOnFinishSelection(scope);
         setSelected(fresh);
         setCollapsedFolders(new Set(items.map((c) => c.folder ?? "")));
       })
@@ -68,7 +75,7 @@ export const OnFinishChip = memo(function OnFinishChip({
     return () => {
       cancelled = true;
     };
-  }, [isOpen]);
+  }, [isOpen, scope]);
 
   // Close on outside click / Escape, matching the folder chip.
   useEffect(() => {
@@ -91,7 +98,7 @@ export const OnFinishChip = memo(function OnFinishChip({
   // chat (see ON_FINISH_CHANGE_EVENT) so the dock appears/disappears live.
   const persist = (next: string[]): void => {
     setSelected(next);
-    writeOnFinishSelection(next);
+    writeOnFinishSelection(next, scope);
   };
 
   const toggle = (id: string): void => {

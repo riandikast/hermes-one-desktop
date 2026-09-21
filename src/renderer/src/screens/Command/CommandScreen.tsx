@@ -18,7 +18,7 @@ import type { TerminalDockHandle } from "./TerminalDock";
 import { TerminalDock } from "./TerminalDock";
 import {
   ON_FINISH_CHANGE_EVENT,
-  readOnFinishSelection,
+  readAllOnFinishSelections,
 } from "../Chat/onFinish";
 
 export interface CommandItem {
@@ -49,7 +49,7 @@ export function CommandScreen(): React.JSX.Element {
   // On-Finish selection: an ORDERED list of command ids. Array order is the
   // execution order (first selected runs first) — see onFinish.ts.
   const [onFinishIds, setOnFinishIds] = useState<string[]>(() =>
-    readOnFinishSelection(),
+    readAllOnFinishSelections(),
   );
   const [editing, setEditing] = useState<CommandItem | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
@@ -300,7 +300,7 @@ export function CommandScreen(): React.JSX.Element {
   // `storage`, which does not fire in the writing document) keeps the mirror
   // live while the queue is changed in another tab/view.
   useEffect(() => {
-    const sync = (): void => setOnFinishIds(readOnFinishSelection());
+    const sync = (): void => setOnFinishIds(readAllOnFinishSelections());
     window.addEventListener(ON_FINISH_CHANGE_EVENT, sync);
     return () => window.removeEventListener(ON_FINISH_CHANGE_EVENT, sync);
   }, []);

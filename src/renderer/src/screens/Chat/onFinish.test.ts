@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   ON_FINISH_CHANGE_EVENT,
+  ON_FINISH_DEFAULT_SCOPE,
   ON_FINISH_SELECTION_KEY,
   isOnFinishArmed,
   moveOnFinishSelection,
@@ -77,12 +78,15 @@ describe("persistence round-trip preserves order", () => {
     writeOnFinishSelection(["zebra", "alpha", "mango"]);
     // Stored order must be selection order, NOT alphabetical or insertion-id
     // order — that is the entire point of the feature.
-    expect(readOnFinishSelection()).toEqual(["zebra", "alpha", "mango"]);
+    expect(readOnFinishSelection(ON_FINISH_DEFAULT_SCOPE)).toEqual(["zebra", "alpha", "mango"]);
   });
 
   it("stores an ordered record array, not a plain set-like list", () => {
-    writeOnFinishSelection(["b", "a"]);
-    const raw = JSON.parse(localStorage.getItem(ON_FINISH_SELECTION_KEY)!);
+    writeOnFinishSelection(["b", "a"], ON_FINISH_DEFAULT_SCOPE);
+    const raw = JSON.parse(
+      // Scoped key: the default scope is "default", not the bare legacy key.
+      localStorage.getItem(`${ON_FINISH_SELECTION_KEY}.default`)!,
+    );
     expect(raw).toEqual([
       { id: "b", order: 0 },
       { id: "a", order: 1 },
@@ -97,12 +101,12 @@ describe("persistence round-trip preserves order", () => {
         { id: "first", order: 0 },
       ]),
     );
-    expect(readOnFinishSelection()).toEqual(["first", "second"]);
+    expect(readOnFinishSelection(ON_FINISH_DEFAULT_SCOPE)).toEqual(["first", "second"]);
   });
 
   it("accepts bare ids (position = order) for forward compatibility", () => {
     localStorage.setItem(ON_FINISH_SELECTION_KEY, JSON.stringify(["one", "two"]));
-    expect(readOnFinishSelection()).toEqual(["one", "two"]);
+    expect(readOnFinishSelection(ON_FINISH_DEFAULT_SCOPE)).toEqual(["one", "two"]);
   });
 
   it("de-duplicates while keeping the first occurrence's position", () => {
@@ -110,17 +114,17 @@ describe("persistence round-trip preserves order", () => {
       ON_FINISH_SELECTION_KEY,
       JSON.stringify(["a", "b", "a"]),
     );
-    expect(readOnFinishSelection()).toEqual(["a", "b"]);
+    expect(readOnFinishSelection(ON_FINISH_DEFAULT_SCOPE)).toEqual(["a", "b"]);
   });
 
   it("returns empty for corrupt or absent values rather than throwing", () => {
-    expect(readOnFinishSelection()).toEqual([]);
+    expect(readOnFinishSelection(ON_FINISH_DEFAULT_SCOPE)).toEqual([]);
     localStorage.setItem(ON_FINISH_SELECTION_KEY, "{not json");
-    expect(readOnFinishSelection()).toEqual([]);
+    expect(readOnFinishSelection(ON_FINISH_DEFAULT_SCOPE)).toEqual([]);
     localStorage.setItem(ON_FINISH_SELECTION_KEY, JSON.stringify({ a: 1 }));
-    expect(readOnFinishSelection()).toEqual([]);
+    expect(readOnFinishSelection(ON_FINISH_DEFAULT_SCOPE)).toEqual([]);
     localStorage.setItem(ON_FINISH_SELECTION_KEY, JSON.stringify([null, 7, ""]));
-    expect(readOnFinishSelection()).toEqual([]);
+    expect(readOnFinishSelection(ON_FINISH_DEFAULT_SCOPE)).toEqual([]);
   });
 });
 
@@ -180,8 +184,15 @@ describe("selection change notification", () => {
 
 describe("writeOnFinishSelection / readOnFinishSelection wiring", () => {
   it("uses the same storage key the chip and chat share", () => {
-    writeOnFinishSelection(["x"]);
-    expect(localStorage.getItem(ON_FINISH_SELECTION_KEY)).toBeTruthy();
-    expect(readOnFinishSelection()).toEqual(["x"]);
+    writeOnFinishSelection(["x"], ON_FINISH_DEFAULT_SCOPE);
+    expect(
+      localStorage.getItem(`${ON_FINISH_SELECTION_KEY}.default`),
+    ).toBeTruthy();
+    expect(readOnFinishSelection(ON_FINISH_DEFAULT_SCOPE)).toEqual(["x"]);
+  });
+
+  it("round-trips through a named session scope", () => {
+    writeOnFinishSelection(["x", "y"], "session-a");
+    expect(readOnFinishSelection("session-a")).toEqual(["x", "y"]);
   });
 });

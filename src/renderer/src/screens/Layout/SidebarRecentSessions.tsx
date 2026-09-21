@@ -654,6 +654,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     }
   }, [open, sidebarTab, loadBotProfiles]);
 
+
   const handleOpenBotChat = useCallback(
     (profileId: string) => {
       onChatWithBot?.(profileId);
