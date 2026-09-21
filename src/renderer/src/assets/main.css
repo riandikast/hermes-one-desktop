@@ -21900,6 +21900,57 @@ body:has(.shell-vibrant),
   padding: 6px 8px;
   position: relative;
 }
+
+/* ── `cd` completion dropdown ────────────────────────────────────────────────
+   Absolutely positioned over the terminal body. In normal flow it would resize
+   xterm's container, which makes the terminal rewrap on every Tab — so it
+   floats, anchored above the prompt. */
+.terminal-complete {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  max-width: 320px;
+  max-height: 190px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.24));
+  border-radius: 8px;
+  background: var(--bg-elevated, #17171b);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+}
+
+.terminal-complete-item {
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-complete-item:hover,
+.terminal-complete-item.is-active {
+  background: var(--hover, rgba(127, 127, 127, 0.12));
+  color: var(--text-primary);
+}
+
+.terminal-complete-hint {
+  margin-top: 3px;
+  padding: 4px 8px 3px;
+  border-top: 1px solid var(--border, rgba(127, 127, 127, 0.16));
+  color: var(--text-muted);
+  font-size: 10px;
+}
 .terminal-dock-pane {
   position: absolute;
   inset: 6px 8px;

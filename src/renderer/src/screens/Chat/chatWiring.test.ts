@@ -56,4 +56,18 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
       expect(value).toMatch(/^\(\)\s*=>\s*undefined$/);
     }
   });
+
+  it("shows the terminal icon whether or not the On-Finish queue is armed", () => {
+    // The terminal is a general tool: it must not disappear when the queue is
+    // empty. Gating the trigger on `onFinishArmed` was the bug.
+    const trigger = /aria-label="Terminal"/;
+    expect(chatSource).toMatch(trigger);
+
+    // Anchor on the terminal trigger and confirm no `onFinishArmed &&` guards
+    // it. The two are adjacent in source; a guard would appear just before.
+    const idx = chatSource.indexOf('aria-label="Terminal"');
+    expect(idx).toBeGreaterThan(-1);
+    const before = chatSource.slice(Math.max(0, idx - 900), idx);
+    expect(before).not.toMatch(/\{onFinishArmed\s*&&\s*\(/);
+  });
 });

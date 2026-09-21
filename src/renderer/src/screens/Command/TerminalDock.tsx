@@ -10,9 +10,24 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { Plus, X } from "../../assets/icons";
+import {
+  applyCompletion,
+  buildInsertion,
+  matchDirectories,
+  parseCompletionContext,
+  replacementKeystrokes,
+  resolveListingDir,
+  type DirEntry,
+} from "./terminalComplete";
 
 export interface TerminalDockHandle {
-  attachSession(id: string, title: string): void;
+  /**
+   * Attach a session to the dock. `cwd` is the directory the pty was created
+   * in; it is only used to resolve relative paths for `cd` completion. Omit it
+   * and relative fragments resolve against the process cwd, which is what the
+   * shell does too.
+   */
+  attachSession(id: string, title: string, cwd?: string): void;
   /**
    * Re-fit the active terminal to its container and push the new geometry to
    * the pty. Required after the dock has been hidden: xterm measures zero/tiny
@@ -127,7 +142,8 @@ export const TerminalDock = forwardRef<
   }, []);
 
   const attachSession = useCallback(
-    (id: string, title: string): void => {
+    (id: string, title: string, cwd?: string): void => {
+      if (typeof cwd === "string" && cwd) cwdRef.current.set(id, cwd);
       const existing = sessionsRef.current.get(id);
       if (existing) {
         setActiveId(id);
@@ -141,7 +157,10 @@ export const TerminalDock = forwardRef<
       const cleanup = registerDataListeners(id);
       dock.cleanup = cleanup;
       const dataSub = dock.term.onData((data) => {
-        window.hermesAPI.terminalWrite({ id, data });
+        // Track the current line so `cd` completion knows what is typed: the
+        // shell owns the real buffer, so we mirror it from the keystrokes we
+        // forward. See handleTerminalInput.
+        onInputRef.current(id, data);
       });
       const prevCleanup = cleanup;
       dock.cleanup = () => {
@@ -153,6 +172,147 @@ export const TerminalDock = forwardRef<
     },
     [createXterm, registerDataListeners],
   );
+
+  // ── `cd` path completion ────────────────────────────────────────────────
+  // The shell owns the input buffer, so the line being typed is mirrored here
+  // from forwarded keystrokes. Tab opens a dropdown above the terminal.
+  const [completion, setCompletion] = useState<{
+    fragment: string;
+    line: string;
+    entries: DirEntry[];
+    index: number;
+  } | null>(null);
+  // Per-session line buffer. A ref: it changes on every keystroke and must not
+  // re-render the dock.
+  const linesRef = useRef<Map<string, string>>(new Map());
+  const cwdRef = useRef<Map<string, string>>(new Map());
+
+  const closeCompletion = useCallback((): void => setCompletion(null), []);
+
+  /** Apply the chosen entry: replace the shell line and refocus the terminal. */
+  const commitCompletion = useCallback(
+    (entry: DirEntry): void => {
+      const state = completion;
+      const id = activeIdRef.current;
+      if (!state || !id) return;
+      const ctx = parseCompletionContext(state.line);
+      if (!ctx) return closeCompletion();
+
+      const insertion = buildInsertion(ctx.dirPart, entry.name);
+      const nextLine = applyCompletion(state.line, insertion);
+      linesRef.current.set(id, nextLine);
+      // Ctrl-U then the rebuilt line: the shell owns the buffer, so replacing
+      // the fragment means clearing the line and retyping it.
+      window.hermesAPI.terminalWrite({
+        id,
+        data: replacementKeystrokes(nextLine),
+      });
+      setCompletion(null);
+      sessionsRef.current.get(id)?.term.focus();
+    },
+    [completion, closeCompletion],
+  );
+
+  /** Load directory matches for the fragment currently under the caret. */
+  const openCompletion = useCallback((id: string): void => {
+    const line = linesRef.current.get(id) ?? "";
+    const ctx = parseCompletionContext(line);
+    if (!ctx) return setCompletion(null);
+
+    const cwd = cwdRef.current.get(id) ?? "";
+    const dir = resolveListingDir(cwd, ctx.dirPart);
+    void window.hermesAPI
+      .readDirectory(dir)
+      .then((entries) => {
+        if (!entries) return; // remote mode returns null
+        const matches = matchDirectories(entries, ctx.namePrefix);
+        if (matches.length === 0) return setCompletion(null);
+        setCompletion({
+          fragment: ctx.fragment,
+          line,
+          entries: matches,
+          index: 0,
+        });
+      })
+      .catch(() => setCompletion(null));
+  }, []);
+
+  const onInputRef = useRef<(id: string, data: string) => void>(() => undefined);
+
+  const handleTerminalInput = useCallback(
+    (id: string, data: string): void => {
+      // Tab with no dropdown open: offer completions instead of sending Tab to
+      // the shell (the shell's own completion cannot be shown in a dropdown).
+      if (data === "\t") {
+        if (completion) {
+          // Cycle through the offered entries.
+          setCompletion((prev) =>
+            prev
+              ? { ...prev, index: (prev.index + 1) % prev.entries.length }
+              : prev,
+          );
+        } else {
+          openCompletion(id);
+        }
+        return;
+      }
+
+      // Enter with a dropdown open INSERTS the highlighted entry rather than
+      // running the line — otherwise the user would execute a half-typed path.
+      if ((data === "\r" || data === "\n") && completion) {
+        const entry = completion.entries[completion.index];
+        if (entry) return commitCompletion(entry);
+      }
+
+      // Escape dismisses an open dropdown instead of reaching the shell.
+      if (data === "\u001b" && completion) {
+        setCompletion(null);
+        return;
+      }
+
+      // Any other key dismisses an open dropdown and then behaves normally.
+      if (completion) setCompletion(null);
+
+      const line = linesRef.current.get(id) ?? "";
+      if (data === "\r" || data === "\n") {
+        linesRef.current.set(id, "");
+      } else if (data === "\u007f" || data === "\b") {
+        // Backspace.
+        linesRef.current.set(id, line.slice(0, -1));
+      } else if (data === "\u0015") {
+        // Ctrl-U clears the line.
+        linesRef.current.set(id, "");
+      } else if (data === "\u0003") {
+        // Ctrl-C abandons the line.
+        linesRef.current.set(id, "");
+      } else if (!data.startsWith("\u001b")) {
+        // Ignore escape sequences (arrow keys etc.) — they do not insert text.
+        linesRef.current.set(id, line + data);
+      }
+
+      window.hermesAPI.terminalWrite({ id, data });
+    },
+    [completion, openCompletion, commitCompletion],
+  );
+
+  // Keep the ref pointing at the latest handler without re-subscribing xterm,
+  // which would tear down the terminal on every keystroke.
+  useEffect(() => {
+    onInputRef.current = handleTerminalInput;
+  }, [handleTerminalInput]);
+
+  const activeIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
+
+  // Record each session's starting directory so relative fragments resolve.
+  //
+  // Taken from `attachSession` rather than a separate IPC: the caller already
+  // knows the cwd it created the pty with, and inventing a getter would add a
+  // round trip for information we were handed. The dock's own default (empty
+  // string) resolves relative paths against the process cwd in main, matching
+  // what the shell itself does.
 
   const refit = useCallback((): void => {
     const id = activeId;
@@ -288,6 +448,44 @@ export const TerminalDock = forwardRef<
         </div>
       </div>
       <div className="terminal-dock-body" ref={containerRef} />
+
+      {/* `cd` completion dropdown. Rendered INSIDE the dock but absolutely
+          positioned, so it floats above the terminal without disturbing xterm's
+          measured geometry (a sibling in normal flow would resize the pane and
+          make the terminal rewrap on every Tab). */}
+      {completion && (
+        <div
+          className="terminal-complete"
+          role="listbox"
+          aria-label="Directory suggestions"
+        >
+          {completion.entries.map((entry, i) => (
+            <button
+              key={entry.name}
+              type="button"
+              role="option"
+              aria-selected={i === completion.index}
+              className={`terminal-complete-item ${
+                i === completion.index ? "is-active" : ""
+              }`}
+              // mousedown, not click: clicking must not blur the terminal
+              // before the insertion is sent.
+              onMouseDown={(e) => {
+                e.preventDefault();
+                commitCompletion(entry);
+              }}
+              onMouseEnter={() =>
+                setCompletion((prev) => (prev ? { ...prev, index: i } : prev))
+              }
+            >
+              {entry.name}
+            </button>
+          ))}
+          <div className="terminal-complete-hint">
+            Tab cycles · Enter inserts · Esc dismisses
+          </div>
+        </div>
+      )}
     </div>
   );
 });

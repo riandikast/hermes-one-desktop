@@ -637,6 +637,18 @@ function Chat({
   // The terminal now lives in a dialog, opened from a floating icon. Kept as
   // state (not just CSS) so opening can trigger a refit — see below.
   const [onFinishDockOpen, setOnFinishDockOpen] = useState(false);
+  /**
+   * Latched once the dialog has been opened at least once.
+   *
+   * xterm is permanent once created, so the dialog must not unmount after the
+   * first open (that would dispose the terminal). But mounting it on EVERY
+   * chat would create xterm instances for users who never open it, so the
+   * mount is deferred until first use and then kept.
+   */
+  const [onFinishEverOpened, setOnFinishEverOpened] = useState(false);
+  useEffect(() => {
+    if (onFinishDockOpen) setOnFinishEverOpened(true);
+  }, [onFinishDockOpen]);
 
   // Re-fit when the dialog opens. xterm measures ~zero while hidden, so
   // without this the first output after reopening wraps at the wrong column
@@ -646,11 +658,9 @@ function Chat({
     onFinishDockRef.current?.refit();
   }, [onFinishDockOpen]);
 
-  // Collapse the dialog if the feature is disarmed, so a hidden terminal
-  // cannot be left "open" behind the UI and reappear unexpectedly later.
-  useEffect(() => {
-    if (!onFinishArmed) setOnFinishDockOpen(false);
-  }, [onFinishArmed]);
+  // NOTE: the dialog is deliberately NOT collapsed when the queue disarms. The
+  // terminal is a general tool, independent of On-Finish, so closing it on
+  // disarm would yank an open terminal away mid-use.
 
   const attachOnFinishSession = useCallback(
     (id: string, title: string): void => {
@@ -2864,35 +2874,35 @@ function Chat({
             <button type="button" onClick={() => { const next = !showAllTools; setShowAllTools(next); setChatDisplayControls({ tools: next ? "show" : "hide" }); }}>{showAllTools ? "Hide all tools" : "Show all tools"}</button>
           </div>
         )}
-        {/* On-Finish terminal: a floating icon in the SAME group as the search
-            and display-controls icons. It replaces an in-flow dock pinned under
-            the input box, which stole vertical space from the transcript. */}
-        {onFinishArmed && (
-          <button
-            type="button"
-            className={`chat-display-controls-trigger chat-onfinish-trigger${
-              onFinishDockOpen ? " is-active" : ""
-            }${onFinishRunner.state.running ? " is-running" : ""}`}
-            onClick={() => {
-              setOnFinishDockOpen((v) => !v);
-              setDisplayControlsOpen(false);
-              setChatSearchOpen(false);
-            }}
-            aria-label="On-Finish terminal"
-            aria-expanded={onFinishDockOpen}
-            title={
-              onFinishRunner.state.running
-                ? `On-Finish: running ${onFinishRunner.state.current}/${onFinishRunner.state.total}`
-                : "On-Finish terminal"
-            }
-          >
-            {onFinishRunner.state.running ? (
-              <Spinner size={15} className="chat-onfinish-spin" />
-            ) : (
-              <Terminal size={15} />
-            )}
-          </button>
-        )}
+        {/* Terminal: a floating icon in the SAME group as the search and
+            display-controls icons. Always visible — it is a general terminal,
+            not only the On-Finish runner, so it must not depend on a queue
+            being armed. When the queue IS armed its title also carries the
+            live progress, and the spinner replaces the glyph while running. */}
+        <button
+          type="button"
+          className={`chat-display-controls-trigger chat-onfinish-trigger${
+            onFinishDockOpen ? " is-active" : ""
+          }${onFinishRunner.state.running ? " is-running" : ""}`}
+          onClick={() => {
+            setOnFinishDockOpen((v) => !v);
+            setDisplayControlsOpen(false);
+            setChatSearchOpen(false);
+          }}
+          aria-label="Terminal"
+          aria-expanded={onFinishDockOpen}
+          title={
+            onFinishRunner.state.running
+              ? `On-Finish: running ${onFinishRunner.state.current}/${onFinishRunner.state.total}`
+              : "Terminal"
+          }
+        >
+          {onFinishRunner.state.running ? (
+            <Spinner size={15} className="chat-onfinish-spin" />
+          ) : (
+            <Terminal size={15} />
+          )}
+        </button>
       </div>
 
 
@@ -3415,14 +3425,15 @@ function Chat({
       )}
 
       {/* The dialog lives outside the floating control group so its overlay is
-          not clipped by that group's stacking context. It stays mounted while
-          the feature is armed: xterm cannot be re-shown once disposed, so
-          closing hides it rather than unmounting. */}
-      {onFinishArmed && (
+          not clipped by that group's stacking context. Mounted unconditionally
+          (not gated on the queue being armed) because the terminal is a general
+          tool; inside, it stays mounted while closed since xterm cannot be
+          re-shown once disposed — closing hides it rather than unmounting. */}
+      {onFinishDockOpen || onFinishEverOpened ? (
         <TerminalDialog
           open={onFinishDockOpen}
           onClose={() => setOnFinishDockOpen(false)}
-          title="On-Finish terminal"
+          title="Terminal"
         >
           {/* Hidden, not unmounted, while closed. */}
           <div className="terminal-dialog-holder" hidden={!onFinishDockOpen}>
@@ -3435,7 +3446,7 @@ function Chat({
             />
           </div>
         </TerminalDialog>
-      )}
+      ) : null}
 
     </div>
 
