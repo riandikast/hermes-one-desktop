@@ -3657,107 +3657,173 @@ body:has(.shell-vibrant),
   font-size: 13px;
 }
 
+/* One full-width surface at a time — no side-by-side split. */
 .knowledge-body {
   display: flex;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
-.knowledge-body--empty .knowledge-sidebar {
-  display: none;
-}
-
-.knowledge-body--empty .knowledge-editor-pane {
+/* ── Drill-down shell ────────────────────────────────────────────────────────
+   The bundle list and the editor are no longer side by side: one full-width
+   surface shows the bundle grid, a bundle's file list, or the editor, each
+   with its own back control. Only one is mounted at a time. */
+.knowledge-drill {
+  display: flex;
+  flex-direction: column;
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   width: 100%;
 }
 
-.knowledge-sidebar {
-  position: relative;
-  width: 320px;
-  border-right: 1px solid var(--border-color);
-  background: var(--bg-surface);
+.knowledge-drill-head {
   display: flex;
-  flex-direction: column;
-  overflow-y: auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 
-/* Drag handle on the bundle list's right edge; paused transition mid-drag. */
-.knowledge-sidebar--resizing {
-  transition: none !important;
-}
-.knowledge-sidebar-resize {
-  position: absolute;
-  top: 0;
-  right: -3px;
-  bottom: 0;
-  width: 6px;
-  cursor: col-resize;
-  z-index: 6;
-  touch-action: none;
-  background: transparent;
-}
-.knowledge-sidebar-resize:hover,
-.knowledge-sidebar-resize:active {
-  background: color-mix(in srgb, var(--accent) 30%, transparent);
+.knowledge-drill-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  /* Long bundle names truncate here rather than pushing the count off. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Collapsed bundle list: 44px rail with a centered toggle button. */
-.knowledge-sidebar--collapsed {
-  align-items: center;
-  padding-top: 10px;
-  overflow: hidden;
+.knowledge-drill-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
-.knowledge-sidebar-toggle {
+
+.knowledge-drill-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 20px 20px;
+}
+
+.knowledge-drill-empty {
+  padding: 32px 8px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.knowledge-drill-empty-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+/* Back control: an outlined pill so it reads as navigation, not as another
+   card action. */
+.knowledge-back-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 8px;
+  gap: 4px;
+  padding: 4px 10px 4px 7px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
   flex-shrink: 0;
   transition:
-    background var(--transition),
-    color var(--transition);
+    border-color var(--transition),
+    color var(--transition),
+    background var(--transition);
 }
-.knowledge-sidebar-toggle:hover {
-  background: var(--bg-tertiary);
+
+.knowledge-back-btn:hover {
+  border-color: var(--accent);
   color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
-.knowledge-sidebar-title {
-  padding: 12px 16px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+/* ── File cards ──────────────────────────────────────────────────────────────
+   Same card language as the bundle grid, one level down. */
+.knowledge-file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.knowledge-file-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition),
+    border-color var(--transition);
+}
+
+.knowledge-file-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-color));
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
+  transform: translateY(-1px);
+}
+
+.knowledge-file-card-open {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 16px 10px 10px;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: transparent;
   color: var(--text-muted);
-  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  text-align: center;
 }
 
-/* Title row: label + collapse toggle on the right (aligned end). */
-.knowledge-sidebar-title-row {
+.knowledge-file-card-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* File actions: revealed on hover/focus, always visible on touch. */
+.knowledge-file-card-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 8px 8px 16px;
-  border-bottom: 1px solid var(--border-color);
+  gap: 2px;
+  padding: 0 6px 8px;
+  opacity: 0;
+  transition: opacity var(--transition);
 }
 
-.knowledge-sidebar-title-row .knowledge-sidebar-title {
-  padding: 0;
-  border-bottom: none;
+.knowledge-file-card:hover .knowledge-file-card-actions,
+.knowledge-file-card:focus-within .knowledge-file-card-actions {
+  opacity: 1;
 }
 
-/* Collapsed rail: keep the expand toggle centered. */
-.knowledge-sidebar-toggle.collapsed {
-  margin: 8px auto;
+@media (hover: none) {
+  .knowledge-file-card-actions {
+    opacity: 1;
+  }
 }
 
 /* Cards flow into a responsive grid, as in the reference. */
@@ -3809,14 +3875,6 @@ body:has(.shell-vibrant),
   outline-offset: 2px;
 }
 
-/* Expanded cards are pinned open: the file list below is a continuation of the
-   same card, so it must not look detached. */
-.knowledge-bundle-item--expanded .knowledge-bundle-card {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  border-bottom-color: transparent;
-}
-
 .knowledge-bundle-card-top {
   position: relative;
   display: flex;
@@ -3827,7 +3885,9 @@ body:has(.shell-vibrant),
 }
 
 /* The illustrative icon: tinted disc so it reads as artwork (the reference's
-   3D icons) without shipping images. */
+   3D icons) without shipping images. The glyph takes the SAME color as the
+   card's title label so icon and label read as one unit; only the disc keeps
+   the accent tint, which keeps the card from looking flat. */
 .knowledge-bundle-card-icon {
   display: inline-flex;
   align-items: center;
@@ -3835,7 +3895,7 @@ body:has(.shell-vibrant),
   width: 44px;
   height: 44px;
   border-radius: 999px;
-  color: var(--accent);
+  color: var(--text-primary);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
@@ -3879,14 +3939,6 @@ body:has(.shell-vibrant),
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
-.knowledge-bundle-card-pill-chevron {
-  transition: transform var(--transition);
-}
-
-.knowledge-bundle-card-pill-chevron.is-open {
-  transform: rotate(90deg);
-}
-
 /* Actions sit in the card's top-right corner and only appear on hover/focus so
    the card front stays as clean as the reference. Touch/pen never hovers, so
    they stay permanently visible there. */
@@ -3918,11 +3970,11 @@ body:has(.shell-vibrant),
 }
 
 /* The dragged file itself — dimmed to signal it is leaving its bundle. */
-.knowledge-file-item.dragging {
+.knowledge-file-card.dragging {
   opacity: 0.45;
 }
 
-/* Bundle rename input stretches across the header like the name it replaces. */
+/* Bundle rename input stretches across the card like the name it replaces. */
 .knowledge-bundle-rename-input {
   max-width: none;
   flex: 1;
@@ -3937,50 +3989,19 @@ body:has(.shell-vibrant),
   transition: opacity var(--transition);
 }
 
-/* The file list hangs BELOW the card as its continuation: same surface, same
-   side borders, squared top — otherwise it reads as a detached panel. */
-.knowledge-file-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 0 8px 10px;
-  border: 1px solid var(--border-color);
-  border-top: none;
-  border-bottom-left-radius: var(--radius-lg);
-  border-bottom-right-radius: var(--radius-lg);
-  background: var(--bg-card);
-}
-
-.knowledge-no-files {
-  padding: 4px 8px 2px;
-  font-size: 11px;
-  color: var(--text-muted);
-  font-style: italic;
-}
-
-/* The add-file bar renders between the card front and the file list, so it
-   carries the same continuation surface and only rounds its bottom when it is
-   the LAST element (no file list below it). */
+/* The add-file bar appears just below its bundle card in the grid, so it only
+   rounds its bottom — the card above supplies the top edge. */
 .knowledge-add-file-bar {
   display: flex;
   align-items: center;
   gap: 6px;
   margin: 0;
-  padding: 6px 8px 10px;
+  padding: 6px 10px 10px;
   border: 1px solid var(--border-color);
   border-top: none;
   border-bottom-left-radius: var(--radius-lg);
   border-bottom-right-radius: var(--radius-lg);
   background: var(--bg-card);
-}
-
-/* When a file list follows, the bar is mid-card: square bottom, no extra
-   rounding seam. */
-.knowledge-add-file-bar:has(+ .knowledge-file-list) {
-  border-bottom: none;
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  padding-bottom: 2px;
 }
 
 .knowledge-add-file-bar input {
@@ -3993,31 +4014,6 @@ body:has(.shell-vibrant),
   color: var(--text-primary);
 }
 
-.knowledge-file-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: 12px;
-  color: var(--text-secondary);
-  transition:
-    background var(--transition),
-    color var(--transition);
-}
-
-.knowledge-file-item:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.knowledge-file-item.selected {
-  background: var(--bg-active);
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
 .knowledge-inline-rename-input {
   background: var(--bg-card, #141418);
   border: 1px solid var(--border-bright, rgba(255, 255, 255, 0.3));
@@ -4028,19 +4024,6 @@ body:has(.shell-vibrant),
   outline: none;
   width: 100%;
   max-width: 180px;
-}
-
-.file-hover-actions {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  opacity: 0;
-  transition: opacity var(--transition);
-}
-
-.knowledge-file-item:hover .file-hover-actions {
-  opacity: 1;
 }
 
 .knowledge-editor-pane {
@@ -4059,36 +4042,6 @@ body:has(.shell-vibrant),
   flex-direction: column;
   height: 100%;
   width: 100%;
-}
-
-.knowledge-no-selection {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  width: 100%;
-  max-width: 460px;
-  height: 100%;
-  margin: 0 auto;
-  padding: 32px 24px;
-  box-sizing: border-box;
-  color: var(--text-muted);
-  gap: 14px;
-}
-
-.knowledge-no-selection p {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text-muted);
-  text-align: center;
-}
-
-.knowledge-no-selection svg,
-.knowledge-no-selection .empty-icon {
-  margin: 0 auto;
-  display: block;
 }
 
 .knowledge-editor-toolbar {
@@ -4388,8 +4341,7 @@ body:has(.shell-vibrant),
   max-width: 280px;
 }
 
-.knowledge-empty-state .empty-icon,
-.knowledge-no-selection .empty-icon {
+.knowledge-empty-state .empty-icon {
   display: block;
   margin: 0 auto;
 }

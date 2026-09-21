@@ -26,7 +26,7 @@ import {
   Upload,
   Save,
   ChevronRight,
-  ChevronDown,
+  ArrowLeft,
   Pencil,
 } from "../../assets/icons";
 
@@ -83,9 +83,6 @@ export function KnowledgeScreen(): React.JSX.Element {
   } | null>(null);
 
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
-  const [expandedBundles, setExpandedBundles] = useState<
-    Record<string, boolean>
-  >({});
 
   // Focus + select the transient name inputs as soon as their bars appear, so
   // typing works immediately after clicking "New Bundle" / the add-file "+"
@@ -103,84 +100,37 @@ export function KnowledgeScreen(): React.JSX.Element {
     addFileInputRef.current?.select();
   }, [addingFileBundle]);
 
-  // Draggable bundle-list sidebar width (persisted) so the editor can get more
-  // room. 320px default; clamps so the editor never starves.
-  const [knowledgeSidebarWidth, setKnowledgeSidebarWidth] = useState<number>(
-    () => {
-      try {
-        const raw = localStorage.getItem("hermes.knowledge.sidebarWidth");
-        const parsed = raw ? Number(raw) : 320;
-        return Number.isFinite(parsed)
-          ? Math.min(560, Math.max(180, parsed))
-          : 320;
-      } catch {
-        return 320;
-      }
-    },
-  );
-  const [knowledgeSidebarResizing, setKnowledgeSidebarResizing] =
-    useState(false);
-  const [knowledgeSidebarCollapsed, setKnowledgeSidebarCollapsed] = useState(
-    () => {
-      try {
-        return (
-          localStorage.getItem("hermes.knowledge.sidebarCollapsed") === "true"
-        );
-      } catch {
-        return false;
-      }
-    },
-  );
-  const knowledgeResizeRef = useRef<{ startX: number; startWidth: number }>({
-    startX: 0,
-    startWidth: 320,
-  });
+  // ── Drill-down navigation ────────────────────────────────────────────────
+  // The panes are no longer side by side: ONE full-width surface shows either
+  // the bundle grid, that bundle's file list, or the open file's editor, each
+  // with a back control. The view is DERIVED from selectedFile/openBundle
+  // rather than kept as separate state, so the two can never disagree (e.g.
+  // an editor open with no bundle behind it to go back to).
+  const [openBundle, setOpenBundle] = useState<string | null>(null);
+  const view: "bundles" | "files" | "editor" = selectedFile
+    ? "editor"
+    : openBundle
+      ? "files"
+      : "bundles";
+  // The bundle currently being browsed: the open one, or the selected file's.
+  const activeBundleName = openBundle ?? selectedFile?.bundleName ?? null;
+  const activeBundle = activeBundleName
+    ? (bundles.find((b) => b.name === activeBundleName) ?? null)
+    : null;
 
-  const toggleKnowledgeSidebar = (): void => {
-    setKnowledgeSidebarCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem("hermes.knowledge.sidebarCollapsed", String(next));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
+  const openBundleFiles = (bundleName: string): void => {
+    setOpenBundle(bundleName);
   };
 
-  const onKnowledgeResizeStart = (
-    e: React.PointerEvent<HTMLDivElement>,
-  ): void => {
-    knowledgeResizeRef.current = {
-      startX: e.clientX,
-      startWidth: knowledgeSidebarWidth,
-    };
-    setKnowledgeSidebarResizing(true);
-    e.currentTarget.setPointerCapture(e.pointerId);
+  // Back from the editor returns to that file's bundle list, not the grid, so
+  // a user editing several files in one bundle does not re-drill each time.
+  const backFromEditor = (): void => {
+    setOpenBundle(selectedFile?.bundleName ?? openBundle);
+    setSelectedFile(null);
   };
 
-  const onKnowledgeResizeMove = (
-    e: React.PointerEvent<HTMLDivElement>,
-  ): void => {
-    if (!knowledgeSidebarResizing) return;
-    const { startX, startWidth } = knowledgeResizeRef.current;
-    const next = Math.min(
-      560,
-      Math.max(180, startWidth + (e.clientX - startX)),
-    );
-    setKnowledgeSidebarWidth(next);
-    try {
-      localStorage.setItem("hermes.knowledge.sidebarWidth", String(next));
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const onKnowledgeResizeEnd = (
-    e: React.PointerEvent<HTMLDivElement>,
-  ): void => {
-    setKnowledgeSidebarResizing(false);
-    e.currentTarget.releasePointerCapture(e.pointerId);
+  const backToBundles = (): void => {
+    setOpenBundle(null);
   };
 
   // @ mention autocomplete state (CodeMirror-driven)
@@ -572,19 +522,15 @@ export function KnowledgeScreen(): React.JSX.Element {
     return () => window.removeEventListener("focus", onFocus);
   }, [reloadBundles, selectedFile]);
 
-  const toggleBundleExpand = (bundleName: string) => {
-    setExpandedBundles((prev) => ({
-      ...prev,
-      [bundleName]: !prev[bundleName],
-    }));
-  };
-
   const handleSelectFile = async (
     bundleName: string,
     fileName: string,
     path: string,
   ) => {
     setLoading(true);
+    // Drilling into a file also opens its bundle, so "back" from the editor
+    // lands on the file list rather than skipping to the grid.
+    setOpenBundle(bundleName);
     setSelectedFile({ bundleName, fileName, path });
     try {
       const content = await window.hermesAPI.readKnowledgeFile(
@@ -624,7 +570,9 @@ export function KnowledgeScreen(): React.JSX.Element {
       setNewBundleName("");
       setShowNewBundleInput(false);
       await reloadBundles();
-      setExpandedBundles((prev) => ({ ...prev, [trimmed]: true }));
+      // A freshly created bundle is empty, so drill straight into its file
+      // list: the next action is always adding the first file.
+      setOpenBundle(trimmed);
     } catch {
       /* ignore error */
     }
@@ -745,13 +693,9 @@ export function KnowledgeScreen(): React.JSX.Element {
     try {
       const ok = await window.hermesAPI.renameKnowledgeBundle(oldName, trimmed);
       if (ok) {
-        // Re-key per-bundle UI state (expansion, @ mention enablement) so the
-        // renamed bundle keeps its previous settings.
-        setExpandedBundles((prev) => {
-          const next = { ...prev };
-          if (prev[oldName] !== undefined) next[trimmed] = prev[oldName];
-          return next;
-        });
+        // Re-key the drill-down pointer so a rename cannot strand the view on
+        // a bundle name that no longer exists.
+        setOpenBundle((prev) => (prev === oldName ? trimmed : prev));
         setDisabledBundles((prev) => {
           const next = { ...prev };
           if (prev[oldName] !== undefined) next[trimmed] = prev[oldName];
@@ -777,7 +721,7 @@ export function KnowledgeScreen(): React.JSX.Element {
   };
 
   const handleDragFileStart = (
-    e: React.DragEvent<HTMLDivElement>,
+    e: React.DragEvent<HTMLElement>,
     bundleName: string,
     fileName: string,
   ) => {
@@ -944,355 +888,332 @@ export function KnowledgeScreen(): React.JSX.Element {
             : "knowledge-body"
         }
       >
-        {/* Left Tree Pane */}
-        <div
-          className={`knowledge-sidebar ${
-            knowledgeSidebarResizing ? "knowledge-sidebar--resizing" : ""
-          } ${knowledgeSidebarCollapsed ? "knowledge-sidebar--collapsed" : ""}`}
-          style={
-            knowledgeSidebarCollapsed
-              ? { width: 44 }
-              : { width: knowledgeSidebarWidth }
-          }
-        >
-          <div
-            className="knowledge-sidebar-resize"
-            onPointerDown={onKnowledgeResizeStart}
-            onPointerMove={onKnowledgeResizeMove}
-            onPointerUp={onKnowledgeResizeEnd}
-            aria-label="Resize bundle list"
-            title="Drag to resize"
-          />
-          {knowledgeSidebarCollapsed ? (
-            <button
-              type="button"
-              className="knowledge-sidebar-toggle collapsed"
-              onClick={toggleKnowledgeSidebar}
-              aria-label="Expand bundle list"
-              title="Expand bundle list"
-            >
-              <ChevronRight size={14} />
-            </button>
-          ) : (
-            <div className="knowledge-sidebar-title-row">
-              <span className="knowledge-sidebar-title">
+        {/* ── Bundles grid (full width) ─────────────────────────────────── */}
+        {view === "bundles" && (
+          <div className="knowledge-drill">
+            <div className="knowledge-drill-head">
+              <span className="knowledge-drill-title">
                 Global Knowledge Bundles
               </span>
-              <button
-                type="button"
-                className="knowledge-sidebar-toggle"
-                onClick={toggleKnowledgeSidebar}
-                aria-label="Collapse bundle list"
-                title="Collapse bundle list"
-              >
-                <ChevronDown size={14} />
-              </button>
+              <span className="knowledge-drill-count">
+                {bundles.length} bundle{bundles.length === 1 ? "" : "s"}
+              </span>
             </div>
-          )}
-          {!knowledgeSidebarCollapsed && (
-            <div className="knowledge-bundle-list">
-              {bundles.map((bundle) => {
-                // Default COLLAPSED on page open (requested): the state only
-                // records what the user explicitly toggled.
-                const isExpanded = expandedBundles[bundle.name] ?? false;
-                const isRenamingBundle = renamingBundle === bundle.name;
-                // Card-front stats. Files are the card's "content"; the
-                // description reads as a one-line summary of the bundle.
-                const fileCount = bundle.files.length;
-                const fileLabel =
-                  fileCount === 0
-                    ? "No files yet"
-                    : `${fileCount} file${fileCount === 1 ? "" : "s"}`;
-                return (
-                  <div
-                    key={bundle.name}
-                    className={`knowledge-bundle-item ${
-                      dragOverBundle === bundle.name
-                        ? "knowledge-bundle-item--drag-over"
-                        : ""
-                    } ${isExpanded ? "knowledge-bundle-item--expanded" : ""}`}
-                    onDragOver={(e) => handleDragOverBundle(e, bundle.name)}
-                    onDragLeave={(e) => {
-                      if (
-                        dragOverBundle === bundle.name &&
-                        !(
-                          e.relatedTarget instanceof Node &&
-                          e.currentTarget.contains(e.relatedTarget)
-                        )
-                      ) {
-                        setDragOverBundle(null);
-                      }
-                    }}
-                    onDrop={(e) => void handleDropOnBundle(e, bundle.name)}
-                  >
-                    {/* Card front: icon, title, summary, count, actions.
-                        Mirrors the reference layout (centered icon, title,
-                        description, pill button) but keeps this app's dark
-                        theme tokens rather than the reference's light palette. */}
+
+            <div className="knowledge-drill-scroll">
+              <div className="knowledge-bundle-list">
+                {bundles.map((bundle) => {
+                  const isRenamingBundle = renamingBundle === bundle.name;
+                  const fileCount = bundle.files.length;
+                  const fileLabel =
+                    fileCount === 0
+                      ? "No files yet"
+                      : `${fileCount} file${fileCount === 1 ? "" : "s"}`;
+                  return (
                     <div
-                      className="knowledge-bundle-card"
-                      onClick={() => toggleBundleExpand(bundle.name)}
-                      role="button"
-                      tabIndex={0}
-                      aria-expanded={isExpanded}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          toggleBundleExpand(bundle.name);
+                      key={bundle.name}
+                      className={`knowledge-bundle-item ${
+                        dragOverBundle === bundle.name
+                          ? "knowledge-bundle-item--drag-over"
+                          : ""
+                      }`}
+                      onDragOver={(e) => handleDragOverBundle(e, bundle.name)}
+                      onDragLeave={(e) => {
+                        if (
+                          dragOverBundle === bundle.name &&
+                          !(
+                            e.relatedTarget instanceof Node &&
+                            e.currentTarget.contains(e.relatedTarget)
+                          )
+                        ) {
+                          setDragOverBundle(null);
                         }
                       }}
+                      onDrop={(e) => void handleDropOnBundle(e, bundle.name)}
                     >
-                      <div className="knowledge-bundle-card-top">
-                        <span className="knowledge-bundle-card-icon">
-                          <BookOpen size={22} />
+                      {/* Card front: icon, title, summary, count, action.
+                          Clicking the card DRILLS IN to the file list. */}
+                      <div
+                        className="knowledge-bundle-card"
+                        onClick={() => openBundleFiles(bundle.name)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openBundleFiles(bundle.name);
+                          }
+                        }}
+                      >
+                        <div className="knowledge-bundle-card-top">
+                          <span className="knowledge-bundle-card-icon">
+                            <BookOpen size={22} />
+                          </span>
+                          <div className="bundle-hover-actions">
+                            <button
+                              type="button"
+                              className="btn-ghost btn-xs"
+                              title="Rename Bundle"
+                              onClick={(e) => startRenameBundle(bundle.name, e)}
+                            >
+                              <Pencil size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-ghost btn-xs"
+                              title="Add File"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAddingFileBundle(
+                                  addingFileBundle === bundle.name
+                                    ? null
+                                    : bundle.name,
+                                );
+                              }}
+                            >
+                              <Plus size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-ghost btn-xs danger"
+                              title="Delete Bundle"
+                              onClick={(e) =>
+                                void handleDeleteBundle(bundle.name, e)
+                              }
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {isRenamingBundle ? (
+                          <input
+                            type="text"
+                            className="knowledge-inline-rename-input knowledge-bundle-rename-input"
+                            autoFocus
+                            value={renamingBundleValue}
+                            onChange={(e) =>
+                              setRenamingBundleValue(e.target.value)
+                            }
+                            onClick={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                void submitRenameBundle();
+                              } else if (e.key === "Escape") {
+                                setRenamingBundle(null);
+                              }
+                            }}
+                            onBlur={() => void submitRenameBundle()}
+                          />
+                        ) : (
+                          <div className="knowledge-bundle-card-title">
+                            {bundle.name}
+                          </div>
+                        )}
+
+                        <div className="knowledge-bundle-card-sub">
+                          {fileLabel}
+                        </div>
+
+                        <span className="knowledge-bundle-card-pill">
+                          Open
+                          <ChevronRight size={12} />
                         </span>
-                        <div className="bundle-hover-actions">
+                      </div>
+
+                      {addingFileBundle === bundle.name && (
+                        <div
+                          className="knowledge-add-file-bar"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            ref={addFileInputRef}
+                            type="text"
+                            autoFocus
+                            placeholder="File name (e.g. style.md)..."
+                            value={newFileName}
+                            onChange={(e) => setNewFileName(e.target.value)}
+                            onKeyDown={(e) =>
+                              e.key === "Enter" &&
+                              void handleAddFile(bundle.name)
+                            }
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-xs btn-primary"
+                            onClick={() => void handleAddFile(bundle.name)}
+                          >
+                            Add
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── File list for one bundle (full width, with Back) ──────────── */}
+        {view === "files" && activeBundle && (
+          <div className="knowledge-drill">
+            <div className="knowledge-drill-head">
+              <button
+                type="button"
+                className="knowledge-back-btn"
+                onClick={backToBundles}
+                aria-label="Back to bundles"
+                title="Back to bundles"
+              >
+                <ArrowLeft size={14} />
+                <span>Bundles</span>
+              </button>
+              <span className="knowledge-drill-title">
+                {activeBundle.name}
+              </span>
+              <span className="knowledge-drill-count">
+                {activeBundle.files.length} file
+                {activeBundle.files.length === 1 ? "" : "s"}
+              </span>
+            </div>
+
+            <div className="knowledge-drill-scroll">
+              {activeBundle.files.length === 0 ? (
+                <div className="knowledge-drill-empty">
+                  <p>No files in this bundle yet.</p>
+                  <p className="knowledge-drill-empty-hint">
+                    Click the + on the bundle card to add one.
+                  </p>
+                </div>
+              ) : (
+                <ul className="knowledge-file-grid">
+                  {activeBundle.files.map((file) => {
+                    const isRenamingThis =
+                      renamingFile?.bundleName === activeBundle.name &&
+                      renamingFile?.oldFileName === file.name;
+                    return (
+                      <li
+                        key={file.name}
+                        className="knowledge-file-card"
+                        draggable
+                        onDragStart={(e) =>
+                          handleDragFileStart(e, activeBundle.name, file.name)
+                        }
+                        onDragEnd={handleDragEndFile}
+                      >
+                        <button
+                          type="button"
+                          className="knowledge-file-card-open"
+                          onClick={() =>
+                            !isRenamingThis &&
+                            void handleSelectFile(
+                              activeBundle.name,
+                              file.name,
+                              file.path,
+                            )
+                          }
+                        >
+                          <FileText size={20} />
+                          {isRenamingThis ? (
+                            <input
+                              type="text"
+                              className="knowledge-inline-rename-input"
+                              autoFocus
+                              value={renamingValue}
+                              onChange={(e) => setRenamingValue(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  void submitRenameFile();
+                                } else if (e.key === "Escape") {
+                                  setRenamingFile(null);
+                                }
+                              }}
+                              onBlur={() => void submitRenameFile()}
+                            />
+                          ) : (
+                            <span className="knowledge-file-card-name">
+                              {file.name}
+                            </span>
+                          )}
+                        </button>
+                        <div className="knowledge-file-card-actions">
                           <button
                             type="button"
                             className="btn-ghost btn-xs"
-                            title="Rename Bundle"
-                            onClick={(e) => startRenameBundle(bundle.name, e)}
+                            title="Copy Disk Path"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyToClipboard(file.path, `path:${file.path}`);
+                            }}
+                          >
+                            {copiedPath === `path:${file.path}` ? (
+                              <Check size={12} />
+                            ) : (
+                              <Copy size={12} />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ghost btn-xs"
+                            title="Rename File"
+                            onClick={(e) =>
+                              startRenameFile(activeBundle.name, file.name, e)
+                            }
                           >
                             <Pencil size={12} />
                           </button>
                           <button
                             type="button"
-                            className="btn-ghost btn-xs"
-                            title="Add File"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setAddingFileBundle(
-                                addingFileBundle === bundle.name
-                                  ? null
-                                  : bundle.name,
-                              );
-                            }}
-                          >
-                            <Plus size={12} />
-                          </button>
-                          <button
-                            type="button"
                             className="btn-ghost btn-xs danger"
-                            title="Delete Bundle"
+                            title="Delete File"
                             onClick={(e) =>
-                              void handleDeleteBundle(bundle.name, e)
+                              void handleDeleteFile(
+                                activeBundle.name,
+                                file.name,
+                                e,
+                              )
                             }
                           >
                             <Trash2 size={12} />
                           </button>
                         </div>
-                      </div>
-
-                      {isRenamingBundle ? (
-                        <input
-                          type="text"
-                          className="knowledge-inline-rename-input knowledge-bundle-rename-input"
-                          autoFocus
-                          value={renamingBundleValue}
-                          onChange={(e) =>
-                            setRenamingBundleValue(e.target.value)
-                          }
-                          onClick={(e) => e.stopPropagation()}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              void submitRenameBundle();
-                            } else if (e.key === "Escape") {
-                              setRenamingBundle(null);
-                            }
-                          }}
-                          onBlur={() => void submitRenameBundle()}
-                        />
-                      ) : (
-                        <div className="knowledge-bundle-card-title">
-                          {bundle.name}
-                        </div>
-                      )}
-
-                      <div className="knowledge-bundle-card-sub">{fileLabel}</div>
-
-                      {/* Pill action, as in the reference. Doubles as the
-                          expand toggle so the card front stays a single
-                          click target without hiding the affordance. */}
-                      <button
-                        type="button"
-                        className="knowledge-bundle-card-pill"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleBundleExpand(bundle.name);
-                        }}
-                        aria-expanded={isExpanded}
-                      >
-                        {isExpanded ? "Hide files" : "View files"}
-                        <ChevronRight
-                          size={12}
-                          className={`knowledge-bundle-card-pill-chevron${
-                            isExpanded ? " is-open" : ""
-                          }`}
-                        />
-                      </button>
-                    </div>
-
-                    {addingFileBundle === bundle.name && (
-                      <div
-                        className="knowledge-add-file-bar"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          ref={addFileInputRef}
-                          type="text"
-                          autoFocus
-                          placeholder="File name (e.g. style.md)..."
-                          value={newFileName}
-                          onChange={(e) => setNewFileName(e.target.value)}
-                          onKeyDown={(e) =>
-                            e.key === "Enter" && void handleAddFile(bundle.name)
-                          }
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-xs btn-primary"
-                          onClick={() => void handleAddFile(bundle.name)}
-                        >
-                          Add
-                        </button>
-                      </div>
-                    )}
-
-                    {isExpanded && (
-                      <div className="knowledge-file-list">
-                        {bundle.files.length === 0 ? (
-                          <div className="knowledge-no-files">No files</div>
-                        ) : (
-                          bundle.files.map((file) => {
-                            const isSelected =
-                              selectedFile?.bundleName === bundle.name &&
-                              selectedFile?.fileName === file.name;
-                            const isRenamingThis =
-                              renamingFile?.bundleName === bundle.name &&
-                              renamingFile?.oldFileName === file.name;
-                            return (
-                              <div
-                                key={file.name}
-                                className={`knowledge-file-item ${
-                                  isSelected ? "selected" : ""
-                                } ${
-                                  draggedFile?.bundleName === bundle.name &&
-                                  draggedFile?.fileName === file.name
-                                    ? "dragging"
-                                    : ""
-                                }`}
-                                draggable
-                                onDragStart={(e) =>
-                                  handleDragFileStart(e, bundle.name, file.name)
-                                }
-                                onDragEnd={handleDragEndFile}
-                                onClick={() =>
-                                  !isRenamingThis &&
-                                  void handleSelectFile(
-                                    bundle.name,
-                                    file.name,
-                                    file.path,
-                                  )
-                                }
-                              >
-                                <FileText size={13} />
-                                {isRenamingThis ? (
-                                  <input
-                                    type="text"
-                                    className="knowledge-inline-rename-input"
-                                    autoFocus
-                                    value={renamingValue}
-                                    onChange={(e) =>
-                                      setRenamingValue(e.target.value)
-                                    }
-                                    onClick={(e) => e.stopPropagation()}
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") {
-                                        e.preventDefault();
-                                        void submitRenameFile();
-                                      } else if (e.key === "Escape") {
-                                        setRenamingFile(null);
-                                      }
-                                    }}
-                                    onBlur={() => void submitRenameFile()}
-                                  />
-                                ) : (
-                                  <span className="file-name">{file.name}</span>
-                                )}
-                                <div className="file-hover-actions">
-                                  <button
-                                    type="button"
-                                    className="btn-ghost btn-xs"
-                                    title="Copy Disk Path"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      copyToClipboard(
-                                        file.path,
-                                        `path:${file.path}`,
-                                      );
-                                    }}
-                                  >
-                                    {copiedPath === `path:${file.path}` ? (
-                                      <Check size={12} />
-                                    ) : (
-                                      <Copy size={12} />
-                                    )}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn-ghost btn-xs"
-                                    title="Rename File"
-                                    onClick={(e) =>
-                                      startRenameFile(bundle.name, file.name, e)
-                                    }
-                                  >
-                                    <Pencil size={12} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn-ghost btn-xs danger"
-                                    title="Delete File"
-                                    onClick={(e) =>
-                                      void handleDeleteFile(
-                                        bundle.name,
-                                        file.name,
-                                        e,
-                                      )
-                                    }
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Right Editor Pane */}
-        <div className="knowledge-editor-pane">
-          {selectedFile ? (
+        {/* ── Editor (full width, with Back) ───────────────────────────── */}
+        {view === "editor" && selectedFile && (
+          <div className="knowledge-editor-pane">
             <div className="knowledge-editor-container">
-              <div className="knowledge-editor-toolbar">
-                <div className="file-info">
-                  <FileText size={16} />
-                  <span className="file-title">
-                    {selectedFile.bundleName} / {selectedFile.fileName}
-                  </span>
-                </div>
-                <div
-                  className="toolbar-controls"
-                  style={{ position: "relative" }}
-                >
+                <div className="knowledge-editor-toolbar">
+                  <div className="file-info">
+                    <button
+                      type="button"
+                      className="knowledge-back-btn"
+                      onClick={backFromEditor}
+                      aria-label="Back to file list"
+                      title="Back to file list"
+                    >
+                      <ArrowLeft size={14} />
+                      <span>{selectedFile.bundleName}</span>
+                    </button>
+                    <FileText size={16} />
+                    <span className="file-title">{selectedFile.fileName}</span>
+                  </div>
+                  <div
+                    className="toolbar-controls"
+                    style={{ position: "relative" }}
+                  >
                   <button
                     type="button"
                     className={`btn btn-secondary btn-sm ${
@@ -1434,10 +1355,8 @@ export function KnowledgeScreen(): React.JSX.Element {
                 )}
               </div>
             </div>
-          ) : (
-            <div className="knowledge-no-selection" />
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

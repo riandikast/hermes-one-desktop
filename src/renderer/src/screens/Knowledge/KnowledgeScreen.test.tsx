@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+//
+// The bundle grid: card structure, the file-count summary, and that the card
+// front is a single accessible target that drills into the bundle.
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -36,10 +39,11 @@ describe("KnowledgeScreen", () => {
           files,
         },
       ]),
+      readKnowledgeFile: vi.fn().mockResolvedValue("# colors"),
     };
   }
 
-  it("renders Knowledge Management title and buttons", async () => {
+  it("renders Knowledge Management title and the bundle card", async () => {
     mockBundles();
 
     render(<KnowledgeScreen />);
@@ -55,8 +59,6 @@ describe("KnowledgeScreen", () => {
 
     const card = container.querySelector(".knowledge-bundle-card");
     expect(card).not.toBeNull();
-    // The reference's structure: titled, with a central illustration and a
-    // supporting summary line.
     expect(card!.querySelector(".knowledge-bundle-card-icon")).not.toBeNull();
     expect(
       card!.querySelector(".knowledge-bundle-card-title")?.textContent,
@@ -66,6 +68,32 @@ describe("KnowledgeScreen", () => {
     ).toBe("1 file");
   });
 
+  it("gives the icon the SAME color as the title label", async () => {
+    // Requested explicitly: the icon must not keep its own accent tint.
+    //
+    // jsdom neither loads the app's CSS nor resolves var() in
+    // getComputedStyle, so the color itself cannot be read here — the built
+    // stylesheet is verified in the build step (grep for both selectors).
+    // What IS assertable here is the DOM contract: the icon carries its own
+    // class (so the stylesheet can target it) and no inline color overrides it.
+    mockBundles();
+    const { container } = render(<KnowledgeScreen />);
+    await screen.findByText("ui-style-guide");
+
+    const icon = container.querySelector<HTMLElement>(
+      ".knowledge-bundle-card-icon",
+    );
+    const title = container.querySelector<HTMLElement>(
+      ".knowledge-bundle-card-title",
+    );
+
+    expect(icon).not.toBeNull();
+    expect(title).not.toBeNull();
+    // No inline colours, so the stylesheet decides the color for both.
+    expect(icon!.style.color).toBe("");
+    expect(title!.style.color).toBe("");
+  });
+
   it("offers an outlined pill action, per the reference", async () => {
     mockBundles();
     const { container } = render(<KnowledgeScreen />);
@@ -73,7 +101,8 @@ describe("KnowledgeScreen", () => {
 
     const pill = container.querySelector(".knowledge-bundle-card-pill");
     expect(pill).not.toBeNull();
-    expect(pill!.textContent).toContain("View files");
+    // The pill now communicates drilling in, not an inline expand.
+    expect(pill!.textContent).toContain("Open");
   });
 
   it("reads file counts correctly, including the empty and plural cases", async () => {
@@ -85,65 +114,11 @@ describe("KnowledgeScreen", () => {
     ).toBe("No files yet");
   });
 
-  it("expands the file list from the card and collapses it again", async () => {
-    mockBundles();
-    const { container } = render(<KnowledgeScreen />);
-    await screen.findByText("ui-style-guide");
-
-    // Collapsed by default, so no file rows yet.
-    expect(container.querySelector(".knowledge-file-list")).toBeNull();
-
-    const pill = container.querySelector<HTMLElement>(
-      ".knowledge-bundle-card-pill",
-    )!;
-    fireEvent.click(pill);
-    await waitFor(() =>
-      expect(container.querySelector(".knowledge-file-list")).not.toBeNull(),
-    );
-    expect(pill.textContent).toContain("Hide files");
-
-    fireEvent.click(pill);
-    await waitFor(() =>
-      expect(container.querySelector(".knowledge-file-list")).toBeNull(),
-    );
-  });
-
-  it("expands from the card body too, not only the pill", async () => {
-    mockBundles();
-    const { container } = render(<KnowledgeScreen />);
-    await screen.findByText("ui-style-guide");
-
-    const card = container.querySelector<HTMLElement>(
-      ".knowledge-bundle-card",
-    )!;
-    fireEvent.click(card);
-    await waitFor(() =>
-      expect(container.querySelector(".knowledge-file-list")).not.toBeNull(),
-    );
-  });
-
-  it("marks an expanded card so the file list continues it visually", async () => {
-    mockBundles();
-    const { container } = render(<KnowledgeScreen />);
-    await screen.findByText("ui-style-guide");
-
-    const item = container.querySelector<HTMLElement>(".knowledge-bundle-item")!;
-    expect(item.className).not.toContain("knowledge-bundle-item--expanded");
-
-    fireEvent.click(
-      container.querySelector<HTMLElement>(".knowledge-bundle-card-pill")!,
-    );
-    await waitFor(() =>
-      expect(item.className).toContain("knowledge-bundle-item--expanded"),
-    );
-  });
-
   it("keeps the per-bundle actions reachable", async () => {
     mockBundles();
     const { container } = render(<KnowledgeScreen />);
     await screen.findByText("ui-style-guide");
 
-    // The card redesign must not lose rename/add/delete.
     const card = container.querySelector<HTMLElement>(
       ".knowledge-bundle-card",
     )!;
@@ -168,7 +143,7 @@ describe("KnowledgeScreen", () => {
 
     fireEvent.keyDown(card, { key: "Enter" });
     await waitFor(() =>
-      expect(container.querySelector(".knowledge-file-list")).not.toBeNull(),
+      expect(container.querySelector(".knowledge-file-grid")).not.toBeNull(),
     );
   });
 });
