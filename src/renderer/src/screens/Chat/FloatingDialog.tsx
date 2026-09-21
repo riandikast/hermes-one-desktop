@@ -2,27 +2,41 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { X } from "../../assets/icons";
 
 /**
- * A floating dialog that hosts the On-Finish terminal.
+ * A floating, draggable dialog panel.
  *
- * Deliberately NOT unmounted when closed. xterm instances are permanent once
- * created (a disposed terminal cannot be re-shown), so the children stay
- * mounted and are hidden instead — see the `hidden` prop pass-through in
- * Chat.tsx. Closing therefore preserves live sessions and their scrollback,
- * which is the whole point of moving the terminal off the input footer.
+ * Deliberately NOT unmounted when closed for panels whose contents are
+ * expensive or stateful to recreate (the terminal: xterm instances are
+ * permanent once created, so its children stay mounted and are hidden instead —
+ * closing preserves live sessions and their scrollback).
+ *
+ * The overlay is `aria-hidden` and click-to-close; the panel itself stops
+ * propagation so interacting with contents never dismisses it.
  *
  * DRAGGABLE by its header: the panel starts centered, and dragging offsets it
- * from there so it can be parked out of the way over long output.
+ * from there so it can be parked out of the way.
  */
-export function TerminalDialog({
+export function FloatingDialog({
   open,
   onClose,
   title,
   children,
+  size = "terminal",
+  keepMounted = false,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
+  /**
+   * Size preset. `terminal` is the wide/short working size; `wide` is for
+   * content that wants more height (web preview, file tree).
+   */
+  size?: "terminal" | "wide" | "full";
+  /**
+   * When true the children are hidden rather than unmounted while closed.
+   * Required for anything that cannot be recreated cheaply (a live terminal).
+   */
+  keepMounted?: boolean;
 }): React.JSX.Element {
   const panelRef = useRef<HTMLDivElement | null>(null);
   // Offset from the centered position, in px. Kept separate from the layout so
@@ -110,7 +124,9 @@ export function TerminalDialog({
     >
       <div
         ref={panelRef}
-        className={`terminal-dialog${dragging ? " is-dragging" : ""}`}
+        className={`terminal-dialog terminal-dialog--${size}${
+          dragging ? " is-dragging" : ""
+        }`}
         role="dialog"
         aria-label={title}
         aria-modal="false"
@@ -132,13 +148,15 @@ export function TerminalDialog({
             type="button"
             className="terminal-dialog-close"
             onClick={onClose}
-            aria-label="Close terminal"
-            title="Close terminal"
+            aria-label={`Close ${title}`}
+            title={`Close ${title}`}
           >
             <X size={14} />
           </button>
         </div>
-        <div className="terminal-dialog-body">{children}</div>
+        <div className="terminal-dialog-body" hidden={keepMounted && !open}>
+          {children}
+        </div>
       </div>
     </div>
   );

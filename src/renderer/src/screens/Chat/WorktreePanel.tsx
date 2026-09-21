@@ -26,6 +26,14 @@ interface FileEntry {
 interface WorktreePanelProps {
   /** All working folders bound to this conversation (issue #27). */
   folderPaths: string[];
+  /**
+   * Fill the parent instead of sizing itself.
+   *
+   * Set when hosted in a floating dialog: the dialog owns width/height, so the
+   * panel's own resize handle and persisted width would fight it. Standalone
+   * (the default) keeps the original inline-pane behaviour.
+   */
+  embedded?: boolean;
 }
 
 const MIN_PANEL_WIDTH = 220;
@@ -328,6 +336,7 @@ interface ContextMenuState {
 
 export const WorktreePanel = memo(function WorktreePanel({
   folderPaths,
+  embedded = false,
 }: WorktreePanelProps): React.JSX.Element {
   const { t } = useI18n();
   const [sourceControlDir, setSourceControlDir] = useState<string | null>(null);
@@ -517,14 +526,19 @@ export const WorktreePanel = memo(function WorktreePanel({
   const showingSearch = searchResults !== null || searchPending;
 
   return (
-    <div className="worktree-panel" style={{ width }}>
-      <div
-        className={`worktree-resize-handle ${
-          isResizing ? "worktree-resize-handle-active" : ""
-        }`}
-        onPointerDown={startResize}
-        title="Drag to resize"
-      />
+    <div
+      className={`worktree-panel${embedded ? " worktree-panel--embedded" : ""}`}
+      style={embedded ? undefined : { width }}
+    >
+      {!embedded && (
+        <div
+          className={`worktree-resize-handle ${
+            isResizing ? "worktree-resize-handle-active" : ""
+          }`}
+          onPointerDown={startResize}
+          title="Drag to resize"
+        />
+      )}
       <div className="worktree-header">
         <FolderSearch size={16} className="worktree-header-icon" />
         <span className="worktree-header-title">

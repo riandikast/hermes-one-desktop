@@ -10,7 +10,7 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { TerminalDialog } from "./TerminalDialog";
+import { FloatingDialog } from "./FloatingDialog";
 
 beforeEach(() => {
   // jsdom reports 1024x768 and has no pointer capture by default.
@@ -27,9 +27,9 @@ function renderDialog(): {
   closeBtn: HTMLElement;
 } {
   const { container } = render(
-    <TerminalDialog open onClose={() => undefined} title="Term">
+    <FloatingDialog open onClose={() => undefined} title="Term">
       <div data-testid="term" />
-    </TerminalDialog>,
+    </FloatingDialog>,
   );
   return {
     panel: container.querySelector<HTMLElement>(".terminal-dialog")!,
@@ -114,9 +114,9 @@ describe("TerminalDialog dragging", () => {
 describe("TerminalDialog reopen behaviour", () => {
   it("recenters on reopen so it cannot reappear off-screen", () => {
     const view = render(
-      <TerminalDialog open onClose={() => undefined} title="Term">
+      <FloatingDialog open onClose={() => undefined} title="Term">
         <div data-testid="term" />
-      </TerminalDialog>,
+      </FloatingDialog>,
     );
     const panel = () =>
       view.container.querySelector<HTMLElement>(".terminal-dialog")!;
@@ -127,14 +127,14 @@ describe("TerminalDialog reopen behaviour", () => {
     expect(panel().style.transform).toBe("translate(70px, 60px)");
 
     view.rerender(
-      <TerminalDialog open={false} onClose={() => undefined} title="Term">
+      <FloatingDialog open={false} onClose={() => undefined} title="Term">
         <div data-testid="term" />
-      </TerminalDialog>,
+      </FloatingDialog>,
     );
     view.rerender(
-      <TerminalDialog open onClose={() => undefined} title="Term">
+      <FloatingDialog open onClose={() => undefined} title="Term">
         <div data-testid="term" />
-      </TerminalDialog>,
+      </FloatingDialog>,
     );
 
     expect(panel().style.transform).toBe("translate(0px, 0px)");
@@ -142,14 +142,14 @@ describe("TerminalDialog reopen behaviour", () => {
 
   it("keeps the terminal mounted across close and reopen", () => {
     const view = render(
-      <TerminalDialog open onClose={() => undefined} title="Term">
+      <FloatingDialog open onClose={() => undefined} title="Term">
         <div data-testid="term" />
-      </TerminalDialog>,
+      </FloatingDialog>,
     );
     view.rerender(
-      <TerminalDialog open={false} onClose={() => undefined} title="Term">
+      <FloatingDialog open={false} onClose={() => undefined} title="Term">
         <div data-testid="term" />
-      </TerminalDialog>,
+      </FloatingDialog>,
     );
     expect(screen.getByTestId("term")).toBeDefined();
   });

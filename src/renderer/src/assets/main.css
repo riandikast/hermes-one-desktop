@@ -5813,6 +5813,18 @@ body:has(.shell-vibrant),
   position: relative;
 }
 
+/* Hosted in a floating dialog: fill it. The fixed width and the left rule were
+   inline-pane chrome — the dialog already draws the border, and a left border
+   inside it would read as a stray divider. */
+.worktree-panel--embedded {
+  width: 100%;
+  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  border-left: none;
+  background: transparent;
+}
+
 /* Drag handle on the left edge to free-resize the context folder tree. */
 .worktree-resize-handle {
   position: absolute;
@@ -10143,6 +10155,20 @@ body:has(.shell-vibrant),
   /* Dragging translates this element; keep it out of the open/close fade so a
      move never animates. */
   will-change: transform;
+}
+
+/* Size presets. `terminal` is the default above (wide, short) because a
+   terminal is read in lines. `wide` gives content more height: a web preview
+   needs a browser viewport, and a file tree needs vertical room, both of which
+   the terminal's 76vh cap would crowd. */
+.terminal-dialog--wide {
+  width: min(1080px, 94vw);
+  height: min(760px, 88vh);
+}
+
+.terminal-dialog--full {
+  width: min(1240px, 96vw);
+  height: min(880px, 92vh);
 }
 
 /* While dragging, drop the transition so the panel tracks the pointer exactly
@@ -20281,6 +20307,16 @@ body:has(.shell-vibrant),
   flex-direction: column;
   overflow: hidden;
   position: relative;
+}
+
+/* Hosted in a floating dialog: fill it (see .worktree-panel--embedded). */
+.web-preview-panel--embedded {
+  width: 100%;
+  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  border-left: none;
+  background: transparent;
 }
 
 /* Drag handle on the left edge to free-resize the panel width. */

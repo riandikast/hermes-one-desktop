@@ -10,14 +10,14 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { TerminalDialog } from "./TerminalDialog";
+import { FloatingDialog } from "./FloatingDialog";
 
 describe("TerminalDialog", () => {
   it("stays mounted with the terminal inside while closed", () => {
     const { container } = render(
-      <TerminalDialog open={false} onClose={() => undefined} title="Term">
+      <FloatingDialog open={false} onClose={() => undefined} title="Term">
         <div data-testid="term" />
-      </TerminalDialog>,
+      </FloatingDialog>,
     );
 
     // The child must exist in the DOM even though the dialog is closed.
@@ -30,17 +30,17 @@ describe("TerminalDialog", () => {
 
   it("marks the overlay open and hidden via class, not by unmounting", () => {
     const { container, rerender } = render(
-      <TerminalDialog open={false} onClose={() => undefined} title="Term">
+      <FloatingDialog open={false} onClose={() => undefined} title="Term">
         <div data-testid="term" />
-      </TerminalDialog>,
+      </FloatingDialog>,
     );
     const overlay = container.querySelector(".terminal-dialog-overlay")!;
     expect(overlay.className).not.toContain("is-open");
 
     rerender(
-      <TerminalDialog open onClose={() => undefined} title="Term">
+      <FloatingDialog open onClose={() => undefined} title="Term">
         <div data-testid="term" />
-      </TerminalDialog>,
+      </FloatingDialog>,
     );
     expect(
       container.querySelector(".terminal-dialog-overlay")?.className,
@@ -50,9 +50,9 @@ describe("TerminalDialog", () => {
 
   it("exposes the closed state to assistive tech", () => {
     const { container } = render(
-      <TerminalDialog open={false} onClose={() => undefined} title="Term">
+      <FloatingDialog open={false} onClose={() => undefined} title="Term">
         <div />
-      </TerminalDialog>,
+      </FloatingDialog>,
     );
     expect(
       container.querySelector(".terminal-dialog-overlay")?.getAttribute(
@@ -64,9 +64,9 @@ describe("TerminalDialog", () => {
   it("closes on Escape", () => {
     const onClose = vi.fn();
     render(
-      <TerminalDialog open onClose={onClose} title="Term">
+      <FloatingDialog open onClose={onClose} title="Term">
         <div />
-      </TerminalDialog>,
+      </FloatingDialog>,
     );
 
     fireEvent.keyDown(document, { key: "Escape" });
@@ -76,9 +76,9 @@ describe("TerminalDialog", () => {
   it("ignores Escape while closed, so it cannot close the chat", () => {
     const onClose = vi.fn();
     render(
-      <TerminalDialog open={false} onClose={onClose} title="Term">
+      <FloatingDialog open={false} onClose={onClose} title="Term">
         <div />
-      </TerminalDialog>,
+      </FloatingDialog>,
     );
 
     fireEvent.keyDown(document, { key: "Escape" });
@@ -88,20 +88,31 @@ describe("TerminalDialog", () => {
   it("closes on the close button", () => {
     const onClose = vi.fn();
     render(
-      <TerminalDialog open onClose={onClose} title="Term">
+      <FloatingDialog open onClose={onClose} title="Term">
         <div />
-      </TerminalDialog>,
+      </FloatingDialog>,
     );
-    fireEvent.click(screen.getByLabelText("Close terminal"));
+    // The label is derived from the title so each dialog names itself; a
+    // hardcoded "Close terminal" was wrong once this became shared.
+    fireEvent.click(screen.getByLabelText("Close Term"));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives the close button a label derived from its own title", () => {
+    render(
+      <FloatingDialog open onClose={() => undefined} title="Web preview">
+        <div />
+      </FloatingDialog>,
+    );
+    expect(screen.getByLabelText("Close Web preview")).toBeDefined();
   });
 
   it("closes when the backdrop is clicked", () => {
     const onClose = vi.fn();
     const { container } = render(
-      <TerminalDialog open onClose={onClose} title="Term">
+      <FloatingDialog open onClose={onClose} title="Term">
         <div />
-      </TerminalDialog>,
+      </FloatingDialog>,
     );
     fireEvent.click(container.querySelector(".terminal-dialog-overlay")!);
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -112,9 +123,9 @@ describe("TerminalDialog", () => {
     // terminal unusable, since every interaction is a click inside it.
     const onClose = vi.fn();
     const { container } = render(
-      <TerminalDialog open onClose={onClose} title="Term">
+      <FloatingDialog open onClose={onClose} title="Term">
         <div data-testid="term" />
-      </TerminalDialog>,
+      </FloatingDialog>,
     );
     fireEvent.click(container.querySelector(".terminal-dialog")!);
     expect(onClose).not.toHaveBeenCalled();
@@ -122,9 +133,9 @@ describe("TerminalDialog", () => {
 
   it("renders its title", () => {
     render(
-      <TerminalDialog open onClose={() => undefined} title="On-Finish terminal">
+      <FloatingDialog open onClose={() => undefined} title="On-Finish terminal">
         <div />
-      </TerminalDialog>,
+      </FloatingDialog>,
     );
     expect(screen.getByText("On-Finish terminal")).toBeDefined();
   });

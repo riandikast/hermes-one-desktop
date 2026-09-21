@@ -19,6 +19,13 @@ interface WebPreviewPanelProps {
     className: string;
     outerHTML: string;
   }) => void;
+  /**
+   * Fill the parent instead of sizing itself.
+   *
+   * Set when hosted in a floating dialog, which owns width/height. Standalone
+   * (the default) keeps the original inline-pane behaviour and resize handle.
+   */
+  embedded?: boolean;
 }
 
 // Resizable panel bounds. Min keeps the toolbar usable; max leaves room for
@@ -180,6 +187,7 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
   initialUrl,
   onClose,
   onInspectElement,
+  embedded = false,
 }: WebPreviewPanelProps): React.JSX.Element {
   const { t } = useI18n();
   const [currentUrl, setCurrentUrl] = useState(initialUrl);
@@ -415,14 +423,21 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
   };
 
   return (
-    <div className="web-preview-panel" style={{ width }}>
-      <div
-        className={`web-preview-resize-handle ${
-          isResizing ? "web-preview-resize-handle-active" : ""
-        }`}
-        onPointerDown={startResize}
-        title="Drag to resize"
-      />
+    <div
+      className={`web-preview-panel${
+        embedded ? " web-preview-panel--embedded" : ""
+      }`}
+      style={embedded ? undefined : { width }}
+    >
+      {!embedded && (
+        <div
+          className={`web-preview-resize-handle ${
+            isResizing ? "web-preview-resize-handle-active" : ""
+          }`}
+          onPointerDown={startResize}
+          title="Drag to resize"
+        />
+      )}
       <div className="web-preview-header">
         <button
           type="button"

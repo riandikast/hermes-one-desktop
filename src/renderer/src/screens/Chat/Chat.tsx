@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import toast from "react-hot-toast";
 
-import { Zap, Globe, ClipboardList, Hammer, SlidersHorizontal, Terminal, Eye } from "lucide-react";
+import { Zap, Globe, ClipboardList, Hammer, SlidersHorizontal, Terminal, Eye, FolderSearch } from "lucide-react";
 import { Spinner } from "../../assets/icons";
 
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
@@ -15,7 +15,7 @@ import {
 } from "./onFinish";
 import { useOnFinishRunner } from "./useOnFinishRunner";
 import { OnFinishChip } from "./OnFinishChip";
-import { TerminalDialog } from "./TerminalDialog";
+import { FloatingDialog } from "./FloatingDialog";
 import type { TerminalDockHandle } from "../Command/TerminalDock";
 import { TerminalDock } from "../Command/TerminalDock";
 
@@ -38,7 +38,6 @@ import { ContextFolderChip } from "./ContextFolderChip";
 import { forceReleaseAllReasoning } from "./reasoningStall";
 
 import { WorktreePanel } from "./WorktreePanel";
-
 import { RemoteFolderPicker } from "./RemoteFolderPicker";
 
 import { WebPreviewPanel } from "./WebPreviewPanel";
@@ -980,6 +979,22 @@ function Chat({
   const [folderPickerOpen, setFolderPickerOpen] = useState<boolean>(false);
 
   const [webPreviewVisible, setWebPreviewVisible] = useState<boolean>(false);
+  /**
+   * Latched once each panel has been opened at least once.
+   *
+   * Both dialogs stay mounted after first use so their contents survive being
+   * closed (the webview keeps its page and history; the file tree keeps its
+   * expanded folders). Mounting them eagerly would do that work for users who
+   * never open them.
+   */
+  const [webPreviewEverOpened, setWebPreviewEverOpened] = useState(false);
+  const [worktreeEverOpened, setWorktreeEverOpened] = useState(false);
+  useEffect(() => {
+    if (webPreviewVisible) setWebPreviewEverOpened(true);
+  }, [webPreviewVisible]);
+  useEffect(() => {
+    if (worktreeVisible) setWorktreeEverOpened(true);
+  }, [worktreeVisible]);
 
   const [webPreviewUrl, setWebPreviewUrl] =
 
@@ -2874,6 +2889,46 @@ function Chat({
             <button type="button" onClick={() => { const next = !showAllTools; setShowAllTools(next); setChatDisplayControls({ tools: next ? "show" : "hide" }); }}>{showAllTools ? "Hide all tools" : "Show all tools"}</button>
           </div>
         )}
+        {/* Web preview: floating icon, opens a dialog. Shown only when a URL
+            has actually been previewed, since there is nothing to show
+            otherwise (the panel needs an initial URL). */}
+        {webPreviewUrl && (
+          <button
+            type="button"
+            className={`chat-display-controls-trigger${webPreviewVisible ? " is-active" : ""}`}
+            onClick={() => {
+              setWebPreviewVisible((v) => !v);
+              setDisplayControlsOpen(false);
+              setChatSearchOpen(false);
+            }}
+            aria-label="Web preview"
+            aria-expanded={webPreviewVisible}
+            title="Web preview"
+          >
+            <Globe size={15} />
+          </button>
+        )}
+
+        {/* File explorer: floating icon, opens a dialog. Only rendered when a
+            context folder is attached — with no folder there is no tree to
+            show, and an icon that opens an empty panel reads as broken. */}
+        {contextFolders.length > 0 && (
+          <button
+            type="button"
+            className={`chat-display-controls-trigger${worktreeVisible ? " is-active" : ""}`}
+            onClick={() => {
+              setWorktreeVisible((v) => !v);
+              setDisplayControlsOpen(false);
+              setChatSearchOpen(false);
+            }}
+            aria-label="File explorer"
+            aria-expanded={worktreeVisible}
+            title="File explorer"
+          >
+            <FolderSearch size={15} />
+          </button>
+        )}
+
         {/* Terminal: a floating icon in the SAME group as the search and
             display-controls icons. Always visible — it is a general terminal,
             not only the On-Finish runner, so it must not depend on a queue
@@ -3009,27 +3064,10 @@ function Chat({
 
 
 
-        {contextFolders.length > 0 && worktreeVisible && (
-
-          <WorktreePanel folderPaths={contextFolders} />
-
-        )}
-
-
-
-        {webPreviewVisible && (
-
-          <WebPreviewPanel
-
-            initialUrl={webPreviewUrl}
-
-            onClose={() => setWebPreviewVisible(false)}
-
-            onInspectElement={handleInspectElement}
-
-          />
-
-        )}
+        {/* The worktree and web-preview panels are DIALOGS now, not inline
+            panes — see the floating rail below. Rendering them here as
+            siblings of .chat-messages is what made them take horizontal space
+            from the transcript. */}
 
       </div>
 
@@ -3307,53 +3345,8 @@ function Chat({
                   picker AND the switch, so one click both opens the command
                   list and (on tick) arms the auto-run. */}
 
-              <button
-                type="button"
-                className={`btn-ghost chat-tool-btn ${webPreviewVisible ? "chat-tool-btn-active" : ""}`}
-
-                onClick={() => setWebPreviewVisible((v) => !v)}
-
-                title={
-
-                  webPreviewVisible ? "Hide web preview" : "Show web preview"
-
-                }
-
-                style={{
-
-                  display: "inline-flex",
-
-                  alignItems: "center",
-
-                  justifyContent: "center",
-
-                  width: 28,
-
-                  height: 28,
-
-                  padding: 0,
-
-                  borderRadius: 6,
-
-                  color: webPreviewVisible
-
-                    ? "var(--accent-text)"
-
-                    : "var(--text-secondary)",
-
-                  background: webPreviewVisible
-
-                    ? "color-mix(in srgb, var(--accent-text) 10%, transparent)"
-
-                    : "transparent",
-
-                }}
-
-              >
-
-                <Globe size={14} />
-
-              </button>
+              {/* Web preview and file explorer moved to the floating rail as
+                  icons that open dialogs — see .chat-display-controls. */}
 
             </>
 
@@ -3430,7 +3423,7 @@ function Chat({
           tool; inside, it stays mounted while closed since xterm cannot be
           re-shown once disposed — closing hides it rather than unmounting. */}
       {onFinishDockOpen || onFinishEverOpened ? (
-        <TerminalDialog
+        <FloatingDialog
           open={onFinishDockOpen}
           onClose={() => setOnFinishDockOpen(false)}
           title="Terminal"
@@ -3445,7 +3438,42 @@ function Chat({
               onResizeEnd={() => undefined}
             />
           </div>
-        </TerminalDialog>
+        </FloatingDialog>
+      ) : null}
+
+      {/* ── Web preview dialog ──────────────────────────────────────────────
+          Mounted lazily (first open) then kept, so the webview keeps its page
+          and history — a remount would reload the URL and lose navigation. */}
+      {webPreviewEverOpened ? (
+        <FloatingDialog
+          open={webPreviewVisible}
+          onClose={() => setWebPreviewVisible(false)}
+          title="Web preview"
+          size="full"
+          keepMounted
+        >
+          <WebPreviewPanel
+            initialUrl={webPreviewUrl}
+            onClose={() => setWebPreviewVisible(false)}
+            onInspectElement={handleInspectElement}
+            embedded
+          />
+        </FloatingDialog>
+      ) : null}
+
+      {/* ── File explorer dialog ────────────────────────────────────────────
+          Mounted only while a folder is attached. The tree re-reads on open,
+          so unlike the webview it is safe to unmount when there is no folder. */}
+      {contextFolders.length > 0 && worktreeEverOpened ? (
+        <FloatingDialog
+          open={worktreeVisible}
+          onClose={() => setWorktreeVisible(false)}
+          title="File explorer"
+          size="wide"
+          keepMounted
+        >
+          <WorktreePanel folderPaths={contextFolders} embedded />
+        </FloatingDialog>
       ) : null}
 
     </div>
