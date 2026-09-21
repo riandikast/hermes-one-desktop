@@ -6200,8 +6200,75 @@ body:has(.shell-vibrant),
   background: rgba(255, 255, 255, 0.09);
 }
 .file-viewer-cm-host .cm-panel.cm-search .cm-textfield-label,
-.file-viewer-cm-host .cm-panel.cm-search .cm-search-label {
+.file-viewer-cm-host .cm-panel.cm-search .cm-search-label,
+.knowledge-cm-host .cm-panel.cm-search .cm-search-label {
   color: #9a9aa3;
+}
+
+/* Match highlighting for the knowledge editor (see the file-viewer rules for
+   the rationale). Scoped by host so both editors share the same treatment. */
+.knowledge-cm-host .cm-searchMatch-all {
+  background: rgba(250, 204, 21, 0.28);
+  border-radius: 2px;
+}
+
+.knowledge-cm-host .cm-searchMatch {
+  background: rgba(250, 204, 21, 0.4);
+  border-radius: 2px;
+}
+
+.knowledge-cm-host .cm-searchMatch.cm-searchMatch-selected {
+  background: rgba(249, 115, 22, 0.85);
+  color: #16130c;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.5);
+}
+
+/* ── Search match highlighting (VS Code style) ────────────────────────────
+   `search()` only marks the active match; `editorSearch.ts` adds a layer that
+   marks EVERY match as `.cm-searchMatch-all`. The active match keeps CM's own
+   `.cm-searchMatch.cm-searchMatch-selected`, which must stay the visually
+   dominant one — hence the softer fill here and a stronger one below. */
+.file-viewer-cm-host .cm-searchMatch-all {
+  background: rgba(250, 204, 21, 0.28);
+  border-radius: 2px;
+}
+
+/* Match on the line the cursor is on, but not the active match. */
+.file-viewer-cm-host .cm-searchMatch {
+  background: rgba(250, 204, 21, 0.4);
+  border-radius: 2px;
+}
+
+.file-viewer-cm-host .cm-searchMatch.cm-searchMatch-selected {
+  background: rgba(249, 115, 22, 0.85);
+  color: #16130c;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.5);
+}
+
+/* Match counter in the editor status bar. */
+.file-viewer-match-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+  padding: 1px 7px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  color: var(--text-secondary);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.file-viewer-match-current {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.file-viewer-match-sep {
+  opacity: 0.5;
 }
 
 /* Autosave indicator in the header */

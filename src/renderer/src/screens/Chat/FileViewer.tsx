@@ -11,6 +11,11 @@ import { keymap } from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
 import { Prec } from "@codemirror/state";
 import { useI18n } from "../../components/useI18n";
+import {
+  searchHighlights,
+  EMPTY_MATCH_INFO,
+  type SearchMatchInfo,
+} from "./editorSearch";
 
 interface FileViewerProps {
   filePath: string;
@@ -133,6 +138,8 @@ export const FileViewer = memo(function FileViewer({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  // Live search counter ("2/10"), fed by the editor's search extension.
+  const [matchInfo, setMatchInfo] = useState<SearchMatchInfo>(EMPTY_MATCH_INFO);
   const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "error">(
     "idle",
   );
@@ -254,6 +261,9 @@ export const FileViewer = memo(function FileViewer({
             basicSetup,
             oneDark,
             search({ top: true }),
+            // VS Code-style feedback: highlight EVERY match and feed the match
+            // counter rendered in the header (see editorSearch.ts).
+            searchHighlights(setMatchInfo),
             // IDE behavior: Tab indents/inserts a tab instead of moving focus
             // (the default browser behavior in a webview). Shift-Tab outdents.
             keymap.of([indentWithTab]),
@@ -373,6 +383,17 @@ export const FileViewer = memo(function FileViewer({
           <span className="file-viewer-size">
             {content ? formatFileSize(content) : imageUrl ? "Image" : ""}
             {truncated && content && ` (${t("worktree.fileTruncated")})`}
+          </span>
+        )}
+        {content !== null && matchInfo.total > 0 && (
+          // VS Code-style match counter. The panel owns the query; this reports
+          // how many hits exist and which one is active.
+          <span className="file-viewer-match-count" role="status" aria-live="polite">
+            <span className="file-viewer-match-current">
+              {matchInfo.index > 0 ? matchInfo.index : 1}
+            </span>
+            <span className="file-viewer-match-sep">/</span>
+            <span className="file-viewer-match-total">{matchInfo.total}</span>
           </span>
         )}
         {content !== null && (

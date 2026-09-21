@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { findMention } from "../Chat/mention";
+import { searchHighlights } from "../Chat/editorSearch";
 import { basicSetup } from "codemirror";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
@@ -493,6 +494,9 @@ export function KnowledgeScreen(): React.JSX.Element {
           basicSetup,
           oneDark,
           search({ top: true }),
+          // Same VS Code-style feedback as the file editor: highlight every
+          // match (stock search() marks only the active one).
+          searchHighlights(() => undefined),
           // IDE behavior: Tab indents/inserts a tab instead of moving focus
           // (the default browser behavior in a webview). Shift-Tab outdents.
           keymap.of([indentWithTab]),
