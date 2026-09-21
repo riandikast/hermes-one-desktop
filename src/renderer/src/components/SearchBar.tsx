@@ -232,7 +232,7 @@ export function SearchBar({
   const count = results?.length ?? 0;
 
   return (
-    <div className="search-bar-wrap" onClick={() => inputRef.current?.focus()}>
+    <div className="search-bar-wrap mx-auto mt-1" onClick={() => inputRef.current?.focus()}>
       <div className="search-bar">
         <Search size={13} className="search-bar-icon" />
         <input

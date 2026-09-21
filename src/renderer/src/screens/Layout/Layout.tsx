@@ -1467,7 +1467,7 @@ function Layout({
           {/* Top menu wrapper with collapse toggle — hidden entirely when no
               tabs are open (no tab strip, no dead drag band). */}
           {showTabStrip && (
-            <div className="top-menu-wrapper">
+            <div className="top-menu-wrapper ">
               <div
                 className={`top-menu-container ${topMenuCollapsed ? "top-menu-collapsed" : ""}`}
               >

@@ -2,9 +2,18 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import toast from "react-hot-toast";
 
-import { Zap, Globe, ClipboardList, Hammer, SlidersHorizontal, Terminal, Eye } from "lucide-react";
+import { Zap, Globe, ClipboardList, Hammer, SlidersHorizontal, Terminal, Eye, Play, Loader } from "lucide-react";
 
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
+import {
+  readOnFinishArmed,
+  readOnFinishSelection,
+  writeOnFinishArmed,
+  type OnFinishCommand,
+} from "./onFinish";
+import { useOnFinishRunner } from "./useOnFinishRunner";
+import type { TerminalDockHandle } from "../Command/TerminalDock";
+import { TerminalDock } from "../Command/TerminalDock";
 
 import { ChatEmptyState } from "./ChatEmptyState";
 
@@ -406,6 +415,26 @@ function Chat({
 
     forceReleaseAllReasoning();
 
+    // On-Finish: auto-run the queued commands, in selection order. Fired from
+    // THIS transition (not the send path) so it also triggers for turns that
+    // end in an error or a subagent resume — any completed turn counts.
+    // The queue is read fresh so Commands-page edits apply without a remount.
+    void (async () => {
+      if (!onFinishArmedRef.current) return;
+      const ids = readOnFinishSelection();
+      if (ids.length === 0) return;
+      try {
+        const list = (await window.hermesAPI.listCommands()) as OnFinishCommand[];
+        onFinishCommandsRef.current = list;
+      } catch {
+        // Fall back to the cached list rather than skipping the run.
+      }
+      await onFinishRunnerRef.current.runQueue(
+        ids,
+        onFinishCommandsRef.current,
+      );
+    })();
+
   }, [isLoading]);
 
   const [hermesSessionId, setHermesSessionId] = useState<string | null>(
@@ -568,6 +597,43 @@ function Chat({
     }
   });
 
+  // ── On-Finish: auto-run the selected Commands-page commands after a turn ──
+  // ARMED is per-session, so one conversation cannot arm another. The
+  // SELECTION (an ordered id list) lives in localStorage and is edited on the
+  // Commands page; here we only read it when a turn completes.
+  const onFinishIdentityRef = useRef<string>(initialSessionId ?? runId);
+  const [onFinishArmed, setOnFinishArmed] = useState<boolean>(() =>
+    readOnFinishArmed(initialSessionId ?? runId),
+  );
+  // Commands are read fresh on each finish so edits on the Commands page take
+  // effect without remounting the chat.
+  const onFinishCommandsRef = useRef<OnFinishCommand[]>([]);
+  const onFinishDockRef = useRef<TerminalDockHandle | null>(null);
+  // The chat's On-Finish dock is fixed-height (the chat layout owns the rest of
+  // the column; a drag-resize handle here would need its own persisted value
+  // and would compete with the message list for space).
+  const onFinishDockHeight = 220;
+
+  const attachOnFinishSession = useCallback(
+    (id: string, title: string): void => {
+      onFinishDockRef.current?.attachSession(id, title);
+    },
+    [],
+  );
+  const onFinishRunner = useOnFinishRunner(attachOnFinishSession);
+
+  // Refs so the finish effect can read the latest values WITHOUT adding them to
+  // its deps: the effect must fire on the isLoading transition only, and
+  // re-subscribing it on every arming change would drop the transition.
+  const onFinishArmedRef = useRef(onFinishArmed);
+  useEffect(() => {
+    onFinishArmedRef.current = onFinishArmed;
+  }, [onFinishArmed]);
+  const onFinishRunnerRef = useRef(onFinishRunner);
+  useEffect(() => {
+    onFinishRunnerRef.current = onFinishRunner;
+  }, [onFinishRunner]);
+
   const toggleRawSystemPrompt = useCallback(() => {
     setRawSystemPrompt((prev) => {
       const next = !prev;
@@ -580,8 +646,15 @@ function Chat({
     });
   }, []);
 
-  const togglePlanMode = useCallback(() => {
+  const toggleOnFinish = useCallback((): void => {
+    setOnFinishArmed((prev) => {
+      const next = !prev;
+      writeOnFinishArmed(onFinishIdentityRef.current, next);
+      return next;
+    });
+  }, []);
 
+  const togglePlanMode = useCallback(() => {
     setPlanMode((prev) => {
 
       const next = !prev;
@@ -3113,9 +3186,43 @@ function Chat({
               </button>
 
               <button
-
                 type="button"
+                className={`btn-ghost chat-tool-btn ${
+                  onFinishArmed ? "chat-tool-btn-active" : ""
+                }`}
+                onClick={toggleOnFinish}
+                title={
+                  onFinishArmed
+                    ? "On-Finish ARMED — selected commands run after every reply. Click to disarm."
+                    : "On-Finish OFF — click to run the commands selected on the Commands page after each reply."
+                }
+                aria-pressed={onFinishArmed}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: 28,
+                  padding: "0 6px",
+                  borderRadius: 6,
+                  gap: 4,
+                  color: onFinishArmed
+                    ? "var(--accent-text)"
+                    : "var(--text-secondary)",
+                  background: onFinishArmed
+                    ? "color-mix(in srgb, var(--accent-text) 12%, transparent)"
+                    : "transparent",
+                }}
+              >
+                {onFinishRunner.state.running ? (
+                  <Loader size={13} className="chat-onfinish-spin" />
+                ) : (
+                  <Play size={13} />
+                )}
+                <span style={{ fontSize: 10, fontWeight: 600 }}>On-Finish</span>
+              </button>
 
+              <button
+                type="button"
                 className={`btn-ghost chat-tool-btn ${webPreviewVisible ? "chat-tool-btn-active" : ""}`}
 
                 onClick={() => setWebPreviewVisible((v) => !v)}
@@ -3229,6 +3336,20 @@ function Chat({
 
         />
 
+      )}
+
+      {/* On-Finish terminal dock. Mounted only while armed so xterm instances
+          (which cannot be re-shown once disposed) are not created for users who
+          never use the feature; unmounting also frees the ptys' panes. */}
+      {onFinishArmed && (
+        <TerminalDock
+          ref={onFinishDockRef}
+          onNewSession={() => undefined}
+          dockHeight={onFinishDockHeight}
+          onResizeStart={() => undefined}
+          onResizeMove={() => undefined}
+          onResizeEnd={() => undefined}
+        />
       )}
 
     </div>

@@ -630,7 +630,7 @@ body:has(.shell-vibrant),
 .title-bar {
   display: flex;
   align-items: stretch;
-  height: 34px;
+  height: 45px;
   flex-shrink: 0;
   position: relative;
   /* Above .top-menu-wrapper (z 1001) so the search results dropdown paints
@@ -679,8 +679,9 @@ body:has(.shell-vibrant),
 /* ── VS Code-style search bar (lives on the Windows title-bar row) ── */
 .search-bar-wrap {
   position: relative;
+  
   width: min(480px, 60vw);
-  margin: 0 auto; /* center on the title row */
+  
   -webkit-app-region: no-drag;
   /* Vertical breathing room inside the 34px title bar. */
   padding: 4px;
@@ -20595,6 +20596,7 @@ body:has(.shell-vibrant),
   display: flex;
   align-items: stretch;
   position: relative;
+  
   min-height: 34px;
   transition: min-height 0.25s ease;
 }
@@ -21056,6 +21058,142 @@ body:has(.shell-vibrant),
 }
 .command-row-run:hover {
   filter: brightness(1.1);
+}
+
+/* ── On-Finish selection ─────────────────────────────────────────────────────
+   A checkbox per command, where the CHECKED state shows the command's
+   position in the run queue. Order is the feature, so the number must be
+   visible on the row itself — not only in the queue bar. */
+.command-row-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border-color, rgba(127, 127, 127, 0.28));
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.command-row-check:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.command-row-check.checked {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.command-row-check-order {
+  line-height: 1;
+}
+
+/* The queue bar: the single place the FULL order is visible and editable. */
+.command-onfinish-bar {
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.command-onfinish-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.command-onfinish-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.command-onfinish-hint {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.command-onfinish-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.command-onfinish-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 3px;
+  border: 1px solid var(--border-color, rgba(127, 127, 127, 0.2));
+  border-radius: 999px;
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.04));
+  font-size: 11px;
+}
+/* The position number gets the accent fill — it is the run order. */
+.command-onfinish-chip-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.command-onfinish-chip-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.command-onfinish-move {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.command-onfinish-move:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text-primary);
+}
+.command-onfinish-move:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* Spinner shown on the chartoolbar button while the queue executes. */
+@keyframes chat-onfinish-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.chat-onfinish-spin {
+  animation: chat-onfinish-spin 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-onfinish-spin {
+    animation: none;
+  }
 }
 .command-row-run-os {
   display: inline-flex;
