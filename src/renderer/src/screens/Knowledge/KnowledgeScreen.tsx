@@ -996,6 +996,13 @@ export function KnowledgeScreen(): React.JSX.Element {
                 // records what the user explicitly toggled.
                 const isExpanded = expandedBundles[bundle.name] ?? false;
                 const isRenamingBundle = renamingBundle === bundle.name;
+                // Card-front stats. Files are the card's "content"; the
+                // description reads as a one-line summary of the bundle.
+                const fileCount = bundle.files.length;
+                const fileLabel =
+                  fileCount === 0
+                    ? "No files yet"
+                    : `${fileCount} file${fileCount === 1 ? "" : "s"}`;
                 return (
                   <div
                     key={bundle.name}
@@ -1003,7 +1010,7 @@ export function KnowledgeScreen(): React.JSX.Element {
                       dragOverBundle === bundle.name
                         ? "knowledge-bundle-item--drag-over"
                         : ""
-                    }`}
+                    } ${isExpanded ? "knowledge-bundle-item--expanded" : ""}`}
                     onDragOver={(e) => handleDragOverBundle(e, bundle.name)}
                     onDragLeave={(e) => {
                       if (
@@ -1018,16 +1025,64 @@ export function KnowledgeScreen(): React.JSX.Element {
                     }}
                     onDrop={(e) => void handleDropOnBundle(e, bundle.name)}
                   >
+                    {/* Card front: icon, title, summary, count, actions.
+                        Mirrors the reference layout (centered icon, title,
+                        description, pill button) but keeps this app's dark
+                        theme tokens rather than the reference's light palette. */}
                     <div
-                      className="knowledge-bundle-header"
+                      className="knowledge-bundle-card"
                       onClick={() => toggleBundleExpand(bundle.name)}
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={isExpanded}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggleBundleExpand(bundle.name);
+                        }
+                      }}
                     >
-                      {isExpanded ? (
-                        <ChevronDown size={14} />
-                      ) : (
-                        <ChevronRight size={14} />
-                      )}
-                      <Folder size={14} className="folder-icon" />
+                      <div className="knowledge-bundle-card-top">
+                        <span className="knowledge-bundle-card-icon">
+                          <BookOpen size={22} />
+                        </span>
+                        <div className="bundle-hover-actions">
+                          <button
+                            type="button"
+                            className="btn-ghost btn-xs"
+                            title="Rename Bundle"
+                            onClick={(e) => startRenameBundle(bundle.name, e)}
+                          >
+                            <Pencil size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ghost btn-xs"
+                            title="Add File"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAddingFileBundle(
+                                addingFileBundle === bundle.name
+                                  ? null
+                                  : bundle.name,
+                              );
+                            }}
+                          >
+                            <Plus size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ghost btn-xs danger"
+                            title="Delete Bundle"
+                            onClick={(e) =>
+                              void handleDeleteBundle(bundle.name, e)
+                            }
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
+
                       {isRenamingBundle ? (
                         <input
                           type="text"
@@ -1050,43 +1105,33 @@ export function KnowledgeScreen(): React.JSX.Element {
                           onBlur={() => void submitRenameBundle()}
                         />
                       ) : (
-                        <span className="bundle-name">{bundle.name}</span>
+                        <div className="knowledge-bundle-card-title">
+                          {bundle.name}
+                        </div>
                       )}
-                      <div className="bundle-hover-actions">
-                        <button
-                          type="button"
-                          className="btn-ghost btn-xs"
-                          title="Rename Bundle"
-                          onClick={(e) => startRenameBundle(bundle.name, e)}
-                        >
-                          <Pencil size={12} />
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-ghost btn-xs"
-                          title="Add File"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setAddingFileBundle(
-                              addingFileBundle === bundle.name
-                                ? null
-                                : bundle.name,
-                            );
-                          }}
-                        >
-                          <Plus size={12} />
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-ghost btn-xs danger"
-                          title="Delete Bundle"
-                          onClick={(e) =>
-                            void handleDeleteBundle(bundle.name, e)
-                          }
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
+
+                      <div className="knowledge-bundle-card-sub">{fileLabel}</div>
+
+                      {/* Pill action, as in the reference. Doubles as the
+                          expand toggle so the card front stays a single
+                          click target without hiding the affordance. */}
+                      <button
+                        type="button"
+                        className="knowledge-bundle-card-pill"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleBundleExpand(bundle.name);
+                        }}
+                        aria-expanded={isExpanded}
+                      >
+                        {isExpanded ? "Hide files" : "View files"}
+                        <ChevronRight
+                          size={12}
+                          className={`knowledge-bundle-card-pill-chevron${
+                            isExpanded ? " is-open" : ""
+                          }`}
+                        />
+                      </button>
                     </div>
 
                     {addingFileBundle === bundle.name && (

@@ -3760,38 +3760,160 @@ body:has(.shell-vibrant),
   margin: 8px auto;
 }
 
+/* Cards flow into a responsive grid, as in the reference. */
 .knowledge-bundle-list {
-  display: flex;
-  flex-direction: column;
-  padding: 8px;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  align-content: start;
+  gap: 10px;
+  padding: 10px;
 }
 
+/* ── Bundle cards ────────────────────────────────────────────────────────────
+   Card-style layout modelled on the reference: a centered icon, bold title,
+   muted summary line and an outlined pill action, on a raised surface with a
+   soft shadow. The palette stays on this app's theme tokens (the reference is
+   a light mock; copying its white/#F9F9F9 palette would break every theme). */
 .knowledge-bundle-item {
   display: flex;
   flex-direction: column;
 }
 
-.knowledge-bundle-header {
+.knowledge-bundle-card {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
-  border-radius: var(--radius-md);
+  gap: 8px;
+  padding: 16px 12px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  /* Soft, diffused lift rather than a hard edge — matches the reference. */
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.16);
   cursor: pointer;
+  text-align: center;
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition),
+    border-color var(--transition);
+}
+
+.knowledge-bundle-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-color));
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
+  transform: translateY(-1px);
+}
+
+.knowledge-bundle-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Expanded cards are pinned open: the file list below is a continuation of the
+   same card, so it must not look detached. */
+.knowledge-bundle-item--expanded .knowledge-bundle-card {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: transparent;
+}
+
+.knowledge-bundle-card-top {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  min-height: 26px;
+}
+
+/* The illustrative icon: tinted disc so it reads as artwork (the reference's
+   3D icons) without shipping images. */
+.knowledge-bundle-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.knowledge-bundle-card-title {
   font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-primary);
+  /* Long bundle names wrap rather than stretching the card. */
+  overflow-wrap: anywhere;
+}
+
+.knowledge-bundle-card-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Outlined pill action, per the reference. */
+.knowledge-bundle-card-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  padding: 4px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
   font-weight: 500;
-
-  transition: background var(--transition);
+  cursor: pointer;
+  transition:
+    border-color var(--transition),
+    color var(--transition),
+    background var(--transition);
 }
 
-.knowledge-bundle-header:hover {
-  background: var(--bg-hover);
+.knowledge-bundle-card-pill:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
-/* Drop-target highlight while dragging a knowledge file over a bundle. */
-.knowledge-bundle-item--drag-over .knowledge-bundle-header {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+.knowledge-bundle-card-pill-chevron {
+  transition: transform var(--transition);
+}
+
+.knowledge-bundle-card-pill-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+/* Actions sit in the card's top-right corner and only appear on hover/focus so
+   the card front stays as clean as the reference. Touch/pen never hovers, so
+   they stay permanently visible there. */
+.knowledge-bundle-card-top .bundle-hover-actions {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.knowledge-bundle-card:hover .bundle-hover-actions,
+.knowledge-bundle-card:focus-within .bundle-hover-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .knowledge-bundle-card-top .bundle-hover-actions {
+    opacity: 1;
+  }
+}
+
+/* Backwards-compatible header class: the previous row layout is gone, but the
+   drag-target highlight must still apply to the card. */
+.knowledge-bundle-item--drag-over .knowledge-bundle-card {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-card));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
@@ -3815,30 +3937,50 @@ body:has(.shell-vibrant),
   transition: opacity var(--transition);
 }
 
-.knowledge-bundle-header:hover .bundle-hover-actions {
-  opacity: 1;
-}
-
+/* The file list hangs BELOW the card as its continuation: same surface, same
+   side borders, squared top — otherwise it reads as a detached panel. */
 .knowledge-file-list {
   display: flex;
   flex-direction: column;
-  padding-left: 28px;
   gap: 2px;
+  padding: 0 8px 10px;
+  border: 1px solid var(--border-color);
+  border-top: none;
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+  background: var(--bg-card);
 }
 
 .knowledge-no-files {
-  padding: 4px 8px;
+  padding: 4px 8px 2px;
   font-size: 11px;
   color: var(--text-muted);
   font-style: italic;
 }
 
+/* The add-file bar renders between the card front and the file list, so it
+   carries the same continuation surface and only rounds its bottom when it is
+   the LAST element (no file list below it). */
 .knowledge-add-file-bar {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 4px 8px 6px 28px;
-  padding: 4px;
+  margin: 0;
+  padding: 6px 8px 10px;
+  border: 1px solid var(--border-color);
+  border-top: none;
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+  background: var(--bg-card);
+}
+
+/* When a file list follows, the bar is mid-card: square bottom, no extra
+   rounding seam. */
+.knowledge-add-file-bar:has(+ .knowledge-file-list) {
+  border-bottom: none;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  padding-bottom: 2px;
 }
 
 .knowledge-add-file-bar input {
