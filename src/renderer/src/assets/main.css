@@ -10027,14 +10027,27 @@ body:has(.shell-vibrant),
   opacity: 0.75;
 }
 
+/* Floating control rail down the right edge. Vertical so the icons stay
+   reachable as more are added, and so the display-controls menu (anchored to
+   this element) opens to the side rather than over the icons. */
 .chat-display-controls {
   position: absolute;
   top: 76px;
   right: 18px;
   z-index: 8;
   display: flex;
+  /* Order is source order: search -> display controls -> terminal. */
+  flex-direction: column;
   align-items: center;
   gap: 6px;
+}
+
+/* The display-controls menu must not be affected by the rail's column flow:
+   it is a popup, so it floats beside the rail instead of joining the stack. */
+.chat-display-controls-menu {
+  position: absolute;
+  top: 0;
+  right: calc(100% + 8px);
 }
 
 .chat-display-controls-trigger {
@@ -10125,6 +10138,15 @@ body:has(.shell-vibrant),
   background: var(--bg-elevated, #17171b);
   box-shadow: 0 24px 60px -16px rgba(0, 0, 0, 0.6);
   overflow: hidden;
+  /* Dragging translates this element; keep it out of the open/close fade so a
+     move never animates. */
+  will-change: transform;
+}
+
+/* While dragging, drop the transition so the panel tracks the pointer exactly
+   rather than easing behind it. */
+.terminal-dialog.is-dragging {
+  transition: none;
 }
 
 .terminal-dialog-head {
@@ -10134,6 +10156,15 @@ body:has(.shell-vibrant),
   padding: 8px 10px 8px 14px;
   border-bottom: 1px solid var(--border, rgba(127, 127, 127, 0.18));
   flex-shrink: 0;
+  /* The header is the drag handle. `touch-action: none` stops the OS scroll
+     gesture from stealing a drag on touch/pen input. */
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.terminal-dialog-head:active {
+  cursor: grabbing;
 }
 
 .terminal-dialog-title {

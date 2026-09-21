@@ -639,6 +639,30 @@ function Chat({
   );
   const onFinishRunner = useOnFinishRunner(attachOnFinishSession);
 
+  /**
+   * New terminal from the dialog's "+" button.
+   *
+   * Was passed as `() => undefined`, so the button silently did nothing — no
+   * session was ever created and no tab appeared. This is the real
+   * implementation, mirroring the Commands page: create the pty in the main
+   * process, then attach it so a tab shows up.
+   */
+  const handleNewOnFinishSession = useCallback((): void => {
+    void (async () => {
+      try {
+        const { id } = await window.hermesAPI.terminalCreate({
+          cwd: "",
+          cols: 80,
+          rows: 24,
+        });
+        onFinishDockRef.current?.attachSession(id, "Terminal");
+      } catch {
+        // Surface it: silently swallowing was how this button appeared broken.
+        toast.error("Failed to start terminal session.");
+      }
+    })();
+  }, []);
+
   // Refs so the finish effect can read the latest values WITHOUT adding them to
   // its deps: the effect must fire on the isLoading transition only, and
   // re-subscribing it on every arming change would drop the transition.
@@ -3374,7 +3398,7 @@ function Chat({
           <div className="terminal-dialog-holder" hidden={!onFinishDockOpen}>
             <TerminalDock
               ref={onFinishDockRef}
-              onNewSession={() => undefined}
+              onNewSession={handleNewOnFinishSession}
               onResizeStart={() => undefined}
               onResizeMove={() => undefined}
               onResizeEnd={() => undefined}
