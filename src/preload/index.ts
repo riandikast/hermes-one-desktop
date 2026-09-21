@@ -148,6 +148,10 @@ const hermesAPI = {
 
   relaunchApp: (): Promise<void> => ipcRenderer.invoke("relaunch-app"),
 
+  /** Installed, renderable font families for the appearance pane. */
+  listSystemFonts: (): Promise<string[]> =>
+    ipcRenderer.invoke("list-system-fonts"),
+
   onInstallProgress: (
     callback: (progress: {
       step: number;

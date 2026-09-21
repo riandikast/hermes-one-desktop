@@ -729,6 +729,14 @@ export const DEFAULT_FONT = "manrope";
 
 export const FONT_STORAGE_KEY = "hermes-font";
 
+/**
+ * Prefix marking a stored font value as an OS-installed family chosen from the
+ * settings picker (`system:Cascadia Code`) rather than one of the bundled
+ * presets above. Keeps user-chosen families distinguishable from presets in
+ * storage, and survives new presets being added later.
+ */
+export const SYSTEM_FONT_PREFIX = "system:";
+
 // ── Settings API Key Sections ───────────────────────────
 
 export const SETTINGS_SECTIONS: SectionDef[] = [

@@ -90,6 +90,10 @@ export default {
     manrope: "Manrope",
     gsans: "G Sans",
     hint: "Choose the interface font",
+    systemLabel: "Installed fonts",
+    systemHint: "Use a font installed on this computer",
+    searchPlaceholder: "Search fonts…",
+    noMatches: "No matching fonts",
   },
   hardwareAcceleration: {
     label: "Hardware acceleration",

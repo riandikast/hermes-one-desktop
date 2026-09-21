@@ -26,6 +26,7 @@ import type {
 import { stageAttachment, clearStagedAttachments } from "../attachment-staging";
 import { searchFileContents } from "../file-content-search";
 import { zoomBy, zoomApply } from "../zoom";
+import { listInstalledFonts } from "../system-fonts";
 import { promptApproval, type ApprovalPromptOptions } from "../gatewayPrompt";
 import { persistPromptImageAttachments } from "../session-attachment-store";
 import {
@@ -806,6 +807,11 @@ export function registerIpcHandlers(context: IpcContext): void {
     return setGpuPreference(mode);
   });
   ipcMain.handle("relaunch-app", () => relaunchApp());
+
+  // Installed font families for the appearance pane. Enumerated in the main
+  // process (the renderer cannot list system fonts in this Electron build) and
+  // verified renderable before being offered to the user.
+  ipcMain.handle("list-system-fonts", () => listInstalledFonts());
 
   // Hermes engine info
   ipcMain.handle("get-hermes-version", async () => {

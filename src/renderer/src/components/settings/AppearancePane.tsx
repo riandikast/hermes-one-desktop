@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check } from "lucide-react";
 import { useTheme } from "../ThemeProvider";
-import { useFont } from "../FontProvider";
-import { THEMES, FONT_OPTIONS } from "../../constants";
+import { useFont, buildFontStack } from "../FontProvider";
+import { THEMES, FONT_OPTIONS, SYSTEM_FONT_PREFIX } from "../../constants";
 import { useI18n } from "../useI18n";
 import type { GpuPreferenceMode, GpuStatus } from "../../../../shared/gpu";
 
@@ -30,6 +30,32 @@ export default function AppearancePane(): React.JSX.Element {
       return false;
     }
   });
+  // Installed font families, listed from the main process (the renderer cannot
+  // enumerate system fonts). Empty until loaded; also empty on a platform we
+  // could not enumerate, in which case only the built-in presets render.
+  const [systemFonts, setSystemFonts] = useState<string[]>([]);
+  const [fontQuery, setFontQuery] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    window.hermesAPI
+      ?.listSystemFonts?.()
+      .then((fonts) => {
+        if (!cancelled && Array.isArray(fonts)) setSystemFonts(fonts);
+      })
+      .catch(() => {
+        // Older main process without the handler: presets only.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredSystemFonts = useMemo(() => {
+    const q = fontQuery.trim().toLowerCase();
+    if (!q) return systemFonts;
+    return systemFonts.filter((f) => f.toLowerCase().includes(q));
+  }, [fontQuery, systemFonts]);
 
   useEffect(() => {
     window.hermesAPI
@@ -181,6 +207,59 @@ export default function AppearancePane(): React.JSX.Element {
             ))}
           </div>
         </div>
+
+        {systemFonts.length > 0 && (
+          <div className="settings-row settings-row--stacked">
+            <div className="settings-row-text">
+              <div className="settings-row-label">
+                {t("settings.font.systemLabel")}
+              </div>
+              <div className="settings-row-hint">
+                {t("settings.font.systemHint")}
+              </div>
+            </div>
+            <div className="settings-font-picker">
+              <input
+                className="settings-font-search"
+                type="search"
+                value={fontQuery}
+                placeholder={t("settings.font.searchPlaceholder")}
+                aria-label={t("settings.font.systemLabel")}
+                onChange={(event) => setFontQuery(event.target.value)}
+              />
+              <div className="settings-font-list" role="listbox">
+                {filteredSystemFonts.length === 0 ? (
+                  <div className="settings-font-empty">
+                    {t("settings.font.noMatches")}
+                  </div>
+                ) : (
+                  filteredSystemFonts.map((family) => {
+                    const value = SYSTEM_FONT_PREFIX + family;
+                    const active = font === value;
+                    return (
+                      <button
+                        key={family}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        className={`settings-font-item ${active ? "active" : ""}`}
+                        onClick={() => setFont(value)}
+                      >
+                        <span
+                          className="settings-font-preview"
+                          style={{ fontFamily: buildFontStack(family) }}
+                        >
+                          {family}
+                        </span>
+                        {active && <Check size={14} />}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {gpuStatus !== null && savedPref !== null && (
           <div className="settings-row">

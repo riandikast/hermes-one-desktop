@@ -278,6 +278,8 @@ interface HermesAPI {
   reenableGpu: () => Promise<boolean>;
   setGpuPreference: (mode: GpuPreferenceMode) => Promise<boolean>;
   relaunchApp: () => Promise<void>;
+  /** Installed, renderable font families for the appearance pane. */
+  listSystemFonts: () => Promise<string[]>;
   onInstallProgress: (
     callback: (progress: InstallProgress) => void,
   ) => () => void;

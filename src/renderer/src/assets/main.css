@@ -184,8 +184,8 @@
 [data-theme="vs-code"] {
   /* User-requested inversion vs stock Dark+: the CHAT canvas takes the
      sidebar gray and the sidebar takes the editor gray. */
-  --bg-primary: #252526;
-  --bg-secondary: #1e1e1e;
+  --bg-primary: #222222;
+  --bg-secondary: #181818;
   --bg-tertiary: #3c3c3c;
   --bg-elevated: #333333;
   --bg-hover: #2a2d2e;
@@ -195,7 +195,7 @@
   --accent-subtle: rgba(0, 120, 212, 0.18);
   --accent-text: #4fc1ff;
   --primary-yellow: #d7ba7d;
-  --text-primary: #cccccc;
+  --text-primary: #f8f8f7;
   --text-secondary: #9d9d9d;
   --text-muted: #858585;
   --border: rgba(255, 255, 255, 0.07);
@@ -13301,6 +13301,90 @@ body:has(.shell-vibrant),
 .settings-seg-btn.active {
   background: color-mix(in srgb, var(--text-primary) 12%, transparent);
   color: var(--text-primary);
+}
+
+/* Installed-font picker (Settings → Appearance).
+   A stacked row: the label/hint above a searchable, scrolling font list. */
+.settings-row--stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.settings-font-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings-font-search {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, #000 18%, transparent);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-family: var(--font-sans);
+  outline: none;
+}
+
+.settings-font-search:focus {
+  border-color: var(--accent, #8b7cf6);
+}
+
+.settings-font-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, #000 12%, transparent);
+}
+
+.settings-font-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 9px;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 1px);
+  background: none;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-font-item:hover {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-primary);
+}
+
+.settings-font-item.active {
+  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  color: var(--text-primary);
+}
+
+/* Each row previews its own family, so the list shows the real typeface. */
+.settings-font-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-font-empty {
+  padding: 12px 9px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  text-align: center;
 }
 
 /* Language picker dropdown */
