@@ -18,6 +18,10 @@ import type {
   ToolResultMessage,
 } from "./types";
 import { formatToolResult } from "./toolResultFormat";
+import {
+  detectOutputLanguage,
+  languageForReadResult,
+} from "./toolResultLanguage";
 import { TerminalCommand, TerminalOutput } from "./TerminalView";
 import { useAccordionOpen } from "./useAccordionOpen";
 
@@ -362,7 +366,14 @@ function textArg(parsed: Record<string, unknown>, keys: string[]): string {
   return "";
 }
 
-function ToolResultBody({ msg }: { msg: ToolResultMessage }): React.JSX.Element {
+function ToolResultBody({
+  msg,
+  sourcePath,
+}: {
+  msg: ToolResultMessage;
+  /** Path from the paired call, used to highlight read-file content. */
+  sourcePath?: string;
+}): React.JSX.Element {
   // Tool results are JSON envelopes ({"output": ...}, {"content": ...}); show
   // the payload, not the envelope. See toolResultFormat.ts.
   const result = formatToolResult(msg.content);
@@ -388,9 +399,23 @@ function ToolResultBody({ msg }: { msg: ToolResultMessage }): React.JSX.Element 
           {section.language === "bash" ? (
             <TerminalCommand command={section.body} />
           ) : section.label === "Output" ? (
-            // Command output is terminal text, not a code snippet: no fill and
-            // no code-block chrome, coloured by line instead.
-            <TerminalOutput body={section.body} />
+            // Command output stays in the terminal renderer: it colours by
+            // TERMINAL SEMANTICS (errors, diff lines, pass/fail), which is the
+            // useful signal for log text. It only leaves that path when the
+            // whole payload is unambiguously one structured document (e.g. a
+            // command that printed JSON), where a grammar is strictly better.
+            detectOutputLanguage(section.body) === "json" ? (
+              <CodeBlock language="json">{section.body}</CodeBlock>
+            ) : (
+              <TerminalOutput body={section.body} />
+            )
+          ) : section.label === "File content" ? (
+            // Read-file content is real source code, so it IS highlighted — by
+            // the file's own extension, never by guessing from the text.
+            // Line-number gutters ("618|") survive here as part of the body.
+            <CodeBlock language={languageForReadResult(sourcePath)}>
+              {section.body}
+            </CodeBlock>
           ) : (
             <CodeBlock language={section.language}>{section.body}</CodeBlock>
           )}
@@ -402,13 +427,17 @@ function ToolResultBody({ msg }: { msg: ToolResultMessage }): React.JSX.Element 
 
 function FileToolBody({
   msg,
+  sourcePath,
 }: {
   msg: ToolCallMessage | ToolResultMessage;
+  /** Path from the paired call — a result envelope has no path of its own. */
+  sourcePath?: string;
 }): React.JSX.Element {
   if (!isToolCall(msg)) {
     // File tools also return envelopes ({"content",...} on read,
-    // {"success","diff"} on write), so reuse the shared formatter.
-    return <ToolResultBody msg={msg} />;
+    // {"success","diff"} on write), so reuse the shared formatter. The path is
+    // forwarded so a read result can be syntax-highlighted by file type.
+    return <ToolResultBody msg={msg} sourcePath={sourcePath} />;
   }
   const parsed = parseToolArgs(msg.args);
   if (!parsed) return <pre className="chat-history-pre chat-history-pre--code">{msg.args || "(no arguments)"}</pre>;
@@ -460,8 +489,16 @@ function TerminalToolBody({
 
 const ToolActivityItem = memo(function ToolActivityItem({
   msg,
+  sourcePath,
 }: {
   msg: ToolItem;
+  /**
+   * The file path from this item's ORIGINATING CALL, passed down by the group
+   * (which is the only place that can pair a result with its call by callId).
+   * Read-file results carry no path of their own, so without this the body
+   * cannot be syntax-highlighted.
+   */
+  sourcePath?: string;
 }): React.JSX.Element {
   const [open, setOpen] = useState(() => {
     try {
@@ -560,7 +597,7 @@ const ToolActivityItem = memo(function ToolActivityItem({
             {isTerminalTool(msg.name) ? (
               <TerminalToolBody msg={msg} />
             ) : isFileTool(msg.name) ? (
-              <FileToolBody msg={msg} />
+              <FileToolBody msg={msg} sourcePath={sourcePath} />
             ) : call ? (
               <pre className="chat-history-pre chat-history-pre--code">
                 {msg.args || "(no arguments)"}
@@ -670,6 +707,17 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
   const title = toolActivityGroupTitle(items);
   const soloTool = singleToolName(items);
   const orderedItems = orderToolActivityItems(items);
+  // Pair each call with the file path it targets, so a read RESULT can be
+  // highlighted by file type. The result envelope carries no path, and the
+  // group is the only place holding both sides of the callId pairing.
+  const sourcePathByCallId = new Map<string, string>();
+  for (const item of items) {
+    if (!isToolCall(item) || !item.callId) continue;
+    const parsed = parseToolArgs(item.args);
+    if (!parsed) continue;
+    const path = textArg(parsed, ["path", "file", "file_path", "filename"]);
+    if (path) sourcePathByCallId.set(item.callId, path);
+  }
 
   return (
     <div
@@ -722,7 +770,11 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
           <div className="chat-tool-collapse-inner">
             <div className="chat-tool-group-items">
               {orderedItems.map((it, index) => (
-                <ToolActivityItem key={`${it.id}-${index}`} msg={it} />
+                <ToolActivityItem
+                  key={`${it.id}-${index}`}
+                  msg={it}
+                  sourcePath={sourcePathByCallId.get(it.callId)}
+                />
               ))}
             </div>
           </div>

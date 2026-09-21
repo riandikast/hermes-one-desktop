@@ -9636,6 +9636,30 @@ body:has(.shell-vibrant),
   background: transparent;
 }
 
+/* ── Read-file content: highlighted ON the existing surface ──────────────────
+   The user likes the current selected-text-style surface and wants syntax
+   highlighting ON TOP of it, not instead of it. So this keeps a real surface
+   (unlike the transparent terminal output above) and lets the Prism tokens
+   carry the colour. The header is kept because it names the detected language,
+   which makes a mis-detection obvious at a glance instead of mysterious. */
+.chat-tool-result-view .chat-code-block {
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+  border-radius: 7px;
+  background: var(--bg-tertiary, rgba(0, 0, 0, 0.18));
+  margin: 2px 0 0;
+}
+
+.chat-tool-result-view .chat-code-block .chat-code-header {
+  border-bottom: 1px solid var(--border, rgba(127, 127, 127, 0.16));
+  background: transparent;
+}
+
+/* The plain (unhighlighted) fallback must sit on the same surface, so an
+   unknown file type looks identical minus the token colours. */
+.chat-tool-result-view .chat-code-plain {
+  background: var(--bg-tertiary, rgba(0, 0, 0, 0.18));
+}
+
 .chat-tool-result-view--failed .chat-history-pre {
   color: var(--error, #ef4444);
 }
