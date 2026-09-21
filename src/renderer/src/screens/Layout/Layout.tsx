@@ -1220,8 +1220,9 @@ function Layout({
                   open/close swap. */}
               <PanelLeft size={16} />
             </button>
-            {/* Session search — filters the recent-sessions list. */}
-            {!sidebarCollapsed && (
+            {/* Session search — filters the recent-sessions list, so it only
+                applies on the Sessions tab. */}
+            {!sidebarCollapsed && sidebarTab === "sessions" && (
               <button
                 className="sidebar-collapse-toggle sidebar-search-toggle"
                 type="button"
@@ -1235,7 +1236,7 @@ function Layout({
             )}
           </div>
 
-          <nav className="sidebar-nav sidebar-nav-pinned">
+          <nav className="sidebar-nav sidebar-nav-pinned mt-2 ">
             {/* Sessions | Bots list switcher. Sits with the main navigation
                 (above New chat + the pinned items) so choosing the list is a
                 navigation action, not something that scrolls away with it. */}
@@ -1262,7 +1263,10 @@ function Layout({
                 </button>
               </div>
             )}
-            <div className="sidebar-new-chat-row">
+            {/* New chat is meaningless on the Bots tab — bots are started from
+                the bot rail's own "+" menu, not by minting a blank chat. */}
+            {sidebarTab === "sessions" && (
+              <div className="sidebar-new-chat-row mt-2">
               <button
                 className={`sidebar-nav-item sidebar-new-chat ${
                   view === "chat" && currentSessionId === null ? "active" : ""
@@ -1297,6 +1301,7 @@ function Layout({
                 />
               </button>
             </div>
+            )}
             <div
               className={`sidebar-pinned-items ${pinnedNavCollapsed ? "sidebar-pinned-items--collapsed" : ""}`}
             >

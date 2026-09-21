@@ -17,6 +17,7 @@ import type {
   ToolCallMessage,
   ToolResultMessage,
 } from "./types";
+import { formatToolResult } from "./toolResultFormat";
 
 /* ── Reasoning ────────────────────────────────────────────────────────── */
 // Collapse/expand state persists across unmounts (module-scoped, like
@@ -356,18 +357,31 @@ function textArg(parsed: Record<string, unknown>, keys: string[]): string {
 }
 
 function ToolResultBody({ msg }: { msg: ToolResultMessage }): React.JSX.Element {
-  let content = msg.content || "(no result)";
-  try {
-    const parsed = JSON.parse(content) as unknown;
-    if (parsed && typeof parsed === "object") content = JSON.stringify(parsed, null, 2);
-  } catch {
-    // Keep plain-text command output unchanged.
-  }
-  const failed = /\b(error|failed|failure)\b/i.test(content);
+  // Tool results are JSON envelopes ({"output": ...}, {"content": ...}); show
+  // the payload, not the envelope. See toolResultFormat.ts.
+  const result = formatToolResult(msg.content);
   return (
-    <div className={`chat-tool-result-view${failed ? " chat-tool-result-view--failed" : ""}`}>
-      <div className="chat-terminal-section-label">{failed ? "Error" : "Result"}</div>
-      <CodeBlock language={/^[\s\[{]/.test(content) ? "json" : "text"}>{content}</CodeBlock>
+    <div
+      className={`chat-tool-result-view${
+        result.tone === "error" ? " chat-tool-result-view--failed" : ""
+      }`}
+    >
+      <div className="chat-tool-result-head">
+        <span className="chat-terminal-section-label">{result.title}</span>
+        {result.meta.map((chip) => (
+          <span key={chip} className="chat-tool-result-chip">
+            {chip}
+          </span>
+        ))}
+      </div>
+      {result.sections.map((section, index) => (
+        <div key={`${section.label}-${index}`} className="chat-terminal-section">
+          {result.sections.length > 1 && (
+            <div className="chat-terminal-section-label">{section.label}</div>
+          )}
+          <CodeBlock language={section.language}>{section.body}</CodeBlock>
+        </div>
+      ))}
     </div>
   );
 }
@@ -378,12 +392,9 @@ function FileToolBody({
   msg: ToolCallMessage | ToolResultMessage;
 }): React.JSX.Element {
   if (!isToolCall(msg)) {
-    return (
-      <div className="chat-file-tool-view">
-        <div className="chat-terminal-section-label">Result</div>
-        <pre className="chat-history-pre chat-history-pre--scroll">{msg.content || "(no result)"}</pre>
-      </div>
-    );
+    // File tools also return envelopes ({"content",...} on read,
+    // {"success","diff"} on write), so reuse the shared formatter.
+    return <ToolResultBody msg={msg} />;
   }
   const parsed = parseToolArgs(msg.args);
   if (!parsed) return <pre className="chat-history-pre chat-history-pre--code">{msg.args || "(no arguments)"}</pre>;
@@ -409,14 +420,10 @@ function TerminalToolBody({
 }): React.JSX.Element {
   const call = isToolCall(msg);
   if (!call) {
-    return (
-      <div className="chat-terminal-section">
-        <div className="chat-terminal-section-label">Output</div>
-        <pre className="chat-history-pre chat-history-pre--scroll">
-          {msg.content || "(no output)"}
-        </pre>
-      </div>
-    );
+    // A terminal RESULT is the same {"output","exit_code"} envelope as any
+    // other tool result — run it through the same formatter so the exit code
+    // and unescaped output are shown instead of raw JSON.
+    return <ToolResultBody msg={msg} />;
   }
   const { command, cwd } = terminalCommand(msg.args);
   return (

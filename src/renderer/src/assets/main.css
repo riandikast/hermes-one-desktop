@@ -9418,6 +9418,31 @@ body:has(.shell-vibrant),
 
 .chat-tool-result-view {
   min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+/* Title + metadata chips above the payload. */
+.chat-tool-result-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-tool-result-chip {
+  padding: 1px 6px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  color: var(--text-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.chat-tool-result-view--failed .chat-tool-result-chip {
+  border-color: color-mix(in srgb, var(--danger, #e56b6f) 45%, var(--border));
 }
 
 .chat-tool-result-view .chat-history-pre {
