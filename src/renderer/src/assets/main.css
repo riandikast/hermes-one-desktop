@@ -10155,20 +10155,37 @@ body:has(.shell-vibrant),
   color: var(--text-primary);
 }
 
-/* Smooth height animation without measuring: 0fr → 1fr collapses the row. */
+/* Accordion: grid-template-rows 0fr -> 1fr animates height without hardcoding
+   a max-height (which would need a magic number and break on long content).
+   `min-height: 0` on the inner element is REQUIRED — without it the child's
+   content size wins and the row never actually collapses to zero. */
 .chat-tool-collapse {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 0.22s ease;
+  /* Slightly longer than a hover transition with an ease-out curve: collapsing
+     content reads as "settling" rather than snapping. */
+  transition:
+    grid-template-rows 0.26s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.2s ease;
+  opacity: 0.6;
 }
 
 .chat-tool-collapse--open {
   grid-template-rows: 1fr;
+  opacity: 1;
 }
 
 .chat-tool-collapse-inner {
   overflow: hidden;
   min-height: 0;
+}
+
+/* Respect users who ask the OS to reduce motion: expand instantly. */
+@media (prefers-reduced-motion: reduce) {
+  .chat-tool-collapse {
+    transition: none;
+    opacity: 1;
+  }
 }
 
 .chat-tool-group-items {

@@ -19,6 +19,7 @@ import type {
 } from "./types";
 import { formatToolResult } from "./toolResultFormat";
 import { TerminalCommand, TerminalOutput } from "./TerminalView";
+import { useAccordionOpen } from "./useAccordionOpen";
 
 /* ── Reasoning ────────────────────────────────────────────────────────── */
 // Collapse/expand state persists across unmounts (module-scoped, like
@@ -119,6 +120,10 @@ export const ReasoningRow = memo(function ReasoningRow({
       );
   }, [active, msg.text]);
 
+  // Same accordion treatment as the tool panels, so a thought expanding in
+  // doesn't pop open at full height either.
+  const openRendered = useAccordionOpen(open, true);
+
   // Typewriter state driven by TEXT GROWTH, not row position: interleaved
   // thinking (deltas arriving while the answer bubble already streams below)
   // must still type out its incoming text — the old trailing-row-only rule
@@ -190,7 +195,7 @@ export const ReasoningRow = memo(function ReasoningRow({
         </button>
         <div
           className={`chat-tool-collapse${
-            open ? " chat-tool-collapse--open" : ""
+            openRendered ? " chat-tool-collapse--open" : ""
           }`}
         >
           <div className="chat-tool-collapse-inner">
@@ -496,6 +501,9 @@ const ToolActivityItem = memo(function ToolActivityItem({
         checkAutoExpand,
       );
   }, []);
+  // Animate this item's own panel, so expanding a single tool step is a
+  // transition rather than a jump.
+  const openRendered = useAccordionOpen(open, true);
   useEffect(() => {
     const handleDisplayControl = (event: Event): void => {
       const detail = (event as CustomEvent<Partial<ChatDisplayControls>>).detail;
@@ -538,7 +546,7 @@ const ToolActivityItem = memo(function ToolActivityItem({
         <span className="chat-tool-item-detail">{itemDetail(msg)}</span>
       </button>
       <div
-        className={`chat-tool-collapse${open ? " chat-tool-collapse--open" : ""}`}
+        className={`chat-tool-collapse${openRendered ? " chat-tool-collapse--open" : ""}`}
       >
         <div className="chat-tool-collapse-inner">
           <div className="chat-tool-item-body">
@@ -611,6 +619,10 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
       }
       return next;
     });
+  // Animate the open transition instead of letting the panel spawn at full
+  // height. See useAccordionOpen for why a plain `open &&` render cannot
+  // animate: the first painted frame must be the collapsed one.
+  const openRendered = useAccordionOpen(open, true);
   // Auto-expand the GROUP too, not only the items inside it.
   //
   // The item-level listener was not enough: with only it, the setting opened
@@ -705,7 +717,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
           />
         </button>
         <div
-          className={`chat-tool-collapse${open ? " chat-tool-collapse--open" : ""}`}
+          className={`chat-tool-collapse${openRendered ? " chat-tool-collapse--open" : ""}`}
         >
           <div className="chat-tool-collapse-inner">
             <div className="chat-tool-group-items">
