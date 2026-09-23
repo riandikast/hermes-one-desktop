@@ -845,6 +845,9 @@ const hermesAPI = {
   gatewayStatus: (): Promise<boolean> => ipcRenderer.invoke("gateway-status"),
   setNativeAppearance: (source: "dark" | "light" | "system"): Promise<void> =>
     ipcRenderer.invoke("set-native-appearance", source),
+  /** Flash/stop the taskbar icon when the agent is blocked on the user. */
+  setWindowAttention: (on: boolean): Promise<void> =>
+    ipcRenderer.invoke("window:attention", on),
   dashboardStatus: (profile?: string): Promise<DashboardStatus> =>
     ipcRenderer.invoke("dashboard-status", profile),
   freshDashboardWsUrl: (profile?: string): Promise<string> =>

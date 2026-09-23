@@ -2986,6 +2986,27 @@ function Chat({
               onDeny={actions.handleDeny}
 
               onClarifyResolved={handleClarifyResolved}
+              onClarifyStuck={() => {
+                // The answer was submitted but the gateway never acknowledged it
+                // (the 5-minute clarify.respond timeout used to leave the turn
+                // spinning with no way forward). End it with a visible notice.
+                const activeTurn = activeTurnRef.current;
+                if (activeTurn) activeTurn.status = "failed";
+                setMessages((prev) => {
+                  const next = [
+                    ...prev,
+                    {
+                      id: `clarify-stuck-${Date.now()}`,
+                      role: "agent" as const,
+                      content: t("chat.clarify.stuck"),
+                    },
+                  ];
+                  messagesRef.current = next;
+                  return next;
+                });
+                activeTurnRef.current = null;
+                setIsLoading(false);
+              }}
 
               onClarifyRespond={
 

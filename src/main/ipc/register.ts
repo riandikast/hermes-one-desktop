@@ -1947,6 +1947,20 @@ export function registerIpcHandlers(context: IpcContext): void {
   });
   ipcMain.handle("window:is-maximized", () => getMainWindow()?.isMaximized() ?? false);
 
+  // Taskbar attention flash: the agent is BLOCKED on the user (a clarify card is
+  // waiting). Only fires when the window is not focused — flashing a window the
+  // user is already looking at is noise. `flashFrame(false)` stops it on answer;
+  // Electron also stops it automatically when the window gains focus.
+  ipcMain.handle("window:attention", (_event, on: unknown) => {
+    const win = getMainWindow();
+    if (!win) return;
+    if (on === true) {
+      if (!win.isFocused()) win.flashFrame(true);
+    } else {
+      win.flashFrame(false);
+    }
+  });
+
   // Dashboard/WebSocket transport probe. This is intentionally separate from
   // the current chat path while we validate the ordered event stream.
   ipcMain.handle("dashboard-status", (_event, profile?: string) =>

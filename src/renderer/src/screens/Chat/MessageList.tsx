@@ -148,6 +148,8 @@ interface MessageListProps {
   onDeny: () => void;
   onClarifyResolved: (requestId: string, answer: string) => void;
   onClarifyRespond?: (requestId: string, answer: string) => Promise<boolean>;
+  /** An answer that the gateway never acknowledged (stuck turn recovery). */
+  onClarifyStuck?: (requestId: string, answer: string) => void;
   agentAvatar?: AgentAvatarInfo;
   onRevertCheckpoint?: (msgId: string) => void;
   onUnsendLastUser?: (msgId: string, content: string) => void;
@@ -213,6 +215,8 @@ function buildRows(
     onDeny: () => void;
     onClarifyResolved: (requestId: string, answer: string) => void;
     onClarifyRespond?: (requestId: string, answer: string) => Promise<boolean>;
+    /** An answer that the gateway never acknowledged (stuck turn recovery). */
+    onClarifyStuck?: (requestId: string, answer: string) => void;
     onRevertCheckpoint?: (msgId: string) => void;
     onUnsendLastUser?: (msgId: string, content: string) => void;
     onOpenFileChanges?: (changes: FileChange[]) => void;
@@ -286,6 +290,7 @@ function buildRows(
           msg={msg as ClarifyMessage}
           onResolved={callbacks.onClarifyResolved}
           onRespond={callbacks.onClarifyRespond}
+          onStuck={callbacks.onClarifyStuck}
         />,
       );
       continue;
@@ -442,6 +447,7 @@ export const MessageList = memo(function MessageList({
   onDeny,
   onClarifyResolved,
   onClarifyRespond,
+  onClarifyStuck,
   agentAvatar,
   onRevertCheckpoint,
   onUnsendLastUser,
@@ -610,6 +616,7 @@ export const MessageList = memo(function MessageList({
       onDeny,
       onClarifyResolved,
       onClarifyRespond,
+      onClarifyStuck,
       onRevertCheckpoint,
       onUnsendLastUser,
       onOpenFileChanges,
@@ -621,6 +628,7 @@ export const MessageList = memo(function MessageList({
       onDeny,
       onClarifyResolved,
       onClarifyRespond,
+      onClarifyStuck,
       onRevertCheckpoint,
       onUnsendLastUser,
       onOpenFileChanges,

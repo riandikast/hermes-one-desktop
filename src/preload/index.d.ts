@@ -591,6 +591,8 @@ interface HermesAPI {
   restartGateway: (profile?: string) => Promise<boolean>;
   gatewayStatus: () => Promise<boolean>;
   setNativeAppearance: (source: "dark" | "light" | "system") => Promise<void>;
+  /** Flash/stop the taskbar icon when the agent is blocked on the user. */
+  setWindowAttention: (on: boolean) => Promise<void>;
   dashboardStatus: (profile?: string) => Promise<DashboardStatus>;
   freshDashboardWsUrl: (profile?: string) => Promise<string>;
   startDashboard: (profile?: string) => Promise<DashboardStatus>;

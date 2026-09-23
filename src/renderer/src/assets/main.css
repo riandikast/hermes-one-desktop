@@ -23289,3 +23289,10 @@ body:has(.shell-vibrant),
   margin: 8px 12px 0;
 }
 
+/* "or type your own answer" divider above the clarify textarea when the agent
+ * also offered quick-pick choices. */
+.chat-clarify-or {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 2px 0 4px;
+}
