@@ -167,8 +167,6 @@ interface UseDashboardChatTransportArgs {
   knowledgeBundles?: string[];
   /** PLAN mode: inject a system-role instruction forbidding file mutations. */
   planMode?: boolean;
-  /** Raw / minimal system prompt mode: suppresses default Hermes instructions. */
-  rawSystemPrompt?: boolean;
   setHermesSessionId: (id: string) => void;
   setIsLoading: (loading: boolean) => void;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
@@ -282,23 +280,17 @@ export async function submitDashboardPromptWithRecovery(
      *  named profile's chat would answer as `default`. session create/resume
      *  already pass it; prompt.submit must too. */
     profile?: string;
-    raw_system_prompt?: boolean;
   },
 ): Promise<string> {
   const profileParam =
     params.profile && params.profile !== "default"
       ? { profile: params.profile }
       : {};
-  const rawParam =
-    typeof params.raw_system_prompt === "boolean"
-      ? { raw_system_prompt: params.raw_system_prompt }
-      : {};
   try {
     await client.request("prompt.submit", {
       session_id: params.sessionId,
       text: params.text,
       ...profileParam,
-      ...rawParam,
     });
     return params.sessionId;
   } catch (err) {
@@ -320,7 +312,6 @@ export async function submitDashboardPromptWithRecovery(
       session_id: recoveredSessionId,
       text: params.text,
       ...profileParam,
-      ...rawParam,
     });
     return recoveredSessionId;
   }
@@ -1058,7 +1049,6 @@ export function useDashboardChatTransport({
   provider,
   knowledgeBundles,
   planMode,
-  rawSystemPrompt,
   watchChild,
   setHermesSessionId,
   setIsLoading,
@@ -1092,8 +1082,6 @@ export function useDashboardChatTransport({
   modelBaseUrlRef.current = modelBaseUrl;
   providerRef.current = provider;
   const reasoningSegmentClosedRef = useRef(false);
-  const rawSystemPromptRef = useRef(rawSystemPrompt);
-  rawSystemPromptRef.current = rawSystemPrompt;
   const appliedModelRef = useRef<string | null>(null);
   const recreateRuntimeSessionRef = useRef(false);
   const lastRuntimeSessionWasCreatedRef = useRef(false);
@@ -3067,7 +3055,6 @@ export function useDashboardChatTransport({
           storedSessionId: storedSessionIdRef.current,
           text: submitText,
           profile,
-          raw_system_prompt: rawSystemPromptRef.current,
           onRecoveredSessionId: (recoveredSessionId) => {
             runtimeSessionIdRef.current = recoveredSessionId;
           },

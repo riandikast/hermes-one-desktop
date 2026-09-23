@@ -62,7 +62,6 @@ interface UseChatActionsArgs {
   /** PLAN mode: inject a system instruction forbidding file mutations. */
   planMode?: boolean;
   /** Raw / minimal system prompt mode: suppresses default Hermes instructions. */
-  rawSystemPrompt?: boolean;
   /** Session-local model override — selected via the chat picker without
    *  persisting to config.yaml (issue #688). Carries the full identity so a
    *  cross-provider switch routes to the right backend, not just the model. */
@@ -133,7 +132,6 @@ export function useChatActions({
   contextFolders,
   knowledgeBundles,
   planMode,
-  rawSystemPrompt,
   sessionModel,
   sessionModelOverrideRef,
   sendViaDashboard,
@@ -193,7 +191,6 @@ export function useChatActions({
             ? knowledgeBundles
             : undefined,
           planMode,
-          rawSystemPrompt,
         );
       } catch {
         // onChatError IPC already surfaces this to the user
@@ -206,7 +203,6 @@ export function useChatActions({
       contextFolders,
       knowledgeBundles,
       planMode,
-      rawSystemPrompt,
       sendViaDashboard,
     ],
   );

@@ -12,6 +12,7 @@ import type { Mock } from "vitest";
 import type { DashboardRpcEvent } from "../dashboardGatewayClient";
 import {
   ensureDashboardRuntimeSession,
+  submitDashboardPromptWithRecovery,
   useDashboardChatTransport,
 } from "./useDashboardChatTransport";
 import type { ActiveTurn, ChatMessage, UsageState } from "../types";
@@ -915,6 +916,119 @@ describe("useDashboardChatTransport context gauge estimate (no usage payload)", 
     });
 
     expect(setUsage).not.toHaveBeenCalled();
+  });
+});
+
+describe("submitDashboardPromptWithRecovery — prompt.submit payload contract", () => {
+  // REGRESSION: the renderer used to send `raw_system_prompt` on EVERY
+  // prompt.submit. Newer Hermes backends reject unknown params
+  // ("invalid params for prompt.submit: raw_system_prompt: Extra inputs are not
+  // permitted"), which broke every send — not just when the fork's SYS/RAW
+  // toggle was on. The toggle was removed; this pins the wire shape so a stray
+  // extra field cannot silently break sending again.
+  type Call = { method: string; params: Record<string, unknown> };
+
+  const makeClient = (
+    onCall?: (call: Call) => void,
+    opts: { resume?: unknown } = {},
+  ) => {
+    const calls: Call[] = [];
+    const client = {
+      request: <T,>(method: string, params: unknown = {}): Promise<T> => {
+        const call = { method, params: (params ?? {}) as Record<string, unknown> };
+        calls.push(call);
+        onCall?.(call);
+        if (method === "session.resume") {
+          return Promise.resolve(
+            (opts.resume ?? {
+              session_id: "live-recovered",
+              resumed: "stored-1",
+            }) as unknown as T,
+          );
+        }
+        return Promise.resolve({} as unknown as T);
+      },
+    };
+    return { calls, client };
+  };
+
+  it("sends ONLY session_id, text and profile — no raw_system_prompt", async () => {
+    const { calls, client } = makeClient();
+    await submitDashboardPromptWithRecovery(client, {
+      sessionId: "live-1",
+      storedSessionId: "stored-1",
+      text: "hello",
+    });
+
+    const submit = calls.find((c) => c.method === "prompt.submit");
+    expect(submit).toBeDefined();
+    expect(submit?.params).toEqual({
+      session_id: "live-1",
+      text: "hello",
+    });
+    // The exact failure that prompted this test.
+    expect(submit?.params).not.toHaveProperty("raw_system_prompt");
+  });
+
+  it("omits profile for the default profile but sends it otherwise", async () => {
+    const a = makeClient();
+    await submitDashboardPromptWithRecovery(a.client, {
+      sessionId: "live-1",
+      text: "hi",
+      profile: "default",
+    });
+    expect(a.calls.find((c) => c.method === "prompt.submit")?.params).toEqual({
+      session_id: "live-1",
+      text: "hi",
+    });
+
+    const b = makeClient();
+    await submitDashboardPromptWithRecovery(b.client, {
+      sessionId: "live-1",
+      text: "hi",
+      profile: "work",
+    });
+    expect(b.calls.find((c) => c.method === "prompt.submit")?.params).toEqual({
+      session_id: "live-1",
+      text: "hi",
+      profile: "work",
+    });
+  });
+
+  it("keeps the payload clean on the session-not-found recovery retry too", async () => {
+    // First submit throws session-not-found; the helper resumes then retries.
+    // BOTH submits must be clean — the retry previously carried the param too.
+    let submitCount = 0;
+    const { calls, client } = makeClient(undefined, {
+      resume: { session_id: "live-recovered", resumed: "stored-1" },
+    });
+    const origRequest = client.request;
+    client.request = <T,>(method: string, params: unknown = {}) => {
+      if (method === "prompt.submit") {
+        submitCount += 1;
+        if (submitCount === 1) {
+          calls.push({ method, params: (params ?? {}) as Record<string, unknown> });
+          return Promise.reject(new Error("session not found")) as Promise<T>;
+        }
+      }
+      return origRequest<T>(method, params);
+    };
+
+    await submitDashboardPromptWithRecovery(client, {
+      sessionId: "live-dead",
+      storedSessionId: "stored-1",
+      text: "retry me",
+    });
+
+    const submits = calls.filter((c) => c.method === "prompt.submit");
+    expect(submits.length).toBe(2);
+    for (const submit of submits) {
+      expect(submit.params).not.toHaveProperty("raw_system_prompt");
+      for (const key of Object.keys(submit.params)) {
+        // The wire protocol is snake_case; a camelCase key is a renderer leak.
+        expect(key).toBe(key.toLowerCase());
+      }
+    }
   });
 });
 
