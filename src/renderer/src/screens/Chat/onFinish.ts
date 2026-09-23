@@ -161,6 +161,51 @@ export function readAllOnFinishSelections(): string[] {
   return [...ids];
 }
 
+/**
+ * Remove one command from EVERY scope's On-Finish queue.
+ *
+ * `readAllOnFinishSelections` unions all scopes, so the Commands page shows a
+ * command if ANY scope selected it. Removing from just one scope would leave
+ * the row visible, so removal must sweep every scope. Returns the number of
+ * scopes that changed (0 = it was not queued anywhere).
+ */
+export function removeOnFinishSelectionEverywhere(id: string): number {
+  let changed = 0;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      const isScoped = key.startsWith(`${ON_FINISH_SELECTION_KEY}.`);
+      if (!isScoped && key !== ON_FINISH_SELECTION_KEY) continue;
+      keys.push(key);
+    }
+    for (const key of keys) {
+      const scope = key.startsWith(`${ON_FINISH_SELECTION_KEY}.`)
+        ? key.slice(ON_FINISH_SELECTION_KEY.length + 1)
+        : ON_FINISH_DEFAULT_SCOPE;
+      const current = readOnFinishSelection(scope);
+      if (!current.includes(id)) continue;
+      writeOnFinishSelection(
+        current.filter((existing) => existing !== id),
+        scope,
+      );
+      changed += 1;
+    }
+    if (changed === 0) return 0;
+  } catch {
+    return changed;
+  }
+  // The per-scope writes above already dispatch; one extra notification keeps
+  // the Commands page honest when several scopes changed at once.
+  try {
+    window.dispatchEvent(new CustomEvent(ON_FINISH_CHANGE_EVENT));
+  } catch {
+    /* non-browser environment */
+  }
+  return changed;
+}
+
 /** Persist the ordered selection, writing explicit indices. */
 export function writeOnFinishSelection(
   ids: readonly string[],

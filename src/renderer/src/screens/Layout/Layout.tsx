@@ -1488,8 +1488,15 @@ function Layout({
           <TitleBar>
             <SearchBar
               initialFolders={
+                // Same precedence as Find-in-Files below: prefer the active
+                // session's LIVE folders, then the run's stored ones. Passing
+                // only `initialContextFolders` meant a folder picked in an
+                // existing chat never reached the bar — it kept showing
+                // "Open a folder to search" and never suggested anything.
+                activeSessionFolders ??
                 runs.find((run) => run.runId === activeRunId)
-                  ?.initialContextFolders ?? []
+                  ?.initialContextFolders ??
+                []
               }
               sessionId={
                 runs.find((run) => run.runId === activeRunId)?.sessionId ?? null

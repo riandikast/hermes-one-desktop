@@ -50,14 +50,24 @@ export function SearchBar({
 
   // Live folder tracking: Chat dispatches hermes-session-context-folder-changed
   // with { sessionId, folders } whenever the active session's folders change
-  // (sessionId may be null for a sessionless blank tab — matched only by a
-  // listener whose session id is also null).
+  // (sessionId may be null for a sessionless blank tab).
+  //
+  // Accept the update when the id MATCHES, or when either side is nullish: a
+  // resumed session briefly broadcasts with a null/stale id while the run's
+  // session id settles, and a strict `===` dropped that update — leaving the
+  // bar still believing no folder was set. Only a DIFFERENT non-null id (a
+  // background tab) is ignored, so scoping is preserved.
   useEffect(() => {
     const onFoldersChanged = (e: Event): void => {
-      const detail = (e as CustomEvent<{ sessionId?: string; folders?: string[] }>)
+      const detail = (e as CustomEvent<{ sessionId?: string | null; folders?: string[] }>)
         .detail;
-      if (!detail || detail.sessionId !== sessionId) return;
-      if (detail.folders) setFolders(detail.folders);
+      if (!detail?.folders) return;
+      const sameSession =
+        detail.sessionId === sessionId ||
+        !detail.sessionId ||
+        !sessionId;
+      if (!sameSession) return;
+      setFolders(detail.folders);
     };
     window.addEventListener("hermes-session-context-folder-changed", onFoldersChanged);
     return () =>

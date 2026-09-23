@@ -19,6 +19,7 @@ import { TerminalDock } from "./TerminalDock";
 import {
   ON_FINISH_CHANGE_EVENT,
   readAllOnFinishSelections,
+  removeOnFinishSelectionEverywhere,
 } from "../Chat/onFinish";
 
 export interface CommandItem {
@@ -377,18 +378,17 @@ export function CommandScreen(): React.JSX.Element {
         {error && <div className="command-error">{error}</div>}
 
         {onFinishIds.length > 0 && (
-          // READ-ONLY reflection of the On-Finish queue. The queue is edited
-          // from the chat's On-Finish chip, so this is status, not a control —
-          // two editable surfaces for one ordered list is how the order gets
-          // out of sync.
+          // Removal IS allowed here: the chat chip is the primary editor, but
+          // a queued command you want gone should not force a trip to another
+          // view. REORDERING stays in the chat chip — the queue is an ordered
+          // list, and two reorder surfaces is how the order drifts.
           <div className="command-onfinish-bar">
             <div className="command-onfinish-head">
               <span className="command-onfinish-title">
                 On-Finish queue ({onFinishIds.length})
               </span>
               <span className="command-onfinish-hint">
-                set from the On-Finish chip in the chat · runs in this order
-                after each reply
+                runs in this order after each reply · remove with ✕
               </span>
             </div>
             <ol className="command-onfinish-list">
@@ -402,6 +402,20 @@ export function CommandScreen(): React.JSX.Element {
                     <span className="command-onfinish-chip-name">
                       {cmd?.name ?? "(deleted)"}
                     </span>
+                    <button
+                      type="button"
+                      className="command-onfinish-chip-remove"
+                      title="Remove from the On-Finish queue"
+                      aria-label={`Remove ${cmd?.name ?? id} from the On-Finish queue`}
+                      onClick={() => {
+                        // Sweeps EVERY scope: this page unions all of them, so
+                        // clearing one scope would leave the row on screen.
+                        removeOnFinishSelectionEverywhere(id);
+                        setOnFinishIds(readAllOnFinishSelections());
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
                   </li>
                 );
               })}
