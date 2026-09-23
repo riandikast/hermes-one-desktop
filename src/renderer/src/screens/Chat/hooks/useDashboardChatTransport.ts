@@ -35,6 +35,7 @@ import type {
 } from "../types";
 import type { DesktopSessionContinuationItem } from "../../../../../shared/session-continuation";
 import type { SessionModelOverride } from "../../../../../shared/model-override";
+import { knowledgeChange, knowledgeKey } from "./knowledgeChange";
 
 /** First non-empty string field among the given keys (mirrors the adapter's
  *  canonical payload keys — gateway events vary between them). */
@@ -176,6 +177,10 @@ interface UseDashboardChatTransportArgs {
    *  unavailable on a remote/SSH connection and the renderer is falling back to
    *  the legacy HTTP transport. Lets the UI surface a one-time notice. */
   onDashboardUnavailable?: (reason: string) => void;
+  /** Fired when a mid-session knowledge toggle forces the runtime
+   *  session to be rebuilt on the next prompt (the agent only gains
+   *  the bundle from then on, never retroactively). */
+  onKnowledgeChanged?: (summary: string) => void;
 }
 
 interface UseDashboardChatTransportResult {
@@ -1056,6 +1061,7 @@ export function useDashboardChatTransport({
   setToolProgress,
   setUsage,
   onDashboardUnavailable,
+  onKnowledgeChanged,
 }: UseDashboardChatTransportArgs): UseDashboardChatTransportResult {
   const clientRef = useRef<DashboardGatewayClient | null>(null);
   const connectingRef = useRef<Promise<DashboardGatewayClient> | null>(null);
@@ -1132,6 +1138,18 @@ export function useDashboardChatTransport({
   >([]);
   const lastSyncedCwdRef = useRef<string | null>(null);
   const knowledgeIndexRef = useRef<string>("");
+  // The bundle set the LIVE runtime session was seeded with. A change here means
+  // the gateway's built context no longer matches the user's selection, so the
+  // runtime must be rebuilt on the next prompt (see the effect below).
+  const seededKnowledgeKeyRef = useRef<string | null>(null);
+  /** A knowledge change observed mid-turn, applied when the turn ends. */
+  const pendingKnowledgeKeyRef = useRef<string | null>(null);
+  const pendingKnowledgeSummaryRef = useRef<string | null>(null);
+  /** Reports a mid-session knowledge change so the UI can explain the timing. */
+  const onKnowledgeChangeRef = useRef<((summary: string) => void) | undefined>(
+    undefined,
+  );
+  onKnowledgeChangeRef.current = onKnowledgeChanged;
   const planModeRef = useRef<boolean>(Boolean(planMode));
   useEffect(() => {
     planModeRef.current = Boolean(planMode);
@@ -1142,12 +1160,18 @@ export function useDashboardChatTransport({
     const bundles = knowledgeBundles ?? [];
     if (!enabled || bundles.length === 0) {
       knowledgeIndexRef.current = "";
+      // An empty selection still counts as a change when the live session was
+      // seeded WITH bundles — the agent must stop seeing them.
+      maybeRecreateForKnowledge([]);
       return;
     }
     void window.hermesAPI
       .getKnowledgeIndex(bundles)
       .then((index) => {
-        if (!cancelled) knowledgeIndexRef.current = index;
+        if (!cancelled) {
+          knowledgeIndexRef.current = index;
+          maybeRecreateForKnowledge(bundles);
+        }
       })
       .catch(() => {
         knowledgeIndexRef.current = "";
@@ -1155,7 +1179,50 @@ export function useDashboardChatTransport({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, knowledgeBundles]);
+
+  /**
+   * Mark the live runtime session stale when the knowledge selection no longer
+   * matches what it was seeded with. The NEXT prompt then rebuilds the runtime
+   * through the transport's existing `recreateRuntimeSessionRef` path, which
+   * closes the old runtime and resumes the SAME stored session (no new sidebar
+   * row) with a freshly built knowledge index.
+   *
+   * A null `seededKnowledgeKeyRef` means no runtime exists yet, so the first
+   * prompt seeds correctly on its own — nothing to do.
+   */
+  function maybeRecreateForKnowledge(next: readonly string[]): void {
+    const seeded = seededKnowledgeKeyRef.current;
+    if (seeded === null) return;
+    const change = knowledgeChange(seeded ? seeded.split("\u0000") : [], next);
+    if (!change) return;
+    // Always latch the pending change: if we bailed out because a turn is in
+    // flight, the flag must still be applied once it ends — otherwise the
+    // toggle is silently lost, which is the exact bug this guards against.
+    pendingKnowledgeKeyRef.current = knowledgeKey(next);
+    if (change.summary) pendingKnowledgeSummaryRef.current = change.summary;
+    applyRecreateForKnowledge();
+  }
+
+  /**
+   * Arm `recreateRuntimeSessionRef` once no turn owns the UI, and flush the
+   * pending notice. Safe to call repeatedly (send path + turn end).
+   */
+  function applyRecreateForKnowledge(): void {
+    if (pendingKnowledgeKeyRef.current === null) return;
+    if (activeTurnRef.current) return; // re-applied when the turn completes
+    const summary = pendingKnowledgeSummaryRef.current;
+    pendingKnowledgeKeyRef.current = null;
+    pendingKnowledgeSummaryRef.current = null;
+    recreateRuntimeSessionRef.current = true;
+    if (summary) onKnowledgeChangeRef.current?.(summary);
+  }
+
+  /** Record the bundle key a newly seeded runtime session carries. */
+  function rememberSeededKnowledge(): void {
+    seededKnowledgeKeyRef.current = knowledgeKey(knowledgeBundles ?? []);
+  }
 
   // Attached workspace folder → system-prompt index (like the knowledge
   // bundles): the model learns the folder's structure by DEFAULT, without
@@ -2106,6 +2173,9 @@ export function useDashboardChatTransport({
         const activeTurn = activeTurnRef.current;
         if (activeTurn) activeTurn.status = failed ? "failed" : "completed";
         activeTurnRef.current = null;
+        // A knowledge toggle made DURING this turn was latched; apply it now
+        // so the next prompt rebuilds the runtime with the fresh index.
+        applyRecreateForKnowledge();
         clearQuietFinalize();
         setToolProgress(null);
         setIsLoading(false);
@@ -2486,6 +2556,8 @@ export function useDashboardChatTransport({
         targetSessionId = response.runtimeSessionId;
         runtimeSessionIdRef.current = targetSessionId;
         lastRuntimeSessionWasCreatedRef.current = response.created;
+        // The gateway now holds a context built from THIS bundle set.
+        rememberSeededKnowledge();
         justCreated = response.created;
         if (justCreated && contextFolder) {
           lastSyncedCwdRef.current = contextFolder;

@@ -1925,6 +1925,11 @@ function Chat({
     setUsage,
 
     onDashboardUnavailable: handleDashboardUnavailable,
+    onKnowledgeChanged: (summary) => {
+      // The gateway rebuilds its context on the NEXT prompt, so say so
+      // rather than let the user assume the toggle applied retroactively.
+      addAgentMessage(knowledgeChangeNotice(summary));
+    },
 
   });
 

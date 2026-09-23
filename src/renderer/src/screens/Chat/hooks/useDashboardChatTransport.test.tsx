@@ -58,6 +58,10 @@ interface HarnessApi {
   setModel?: Dispatch<SetStateAction<string>>;
   setPlanMode?: Dispatch<SetStateAction<boolean>>;
   setProvider?: Dispatch<SetStateAction<string>>;
+  /** Flip the attached knowledge bundles mid-session. */
+  setKnowledgeBundles?: Dispatch<SetStateAction<string[]>>;
+  /** Summaries reported through `onKnowledgeChanged`. */
+  knowledgeNotices?: string[];
 }
 
 const activeBadTurn: ActiveTurn = {
@@ -77,6 +81,7 @@ const activeRecoveryTurn: ActiveTurn = {
 function Harness({
   active = true,
   api,
+  initialKnowledgeBundles = [],
   fallbackOnUnavailable = false,
   initialConnectionMode = "local",
   initialPlanMode = false,
@@ -85,6 +90,7 @@ function Harness({
 }: {
   active?: boolean;
   api: HarnessApi;
+  initialKnowledgeBundles?: string[];
   fallbackOnUnavailable?: boolean;
   initialConnectionMode?: "local" | "remote" | "ssh";
   initialPlanMode?: boolean;
@@ -102,6 +108,10 @@ function Harness({
   const [model, setModel] = useState("bad-model");
   const [provider, setProvider] = useState("bad-provider");
   const [planMode, setPlanMode] = useState(initialPlanMode);
+  const [knowledgeBundles, setKnowledgeBundles] = useState<string[]>(
+    initialKnowledgeBundles,
+  );
+  const knowledgeNotices = useRef<string[]>([]);
   const [connectionMode, setConnectionMode] = useState<
     "local" | "remote" | "ssh"
   >(initialConnectionMode);
@@ -114,6 +124,8 @@ function Harness({
     enabled: true,
     fallbackOnUnavailable,
     hermesSessionId: null,
+    knowledgeBundles,
+    onKnowledgeChanged: (summary) => knowledgeNotices.current.push(summary),
     messages,
     model,
     planMode,
@@ -141,6 +153,8 @@ function Harness({
       setModel,
       setPlanMode,
       setProvider,
+      setKnowledgeBundles,
+      knowledgeNotices: knowledgeNotices.current,
     });
   }, [
     activeTurnRef,
@@ -173,6 +187,7 @@ describe("useDashboardChatTransport recovery", () => {
           running: true,
         })),
         getSessionMessages: vi.fn(async () => []),
+        getKnowledgeIndex: vi.fn(async () => "KNOWLEDGE-INDEX"),
       },
     });
   });
@@ -1427,5 +1442,185 @@ describe("ensureDashboardRuntimeSession — subagent watch attach", () => {
     const params = resumeCall(calls)?.params as Record<string, unknown>;
     expect(params.session_id).toBe("stored-child");
     expect(params).not.toHaveProperty("lazy");
+  });
+});
+
+describe("mid-session knowledge toggle", () => {
+  beforeEach(() => {
+    // Self-contained API mock: this describe must not depend on another
+    // block's beforeEach having run.
+    Object.defineProperty(window, "hermesAPI", {
+      configurable: true,
+      value: {
+        freshDashboardWsUrl: vi.fn(async () => "ws://fresh-dashboard"),
+        recordSessionContinuation: vi.fn(async () => true),
+        recordSessionLocalError: vi.fn(async () => true),
+        startDashboard: vi.fn(async () => ({
+          connection: { wsUrl: "ws://127.0.0.1:12345" },
+          running: true,
+        })),
+        getSessionMessages: vi.fn(async () => []),
+        getKnowledgeIndex: vi.fn(async () => "KNOWLEDGE-INDEX"),
+      },
+    });
+  });
+
+  beforeEach(() => {
+    dashboardMock.close.mockClear();
+    dashboardMock.connect.mockClear();
+    dashboardMock.instances.length = 0;
+    dashboardMock.onEvent = null;
+    dashboardMock.request.mockReset();
+  });
+
+  it("rebuilds the runtime session on the next prompt instead of minting a new one", async () => {
+    // The index is seeded ONCE via session.create. A mid-session toggle must
+    // mark the runtime stale so the next prompt re-seeds it — while resuming the
+    // SAME stored session (a new session.create would add a sidebar row).
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") {
+        return { session_id: "live-1", stored_session_id: "stored-1" };
+      }
+      if (method === "session.resume") {
+        return { session_id: "live-2", resumed: "stored-1" };
+      }
+      if (method === "model.options") {
+        return { model: "bad-model", provider: "bad-provider", providers: [] };
+      }
+      return {};
+    });
+
+    const api: HarnessApi = {};
+    render(
+      <Harness
+        api={api}
+        initialConnectionMode="local"
+        initialKnowledgeBundles={["alpha"]}
+      />,
+    );
+
+    // First prompt seeds the runtime with the alpha bundle.
+    await act(async () => {
+      await api.send?.("first");
+    });
+    const createsAfterFirst = dashboardMock.request.mock.calls.filter(
+      (c) => c[0] === "session.create",
+    ).length;
+    expect(createsAfterFirst).toBe(1);
+
+    // End the turn so the user is back at the composer (the realistic moment
+    // to toggle a bundle).
+    await act(async () => {
+      dashboardMock.onEvent?.({
+        type: "message.complete",
+        payload: { content: "ok" },
+        session_id: "live-1",
+      });
+    });
+
+    // Toggle a bundle on mid-session. Before the fix this was a silent no-op.
+    await act(async () => {
+      api.setKnowledgeBundles?.(["alpha", "beta"]);
+    });
+
+    // The NEXT prompt must rebuild the runtime: the old runtime is closed and
+
+    // the SAME stored session is resumed (never a second create).
+    await act(async () => {
+      await api.send?.("second");
+    });
+    const methods = dashboardMock.request.mock.calls.map((c) => c[0]);
+    expect(methods).toContain("session.close");
+    expect(methods).toContain("session.resume");
+    expect(
+      methods.filter((m) => m === "session.create").length,
+      "recovery must not mint a second session row",
+    ).toBe(1);
+  });
+
+  it("reports the change so the UI can explain the timing", async () => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") {
+        return { session_id: "live-1", stored_session_id: "stored-1" };
+      }
+      if (method === "session.resume") {
+        return { session_id: "live-2", resumed: "stored-1" };
+      }
+      if (method === "model.options") {
+        return { model: "bad-model", provider: "bad-provider", providers: [] };
+      }
+      return {};
+    });
+
+    const api: HarnessApi = {};
+    render(
+      <Harness
+        api={api}
+        initialConnectionMode="local"
+        initialKnowledgeBundles={["alpha"]}
+      />,
+    );
+    await act(async () => {
+      await api.send?.("first");
+    });
+    await act(async () => {
+      dashboardMock.onEvent?.({
+        type: "message.complete",
+        payload: { content: "ok" },
+        session_id: "live-1",
+      });
+    });
+
+    await act(async () => {
+      api.setKnowledgeBundles?.(["alpha", "beta"]);
+    });
+
+    expect(api.knowledgeNotices).toContain("enabled “beta”");
+
+  });
+
+  it("does nothing when the selection is unchanged", async () => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") {
+        return { session_id: "live-1", stored_session_id: "stored-1" };
+      }
+      if (method === "model.options") {
+        return { model: "bad-model", provider: "bad-provider", providers: [] };
+      }
+      return {};
+    });
+
+    const api: HarnessApi = {};
+    render(
+      <Harness
+        api={api}
+        initialConnectionMode="local"
+        initialKnowledgeBundles={["alpha"]}
+      />,
+    );
+    await act(async () => {
+      await api.send?.("first");
+    });
+    await act(async () => {
+      dashboardMock.onEvent?.({
+        type: "message.complete",
+        payload: { content: "ok" },
+        session_id: "live-1",
+      });
+    });
+    dashboardMock.request.mockClear();
+
+
+    // Same set, different order — must be a no-op.
+    await act(async () => {
+      api.setKnowledgeBundles?.(["alpha"]);
+    });
+
+    await act(async () => {
+      await api.send?.("second");
+    });
+    const methods = dashboardMock.request.mock.calls.map((c) => c[0]);
+    expect(methods).not.toContain("session.close");
+    expect(api.knowledgeNotices ?? []).toHaveLength(0);
   });
 });
