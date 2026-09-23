@@ -64,8 +64,10 @@ function SubagentRow({
           <ChevronRight size={13} />
         </button>
       ) : (
-        // No child_session_id in the snapshot means the session cannot be
-        // opened yet; say so instead of offering a dead button.
+        // No child_session_id yet. Do NOT offer a button here: the opener
+        // resolves the id via getSessionMessages, so a subagent_id would open
+        // an empty broken tab — worse than no button. The id arrives on the
+        // subagent.start event; the roster merge keeps it once known.
         <span className="chat-subagent-nolink" title="Session not available yet">
           …
         </span>

@@ -94,7 +94,7 @@ export const ChatTurnStatus = memo(function ChatTurnStatus({
       <Loader2 size={13} className="chat-turn-status-spinner" />
       <span className="chat-turn-status-label">{label}</span>
       {isLoading && activeSubagentCount > 0 && (
-        <span> · {childrenLabel} running</span>
+        <span> · {childrenLabel} active</span>
       )}
       {isLoading && elapsed >= 1000 && (
         <span className="chat-turn-status-elapsed">

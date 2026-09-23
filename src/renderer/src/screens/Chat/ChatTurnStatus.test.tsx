@@ -26,7 +26,10 @@ describe("ChatTurnStatus", () => {
     );
     expect(screen.getByRole("status").textContent).toContain("Working…");
     expect(screen.getByRole("status").textContent).toContain(
-      "2 subagents running",
+      // "active", not "running": the roster now also counts children that are
+      // starting/queued (models word the status differently), so the label must
+      // not claim they are all running.
+      "2 subagents active",
     );
     rerender(
       <ChatTurnStatus
