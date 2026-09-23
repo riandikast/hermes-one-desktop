@@ -1250,6 +1250,8 @@ export function useDashboardChatTransport({
   // resets the timer; firing fails the turn with a clear error.
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const TURN_STALL_TIMEOUT_MS = 120_000;
+  /** Long budget for model-switch `/model` slash work (mirrors slashExec.ts). */
+  const SLASH_COMMAND_TIMEOUT_MS = 600_000;
 
   const clearStallTimer = useCallback((): void => {
     if (stallTimerRef.current !== null) {
@@ -2625,6 +2627,12 @@ export function useDashboardChatTransport({
             session_id: targetSessionId,
             command: resolvedCommand,
           },
+          // Same long budget as the user-typed slash path (slashExec.ts):
+          // a model switch shells out to `/model <provider>/<model>` and
+          // on a slow/remote gateway it legitimately runs past the 30s
+          // client default. Timing out here reported a scary popup while
+          // the gateway kept executing the switch anyway.
+          SLASH_COMMAND_TIMEOUT_MS,
         );
 
         const live = await client.request<ModelOptionsResponse>(
