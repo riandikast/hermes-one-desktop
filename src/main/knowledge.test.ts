@@ -138,6 +138,68 @@ describe("knowledge store", () => {
     expect(index).toContain("EXACT absolute path");
   });
 
+  it("lists EVERY toggled bundle even when the total exceeds the char budget", async () => {
+    // Regression: a single shared 2000-char budget consumed in bundle order made
+    // later bundles vanish from the index entirely, so an agent told "the file
+    // is in knowledge" could never find it (SS2/test were dropped in practice).
+    // Every requested bundle must be represented.
+    const bundles = ["b1", "b2", "b3", "b4", "b5", "b6"];
+    for (const b of bundles) {
+      await createKnowledgeBundle(b, tempDir);
+      // A meaty hint so the budget is genuinely stressed.
+      await writeKnowledgeFile(
+        b,
+        "doc.md",
+        `# ${b} doc\n${"x".repeat(300)}`,
+        tempDir,
+      );
+    }
+
+    const index = await buildKnowledgeIndex(bundles, tempDir);
+
+    for (const b of bundles) {
+      expect(index, `bundle ${b} missing from index`).toContain(`## ${b}`);
+      expect(index, `file path for ${b} missing`).toContain(
+        join(tempDir, "knowledge", b, "doc.md"),
+      );
+    }
+  });
+
+  it("never drops a file beyond the 12th in a bundle", async () => {
+    await createKnowledgeBundle("many", tempDir);
+    for (let i = 0; i < 20; i++) {
+      await writeKnowledgeFile("many", `f${i}.md`, `# File ${i}`, tempDir);
+    }
+
+    const index = await buildKnowledgeIndex(["many"], tempDir);
+
+    // The 13th+ files must still be addressable by the agent.
+    expect(index).toContain(join(tempDir, "knowledge", "many", "f19.md"));
+  });
+
+  it("bounds the total index size even with many bundles", async () => {
+    for (let i = 0; i < 40; i++) {
+      await createKnowledgeBundle(`big${i}`, tempDir);
+      await writeKnowledgeFile(
+        `big${i}`,
+        "doc.md",
+        `# big${i}\n${"y".repeat(400)}`,
+        tempDir,
+      );
+    }
+
+    const index = await buildKnowledgeIndex(
+      Array.from({ length: 40 }, (_, i) => `big${i}`),
+      tempDir,
+    );
+
+    // Sanity bound so the system prompt cannot grow without limit, while every
+    // bundle still gets its section header.
+    expect(index.length).toBeLessThan(20000);
+    expect(index).toContain("## big0");
+    expect(index).toContain("## big39");
+  });
+
   it("returns empty index for no bundles", async () => {
     const index = await buildKnowledgeIndex([], tempDir);
     expect(index).toBe("");

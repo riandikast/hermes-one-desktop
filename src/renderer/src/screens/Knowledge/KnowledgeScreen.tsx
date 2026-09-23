@@ -84,6 +84,13 @@ export function KnowledgeScreen(): React.JSX.Element {
 
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
 
+  // Right-click context menu on the file-list surface: {x, y} in viewport
+  // coords, or null when closed. Lets the user create a file without drilling
+  // back up to the bundle card's "+".
+  const [fileMenu, setFileMenu] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+
   // Focus + select the transient name inputs as soon as their bars appear, so
   // typing works immediately after clicking "New Bundle" / the add-file "+"
   // button (autoFocus alone misses cases where the input mounts while the
@@ -99,6 +106,25 @@ export function KnowledgeScreen(): React.JSX.Element {
     addFileInputRef.current?.focus();
     addFileInputRef.current?.select();
   }, [addingFileBundle]);
+
+  // Dismiss the file-list context menu on Escape, outside click, or scroll.
+  useEffect(() => {
+    if (!fileMenu) return;
+    const close = (): void => setFileMenu(null);
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setFileMenu(null);
+    };
+    window.addEventListener("click", close);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [fileMenu]);
 
   // ── Drill-down navigation ────────────────────────────────────────────────
   // The panes are no longer side by side: ONE full-width surface shows either
@@ -837,7 +863,9 @@ export function KnowledgeScreen(): React.JSX.Element {
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={() => setShowNewBundleInput((v) => !v)}
+            // Open-only: a second click must not silently discard an
+            // in-progress name (the bar is dismissed via Cancel/Escape/create).
+            onClick={() => setShowNewBundleInput(true)}
           >
             <Plus size={14} />
             <span>New Bundle</span>
@@ -862,7 +890,10 @@ export function KnowledgeScreen(): React.JSX.Element {
             placeholder="Bundle name (e.g. ui-guidelines)..."
             value={newBundleName}
             onChange={(e) => setNewBundleName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void handleCreateBundle()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void handleCreateBundle();
+              if (e.key === "Escape") setShowNewBundleInput(false);
+            }}
           />
           <button
             type="button"
@@ -964,11 +995,7 @@ export function KnowledgeScreen(): React.JSX.Element {
                               title="Add File"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setAddingFileBundle(
-                                  addingFileBundle === bundle.name
-                                    ? null
-                                    : bundle.name,
-                                );
+                                setAddingFileBundle(bundle.name);
                               }}
                             >
                               <Plus size={12} />
@@ -1035,10 +1062,10 @@ export function KnowledgeScreen(): React.JSX.Element {
                             placeholder="File name (e.g. style.md)..."
                             value={newFileName}
                             onChange={(e) => setNewFileName(e.target.value)}
-                            onKeyDown={(e) =>
-                              e.key === "Enter" &&
-                              void handleAddFile(bundle.name)
-                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") void handleAddFile(bundle.name);
+                              if (e.key === "Escape") setAddingFileBundle(null);
+                            }}
                           />
                           <button
                             type="button"
@@ -1080,12 +1107,54 @@ export function KnowledgeScreen(): React.JSX.Element {
               </span>
             </div>
 
-            <div className="knowledge-drill-scroll">
+            {/* Inline create bar for THIS bundle, right in the file list —
+                reachable by right-click without going back to the grid. */}
+            {addingFileBundle === activeBundle.name && (
+              <div className="knowledge-add-file-bar knowledge-add-file-bar--files">
+                <input
+                  ref={addFileInputRef}
+                  type="text"
+                  autoFocus
+                  placeholder="File name (e.g. style.md)..."
+                  value={newFileName}
+                  onChange={(e) => setNewFileName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleAddFile(activeBundle.name);
+                    if (e.key === "Escape") setAddingFileBundle(null);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-xs btn-primary"
+                  onClick={() => void handleAddFile(activeBundle.name)}
+                >
+                  Add
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost btn-xs"
+                  onClick={() => setAddingFileBundle(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            <div
+              className="knowledge-drill-scroll"
+              // Right-click anywhere on the file list (including empty space in
+              // an empty bundle) opens the create-file menu, so adding a file no
+              // longer requires backing out to the bundle card's "+".
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setFileMenu({ x: e.clientX, y: e.clientY });
+              }}
+            >
               {activeBundle.files.length === 0 ? (
                 <div className="knowledge-drill-empty">
                   <p>No files in this bundle yet.</p>
                   <p className="knowledge-drill-empty-hint">
-                    Click the + on the bundle card to add one.
+                    Right-click here (or use the + on the bundle card) to add one.
                   </p>
                 </div>
               ) : (
@@ -1358,7 +1427,32 @@ export function KnowledgeScreen(): React.JSX.Element {
           </div>
         )}
       </div>
-    </div>
+      {/* File-list context menu (right-click → create file) */}
+      {fileMenu && activeBundle && (
+        <div
+          className="knowledge-context-menu"
+          style={{ top: fileMenu.y, left: fileMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+          role="menu"
+        >
+          <button
+            type="button"
+            className="knowledge-context-item"
+            role="menuitem"
+            onClick={() => {
+              setFileMenu(null);
+              setNewFileName("");
+              // Open the inline create bar for the CURRENT bundle — no need
+              // to navigate back to the grid first.
+              setAddingFileBundle(activeBundle.name);
+            }}
+          >
+            <Plus size={13} />
+            <span>New file in “{activeBundle.name}”</span>
+          </button>
+        </div>
+      )}
+</div>
   );
 }
 

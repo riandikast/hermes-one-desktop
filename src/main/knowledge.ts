@@ -231,9 +231,14 @@ export async function importKnowledgeFolder(
   return found || { name: safeName, path: destDir, files: [] };
 }
 
-/** Cap for the assembled index (chars) — keeps the injected system message
- *  near the plan's ~300-500 token budget. */
+/** Cap for the assembled index (chars). A single shared budget let the first
+ *  bundles starve the rest, so it is now split EQUALLY per enabled bundle
+ *  (see `buildKnowledgeIndex`); the per-bundle floor below keeps that split
+ *  useful when many bundles are toggled at once. */
 const KNOWLEDGE_INDEX_MAX_CHARS = 2000;
+/** Floor for one bundle's share, so a large bundle count cannot shrink a
+ *  single bundle below "enough to list its file paths". */
+const KNOWLEDGE_INDEX_MIN_BUNDLE_CHARS = 600;
 /** Per-file hint length: first line of the file, truncated. */
 const KNOWLEDGE_INDEX_HINT_CHARS = 140;
 
@@ -282,41 +287,77 @@ export async function buildKnowledgeIndex(
   if (names.length === 0) return "";
 
   const root = await ensureKnowledgeDir(homeOverride);
-  const sections: string[] = [];
-  let budget = KNOWLEDGE_INDEX_MAX_CHARS;
 
+  // Collect every bundle's full file list FIRST, so the budget is split fairly.
+  // A single shared budget consumed in bundle order silently dropped whatever
+  // came last (a 6-bundle set blew 2000 chars before the final bundles, so an
+  // enabled bundle's files were never listed and the agent could not find a
+  // file the user could see). Each bundle now gets an equal share, and within a
+  // bundle every file gets at least its path — hints degrade before paths do.
+  const collected: Array<{ name: string; files: string[] }> = [];
   for (const name of names) {
-    if (budget <= 0) break;
     const bundlePath = join(root, name);
-    let entries: string[] = [];
     try {
-      entries = (await readdir(bundlePath, { withFileTypes: true }))
+      const files = (await readdir(bundlePath, { withFileTypes: true }))
         .filter((e) => e.isFile())
-        .map((e) => e.name);
+        .map((e) => e.name)
+        .sort();
+      if (files.length > 0) collected.push({ name, files });
     } catch {
       continue; // bundle missing/unreadable — skip it
     }
-    if (entries.length === 0) continue;
+  }
+  if (collected.length === 0) return "";
 
+  const perBundle = Math.max(
+    KNOWLEDGE_INDEX_MIN_BUNDLE_CHARS,
+    Math.floor(KNOWLEDGE_INDEX_MAX_CHARS / collected.length),
+  );
+
+  const sections: string[] = [];
+  for (const { name, files } of collected) {
+    const bundlePath = join(root, name);
+    let budget = perBundle;
     const lines: string[] = [];
-    for (const fileName of entries.slice(0, 12)) {
-      if (budget <= 0) break;
+
+    for (const fileName of files) {
+      const fullPath = join(bundlePath, fileName);
+      // The PATH is the load-bearing part (the agent must be able to open the
+      // file); never drop a file while there is room for its path alone.
+      const pathCost = fullPath.length + 4;
+      if (budget < pathCost) {
+        lines.push(`- …and ${files.length - lines.length} more file(s) in this bundle (list the directory to see them all)`);
+        break;
+      }
+
       let hint = "";
       try {
-        const content = await readFile(join(bundlePath, fileName), "utf8");
+        const content = await readFile(fullPath, "utf8");
         hint = extractKnowledgeHint(content);
       } catch {
         /* hint optional */
       }
-      const fullPath = join(bundlePath, fileName);
-      const line = hint ? `- ${fullPath} — ${hint}` : `- ${fullPath}`;
-      lines.push(line);
-      budget -= line.length;
-    }
-    if (lines.length === 0) continue;
 
-    const section = `## ${name}\n${lines.join("\n")}`;
-    sections.push(section);
+      const full = hint ? `- ${fullPath} — ${hint}` : `- ${fullPath}`;
+      // Keep the whole line when it fits; otherwise fall back to path-only so
+      // the file remains addressable rather than disappearing.
+      if (full.length <= budget) {
+        lines.push(full);
+        budget -= full.length;
+      } else {
+        const pathOnly = `- ${fullPath}`;
+        if (pathOnly.length <= budget) {
+          lines.push(pathOnly);
+          budget -= pathOnly.length;
+        } else {
+          lines.push(`- …and ${files.length - lines.length} more file(s) in this bundle (list the directory to see them all)`);
+          break;
+        }
+      }
+    }
+
+    if (lines.length === 0) continue;
+    sections.push(`## ${name}\n${lines.join("\n")}`);
   }
 
   if (sections.length === 0) return "";
