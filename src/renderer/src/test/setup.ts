@@ -39,6 +39,25 @@ if (typeof window !== "undefined" && !("PointerEvent" in window)) {
   window.PointerEvent = PointerEventShim;
 }
 
+
+// jsdom has no matchMedia; ThemeProvider and any responsive logic need it.
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: (query: string): MediaQueryList =>
+      ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  });
+}
+
 afterEach(() => {
   cleanup();
 });

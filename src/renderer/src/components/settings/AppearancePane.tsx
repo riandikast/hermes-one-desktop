@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check } from "lucide-react";
+import { Check, Pencil, Plus } from "lucide-react";
 import { useTheme } from "../ThemeProvider";
 import { useFont, buildFontStack } from "../FontProvider";
 import { THEMES, FONT_OPTIONS, SYSTEM_FONT_PREFIX } from "../../constants";
 import { useI18n } from "../useI18n";
+import {
+  isBuiltinTheme,
+  listThemes,
+  seedCustomFrom,
+  themeIdFromName,
+} from "../../theme/themeEditor";
 import type { GpuPreferenceMode, GpuStatus } from "../../../../shared/gpu";
+import ThemeEditor from "./ThemeEditor";
 
 const GPU_MODES: GpuPreferenceMode[] = ["auto", "on", "off"];
 // Show two rows of the 4-col grid up front (7 themes + a "more" tile); the
@@ -14,9 +21,12 @@ const THEME_PREVIEW_COUNT = 7;
 /** Theme, rounded corners, interface font, and hardware acceleration. */
 export default function AppearancePane(): React.JSX.Element {
   const { t } = useI18n();
-  const { theme, setTheme, rounded, setRounded } = useTheme();
+  const { theme, setTheme, rounded, setRounded, customThemes, saveCustomTheme } =
+    useTheme();
   const { font, setFont } = useFont();
   const [showAllThemes, setShowAllThemes] = useState(false);
+  // Theme editor: id of the theme being edited (null = closed).
+  const [editingThemeId, setEditingThemeId] = useState<string | null>(null);
   // Hardware acceleration is fixed pre-ready, so a changed preference only
   // applies after a relaunch; `savedPref` tracks what's on disk, `bootPref`
   // what this process actually launched with (to decide the restart prompt).
@@ -98,6 +108,14 @@ export default function AppearancePane(): React.JSX.Element {
     ? THEMES
     : THEMES.slice(0, THEME_PREVIEW_COUNT);
 
+  // All selectable themes, built-ins plus user-created ones from the editor.
+  const allThemes = useMemo(
+    () => listThemes(customThemes),
+    [customThemes],
+  );
+  const customOnly = allThemes.filter((th) => !th.builtin);
+  const newThemeId = `New theme${customOnly.length > 0 ? ` ${customOnly.length + 1}` : ""}`;
+
   return (
     <div className="settings-modal-pane">
       <div className="settings-field">
@@ -124,11 +142,87 @@ export default function AppearancePane(): React.JSX.Element {
                 </div>
                 <div className="settings-theme-card-row">
                   <span className="settings-theme-card-name">{th.name}</span>
-                  {active && (
-                    <span className="settings-theme-card-check">
-                      <Check size={14} />
+                  <span className="settings-theme-card-actions">
+                    {active && (
+                      <span className="settings-theme-card-check">
+                        <Check size={14} />
+                      </span>
+                    )}
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      className="settings-theme-edit-btn"
+                      title="Edit theme variables"
+                      aria-label={`Edit theme ${th.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingThemeId(th.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setEditingThemeId(th.id);
+                        }
+                      }}
+                    >
+                      <Pencil size={12} />
                     </span>
-                  )}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+          {/* User-created themes */}
+          {customOnly.map((th) => {
+            const active = theme === th.id;
+            return (
+              <button
+                key={th.id}
+                type="button"
+                className={`settings-theme-card ${active ? "active" : ""}`}
+                onClick={() => setTheme(th.id)}
+              >
+                <div
+                  className="settings-theme-preview"
+                  data-theme={th.id}
+                >
+                  <div className="settings-theme-preview-sidebar" />
+                  <div className="settings-theme-preview-main">
+                    <div className="settings-theme-preview-bar accent" />
+                    <div className="settings-theme-preview-bar text" />
+                    <div className="settings-theme-preview-bar" />
+                  </div>
+                </div>
+                <div className="settings-theme-card-row">
+                  <span className="settings-theme-card-name">{th.name}</span>
+                  <span className="settings-theme-card-actions">
+                    {active && (
+                      <span className="settings-theme-card-check">
+                        <Check size={14} />
+                      </span>
+                    )}
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      className="settings-theme-edit-btn"
+                      title="Edit theme variables"
+                      aria-label={`Edit theme ${th.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingThemeId(th.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setEditingThemeId(th.id);
+                        }
+                      }}
+                    >
+                      <Pencil size={12} />
+                    </span>
+                  </span>
                 </div>
               </button>
             );
@@ -142,8 +236,43 @@ export default function AppearancePane(): React.JSX.Element {
               {t("settings.theme.more", { count: hiddenThemeCount })}
             </button>
           )}
+          {/* Create a new theme seeded from the current palette */}
+          <button
+            type="button"
+            className="settings-theme-card settings-theme-more settings-theme-new"
+            title="Create a new theme from the current palette"
+            onClick={() => {
+              const activeId = theme === "system" ? "dark" : theme;
+              const sourceName = listThemes(customThemes).find(
+                (th) => th.id === activeId,
+              )?.name;
+              const name = `${sourceName ?? "Theme"} Copy`;
+              let id = themeIdFromName(name);
+              let n = 2;
+              while (id in customThemes || isBuiltinTheme(id)) {
+                id = themeIdFromName(`${name} ${n++}`);
+              }
+              saveCustomTheme(
+                id,
+                seedCustomFrom(activeId, id, name, customThemes),
+              );
+              setTheme(id);
+              setEditingThemeId(id);
+            }}
+          >
+            <Plus size={16} />
+            <span>New theme</span>
+          </button>
         </div>
       </div>
+
+      {editingThemeId && (
+        <ThemeEditor
+          editingId={editingThemeId}
+          onEdit={setEditingThemeId}
+          onClose={() => setEditingThemeId(null)}
+        />
+      )}
 
       {/* Grouped preferences — one card, row dividers, control on the right. */}
       <div className="settings-group">

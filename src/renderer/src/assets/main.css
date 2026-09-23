@@ -23030,3 +23030,215 @@ body:has(.shell-vibrant),
   z-index: 100;
   animation: fadeIn 0.15s ease;
 }
+
+/* ----- Theme editor (Settings → Appearance) ----- */
+.settings-theme-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.settings-theme-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  opacity: 0;
+  transition:
+    opacity var(--transition),
+    background var(--transition),
+    color var(--transition);
+}
+
+.settings-theme-card:hover .settings-theme-edit-btn,
+.settings-theme-edit-btn:focus-visible {
+  opacity: 1;
+}
+
+.settings-theme-edit-btn:hover {
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  color: var(--text-primary);
+}
+
+.settings-theme-new {
+  gap: 4px;
+  flex-direction: row;
+  color: var(--text-muted);
+}
+
+.settings-theme-new:hover {
+  color: var(--accent-text);
+}
+
+.theme-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+
+.theme-editor-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.theme-editor-name {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.theme-editor-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.theme-editor-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition),
+    border-color var(--transition);
+  white-space: nowrap;
+}
+
+.theme-editor-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-bright);
+}
+
+.theme-editor-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.theme-editor-btn.danger {
+  color: var(--error);
+}
+
+.theme-editor-btn.danger:hover:not(:disabled) {
+  border-color: var(--error);
+}
+
+.theme-editor-btn.primary {
+  color: #ffffff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.theme-editor-btn.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  color: #ffffff;
+}
+
+.theme-editor-preview {
+  height: 56px;
+}
+
+.theme-editor-vars {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.theme-editor-group-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.theme-editor-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+}
+
+.theme-editor-var-name {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 12px;
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.theme-editor-var-name code {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono, monospace);
+}
+
+.theme-editor-var-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.theme-editor-swatch {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.theme-editor-swatch::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.theme-editor-swatch::-webkit-color-swatch {
+  border: none;
+  border-radius: calc(var(--radius-sm) - 1px);
+}
+
+.theme-editor-var-input {
+  width: 190px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+}
+
+.theme-editor-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.theme-editor-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
