@@ -9,6 +9,9 @@ export interface ContextUsage {
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
   onCompact?: () => void;
+  /** "New session with context" — mint a fresh session seeded with a
+   *  handoff of this conversation's working state. */
+  onNewSessionWithContext?: () => void;
 }
 
 function fmtTokens(n: number): string {
@@ -40,6 +43,7 @@ export const ContextGauge = memo(function ContextGauge({
   cacheReadTokens,
   cacheWriteTokens,
   onCompact,
+  onNewSessionWithContext,
 }: ContextUsage): React.JSX.Element {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -144,6 +148,26 @@ export const ContextGauge = memo(function ContextGauge({
             }}
           >
             Compress Context (/compact)
+          </button>
+        )}
+        {onNewSessionWithContext && (
+          <button
+            type="button"
+            className="btn btn-secondary btn-xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              onNewSessionWithContext();
+            }}
+            style={{
+              marginTop: onCompact ? 4 : 6,
+              width: "100%",
+              fontSize: 11,
+              padding: "3px 6px",
+              cursor: "pointer",
+            }}
+            title="Start a fresh session seeded with a handoff of this conversation's working state"
+          >
+            New session with context
           </button>
         )}
       </div>

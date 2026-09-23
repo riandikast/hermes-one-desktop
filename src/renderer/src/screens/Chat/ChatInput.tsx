@@ -85,6 +85,8 @@ interface ChatInputProps {
   /** Context-window occupancy for the gauge; null until the first response. */
   contextUsage?: ContextUsage | null;
   onCompactContext?: () => void;
+  /** "New session with context" — surfaced inside the context gauge. */
+  onNewSessionWithContext?: () => void;
   /** Pre-send validation state. When `ok` is false, Send is disabled
    * and an inline banner explains why + how to fix it. */
   readiness?: ChatInputReadiness;
@@ -108,6 +110,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       profile,
       contextUsage,
       onCompactContext,
+      onNewSessionWithContext,
       readiness,
       toolbarExtras,
       slashCommands = SLASH_COMMANDS,
@@ -1219,9 +1222,18 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             )}
             <div className="chat-input-toolbar-spacer" />
             {contextUsage ? (
-              <ContextGauge {...contextUsage} onCompact={onCompactContext} />
+              <ContextGauge
+                {...contextUsage}
+                onCompact={onCompactContext}
+                onNewSessionWithContext={onNewSessionWithContext}
+              />
             ) : (
-              <ContextGauge used={0} window={0} onCompact={onCompactContext} />
+              <ContextGauge
+                used={0}
+                window={0}
+                onCompact={onCompactContext}
+                onNewSessionWithContext={onNewSessionWithContext}
+              />
             )}
             {isLoading ? (
               <button

@@ -8346,6 +8346,14 @@ body:has(.shell-vibrant),
   font-style: italic;
 }
 
+/* Action buttons inside the context tooltip (Compact / New session with
+ * context) must STACK: `.btn` is inline-flex, so two width:100% buttons
+ * would sit side by side on one line and — with the tooltip's nowrap —
+ * stretch the popover to ~2x its width, cropping it at the window edge. */
+.chat-ctx-tooltip .btn {
+  display: flex;
+}
+
 .chat-ctx-tooltip-title {
   font-weight: 600;
   color: var(--text-primary);

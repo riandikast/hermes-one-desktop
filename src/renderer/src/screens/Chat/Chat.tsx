@@ -87,6 +87,8 @@ import type { Attachment } from "../../../../shared/attachments";
 import type { SessionModelOverride } from "../../../../shared/model-override";
 
 import type { ActiveTurn, ChatBubbleMessage, ChatMessage, FileChange, UsageState } from "./types";
+import { buildSessionHandoff } from "./sessionHandoff";
+import { knowledgeChangeNotice } from "./hooks/knowledgeChange";
 
 import type { ContextUsage } from "./ContextGauge";
 
@@ -246,6 +248,11 @@ interface ChatProps {
 
   onNewChat?: () => void;
 
+  /** Start a FRESH session seeded with a handoff of this conversation's
+   *  working state (last turns verbatim + outline of earlier prompts).
+   *  Layout mints the new tab; Chat supplies the seed. */
+  onNewSessionWithContext?: (seed: ChatMessage[], title: string) => void;
+
   /** Optional callback to open Settings — from the config-health banner's
 
    *  "Show details" (no section) or a `/settings <section>` command, which
@@ -299,6 +306,8 @@ function Chat({
   onSessionStarted,
 
   onNewChat,
+
+  onNewSessionWithContext,
 
   onOpenDiagnose,
 
@@ -3247,6 +3256,17 @@ function Chat({
           onCompactContext={() => {
 
             void actions.handleSend("/compact");
+
+          }}
+
+          onNewSessionWithContext={() => {
+
+            // Build the compact handoff from the live transcript and hand it
+            // to Layout, which mints the seeded tab. Guarded upstream: the
+            // gauge is interactive only when no turn is streaming.
+            if (isLoading) return;
+            const { message, info } = buildSessionHandoff(messages);
+            onNewSessionWithContext?.([message], info.title);
 
           }}
 

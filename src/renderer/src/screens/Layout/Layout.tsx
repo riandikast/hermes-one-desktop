@@ -4,6 +4,7 @@ import {
   dbItemsToChatMessages,
   type DbHistoryItem,
 } from "../Chat/sessionHistory";
+import type { ChatMessage } from "../Chat/types";
 import {
   type ChatRun,
   mintRun,
@@ -716,6 +717,27 @@ function Layout({
     setActiveRunId(run.runId);
     setView("chat");
   }, [activeProfile]);
+
+  /** Mint a fresh tab seeded with a handoff block from the previous session
+   *  ("New session with context"). The seed rides `mintRun`'s `seed` — the
+   *  dashboard transport forwards it to the agent on `session.create`, and it
+   *  renders as the new session's opening bubble. The previous tab stays open
+   *  untouched so nothing is lost if the handoff missed something. */
+  const handleNewSessionWithContext = useCallback(
+    (seed: ChatMessage[], title: string) => {
+      const run = mintRun(activeProfile, seed);
+      run.title = title;
+      // Carry the outgoing session's workspace folders into the new tab.
+      const outgoing = runs.find((r) => r.runId === activeRunId);
+      if (outgoing?.initialContextFolders?.length) {
+        run.initialContextFolders = [...outgoing.initialContextFolders];
+      }
+      setRuns((prev) => [...prev, run]);
+      setActiveRunId(run.runId);
+      setView("chat");
+    },
+    [activeProfile, runs, activeRunId],
+  );
 
   const handleNewChatInProject = useCallback(
     (folderPath: string) => {
@@ -1570,6 +1592,7 @@ function Layout({
                   readOnly={run.readOnly}
                   onOpenSubagent={handleOpenSubagent}
                   onNewChat={handleNewChat}
+                  onNewSessionWithContext={handleNewSessionWithContext}
                   onOpenDiagnose={(section?: string) =>
                     openSettings(section, { profile: run.profile })
                   }
