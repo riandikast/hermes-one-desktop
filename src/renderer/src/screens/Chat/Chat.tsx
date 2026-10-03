@@ -1,11 +1,28 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import toast from "react-hot-toast";
 
-import { Globe, ClipboardList, Hammer, SlidersHorizontal, Terminal, Eye, FolderSearch } from "lucide-react";
+import {
+  Globe,
+  ClipboardList,
+  Hammer,
+  SlidersHorizontal,
+  Terminal,
+  Eye,
+  FolderSearch,
+} from "lucide-react";
 import { Spinner } from "../../assets/icons";
 
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
+import { LocalSessionCounter } from "./LocalSessionCounter";
+import { useSessionRefresh } from "./hooks/useSessionRefresh";
 import {
   ON_FINISH_CHANGE_EVENT,
   isOnFinishArmed,
@@ -32,6 +49,13 @@ import { ModelPicker } from "./ModelPicker";
 import { ReasoningEffortPicker } from "./ReasoningEffortPicker";
 import { setChatDisplayControls } from "./HistoryRow";
 import { migratePlanMode, readPlanMode, writePlanMode } from "./planMode";
+import {
+  migratePinnedMessages,
+  pinnedPreview,
+  readPinnedMessages,
+  writePinnedMessages,
+  type PinnedMessageRef,
+} from "./pinnedMessages";
 
 import { ContextFolderChip } from "./ContextFolderChip";
 
@@ -51,13 +75,9 @@ import { useChatIPC } from "./hooks/useChatIPC";
 import { useChatActions, parseBackgroundCommand } from "./hooks/useChatActions";
 
 import {
-
   useModelConfig,
-
   effectiveOverrideBaseUrl,
-
   effectiveProviderForModel,
-
 } from "./hooks/useModelConfig";
 
 import { useFastMode } from "./hooks/useFastMode";
@@ -67,11 +87,8 @@ import { useReasoningEffort } from "./hooks/useReasoningEffort";
 import { useLocalCommands } from "./hooks/useLocalCommands";
 
 import {
-
   dashboardChatEnabledForConnection,
-
   useDashboardChatTransport,
-
 } from "./hooks/useDashboardChatTransport";
 
 import { useI18n } from "../../components/useI18n";
@@ -86,7 +103,13 @@ import type { Attachment } from "../../../../shared/attachments";
 
 import type { SessionModelOverride } from "../../../../shared/model-override";
 
-import type { ActiveTurn, ChatBubbleMessage, ChatMessage, FileChange, UsageState } from "./types";
+import type {
+  ActiveTurn,
+  ChatBubbleMessage,
+  ChatMessage,
+  FileChange,
+  UsageState,
+} from "./types";
 import { buildSessionHandoff } from "./sessionHandoff";
 import { knowledgeChangeNotice } from "./hooks/knowledgeChange";
 
@@ -102,41 +125,29 @@ import { ChatTurnStatus } from "./ChatTurnStatus";
 import { ChatSubagentPanel } from "./ChatSubagentPanel";
 import { ChatSearch } from "./ChatSearch";
 
+import { dbItemsToChatMessages, hasPendingToolInTail } from "./sessionHistory";
+
 import { SLASH_COMMANDS, type SlashCommand } from "./slashCommands";
 
 import { reconcileSlashCatalog } from "./slash/commandCatalog";
 
 import {
-
   DESKTOP_SLASH_COMMANDS,
-
   LOCAL_DESKTOP_SLASH_COMMANDS,
-
 } from "./slash/desktopCommands";
 
 import type {
-
   AgentCommandsCatalogResponse,
-
   AgentSlashCommand,
-
 } from "./slash/types";
 
-
-
 interface QueuedMessage {
-
   text: string;
 
   attachments: Attachment[];
-
 }
 
-
-
 export type { ChatMessage } from "./types";
-
-
 
 // A single shared AudioContext for the "agent finished" chime. Creating a new
 
@@ -149,9 +160,7 @@ export type { ChatMessage } from "./types";
 let finishChimeCtx: AudioContext | null = null;
 
 function playFinishChime(): void {
-
   try {
-
     finishChimeCtx ??= new AudioContext();
 
     const ctx = finishChimeCtx;
@@ -185,19 +194,12 @@ function playFinishChime(): void {
     osc.start(ctx.currentTime);
 
     osc.stop(ctx.currentTime + 0.2);
-
   } catch {
-
     // AudioContext may be unavailable in some environments — ignore.
-
   }
-
 }
 
-
-
 interface ChatProps {
-
   /** Stable id for this conversation/run. One <Chat> is mounted per run; all
 
    *  remain mounted (background sessions) and only the active one is shown. */
@@ -219,6 +221,21 @@ interface ChatProps {
   /** Workspace context folders to pre-attach when mounting. */
 
   initialContextFolders?: string[];
+
+  /**
+   * Oldest DB row id in `initialMessages`. Long sessions open on their newest
+   * page, so older rows remain in state.db; "Show earlier" pages back from here.
+   */
+
+  initialOldestId?: number | null;
+
+  /** True when the DB holds rows older than `initialMessages`. */
+
+  initialHasMoreHistory?: boolean;
+
+  /** Highest DB row id in `initialMessages`; seeds the refresh cursor. */
+
+  initialNewestId?: number | null;
 
   /**
    * SUBAGENT watch window: this run is a delegated child session opened from
@@ -282,13 +299,9 @@ interface ChatProps {
    *  transcript show the agent's profile picture instead of the loading gif. */
 
   agentAppearance?: { color?: string | null; avatar?: string | null };
-
 }
 
-
-
 function Chat({
-
   runId,
 
   initialMessages,
@@ -298,6 +311,12 @@ function Chat({
   initialTitle,
 
   initialContextFolders,
+
+  initialOldestId,
+
+  initialHasMoreHistory,
+
+  initialNewestId,
 
   active = true,
 
@@ -324,9 +343,7 @@ function Chat({
   readOnly,
 
   onOpenSubagent,
-
 }: ChatProps): React.JSX.Element {
-
   const { t } = useI18n();
 
   // Identity + appearance of the agent this conversation is with. Passed to the
@@ -336,26 +353,33 @@ function Chat({
   // gif is only shown while a turn is generating).
 
   const agentAvatar = useMemo(
-
     () => ({
-
       name: profile ?? "default",
 
       color: agentAppearance?.color,
 
       avatar: agentAppearance?.avatar,
-
     }),
 
     [profile, agentAppearance?.color, agentAppearance?.avatar],
-
   );
 
   const [messages, setMessages] = useState<ChatMessage[]>(
-
     initialMessages ?? [],
-
   );
+
+  // Backward paging: the oldest row currently loaded, and whether older rows
+  // still exist in state.db. A long session opens on its newest page instead of
+  // reading every row (measured ~450ms + 14MB on a 29k-row session), so the
+  // transcript needs a way to walk back on demand.
+
+  const oldestLoadedIdRef = useRef<number | null>(initialOldestId ?? null);
+
+  const [hasMoreHistory, setHasMoreHistory] = useState(
+    initialHasMoreHistory ?? false,
+  );
+
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
 
   const [isLoading, setIsLoadingRaw] = useState(false);
 
@@ -368,50 +392,51 @@ function Chat({
   // "spinner disappeared but the chat keeps streaming" report.
 
   const setIsLoading = useCallback((loading: boolean): void => {
-
     if (!loading && isLoadingRef.current) {
-
       console.info(
-
         "[loading-diag] isLoading -> false",
 
         new Error().stack?.split("\n").slice(1, 5).join("\n"),
-
       );
-
     }
 
     setIsLoadingRaw(loading);
-
   }, []);
 
   const isLoadingRef = useRef(false);
 
   useEffect(() => {
-
     isLoadingRef.current = isLoading;
-
   }, [isLoading]);
 
   useEffect(() => {
-
     onLoadingChange?.(runId, isLoading);
-
   }, [runId, isLoading, onLoadingChange]);
-
-
 
   // Play a notification sound when the agent finishes responding
 
   const prevLoadingRef = useRef(isLoading);
 
-  useEffect(() => {
+  // Latest transcript, readable from the chime effect without adding `messages`
+  // to its dep array (which must stay [isLoading] so the effect fires only on
+  // the loading transition).
+  const messagesForChimeRef = useRef(messages);
+  messagesForChimeRef.current = messages;
 
+  useEffect(() => {
     const wasLoading = prevLoadingRef.current;
 
     prevLoadingRef.current = isLoading;
 
     if (!wasLoading || isLoading) return;
+
+    // Guard against a FALSE settle mid-turn. The transport can briefly flip
+    // isLoading false between a first response and continued work (the model
+    // writes interim text, then runs a tool). A still-pending tool means the
+    // turn is alive, so this transition is not a real completion — do NOT chime,
+    // and do NOT release the reasoning gates (which would reset the
+    // thinking/tool timers mid-turn).
+    if (hasPendingToolInTail(messagesForChimeRef.current)) return;
 
     // Agent just finished — play a short notification chime (shared context).
 
@@ -436,7 +461,8 @@ function Chat({
       const ids = readOnFinishSelection();
       if (ids.length === 0) return;
       try {
-        const list = (await window.hermesAPI.listCommands()) as OnFinishCommand[];
+        const list =
+          (await window.hermesAPI.listCommands()) as OnFinishCommand[];
         onFinishCommandsRef.current = list;
       } catch {
         // Fall back to the cached list rather than skipping the run.
@@ -446,27 +472,22 @@ function Chat({
         onFinishCommandsRef.current,
       );
     })();
-
   }, [isLoading]);
 
   const [hermesSessionId, setHermesSessionId] = useState<string | null>(
     initialSessionId ?? null,
-
   );
 
   // Surface the gateway session id upward whenever it resolves/changes.
 
   useEffect(() => {
-
     onSessionIdChange?.(runId, hermesSessionId);
-
   }, [runId, hermesSessionId, onSessionIdChange]);
 
   // A draft chat has no session id until its first turn, so the PLAN/BUILD
   // toggle writes under the run id. Once the session id exists, move that value
   // across and re-key future writes to the session (see planMode.ts).
   useEffect(() => {
-
     if (!hermesSessionId) return;
 
     if (planModeIdentityRef.current === hermesSessionId) return;
@@ -474,7 +495,17 @@ function Chat({
     migratePlanMode(planModeIdentityRef.current, hermesSessionId);
 
     planModeIdentityRef.current = hermesSessionId;
+  }, [hermesSessionId]);
 
+  // Same re-keying for pinned chat messages: pins made while this chat was a
+  // draft live under the run id, so move them onto the session id before that
+  // run id disappears with the tab.
+  const pinnedIdentityRef = useRef<string>(initialSessionId ?? runId);
+  useEffect(() => {
+    if (!hermesSessionId) return;
+    if (pinnedIdentityRef.current === hermesSessionId) return;
+    migratePinnedMessages(pinnedIdentityRef.current, hermesSessionId);
+    pinnedIdentityRef.current = hermesSessionId;
   }, [hermesSessionId]);
 
   // Same re-keying for the On-Finish queue: it was written under the run id
@@ -490,7 +521,6 @@ function Chat({
     setOnFinishSelected(readOnFinishSelection(hermesSessionId));
   }, [hermesSessionId]);
 
-
   // Best-effort title from the first user bubble (for the active-sessions bar).
 
   // Suppressed when a persisted title was restored (e.g. user-renamed) — the
@@ -500,31 +530,23 @@ function Chat({
   const reportedTitleRef = useRef(false);
 
   useEffect(() => {
-
     if (reportedTitleRef.current) return;
 
     if (initialTitle) {
-
       reportedTitleRef.current = true;
 
       return;
-
     }
 
     const firstUser = messages.find(
-
       (m) => m.role === "user" && "content" in m && m.content.trim(),
-
     );
 
     if (firstUser && "content" in firstUser) {
-
       reportedTitleRef.current = true;
 
       onTitleChange?.(runId, firstUser.content.slice(0, 60));
-
     }
-
   }, [runId, messages, onTitleChange, initialTitle]);
 
   const [toolProgress, setToolProgress] = useState<string | null>(null);
@@ -536,7 +558,6 @@ function Chat({
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   // Message the search wants brought into the rendered window.
   const [searchRevealId, setSearchRevealId] = useState<string | null>(null);
-
 
   const [usage, setUsage] = useState<UsageState | null>(null);
 
@@ -557,21 +578,15 @@ function Chat({
   // per-turn FileChangesRow chip only — the in-bubble badge was removed.
 
   const [fileChangesOpen, setFileChangesOpen] = useState<FileChange[] | null>(
-
     null,
-
   );
 
   const [connectionMode, setConnectionMode] = useState<
-
     "local" | "remote" | "ssh"
-
   >("local");
 
   const [chatTransportPreference, setChatTransportPreference] = useState<
-
     "auto" | "dashboard" | "legacy"
-
   >("auto");
 
   const [connectionModeLoaded, setConnectionModeLoaded] = useState(false);
@@ -583,15 +598,11 @@ function Chat({
   // reset on new chat below.
 
   const [contextFolders, setContextFolders] = useState<string[]>(
-
     initialContextFolders ?? [],
-
   );
 
   const [attachedKnowledgeBundles, setAttachedKnowledgeBundles] = useState<
-
     string[]
-
   >([]);
 
   // PLAN / BUILD mode toggle. Persisted PER SESSION so a re-opened
@@ -677,21 +688,46 @@ function Chat({
    * implementation, mirroring the Commands page: create the pty in the main
    * process, then attach it so a tab shows up.
    */
+  const onFinishCreatingRef = useRef(false);
   const handleNewOnFinishSession = useCallback((): void => {
+    if (onFinishCreatingRef.current) return;
+    onFinishCreatingRef.current = true;
     void (async () => {
       try {
+        // Spawn in the chat's project folder when it has one, so the terminal
+        // opens where the work actually is instead of the Hermes home dir.
+        // `contextFolders[0]` is the active context folder (see ContextFolderChip).
+        const cwd = (contextFolders[0] ?? "").trim();
+        const dock = onFinishDockRef.current;
+        // One terminal per directory: reuse an existing session already rooted
+        // in this project rather than piling up duplicates on every open.
+        if (cwd) {
+          const existing = dock?.findSessionByCwd(cwd);
+          if (existing) {
+            dock?.focusSession(existing);
+            return;
+          }
+        }
         const { id } = await window.hermesAPI.terminalCreate({
-          cwd: "",
+          cwd,
           cols: 80,
           rows: 24,
         });
-        onFinishDockRef.current?.attachSession(id, "Terminal");
+        dock?.attachSession(
+          id,
+          cwd
+            ? cwd.split(/[\\/]/).filter(Boolean).pop() || "Terminal"
+            : "Terminal",
+          cwd || undefined,
+        );
       } catch {
         // Surface it: silently swallowing was how this button appeared broken.
         toast.error("Failed to start terminal session.");
+      } finally {
+        onFinishCreatingRef.current = false;
       }
     })();
-  }, []);
+  }, [contextFolders]);
 
   // Refs so the finish effect can read the latest values WITHOUT adding them to
   // its deps: the effect must fire on the isLoading transition only, and
@@ -726,7 +762,6 @@ function Chat({
 
   const togglePlanMode = useCallback(() => {
     setPlanMode((prev) => {
-
       const next = !prev;
 
       // Persist against THIS conversation's identity (session id once known,
@@ -735,9 +770,7 @@ function Chat({
       writePlanMode(planModeIdentityRef.current, next);
 
       return next;
-
     });
-
   }, []);
 
   // Gate folder persistence until the stored value for a resumed session has
@@ -750,160 +783,99 @@ function Chat({
 
   const contextFolderLoadedRef = useRef<boolean>(!initialSessionId);
 
-
-
   // Restore the folder linked to a resumed session (once, on mount).
 
   useEffect(() => {
-
     if (!initialSessionId) return;
 
     let cancelled = false;
 
     void (async () => {
-
       try {
-
         const folders =
-
           await window.hermesAPI.getSessionContextFolder(initialSessionId);
 
         if (!cancelled && folders && folders.length > 0)
-
           setContextFolders(folders);
-
       } catch {
-
         /* best-effort — a missing folder just leaves the session unlinked */
-
       } finally {
-
         if (!cancelled) contextFolderLoadedRef.current = true;
-
       }
-
     })();
 
     return () => {
-
       cancelled = true;
-
     };
-
   }, [initialSessionId]);
-
-
 
   // Load attached knowledge bundles for this session
 
   useEffect(() => {
-
     if (!hermesSessionId) {
-
       return;
-
     }
 
     try {
-
       const raw = localStorage.getItem(
-
         `hermes.session.knowledge.${hermesSessionId}`,
-
       );
 
       if (raw) {
-
         setAttachedKnowledgeBundles(JSON.parse(raw));
-
       } else {
-
         // If bundles were attached during a new chat before hermesSessionId was assigned,
 
         // persist them under the new session ID so they don't auto-reset to empty.
 
         setAttachedKnowledgeBundles((prev) => {
-
           if (prev.length > 0) {
-
             try {
-
               localStorage.setItem(
-
                 `hermes.session.knowledge.${hermesSessionId}`,
 
                 JSON.stringify(prev),
-
               );
-
             } catch {
-
               /* ignore */
-
             }
-
           }
 
           return prev;
-
         });
-
       }
-
     } catch {
-
       /* ignore */
-
     }
-
   }, [hermesSessionId]);
 
-
-
   const handleToggleKnowledgeBundle = useCallback(
-
     (bundleName: string) => {
-
       setAttachedKnowledgeBundles((prev) => {
-
         const next = prev.includes(bundleName)
-
           ? prev.filter((b) => b !== bundleName)
-
           : [...prev, bundleName];
 
         if (hermesSessionId) {
-
           try {
-
             localStorage.setItem(
-
               `hermes.session.knowledge.${hermesSessionId}`,
 
               JSON.stringify(next),
-
             );
-
           } catch {
-
             /* ignore */
-
           }
-
         }
 
         return next;
-
       });
-
     },
 
     [hermesSessionId],
-
   );
 
   useEffect(() => {
-
     // No hermesSessionId gate: a folder picked on a sessionless blank tab must
 
     // still propagate (sessionId: null) so the title-bar search / Find-in-Files
@@ -915,33 +887,23 @@ function Chat({
     if (!contextFolderLoadedRef.current) return;
 
     const payload = {
-
       sessionId: hermesSessionId,
 
       folders: contextFolders,
-
     };
 
     const broadcast = (): void => {
-
       window.dispatchEvent(
-
         new CustomEvent("hermes-session-context-folder-changed", {
-
           detail: payload,
-
         }),
-
       );
-
     };
 
     if (!hermesSessionId) {
-
       broadcast();
 
       return;
-
     }
 
     void window.hermesAPI
@@ -951,11 +913,8 @@ function Chat({
       .then(broadcast)
 
       .catch(() => {
-
         /* best-effort sidebar refresh signal */
-
       });
-
   }, [hermesSessionId, contextFolders]);
 
   // Whether the worktree panel is visible (only applies when folders are set)
@@ -985,7 +944,6 @@ function Chat({
   }, [worktreeVisible]);
 
   const [webPreviewUrl, setWebPreviewUrl] =
-
     useState<string>("https://google.com");
 
   // Explicit session-scoped model override — set only when the user picks
@@ -997,15 +955,11 @@ function Chat({
   // chats where the user never changed the model (issue #688).
 
   const [sessionModelOverride, setSessionModelOverride] = useState<
-
     SessionModelOverride | undefined
-
   >(undefined);
 
   const sessionModelOverrideRef = useRef<SessionModelOverride | undefined>(
-
     undefined,
-
   );
 
   const sessionModelOverrideLoadedRef = useRef<boolean>(!initialSessionId);
@@ -1021,7 +975,6 @@ function Chat({
   const activeTurnRef = useRef<ActiveTurn | null>(null);
 
   const dashboardChatEnabled = dashboardChatEnabledForConnection(
-
     import.meta.env.VITE_HERMES_DESKTOP_DASHBOARD_CHAT,
 
     connectionModeLoaded,
@@ -1029,91 +982,58 @@ function Chat({
     connectionMode,
 
     chatTransportPreference,
-
   );
 
-
-
   useEffect(() => {
-
     let cancelled = false;
 
     const loadConnectionConfig = async (): Promise<void> => {
-
       try {
-
         const conn = await window.hermesAPI.getConnectionConfig();
 
         let remoteAuthMode = conn.remoteAuthMode ?? "auto";
 
         if (conn.mode === "remote" && conn.remoteUrl.trim()) {
-
           try {
-
             remoteAuthMode = (
-
               await window.hermesAPI.probeRemoteAuthMode(conn.remoteUrl)
-
             ).authMode;
-
           } catch {
-
             // Keep stored transport choice when public status is unreachable.
-
           }
-
         }
 
         if (!cancelled) {
-
           setConnectionMode(conn.mode);
 
           setRemoteMode(conn.mode !== "local");
 
           setChatTransportPreference(
-
             conn.mode === "local"
-
               ? (conn.localChatTransport ?? "auto")
-
               : conn.mode === "ssh"
-
                 ? (conn.sshChatTransport ?? "auto")
-
                 : remoteAuthMode === "oauth"
-
                   ? "dashboard"
-
                   : (conn.remoteChatTransport ?? "auto"),
-
           );
-
         }
-
       } catch {
-
         if (!cancelled) {
-
           setConnectionMode("ssh");
 
           setRemoteMode(true);
 
           setChatTransportPreference("legacy");
-
         }
-
       } finally {
-
         if (!cancelled) setConnectionModeLoaded(true);
-
       }
-
     };
 
     void loadConnectionConfig();
 
     const unsubscribe = window.hermesAPI.onConnectionConfigChanged((conn) => {
-
       setConnectionModeLoaded(true);
 
       setConnectionMode(conn.mode);
@@ -1121,40 +1041,31 @@ function Chat({
       setRemoteMode(conn.mode !== "local");
 
       setChatTransportPreference(
-
         conn.mode === "local"
-
           ? "auto"
-
           : conn.mode === "ssh"
-
             ? (conn.sshChatTransport ?? "auto")
-
             : conn.remoteAuthMode === "oauth"
-
               ? "dashboard"
-
               : (conn.remoteChatTransport ?? "auto"),
-
       );
-
     });
 
     return (): void => {
-
       cancelled = true;
 
       unsubscribe();
-
     };
-
   }, []);
 
-
-
-  const { containerRef, contentRef, bottomRef, jumpToPresent, scrolledUpAtom, stopFollow } =
-
-    useChatScroll(messages);
+  const {
+    containerRef,
+    contentRef,
+    bottomRef,
+    jumpToPresent,
+    scrolledUpAtom,
+    stopFollow,
+  } = useChatScroll(messages);
 
   // Phase 2: scroll ownership moved to use-stick-to-bottom (official). The
 
@@ -1169,15 +1080,12 @@ function Chat({
   const modelConfig = useModelConfig(profile);
 
   const chatCurrentModel =
-
     sessionModelOverride?.model ?? modelConfig.currentModel;
 
   const chatCurrentProvider =
-
     sessionModelOverride?.provider ?? modelConfig.currentProvider;
 
   const chatCurrentBaseUrl =
-
     sessionModelOverride?.baseUrl ?? modelConfig.currentBaseUrl;
 
   const chatDisplayModel = sessionModelOverride
@@ -1193,8 +1101,6 @@ function Chat({
       sessionModelOverride.model
     : modelConfig.displayModel;
 
-
-
   // Append a record to the persistent usage log whenever the dashboard /
 
   // gateway transport reports a fresh usage payload. The hook dedupes
@@ -1207,7 +1113,9 @@ function Chat({
   // Cumulative-counter baseline for per-request usage deltas. `null` = no
   // trusted baseline yet (mount/resume/session switch); `baselineKnown`
   // marks sessions whose counters we watched start from zero.
-  const prevCumulativeRef = useRef<{ input: number; output: number } | null>(null);
+  const prevCumulativeRef = useRef<{ input: number; output: number } | null>(
+    null,
+  );
   const usageBaselineKnownRef = useRef(false);
   const prevUsageSessionIdRef = useRef<string | null>(hermesSessionId);
 
@@ -1225,14 +1133,14 @@ function Chat({
   // real delta; resumed/switched sessions only get a baseline (their first
   // observed value) and later events delta against it.
   useEffect(() => {
-    const startedFresh = prevUsageSessionIdRef.current === null && hermesSessionId !== null;
+    const startedFresh =
+      prevUsageSessionIdRef.current === null && hermesSessionId !== null;
     prevUsageSessionIdRef.current = hermesSessionId;
     prevCumulativeRef.current = null;
     usageBaselineKnownRef.current = startedFresh;
   }, [hermesSessionId]);
 
   useEffect(() => {
-
     if (!usage) return;
 
     if (usage.promptTokens === 0 && usage.completionTokens === 0) return;
@@ -1289,10 +1197,7 @@ function Chat({
     // Reset the throttle on session/profile change so a new session isn't
 
     // suppressed by an old throttle window.
-
   }, [usage, chatCurrentProvider, chatCurrentModel, recordUsage]);
-
-
 
   // Restore the model/provider linked to a resumed session. The saved value is
 
@@ -1301,25 +1206,19 @@ function Chat({
   // rewrites the global config.yaml default.
 
   useEffect(() => {
-
     if (!initialSessionId) return;
 
     let cancelled = false;
 
     void (async () => {
-
       try {
-
         const override =
-
           await window.hermesAPI.getSessionModelOverride(initialSessionId);
 
         if (!cancelled && override) {
-
           setSessionModelOverride(override);
 
           await modelConfig.selectModel(
-
             override.provider,
 
             override.model,
@@ -1327,32 +1226,19 @@ function Chat({
             override.baseUrl,
 
             { persist: false },
-
           );
-
         }
-
       } catch {
-
         /* best-effort — sessions without a saved pick use the global default */
-
       } finally {
-
         if (!cancelled) sessionModelOverrideLoadedRef.current = true;
-
       }
-
     })();
 
     return () => {
-
       cancelled = true;
-
     };
-
   }, [initialSessionId, modelConfig.selectModel]);
-
-
 
   // Persist the chat-local model/provider once a session exists. This stores
 
@@ -1361,34 +1247,24 @@ function Chat({
   // initial undefined state cannot erase its saved model before restore.
 
   useEffect(() => {
-
     if (!hermesSessionId || !sessionModelOverrideLoadedRef.current) return;
 
     void window.hermesAPI.setSessionModelOverride(
-
       hermesSessionId,
 
       sessionModelOverride ?? null,
-
     );
-
   }, [hermesSessionId, sessionModelOverride]);
 
-
-
   const {
-
     fastMode,
 
     toggle: toggleFastMode,
 
     set: setFastTier,
-
   } = useFastMode(profile);
 
   const { reasoningEffort, setReasoningEffort } = useReasoningEffort(profile);
-
-
 
   // Pre-send readiness — fail-open check that disables Send + shows
 
@@ -1401,7 +1277,6 @@ function Chat({
   // change so the banner reflects the current state.
 
   const [readiness, setReadiness] = useState<{
-
     ok: boolean;
 
     code?: string;
@@ -1411,40 +1286,27 @@ function Chat({
     fixLocation?: string;
 
     expectedEnvKey?: string;
-
   }>({ ok: true });
 
   useEffect(() => {
-
     let cancelled = false;
 
     (async (): Promise<void> => {
-
       try {
-
         const r = await window.hermesAPI.validateChatReadiness(profile);
 
         if (!cancelled) setReadiness(r);
-
       } catch {
-
         // Fail open on IPC error — never block Send on validation failure
 
         if (!cancelled) setReadiness({ ok: true });
-
       }
-
     })();
 
     return (): void => {
-
       cancelled = true;
-
     };
-
   }, [profile, chatCurrentModel, chatCurrentProvider, chatCurrentBaseUrl]);
-
-
 
   // Authoritative context-window size for the active model, resolved from the
 
@@ -1453,13 +1315,10 @@ function Chat({
   // advertises it — the gauge then falls back to the static heuristic.
 
   const [realContextWindow, setRealContextWindow] = useState<number | null>(
-
     null,
-
   );
 
   useEffect(() => {
-
     let cancelled = false;
 
     setRealContextWindow(null);
@@ -1469,7 +1328,6 @@ function Chat({
     window.hermesAPI
 
       .getModelContextWindow(
-
         chatCurrentProvider,
 
         chatCurrentModel,
@@ -1477,44 +1335,31 @@ function Chat({
         chatCurrentBaseUrl,
 
         profile,
-
       )
 
       .then((w) => {
-
         if (!cancelled && typeof w === "number" && w > 0) {
-
           setRealContextWindow(w);
-
         }
-
       })
 
       .catch(() => {
-
         /* fall back to heuristic */
-
       });
 
     return (): void => {
-
       cancelled = true;
-
     };
-
   }, [profile, chatCurrentModel, chatCurrentProvider, chatCurrentBaseUrl]);
-
-
 
   const visibleSessionScopeId = hermesSessionId ?? null;
 
-
-
   useChatIPC({
-
     runId,
 
     sessionScopeId: visibleSessionScopeId,
+
+    initialLastSyncedId: initialNewestId ?? null,
 
     setMessages,
 
@@ -1527,10 +1372,7 @@ function Chat({
     setUsage,
 
     activeTurnRef,
-
   });
-
-
 
   // No parent-driven reset effects: each run is its own <Chat key={runId}>
 
@@ -1539,8 +1381,6 @@ function Chat({
   // which mounted instance is shown — local state (session id, context folder,
 
   // queue) belongs to this run and persists while it streams in the background.
-
-
 
   // When this run becomes the active tab, jump to the present (latest message).
 
@@ -1553,13 +1393,11 @@ function Chat({
   const wasActiveRef = useRef(active);
 
   useLayoutEffect(() => {
-
     const wasActive = wasActiveRef.current;
 
     wasActiveRef.current = active;
 
     if (active && !wasActive) {
-
       // The pane flips `display:none → flex` on activation. useLayoutEffect
 
       // snaps BEFORE paint so the tab never blinks at the stale (pre-hide)
@@ -1571,76 +1409,54 @@ function Chat({
       // processing stream can't flip the pinned flag and abort the settle.
 
       return jumpToPresent(true);
-
     }
 
     return undefined;
-
   }, [active, jumpToPresent]);
-
-
 
   // Cmd/Ctrl+N → new chat. Only the active (visible) run handles it; otherwise
 
   // every mounted background Chat would fire onNewChat in parallel.
 
   useEffect(() => {
-
     if (!active) return;
 
     function onKey(e: KeyboardEvent): void {
-
       if ((e.metaKey || e.ctrlKey) && e.key === "n") {
-
         e.preventDefault();
 
         onNewChat?.();
-
       }
-
     }
 
     window.addEventListener("keydown", onKey);
 
     return () => window.removeEventListener("keydown", onKey);
-
   }, [active, onNewChat]);
-
-
 
   // Listen for in-app link clicks to load in the split-screen Web Preview panel
 
   useEffect(() => {
-
     if (!active) return;
 
     const handleNavigate = (e: Event): void => {
-
       const customEvent = e as CustomEvent<string>;
 
       const url = customEvent.detail;
 
       if (url) {
-
         setWebPreviewUrl(url);
 
         setWebPreviewVisible(true);
-
       }
-
     };
 
     document.addEventListener("web-preview:navigate", handleNavigate);
 
     return () => {
-
       document.removeEventListener("web-preview:navigate", handleNavigate);
-
     };
-
   }, [active]);
-
-
 
   // "Copy entire chat" context-menu items (issue #298) — serialise the whole
 
@@ -1648,31 +1464,33 @@ function Chat({
 
   // messages without re-registering the IPC listener on every chunk.
 
+  const { refreshing, refresh: refreshSession } = useSessionRefresh(
+    hermesSessionId,
+    isLoading || loadingEarlier,
+    messages,
+    setMessages,
+    () => {
+      setHasMoreHistory(false);
+      oldestLoadedIdRef.current = null;
+    },
+  );
   const messagesRef = useRef(messages);
 
   useEffect(() => {
-
     messagesRef.current = messages;
-
   });
 
   useEffect(() => {
-
     if (!active) return;
 
     return window.hermesAPI.onContextMenuCopyChat((format) => {
-
       const msgs = messagesRef.current;
 
       if (msgs.length === 0) return;
 
       void window.hermesAPI.copyToClipboard(buildChatTranscript(msgs, format));
-
     });
-
   }, [active]);
-
-
 
   // "Select All" on a message (issue #298): the native selectAll role would
 
@@ -1681,11 +1499,9 @@ function Chat({
   // cursor — the user can then Copy that message.
 
   useEffect(() => {
-
     if (!active) return;
 
     return window.hermesAPI.onContextMenuSelectBubble(({ x, y }) => {
-
       const bubble = document.elementFromPoint(x, y)?.closest(".chat-bubble");
 
       if (!bubble) return;
@@ -1695,66 +1511,78 @@ function Chat({
       selection?.removeAllRanges();
 
       selection?.selectAllChildren(bubble);
-
     });
-
   }, [active]);
-
-
 
   // Restrict the native context menu to chat bubbles and editable fields
 
   // so it doesn't appear on random UI chrome (sessions list, settings, etc.).
 
   useEffect(() => {
-
     if (!active) return;
 
     const onContextMenu = (e: MouseEvent): void => {
-
       const target = e.target as Element | null;
 
       const inBubble = target?.closest(".chat-bubble") != null;
 
       const inEditable =
-
         target?.closest("input, textarea, [contenteditable='true']") != null;
 
       if (!inBubble && !inEditable) {
-
         e.preventDefault();
-
       }
-
     };
 
     document.addEventListener("contextmenu", onContextMenu);
 
     return () => document.removeEventListener("contextmenu", onContextMenu);
-
   }, [active]);
 
-
+  // Load the previous page of history and PREPEND it. The transcript keeps a
+  // bottom-anchored scroll position, so an older page grows upward without
+  // jumping (MessageList re-anchors on prepend).
+  const loadEarlierHistory = useCallback(async () => {
+    const sessionId = hermesSessionId ?? initialSessionId ?? null;
+    const beforeId = oldestLoadedIdRef.current;
+    if (!sessionId || !beforeId || loadingEarlier || refreshing) return;
+    setLoadingEarlier(true);
+    try {
+      const page = await window.hermesAPI.getSessionMessagesBefore(
+        sessionId,
+        beforeId,
+      );
+      if (page.items.length > 0) {
+        const older = dbItemsToChatMessages(page.items);
+        setMessages((prev) => [...older, ...prev]);
+      }
+      oldestLoadedIdRef.current = page.oldestId ?? beforeId;
+      setHasMoreHistory(page.hasMore);
+    } catch {
+      // A failed page load is non-fatal: the already-loaded transcript stands
+      // and the button stays available to retry.
+    } finally {
+      setLoadingEarlier(false);
+    }
+  }, [
+    hermesSessionId,
+    initialSessionId,
+    loadingEarlier,
+    refreshing,
+    setMessages,
+  ]);
 
   const addAgentMessage = useCallback(
-
     (content: string) => {
-
       setMessages((prev) => [
-
         ...prev,
 
         { id: `agent-local-${Date.now()}`, role: "agent", content },
-
       ]);
-
     },
 
     [setMessages],
-
   );
-
-
 
   // Flip an inline clarify card to its resolved (read-only) state once the user
 
@@ -1763,53 +1591,36 @@ function Chat({
   // stays active until the next onChatDone.
 
   const handleClarifyResolved = useCallback(
-
     (requestId: string, answer: string, questionId?: string) => {
-
       setMessages((prev) =>
-
         prev.map((m) =>
-
           m.kind === "clarify" &&
           m.requestId === requestId &&
           // A batch shares one requestId across all of its questions — resolve
           // only the card that was actually answered.
           (questionId ? m.questionId === questionId : true)
-
             ? { ...m, answer, resolved: true }
-
             : m,
-
         ),
-
       );
-
     },
 
     [setMessages],
-
   );
 
-
-
   const handleClear = useCallback(() => {
-
     if (isLoading) {
-
       window.hermesAPI.abortChat(runId);
 
       setIsLoading(false);
-
     }
 
     const idToDelete = hermesSessionId;
 
     if (idToDelete) {
-
       void window.hermesAPI.deleteSession(idToDelete);
 
       void window.hermesAPI.clearStagedAttachments(idToDelete);
-
     }
 
     setMessages([]);
@@ -1835,13 +1646,9 @@ function Chat({
     queueRef.current = [];
 
     setQueuedMessages([]);
-
   }, [isLoading, runId, hermesSessionId, setMessages, modelConfig.reload]);
 
-
-
   const localCommands = useLocalCommands({
-
     profile,
 
     usage,
@@ -1853,10 +1660,7 @@ function Chat({
     onClear: handleClear,
 
     addAgentMessage,
-
   });
-
-
 
   // Fired once per connection when the dashboard WebSocket transport can't
 
@@ -1865,23 +1669,16 @@ function Chat({
   // #667) and we fall back to legacy chat. A fixed toast id dedupes.
 
   const handleDashboardUnavailable = useCallback(() => {
-
     toast(t("chat.dashboardUnavailableFallback"), {
-
       id: "dashboard-unavailable-fallback",
 
       icon: "ℹ️",
 
       duration: 8000,
-
     });
-
   }, [t]);
 
-
-
   const dashboardTransport = useDashboardChatTransport({
-
     active,
 
     activeTurnRef,
@@ -1930,29 +1727,20 @@ function Chat({
       // rather than let the user assume the toggle applied retroactively.
       addAgentMessage(knowledgeChangeNotice(summary));
     },
-
   });
 
-
-
   const [agentCommandCatalog, setAgentCommandCatalog] =
-
     useState<AgentCommandsCatalogResponse | null>(null);
 
   const getCommandCatalog = dashboardTransport.getCommandCatalog;
 
   const commandCatalogEnabled = dashboardTransport.enabled;
 
-
-
   useEffect(() => {
-
     if (!commandCatalogEnabled) {
-
       setAgentCommandCatalog(null);
 
       return;
-
     }
 
     if (!active) return;
@@ -1960,51 +1748,33 @@ function Chat({
     let cancelled = false;
 
     void getCommandCatalog()
-
       .then((catalog) => {
-
         if (!cancelled) setAgentCommandCatalog(catalog);
-
       })
 
       .catch(() => {
-
         if (!cancelled) setAgentCommandCatalog(null);
-
       });
 
     return () => {
-
       cancelled = true;
-
     };
-
   }, [active, commandCatalogEnabled, getCommandCatalog, profile]);
 
-
-
   const slashCatalog = useMemo(() => {
-
     const desktopCommands = [
-
       ...DESKTOP_SLASH_COMMANDS,
 
       ...LOCAL_DESKTOP_SLASH_COMMANDS,
-
     ];
 
     const desktopNames = new Set(
-
       desktopCommands.map((command) => command.name),
-
     );
 
     const fallbackAgentCommands: AgentSlashCommand[] = SLASH_COMMANDS.filter(
-
       (command) => !desktopNames.has(command.name.replace(/^\//, "")),
-
     ).map((command) => ({
-
       name: command.name,
 
       description: command.description,
@@ -2018,87 +1788,57 @@ function Chat({
       allowWhileBusy: true,
 
       supportsAttachments: false,
-
     }));
 
-
-
     return reconcileSlashCatalog({
-
       catalog: agentCommandCatalog,
 
       desktopCommands,
 
       fallbackAgentCommands,
-
     });
-
   }, [agentCommandCatalog]);
 
-
-
   const slashMenuCommands = useMemo<SlashCommand[]>(
-
     () =>
-
       slashCatalog.commands.map((command) => ({
-
         name: `/${command.name}`,
 
         description: command.description,
 
         category:
-
           command.target === "desktop"
-
             ? "info"
-
             : command.target === "model"
-
               ? "tools"
-
               : "agent",
 
         local: command.target === "desktop",
 
         takesArgs:
-
           command.target === "agent" ||
-
           command.target === "model" ||
-
           Boolean(command.argsHint),
-
       })),
 
     [slashCatalog],
-
   );
-
-
 
   // Defer a message onto the busy queue (used when a slash command resolves to
 
   // an agent prompt while a turn is already in flight).
 
   const enqueueMessage = useCallback(
-
     (text: string, attachments: Attachment[] = []) => {
-
       queueRef.current.push({ text, attachments });
 
       setQueuedMessages([...queueRef.current]);
-
     },
 
     [],
-
   );
 
-
-
   const actions = useChatActions({
-
     runId,
 
     profile,
@@ -2133,21 +1873,15 @@ function Chat({
     sessionModel: sessionModelOverride,
     sessionModelOverrideRef,
     sendViaDashboard: dashboardTransport.enabled
-
       ? dashboardTransport.sendMessage
-
       : undefined,
 
     execSlashViaDashboard: dashboardTransport.enabled
-
       ? dashboardTransport.execSlash
-
       : undefined,
 
     runBackgroundViaDashboard: dashboardTransport.enabled
-
       ? dashboardTransport.runBackground
-
       : undefined,
 
     addAgentMessage,
@@ -2155,14 +1889,9 @@ function Chat({
     enqueueMessage,
 
     abortDashboard: dashboardTransport.enabled
-
       ? dashboardTransport.abort
-
       : undefined,
-
   });
-
-
 
   // Stable ref to handleSend so the drain effect doesn't re-trigger on
 
@@ -2173,19 +1902,14 @@ function Chat({
   const handleBackgroundRef = useRef(actions.handleBackground);
 
   useEffect(() => {
-
     handleSendRef.current = actions.handleSend;
 
     handleBackgroundRef.current = actions.handleBackground;
-
   });
-
-
 
   // Drain queued messages one at a time when the agent finishes.
 
   useEffect(() => {
-
     if (isLoading) return;
 
     const next = queueRef.current.shift();
@@ -2195,7 +1919,6 @@ function Chat({
     setQueuedMessages([...queueRef.current]);
 
     handleSendRef.current(next.text, next.attachments, true).catch(() => {
-
       // Put the message back at the front so it isn't silently lost if
 
       // the send fails (e.g. IPC error before onChatError fires).
@@ -2203,27 +1926,17 @@ function Chat({
       queueRef.current.unshift(next);
 
       setQueuedMessages([...queueRef.current]);
-
     });
-
   }, [isLoading]);
 
-
-
   const handleRemoveQueued = useCallback((index: number) => {
-
     queueRef.current.splice(index, 1);
 
     setQueuedMessages([...queueRef.current]);
-
   }, []);
 
-
-
   const handleSubmitOrQueue = useCallback(
-
     (text: string, attachments: Attachment[]) => {
-
       // Side questions (`/btw`) run on a concurrent background agent, so they
 
       // must never queue — fire them immediately even while the main turn is in
@@ -2233,13 +1946,10 @@ function Chat({
       const bgQuestion = parseBackgroundCommand(text);
 
       if (bgQuestion !== null) {
-
         if (bgQuestion)
-
           void handleBackgroundRef.current(bgQuestion, attachments);
 
         return;
-
       }
 
       // The central slash router owns queueing policy. Dispatch every slash
@@ -2251,49 +1961,34 @@ function Chat({
       // they are queued.
 
       if (text.startsWith("/")) {
-
         void handleSendRef.current(text, attachments, true);
 
         return;
-
       }
 
       if (isLoading) {
-
         queueRef.current.push({ text, attachments });
 
         setQueuedMessages([...queueRef.current]);
 
         return;
-
       }
 
       void handleSendRef.current(text, attachments);
-
     },
 
     [isLoading],
-
   );
 
-
-
   const handleSuggestion = useCallback((text: string) => {
-
     chatInputRef.current?.setText(text);
-
   }, []);
 
-
-
   const handlePickFolder = useCallback(async () => {
-
     if (remoteMode) {
-
       setFolderPickerOpen(true);
 
       return;
-
     }
 
     const picked = await window.hermesAPI.selectFolder({ multiple: true });
@@ -2303,60 +1998,46 @@ function Chat({
     const added = Array.isArray(picked) ? picked : [picked];
 
     setContextFolders((prev) => {
-
       const seen = new Set(prev);
 
       return [...prev, ...added.filter((p) => !seen.has(p))];
-
     });
-
   }, [remoteMode]);
 
-
-
   const handleRemoveFolder = useCallback((path: string) => {
-
     setContextFolders((prev) => prev.filter((p) => p !== path));
-
   }, []);
-
-
 
   // Stable toolbar callbacks so the memoized ModelPicker / ContextFolderChip
 
   // don't re-render on every streaming chunk (each chunk re-renders <Chat>).
 
   const handleSelectModel = useCallback(
-
     (
       provider: string,
       model: string,
       baseUrl: string,
       providerLabel?: string,
     ) => {
-
-      const effectiveProvider = effectiveProviderForModel(provider, providerLabel);
+      const effectiveProvider = effectiveProviderForModel(
+        provider,
+        providerLabel,
+      );
       const override = model
-
         ? {
-
             provider: effectiveProvider,
             providerLabel,
 
             model,
 
             baseUrl: effectiveOverrideBaseUrl(provider, baseUrl),
-
           }
-
         : undefined;
 
       sessionModelOverrideRef.current = override;
 
       void modelConfig.selectModel(provider, model, baseUrl, {
-
         persist: false,
-
       });
 
       // Carry the full identity (not just the model name) so a cross-provider
@@ -2370,65 +2051,40 @@ function Chat({
       if (dashboardTransport.enabled && provider !== "auto") {
         void dashboardTransport.applyModelOverride(effectiveProvider, model);
       }
-
     },
 
     [modelConfig.selectModel, dashboardTransport],
-
   );
 
-
-
   const handleSelectRecentFolder = useCallback((path: string) => {
-
     setContextFolders((prev) => (prev.includes(path) ? prev : [...prev, path]));
-
   }, []);
-
-
-
-
-
 
   // Revert file-system to a prior turn via /rollback (gateway-side checkpoint
 
   // restore — same as AntiGravity's "revert to checkpoint").
 
   const handleRevertCheckpoint = useCallback(
-
     async (_msgId: string) => {
-
       const execSlash = dashboardTransport.enabled
-
         ? dashboardTransport.execSlash
-
         : undefined;
 
       if (!execSlash) return;
 
       try {
-
         const result = await execSlash("/rollback", () => {});
 
         if (result.kind === "error") {
-
           addAgentMessage?.(`revert error: ${result.message}`);
-
         }
-
       } catch {
-
         /* best-effort */
-
       }
-
     },
 
     [dashboardTransport, addAgentMessage],
-
   );
-
-
 
   // Un-send the last user message: remove it (and everything after) from the
 
@@ -2438,28 +2094,88 @@ function Chat({
 
   // builds context from the truncated renderer state.
 
+  // Pinned bubbles are persisted per conversation so closing the chat tab (or
+  // reloading / restarting the app) does not drop them. Live messages carry the
+  // authoritative text; the stored refs cover ids whose history page is not
+  // loaded yet (long sessions open on their newest page).
+  const pinnedRefs = useMemo<PinnedMessageRef[]>(
+    () => readPinnedMessages(pinnedIdentityRef.current),
+    [hermesSessionId],
+  );
+
+  // Re-apply the persisted pin flags to freshly-loaded history. Transcript rows
+  // arrive from state.db with no `pinned` field, so without this a reopened
+  // session painted every bubble unpinned even though its pins were stored.
+  // Only ids present in this render are touched (a Set guard keeps it from
+  // re-rendering on every store read).
+  useEffect(() => {
+    if (pinnedRefs.length === 0) return;
+    setMessages((prev) => {
+      let changed = false;
+      const pinnedIds = new Set(pinnedRefs.map((ref) => ref.id));
+      const next = prev.map((m) => {
+        const shouldPin = pinnedIds.has(m.id);
+        const isPinnedNow = !!(m as ChatBubbleMessage).pinned;
+        if (isPinnedNow === shouldPin) return m;
+        changed = true;
+        return { ...m, pinned: shouldPin };
+      });
+      return changed ? next : prev;
+    });
+  }, [pinnedRefs]);
+
   const pinnedMessages = useMemo(() => {
-    return messages
-      .filter((m): m is ChatBubbleMessage =>
-        m.role === "user" || m.role === "agent")
-      .filter((m) => m.pinned);
-  }, [messages]);
+    const live = messages.filter(
+      (m): m is ChatBubbleMessage => m.role === "user" || m.role === "agent",
+    );
+    const byId = new Map(live.map((m) => [m.id, m]));
+    return pinnedRefs
+      .map((ref) => {
+        const found = byId.get(ref.id);
+        if (found) return found;
+        if (!ref.preview) return null;
+        return {
+          id: ref.id,
+          role: ref.role,
+          content: ref.preview,
+        } as ChatBubbleMessage;
+      })
+      .filter((m): m is ChatBubbleMessage => m !== null);
+  }, [messages, pinnedRefs]);
 
   const handlePinToggle = useCallback(
     (msgId: string, pinned: boolean) => {
       setMessages((prev) =>
-        prev.map((m) =>
-          m.id === msgId ? { ...m, pinned } : m,
-        ),
+        prev.map((m) => (m.id === msgId ? { ...m, pinned } : m)),
       );
+      const identity = pinnedIdentityRef.current;
+      const current = readPinnedMessages(identity);
+      const next = pinned
+        ? current.some((ref) => ref.id === msgId)
+          ? current
+          : [
+              ...current,
+              ((): PinnedMessageRef => {
+                const target = messages.find((m) => m.id === msgId);
+                const content =
+                  target && "content" in target
+                    ? String(target.content ?? "")
+                    : "";
+                return {
+                  id: msgId,
+                  role: target?.role === "user" ? "user" : "agent",
+                  preview: pinnedPreview(content),
+                };
+              })(),
+            ]
+        : current.filter((ref) => ref.id !== msgId);
+      writePinnedMessages(identity, next);
     },
-    [],
+    [messages],
   );
 
   const handleUnsendLastUser = useCallback(
-
     async (_msgId: string, content: string) => {
-
       // Truncate the GATEWAY's live history too (dashboard mode). Without this
 
       // the next resend builds context with the "unsent" text still present,
@@ -2471,45 +2187,32 @@ function Chat({
       // durable context.
 
       if (dashboardTransport.enabled) {
-
         void dashboardTransport.undoLastUser();
-
       }
 
       // Truncate renderer-side: remove the last user message + everything after it.
 
       setMessages((prev) => {
-
         let lastUserIdx = -1;
 
         for (let i = prev.length - 1; i >= 0; i--) {
-
           const m = prev[i];
 
           if (
-
             typeof m === "object" &&
-
             "role" in m &&
-
             (m as { role: string }).role === "user" &&
-
             !("kind" in m)
-
           ) {
-
             lastUserIdx = i;
 
             break;
-
           }
-
         }
 
         if (lastUserIdx < 0) return prev;
 
         return prev.slice(0, lastUserIdx);
-
       });
 
       // Populate the input box with the unsent text so the user can edit + resend.
@@ -2523,41 +2226,29 @@ function Chat({
       activeTurnRef.current = null;
 
       setIsLoading(false);
-
     },
 
     [setMessages, chatInputRef, setIsLoading, dashboardTransport],
-
   );
-
-
 
   // Drag-and-drop: filter for dragenter events carrying files (suppresses
 
   // text-drag noise from the textarea autocomplete and other in-app drags).
 
   const eventHasFiles = useCallback((e: React.DragEvent): boolean => {
-
     const types = e.dataTransfer?.types;
 
     if (!types) return false;
 
     for (let i = 0; i < types.length; i++) {
-
       if (types[i] === "Files") return true;
-
     }
 
     return false;
-
   }, []);
 
-
-
   const handleDragEnter = useCallback(
-
     (e: React.DragEvent) => {
-
       if (!eventHasFiles(e)) return;
 
       e.preventDefault();
@@ -2565,49 +2256,33 @@ function Chat({
       dragCounter.current += 1;
 
       if (dragCounter.current === 1) setDragActive(true);
-
     },
 
     [eventHasFiles],
-
   );
 
-
-
   const handleDragOver = useCallback(
-
     (e: React.DragEvent) => {
-
       if (!eventHasFiles(e)) return;
 
       e.preventDefault();
 
       if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-
     },
 
     [eventHasFiles],
-
   );
 
-
-
   const handleDragLeave = useCallback((e: React.DragEvent) => {
-
     e.preventDefault();
 
     dragCounter.current = Math.max(0, dragCounter.current - 1);
 
     if (dragCounter.current === 0) setDragActive(false);
-
   }, []);
 
-
-
   const handleDrop = useCallback(
-
     (e: React.DragEvent) => {
-
       if (!eventHasFiles(e)) return;
 
       e.preventDefault();
@@ -2621,14 +2296,10 @@ function Chat({
       if (files.length === 0) return;
 
       void chatInputRef.current?.addFiles(files);
-
     },
 
     [eventHasFiles],
-
   );
-
-
 
   // Context-gauge data: the latest turn's prompt tokens vs the model's window.
 
@@ -2637,51 +2308,35 @@ function Chat({
   // the actual model config) > provider /models catalogue > static heuristic.
 
   const contextUsage: ContextUsage | null = usage?.contextTokens
-
     ? {
-
         used: usage.contextTokens,
 
         window:
-
           usage.contextWindowTokens ??
-
           realContextWindow ??
-
           contextWindowForModel(chatCurrentModel),
 
         cacheReadTokens: usage.cacheReadTokens,
 
         cacheWriteTokens: usage.cacheWriteTokens,
-
       }
-
     : null;
 
-
-
   const prettyPrintHTML = (html: string): string => {
-
     const formatNode = (node: Node, level: number = 0): string => {
-
       const indent = "  ".repeat(level);
 
       if (node.nodeType === Node.TEXT_NODE) {
-
         const text = node.textContent?.trim();
 
         return text ? `${indent}${text}\n` : "";
-
       }
 
       if (node.nodeType === Node.COMMENT_NODE) {
-
         return `${indent}<!--${node.textContent}-->\n`;
-
       }
 
       if (node.nodeType === Node.ELEMENT_NODE) {
-
         const el = node as Element;
 
         const tagName = el.tagName.toLowerCase();
@@ -2689,15 +2344,12 @@ function Chat({
         let attrs = "";
 
         for (let i = 0; i < el.attributes.length; i++) {
-
           const attr = el.attributes[i];
 
           attrs += ` ${attr.name}="${attr.value}"`;
-
         }
 
         const isVoid = [
-
           "area",
 
           "base",
@@ -2725,59 +2377,40 @@ function Chat({
           "track",
 
           "wbr",
-
         ].includes(tagName);
 
         if (isVoid) {
-
           return `${indent}<${tagName}${attrs}>\n`;
-
         }
 
         if (
-
           el.childNodes.length === 1 &&
-
           el.firstChild?.nodeType === Node.TEXT_NODE
-
         ) {
-
           const text = el.firstChild.textContent?.trim();
 
           return text
-
             ? `${indent}<${tagName}${attrs}>${text}</${tagName}>\n`
-
             : `${indent}<${tagName}${attrs}></${tagName}>\n`;
-
         }
 
         if (el.childNodes.length === 0) {
-
           return `${indent}<${tagName}${attrs}></${tagName}>\n`;
-
         }
 
         let childrenHtml = "";
 
         for (let i = 0; i < el.childNodes.length; i++) {
-
           childrenHtml += formatNode(el.childNodes[i], level + 1);
-
         }
 
         return `${indent}<${tagName}${attrs}>\n${childrenHtml}${indent}</${tagName}>\n`;
-
       }
 
       return "";
-
     };
 
-
-
     try {
-
       const parser = new DOMParser();
 
       const doc = parser.parseFromString(html, "text/html");
@@ -2785,35 +2418,23 @@ function Chat({
       const body = doc.body;
 
       if (body.childNodes.length > 0) {
-
         let result = "";
 
         for (let i = 0; i < body.childNodes.length; i++) {
-
           result += formatNode(body.childNodes[i], 0);
-
         }
 
         return result.trim();
-
       }
-
     } catch (e) {
-
       console.error("Failed to pretty print HTML", e);
-
     }
 
     return html;
-
   };
 
-
-
   const handleInspectElement = useCallback(
-
     (payload: {
-
       tagName: string;
 
       id: string;
@@ -2821,40 +2442,32 @@ function Chat({
       className: string;
 
       outerHTML: string;
-
     }) => {
-
       const formattedHtml = prettyPrintHTML(payload.outerHTML);
 
       const formatted = `Here is the HTML for the \`<${payload.tagName}>\` component to debug:\n\`\`\`html\n${formattedHtml}\n\`\`\``;
 
       chatInputRef.current?.appendText(formatted);
-
     },
 
     [],
-
   );
 
-
-
   return (
-
     <div
-
       className="chat-container"
-
       onDragEnter={handleDragEnter}
-
       onDragOver={handleDragOver}
-
       onDragLeave={handleDragLeave}
-
       onDrop={handleDrop}
-
     >
-
       <ConfigHealthBanner profile={profile} onOpenDiagnose={onOpenDiagnose} />
+      <LocalSessionCounter
+        sessionId={hermesSessionId}
+        isLoading={isLoading}
+        refreshing={refreshing}
+        onRefresh={refreshSession}
+      />
       <div className="chat-display-controls">
         <ChatSearch
           messages={messages}
@@ -2867,13 +2480,44 @@ function Chat({
           onRevealMessage={setSearchRevealId}
           onBeforeScroll={stopFollow}
         />
-        <button type="button" className="chat-display-controls-trigger" aria-label="Display controls" aria-expanded={displayControlsOpen} onClick={() => { setDisplayControlsOpen((open) => !open); setChatSearchOpen(false); }}>
+        <button
+          type="button"
+          className="chat-display-controls-trigger"
+          aria-label="Display controls"
+          aria-expanded={displayControlsOpen}
+          onClick={() => {
+            setDisplayControlsOpen((open) => !open);
+            setChatSearchOpen(false);
+          }}
+        >
           <SlidersHorizontal size={16} />
         </button>
         {displayControlsOpen && (
-          <div className="chat-display-controls-menu" role="dialog" aria-label="Display controls">
-            <button type="button" onClick={() => { const next = !showAllThoughts; setShowAllThoughts(next); setChatDisplayControls({ thoughts: next ? "show" : "hide" }); }}>{showAllThoughts ? "Hide all thoughts" : "Show all thoughts"}</button>
-            <button type="button" onClick={() => { const next = !showAllTools; setShowAllTools(next); setChatDisplayControls({ tools: next ? "show" : "hide" }); }}>{showAllTools ? "Hide all tools" : "Show all tools"}</button>
+          <div
+            className="chat-display-controls-menu"
+            role="dialog"
+            aria-label="Display controls"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                const next = !showAllThoughts;
+                setShowAllThoughts(next);
+                setChatDisplayControls({ thoughts: next ? "show" : "hide" });
+              }}
+            >
+              {showAllThoughts ? "Hide all thoughts" : "Show all thoughts"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const next = !showAllTools;
+                setShowAllTools(next);
+                setChatDisplayControls({ tools: next ? "show" : "hide" });
+              }}
+            >
+              {showAllTools ? "Hide all tools" : "Show all tools"}
+            </button>
           </div>
         )}
         {/* Web preview: floating icon, opens a dialog. Shown only when a URL
@@ -2947,143 +2591,97 @@ function Chat({
         </button>
       </div>
 
-
-
       <div className="chat-body">
-
         <div className="chat-messages" ref={containerRef}>
-
           <div ref={contentRef}>
-
             <ChatNavArrow
-
-            position="top"
-
-            messages={messages}
-
-            containerRef={containerRef}
-
-            modelRef={messageListModelRef}
-
-          />
-
-          {messages.length === 0 ? (
-
-            <ChatEmptyState onSelectSuggestion={handleSuggestion} />
-
-          ) : (
-
-            <MessageList
-
+              position="top"
               messages={messages}
-
-              isLoading={isLoading}
-
-              toolProgress={toolProgress}
-
-              onApprove={actions.handleApprove}
-
-              onDeny={actions.handleDeny}
-
-              onClarifyResolved={handleClarifyResolved}
-              onClarifyStuck={() => {
-                // The answer was submitted but the gateway never acknowledged it
-                // (the 5-minute clarify.respond timeout used to leave the turn
-                // spinning with no way forward). End it with a visible notice.
-                const activeTurn = activeTurnRef.current;
-                if (activeTurn) activeTurn.status = "failed";
-                setMessages((prev) => {
-                  const next = [
-                    ...prev,
-                    {
-                      id: `clarify-stuck-${Date.now()}`,
-                      role: "agent" as const,
-                      content: t("chat.clarify.stuck"),
-                    },
-                  ];
-                  messagesRef.current = next;
-                  return next;
-                });
-                activeTurnRef.current = null;
-                setIsLoading(false);
-              }}
-
-              onClarifyRespond={
-
-                dashboardTransport.enabled
-
-                  ? dashboardTransport.respondClarify
-
-                  : undefined
-
-              }
-
-              agentAvatar={agentAvatar}
-
-              onRevertCheckpoint={handleRevertCheckpoint}
-
-              onUnsendLastUser={handleUnsendLastUser}
-
-              onOpenFileChanges={(changes) => setFileChangesOpen(changes)}
-
-              onPinToggle={handlePinToggle}
-
-              pinnedMessages={pinnedMessages}
-
               containerRef={containerRef}
-
               modelRef={messageListModelRef}
-
-              sessionKey={hermesSessionId}
-
-              revealMessageId={searchRevealId}
-
             />
 
-          )}
+            {messages.length === 0 ? (
+              <ChatEmptyState onSelectSuggestion={handleSuggestion} />
+            ) : (
+              <MessageList
+                messages={messages}
+                olderAvailable={hasMoreHistory}
+                onLoadEarlier={loadEarlierHistory}
+                loadingEarlier={loadingEarlier}
+                isLoading={isLoading}
+                toolProgress={toolProgress}
+                onApprove={actions.handleApprove}
+                onDeny={actions.handleDeny}
+                onClarifyResolved={handleClarifyResolved}
+                onClarifyStuck={() => {
+                  // The answer was submitted but the gateway never acknowledged it
+                  // (the 5-minute clarify.respond timeout used to leave the turn
+                  // spinning with no way forward). End it with a visible notice.
+                  const activeTurn = activeTurnRef.current;
+                  if (activeTurn) activeTurn.status = "failed";
+                  setMessages((prev) => {
+                    const next = [
+                      ...prev,
+                      {
+                        id: `clarify-stuck-${Date.now()}`,
+                        role: "agent" as const,
+                        content: t("chat.clarify.stuck"),
+                      },
+                    ];
+                    messagesRef.current = next;
+                    return next;
+                  });
+                  activeTurnRef.current = null;
+                  setIsLoading(false);
+                }}
+                onClarifyRespond={
+                  dashboardTransport.enabled
+                    ? dashboardTransport.respondClarify
+                    : undefined
+                }
+                agentAvatar={agentAvatar}
+                onRevertCheckpoint={handleRevertCheckpoint}
+                onUnsendLastUser={handleUnsendLastUser}
+                onOpenFileChanges={(changes) => setFileChangesOpen(changes)}
+                onPinToggle={handlePinToggle}
+                pinnedMessages={pinnedMessages}
+                containerRef={containerRef}
+                modelRef={messageListModelRef}
+                sessionKey={hermesSessionId}
+                revealMessageId={searchRevealId}
+              />
+            )}
 
-          <div ref={bottomRef} />
+            <div ref={bottomRef} />
 
-          <ChatNavArrow
+            <ChatNavArrow
+              position="bottom"
+              messages={messages}
+              containerRef={containerRef}
+              modelRef={messageListModelRef}
+            />
 
-            position="bottom"
-
-            messages={messages}
-
-            containerRef={containerRef}
-
-            modelRef={messageListModelRef}
-
-          />
-
-          <JumpToLatest
-
-            containerRef={containerRef}
-
-            onJump={() => jumpToPresent(true)}
-
-            scrolledUpAtom={scrolledUpAtom}
-
-          />
-
+            <JumpToLatest
+              containerRef={containerRef}
+              onJump={() => jumpToPresent(true)}
+              scrolledUpAtom={scrolledUpAtom}
+            />
           </div>
-
         </div>
-
-
 
         {/* The worktree and web-preview panels are DIALOGS now, not inline
             panes — see the floating rail below. Rendering them here as
             siblings of .chat-messages is what made them take horizontal space
             from the transcript. */}
-
       </div>
 
-
-
       <div className="chat-input-area">
-
-        <ChatTurnStatus isLoading={isLoading} messages={messages} activeSubagentCount={dashboardTransport.activeSubagents.length} />
+        <ChatTurnStatus
+          isLoading={isLoading}
+          messages={messages}
+          activeSubagentCount={dashboardTransport.activeSubagents.length}
+        />
 
         {!readOnly && (
           <ChatSubagentPanel
@@ -3101,242 +2699,157 @@ function Chat({
             </span>
           </div>
         ) : (
-        <>
-        <QueuedMessages
+          <>
+            <QueuedMessages
+              messages={queuedMessages}
+              onRemove={handleRemoveQueued}
+            />
 
-          messages={queuedMessages}
+            <ChatInput
+              ref={chatInputRef}
+              isLoading={isLoading}
+              hasSession={!!hermesSessionId}
+              sessionId={hermesSessionId}
+              remoteMode={remoteMode}
+              contextFolders={contextFolders}
+              profile={profile}
+              contextUsage={contextUsage}
+              readiness={readiness}
+              slashCommands={slashMenuCommands}
+              onSubmit={handleSubmitOrQueue}
+              onQuickAsk={actions.handleQuickAsk}
+              onAbort={actions.handleAbort}
+              toolbarExtras={
+                <>
+                  <ModelPicker
+                    active={active}
+                    currentModel={chatCurrentModel}
+                    currentProvider={chatCurrentProvider}
+                    currentBaseUrl={chatCurrentBaseUrl}
+                    modelGroups={modelConfig.modelGroups}
+                    displayModel={chatDisplayModel}
+                    onOpen={modelConfig.reload}
+                    onSelectModel={handleSelectModel}
+                  />
 
-          onRemove={handleRemoveQueued}
+                  <ReasoningEffortPicker
+                    value={reasoningEffort}
+                    onChange={setReasoningEffort}
+                    fastMode={fastMode}
+                    onToggleFastMode={toggleFastMode}
+                  />
 
-        />
-
-        <ChatInput
-
-          ref={chatInputRef}
-
-          isLoading={isLoading}
-
-          hasSession={!!hermesSessionId}
-
-          sessionId={hermesSessionId}
-
-          remoteMode={remoteMode}
-
-          contextFolders={contextFolders}
-
-          profile={profile}
-
-          contextUsage={contextUsage}
-
-          readiness={readiness}
-
-          slashCommands={slashMenuCommands}
-
-          onSubmit={handleSubmitOrQueue}
-
-          onQuickAsk={actions.handleQuickAsk}
-
-          onAbort={actions.handleAbort}
-
-          toolbarExtras={
-
-            <>
-
-              <ModelPicker
-
-                active={active}
-
-                currentModel={chatCurrentModel}
-
-                currentProvider={chatCurrentProvider}
-
-                currentBaseUrl={chatCurrentBaseUrl}
-
-                modelGroups={modelConfig.modelGroups}
-
-                displayModel={chatDisplayModel}
-
-                onOpen={modelConfig.reload}
-
-                onSelectModel={handleSelectModel}
-
-              />
-
-              <ReasoningEffortPicker
-
-                value={reasoningEffort}
-
-                onChange={setReasoningEffort}
-
-                fastMode={fastMode}
-
-                onToggleFastMode={toggleFastMode}
-
-              />
-
-              {/* Fast mode moved INSIDE the reasoning dropdown (see
+                  {/* Fast mode moved INSIDE the reasoning dropdown (see
                   ReasoningEffortPicker): it shapes reasoning, so it sits with
                   the effort rail instead of occupying its own toolbar slot. */}
 
-              <OnFinishChip
-                running={onFinishRunner.state.running}
-                scope={onFinishIdentityRef.current}
-              />
+                  <OnFinishChip
+                    running={onFinishRunner.state.running}
+                    scope={onFinishIdentityRef.current}
+                  />
 
-              <ContextFolderChip
+                  <ContextFolderChip
+                    contextFolders={contextFolders}
+                    attachedKnowledgeBundles={attachedKnowledgeBundles}
+                    show
+                    onPickFolder={handlePickFolder}
+                    onRemoveFolder={handleRemoveFolder}
+                    onToggleKnowledgeBundle={handleToggleKnowledgeBundle}
+                    onSelectRecentFolder={handleSelectRecentFolder}
+                  />
 
-                contextFolders={contextFolders}
+                  <button
+                    type="button"
+                    className={`btn-ghost chat-tool-btn ${
+                      planMode ? "chat-tool-btn-active" : ""
+                    }`}
+                    onClick={togglePlanMode}
+                    title={
+                      planMode
+                        ? "PLAN mode — agent must not modify files. Click to switch to BUILD."
+                        : "BUILD mode — agent may modify files. Click to switch to PLAN."
+                    }
+                    style={{
+                      display: "inline-flex",
 
-                attachedKnowledgeBundles={attachedKnowledgeBundles}
+                      alignItems: "center",
 
-                show
+                      justifyContent: "center",
 
-                onPickFolder={handlePickFolder}
+                      width: 28,
 
-                onRemoveFolder={handleRemoveFolder}
+                      height: 28,
 
-                onToggleKnowledgeBundle={handleToggleKnowledgeBundle}
+                      padding: 0,
 
-                onSelectRecentFolder={handleSelectRecentFolder}
+                      borderRadius: 6,
 
-              />
+                      gap: 4,
 
-              <button
+                      color: planMode
+                        ? "var(--accent-text)"
+                        : "var(--text-secondary)",
 
-                type="button"
+                      background: planMode
+                        ? "color-mix(in srgb, var(--accent-text) 12%, transparent)"
+                        : "transparent",
+                    }}
+                  >
+                    {planMode ? (
+                      <ClipboardList size={14} />
+                    ) : (
+                      <Hammer size={14} />
+                    )}
 
-                className={`btn-ghost chat-tool-btn ${
+                    <span style={{ fontSize: 10, fontWeight: 600 }}>
+                      {planMode ? "PLAN" : "BUILD"}
+                    </span>
+                  </button>
 
-                  planMode ? "chat-tool-btn-active" : ""
-
-                }`}
-
-                onClick={togglePlanMode}
-
-                title={
-
-                  planMode
-
-                    ? "PLAN mode — agent must not modify files. Click to switch to BUILD."
-
-                    : "BUILD mode — agent may modify files. Click to switch to PLAN."
-
-                }
-
-                style={{
-
-                  display: "inline-flex",
-
-                  alignItems: "center",
-
-                  justifyContent: "center",
-
-                  width: 28,
-
-                  height: 28,
-
-                  padding: 0,
-
-                  borderRadius: 6,
-
-                  gap: 4,
-
-                  color: planMode
-
-                    ? "var(--accent-text)"
-
-                    : "var(--text-secondary)",
-
-                  background: planMode
-
-                    ? "color-mix(in srgb, var(--accent-text) 12%, transparent)"
-
-                    : "transparent",
-
-                }}
-
-              >
-
-                {planMode ? <ClipboardList size={14} /> : <Hammer size={14} />}
-
-                <span style={{ fontSize: 10, fontWeight: 600 }}>
-
-                  {planMode ? "PLAN" : "BUILD"}
-
-                </span>
-
-              </button>
-
-              {/* On-Finish lives in the input footer next to the folder chip
+                  {/* On-Finish lives in the input footer next to the folder chip
                   (see OnFinishChip), not as a toolbar toggle: the chip is the
                   picker AND the switch, so one click both opens the command
                   list and (on tick) arms the auto-run. */}
 
-              {/* Web preview and file explorer moved to the floating rail as
+                  {/* Web preview and file explorer moved to the floating rail as
                   icons that open dialogs — see .chat-display-controls. */}
-
-            </>
-
-          }
-
-          onCompactContext={() => {
-
-            void actions.handleSend("/compact");
-
-          }}
-
-          onNewSessionWithContext={() => {
-
-            // Build the compact handoff from the live transcript and hand it
-            // to Layout, which mints the seeded tab. Guarded upstream: the
-            // gauge is interactive only when no turn is streaming.
-            if (isLoading) return;
-            const { message, info } = buildSessionHandoff(messages);
-            onNewSessionWithContext?.([message], info.title);
-
-          }}
-
-        />
-
-        </>
+                </>
+              }
+              onCompactContext={() => {
+                void actions.handleSend("/compact");
+              }}
+              onNewSessionWithContext={() => {
+                // Build the compact handoff from the live transcript and hand it
+                // to Layout, which mints the seeded tab. Guarded upstream: the
+                // gauge is interactive only when no turn is streaming.
+                if (isLoading) return;
+                const { message, info } = buildSessionHandoff(messages);
+                onNewSessionWithContext?.([message], info.title);
+              }}
+            />
+          </>
         )}
-
       </div>
 
       {dragActive && (
-
         <div className="chat-drop-overlay" aria-hidden>
-
           <div className="chat-drop-overlay-inner">
-
             {t("chat.dropToAttach")}
-
           </div>
-
         </div>
-
       )}
 
       <RemoteFolderPicker
-
         initialPath={contextFolders[0] ?? null}
-
         open={folderPickerOpen}
-
         onCancel={() => setFolderPickerOpen(false)}
-
         onSelect={(path) => {
-
           setContextFolders((prev) =>
-
             prev.includes(path) ? prev : [...prev, path],
-
           );
 
           setFolderPickerOpen(false);
-
         }}
-
       />
 
       {/* Show follow-us modal only after setup is complete */}
@@ -3344,15 +2857,10 @@ function Chat({
       {active && connectionModeLoaded && readiness.ok && <FollowUsModal />}
 
       {fileChangesOpen && (
-
         <FileChangesDialog
-
           changes={fileChangesOpen}
-
           onClose={() => setFileChangesOpen(null)}
-
         />
-
       )}
 
       {/* The dialog lives outside the floating control group so its overlay is
@@ -3365,11 +2873,14 @@ function Chat({
           open={onFinishDockOpen}
           onClose={() => setOnFinishDockOpen(false)}
           title="Terminal"
+          keepMounted
         >
           {/* Hidden, not unmounted, while closed. */}
           <div className="terminal-dialog-holder" hidden={!onFinishDockOpen}>
             <TerminalDock
               ref={onFinishDockRef}
+              commandTemplates
+              open={onFinishDockOpen}
               onNewSession={handleNewOnFinishSession}
               onResizeStart={() => undefined}
               onResizeMove={() => undefined}
@@ -3413,14 +2924,8 @@ function Chat({
           <WorktreePanel folderPaths={contextFolders} embedded />
         </FloatingDialog>
       ) : null}
-
     </div>
-
   );
-
 }
 
-
-
 export default Chat;
-

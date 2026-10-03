@@ -354,6 +354,113 @@ export async function getGitWorkingTreeChanges(
   return out;
 }
 
+/** One commit row for the Source Control graph. */
+export interface GitCommitEntry {
+  /** Full 40-char object name. */
+  hash: string;
+  /** Abbreviated hash, as git renders it (7+ chars). */
+  shortHash: string;
+  /** Parent object names; 0 = root commit, 2+ = a merge. */
+  parents: string[];
+  /** Local branch names pointing at this commit (decorations), if any. */
+  refs: string[];
+  author: string;
+  /** Author date, ISO-8601, for relative rendering. */
+  date: string;
+  subject: string;
+}
+
+/** Field separator that cannot appear in a commit subject (unit separator). */
+const LOG_FIELD_SEP = "\u001f";
+/** Record separator (record separator) — survives subjects containing newlines. */
+const LOG_RECORD_SEP = "\u001e";
+
+/**
+ * Read the commit history for the Source Control graph.
+ *
+ * Read-only and bounded: `--max-count` caps the walk so a huge repo cannot
+ * stall the dialog, and the format is machine-parsed (US/RS separators) rather
+ * than the decorated log, so a subject containing any punctuation is safe.
+ * `--topo-order` keeps parents after children, which is what a lane-based
+ * graph renderer needs to lay out rows without backtracking.
+ */
+export async function gitLog(
+  dir: string,
+  opts: { max?: number; path?: string } = {},
+): Promise<{ ok: boolean; commits: GitCommitEntry[]; error?: string }> {
+  const max = Math.min(Math.max(opts.max ?? 50, 1), 200);
+  const args = [
+    "-c",
+    "core.quotepath=false",
+    "log",
+    "--topo-order",
+    "--date=iso-strict",
+    `--max-count=${max}`,
+    // %H hash, %h short, %P parents, %D ref names, %an author, %aI date, %s subject
+    `--pretty=format:%H${LOG_FIELD_SEP}%h${LOG_FIELD_SEP}%P${LOG_FIELD_SEP}%D${LOG_FIELD_SEP}%an${LOG_FIELD_SEP}%aI${LOG_FIELD_SEP}%s${LOG_RECORD_SEP}`,
+  ];
+  // An optional pathspec scopes the history to the selected file/folder.
+  if (opts.path) args.push("--", opts.path);
+
+  const res = await runGit(dir, args);
+  if (res.code !== 0) {
+    // An empty repo (no commits yet) exits non-zero with this message; that is
+    // an empty history, not an error worth surfacing as a failure.
+    const stderr = res.stderr.trim();
+    if (/does not have any commits yet|unknown revision/i.test(stderr)) {
+      return { ok: true, commits: [] };
+    }
+    return { ok: false, commits: [], error: stderr || "git log failed" };
+  }
+
+  const commits: GitCommitEntry[] = [];
+  for (const record of res.stdout.split(LOG_RECORD_SEP)) {
+    const line = record.replace(/^\n+/, "");
+    if (!line.trim()) continue;
+    const [hash, shortHash, parentList, refNames, author, date, ...rest] =
+      line.split(LOG_FIELD_SEP);
+    if (!hash) continue;
+    commits.push({
+      hash,
+      shortHash: shortHash ?? hash.slice(0, 7),
+      parents: (parentList ?? "").trim() ? parentList.trim().split(/\s+/) : [],
+      // Decorations look like `HEAD -> main, origin/main, tag: v1.0`; keep the
+      // local branch names (drop HEAD/tags/remotes) for compact chips.
+      refs: (refNames ?? "")
+        .split(",")
+        .map((r) => r.trim().replace(/^HEAD -> /, ""))
+        .filter((r) => r && !r.startsWith("tag:") && !r.includes("/")),
+      author: author ?? "",
+      date: date ?? "",
+      subject: (rest.join(LOG_FIELD_SEP) || "").trim(),
+    });
+  }
+  return { ok: true, commits };
+}
+
+/** Diff introduced by a single commit (`git show`), for the graph pane. */
+export async function gitCommitDiff(
+  dir: string,
+  hash: string,
+): Promise<GitActionResult> {
+  // A hash is attacker-influenceable only via our own git log output, but
+  // validate anyway so a malformed value can never become an option/refspec.
+  if (!/^[0-9a-f]{4,40}$/i.test(hash)) {
+    return { ok: false, error: "invalid commit hash" };
+  }
+  const res = await runGit(dir, [
+    "-c",
+    "core.quotepath=false",
+    "show",
+    "--no-color",
+    "--format=%H%n%an <%ae>%n%aI%n%s%n",
+    hash,
+  ]);
+  return res.code === 0
+    ? { ok: true, output: res.stdout }
+    : { ok: false, error: res.stderr.trim() || "git show failed" };
+}
+
 /** Auth args for the repo's remote host when a token is stored for it. */
 async function gitNetworkAuthArgs(dir: string): Promise<string[]> {
   if (!tokenProvider) return [];

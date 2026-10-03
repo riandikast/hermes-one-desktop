@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
-import { homedir } from "os";
 import { join } from "path";
+import { HERMES_HOME } from "./installer";
 
 export interface CommandRecord {
   id: string;
@@ -18,9 +18,16 @@ export interface CommandRecord {
   updatedAt: number;
 }
 
+/**
+ * Resolve the commands file. The explicit override and `HERMES_HOME` win;
+ * otherwise this uses the SAME home the rest of the app does (`./installer`),
+ * which honors the persisted override and the Windows `%LocalAppData%\hermes`
+ * default. Deriving a private `~/.hermes` fallback here silently pointed the
+ * picker at a file that does not exist on Windows, so every `/` template list
+ * came back empty and the saved working directory was never applied.
+ */
 function commandsFilePath(homeOverride?: string): string {
-  const base =
-    homeOverride || process.env.HERMES_HOME || join(homedir(), ".hermes");
+  const base = homeOverride?.trim() || process.env.HERMES_HOME?.trim() || HERMES_HOME;
   return join(base, "commands.json");
 }
 

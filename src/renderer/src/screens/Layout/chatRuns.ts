@@ -21,6 +21,16 @@ export interface ChatRun {
   /** Workspace context folders to pre-attach when mounting. */
   initialContextFolders?: string[];
   /**
+   * Oldest state.db row id in `seed`. A long session opens on its newest page
+   * (a full read is ~450ms of blocking SQLite on a 29k-row session), so this is
+   * the cursor the transcript pages back from.
+   */
+  oldestLoadedId?: number | null;
+  /** True when state.db holds rows older than `seed`. */
+  hasMoreHistory?: boolean;
+  /** Highest state.db row id in `seed`; seeds the incremental-refresh cursor. */
+  newestLoadedId?: number | null;
+  /**
    * True when this run is a SUBAGENT (delegated child) session opened to watch.
    * Such a run attaches LAZILY: a delegated child executes inside its parent's
    * turn, and the gateway only mirrors the child's live events into a session

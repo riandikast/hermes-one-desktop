@@ -1,4 +1,5 @@
-import { memo, useState } from "react";
+import { memo, useId, useState } from "react";
+import "./ContextGauge.css";
 import { useI18n } from "../../components/useI18n";
 
 export interface ContextUsage {
@@ -6,6 +7,7 @@ export interface ContextUsage {
   used: number;
   /** Model context window in tokens. */
   window: number;
+  estimated?: boolean;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
   onCompact?: () => void;
@@ -34,12 +36,13 @@ function fmtTokens(n: number): string {
  *
  * Always renders (even with no usage yet) so the user can see and click the
  * gauge immediately on app start. When `usage` is null/empty the ring is
- * empty (0%) and the tooltip shows "no usage data yet" — this prevents the
+ * empty (unknown) and the popover explains missing data — this prevents the
  * gauge from mysteriously appearing/disappearing as usage arrives.
  */
 export const ContextGauge = memo(function ContextGauge({
   used,
   window: ctxWindow,
+  estimated = true,
   cacheReadTokens,
   cacheWriteTokens,
   onCompact,
@@ -47,17 +50,21 @@ export const ContextGauge = memo(function ContextGauge({
 }: ContextUsage): React.JSX.Element {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  const hasData = used > 0 || ctxWindow > 0;
-  const pct =
-    ctxWindow > 0 ? Math.min(100, Math.round((used / ctxWindow) * 100)) : 0;
-  const left = 100 - pct;
+  const panelId = useId();
+  const hasData =
+    Number.isFinite(used) &&
+    used >= 0 &&
+    Number.isFinite(ctxWindow) &&
+    ctxWindow > 0;
+  const pct = hasData ? Math.round((used / ctxWindow) * 100) : 0;
+  const left = Math.max(0, 100 - pct);
 
   // Ring geometry.
   const size = 26;
   const stroke = 3;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
-  const filled = (pct / 100) * circumference;
+  const filled = (Math.min(100, pct) / 100) * circumference;
 
   const hasCache =
     cacheReadTokens !== undefined || cacheWriteTokens !== undefined;
@@ -69,44 +76,55 @@ export const ContextGauge = memo(function ContextGauge({
   return (
     <div
       className={`chat-ctx-gauge ${open ? "open" : ""} ${hasData ? "" : "chat-ctx-gauge--empty"}`}
-      role="button"
-      aria-label={
-        hasData
-          ? t("chat.contextUsed", { pct, left })
-          : t("chat.contextEmpty")
-      }
-      aria-expanded={open}
-      tabIndex={0}
-      onClick={() => setOpen((v) => !v)}
       onKeyDown={(e) => {
         if (e.key === "Escape") setOpen(false);
       }}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
+      }}
     >
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle
-          className="chat-ctx-gauge-track"
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          strokeWidth={stroke}
-        />
-        <circle
-          className="chat-ctx-gauge-fill"
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={`${filled} ${circumference}`}
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-        />
-      </svg>
-      <span className="chat-ctx-gauge-num">{hasData ? pct : "—"}</span>
+      <button
+        type="button"
+        className="chat-ctx-trigger"
+        aria-label={`Context usage: ${hasData ? `${estimated ? "estimated " : ""}${pct}%` : "unknown"}`}
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          <circle
+            className="chat-ctx-gauge-track"
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            strokeWidth={stroke}
+          />
+          <circle
+            className="chat-ctx-gauge-fill"
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={`${filled} ${circumference}`}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        </svg>
+        <span className="chat-ctx-gauge-num">{hasData ? pct : "—"}</span>
+      </button>
 
-      <div className="chat-ctx-tooltip" role="tooltip">
-        <div className="chat-ctx-tooltip-title">{t("chat.contextWindow")}</div>
+      <div
+        id={panelId}
+        className="chat-ctx-tooltip"
+        role="group"
+        aria-label="Context usage details"
+      >
+        <div className="chat-ctx-tooltip-title">
+          {t("chat.contextWindow")}
+          {estimated && hasData ? " (estimated)" : ""}
+        </div>
         {hasData ? (
           <>
             <div>{t("chat.contextUsed", { pct, left })}</div>
@@ -128,7 +146,8 @@ export const ContextGauge = memo(function ContextGauge({
           </>
         ) : (
           <div className="chat-ctx-tooltip-empty">
-            {t("chat.contextEmptyHint")}
+            Context usage unknown — waiting for occupancy and model context
+            limit.
           </div>
         )}
         {onCompact && (

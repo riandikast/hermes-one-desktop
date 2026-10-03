@@ -574,25 +574,109 @@ export interface RawMessageRow {
  * `afterId > 0` scopes the read to rows newer than that id; 0 / negative keeps
  * the original full-history read (used by resume / reopen).
  */
-export function buildSessionMessagesQuery(afterId = 0): {
+export function buildSessionMessagesQuery(
+  sessionId: string,
+  afterId = 0,
+): {
   sql: string;
-  params: number[];
+  params: (string | number)[];
 } {
   // A cursor of 0 / negative means "no cursor" — the full-history read the
   // resume path still needs. Any positive id scopes the read to rows newer
   // than it, so an end-of-turn refresh touches only the new tail instead of
   // re-scanning the whole session (see lat.md/chat-completion-latency.md).
   const scoped = Number.isFinite(afterId) && afterId > 0;
+  // Like the backward builder, this owns the COMPLETE, ordered param list so a
+  // caller can never omit a binding (that omission is what made every paged
+  // read throw `RangeError: Too few parameter values were provided`).
   return {
-    sql: `SELECT id, role, content, timestamp,
-              tool_call_id, tool_calls, tool_name,
-              reasoning, reasoning_content, reasoning_details
-       FROM messages
-       WHERE ${scoped ? "id > ? AND " : ""}session_id = ? AND role IN ('user', 'assistant', 'tool')
-       ORDER BY timestamp, id`,
-    params: scoped ? [afterId] : [],
+    sql: `SELECT m.id, m.role, m.content, m.timestamp,
+              m.tool_call_id, m.tool_calls, m.tool_name,
+              m.reasoning, m.reasoning_content, m.reasoning_details,
+              m.active, m.compacted
+       FROM messages m
+       WHERE ${scoped ? "m.id > ? AND " : ""}m.session_id = ? AND m.role IN ('user', 'assistant', 'tool')
+         AND (m.active = 1 OR m.compacted = 1)
+         AND ${NEWEST_COPY_ONLY_SQL}
+       ORDER BY m.timestamp, m.id`,
+    params: scoped ? [afterId, sessionId] : [sessionId],
   };
 }
+
+/**
+ * SQL predicate: keep only the newest stored copy of each logical message.
+ *
+ * Compacting in place CLONES the protected tail into a new generation — same
+ * role/content/timestamp/tool payload, fresh row id, `active`=0, `compacted`=1.
+ * The backend's display reader shows ONE copy per logical message (preferring
+ * the live row, then the newest id); the fork's read showed every generation,
+ * which rendered ~4.6x the logical rows as repeated bubbles on a compacted
+ * session (28,896 rows / 6,297 messages). Verified against the real DB: across
+ * all 13,294 duplicate groups the preferred copy is ALWAYS the max-id row, so
+ * "no newer row shares my key" selects exactly the backend's canonical set.
+ *
+ * `IS` (not `=`) on the nullable tool columns so NULLs compare equal, matching
+ * the backend's key which uses the raw values.
+ */
+const NEWEST_COPY_ONLY_SQL = `NOT EXISTS (
+    SELECT 1 FROM messages n
+    WHERE n.session_id = m.session_id
+      AND n.id > m.id
+      AND (n.active = 1 OR n.compacted = 1)
+      AND n.role = m.role
+      AND n.content IS m.content
+      AND n.timestamp = m.timestamp
+      AND n.tool_call_id IS m.tool_call_id
+      AND n.tool_calls IS m.tool_calls
+      AND n.tool_name IS m.tool_name
+  )`;
+
+/**
+ * Backward page: the `limit` rows immediately BEFORE `beforeId`, oldest-first.
+ *
+ * This is what lets a long session open on its newest page instead of reading
+ * every row. Measured on a 28,896-row session: the full read is ~450-560 ms of
+ * blocking SQLite and ~14 MB across IPC, while a bounded page is ~1-6 ms. The
+ * ORDER BY DESC + LIMIT picks the page off `idx_messages_session_id`, and the
+ * outer ORDER BY restores chronological order for the renderer.
+ *
+ * Pure so the paging arithmetic is testable without the Electron sqlite module.
+ */
+export function buildSessionMessagesBeforeQuery(
+  sessionId: string,
+  beforeId: number,
+  limit: number,
+): {
+  sql: string;
+  params: (string | number)[];
+} {
+  const pageSize = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : DEFAULT_HISTORY_PAGE;
+  const cursor = Number.isFinite(beforeId) && beforeId > 0 ? beforeId : 0;
+  // The builder owns the COMPLETE, ordered param list — including sessionId.
+  // The caller must never assemble it: an earlier version returned only the
+  // numeric params and left `session_id = ?` to the caller, which silently
+  // omitted it and made every paged read throw `RangeError: Too few parameter
+  // values were provided`. Keeping every placeholder's binding here means the
+  // placeholder count and the param count cannot drift apart.
+  return {
+    sql: `SELECT * FROM (
+                SELECT m.id, m.role, m.content, m.timestamp,
+                       m.tool_call_id, m.tool_calls, m.tool_name,
+                       m.reasoning, m.reasoning_content, m.reasoning_details,
+                       m.active, m.compacted
+                FROM messages m
+                WHERE ${cursor > 0 ? "m.id < ? AND " : ""}m.session_id = ? AND m.role IN ('user', 'assistant', 'tool')
+                  AND (m.active = 1 OR m.compacted = 1)
+                  AND ${NEWEST_COPY_ONLY_SQL}
+                ORDER BY m.id DESC
+                LIMIT ?
+              ) ORDER BY timestamp, id`,
+    params: cursor > 0 ? [cursor, sessionId, pageSize] : [sessionId, pageSize],
+  };
+}
+
+/** Newest-first page size for opening a session without reading all history. */
+export const DEFAULT_HISTORY_PAGE = 200;
 
 /**
  * Pure expansion of DB rows → renderer-facing HistoryItem list. Kept pure
@@ -721,8 +805,8 @@ export function getSessionMessages(
   const db = getDb();
   if (!db) return [];
 
-  const query = buildSessionMessagesQuery(afterId);
-  const rows = db.prepare(query.sql).all(...query.params, sessionId) as RawMessageRow[];
+  const query = buildSessionMessagesQuery(sessionId, afterId);
+  const rows = db.prepare(query.sql).all(...query.params) as RawMessageRow[];
 
   const items = expandRowsToHistory(rows);
   const canonical = mergeStoredPromptImageAttachments(
@@ -730,6 +814,91 @@ export function getSessionMessages(
     loadPromptImageAttachments(db, sessionId),
   );
   return applySessionLocalOverlays(sessionId, canonical, db);
+}
+
+/**
+ * One backward page of history: the rows just before `beforeId`, oldest-first.
+ *
+ * Session-level overlays (continuation items, local errors, file-change chips)
+ * are deliberately NOT applied here: they are prepended once when the session
+ * opens, and re-applying them per page would duplicate them in the transcript.
+ * A page is raw stored history.
+ */
+export function getSessionMessagesBefore(
+  sessionId: string,
+  beforeId = 0,
+  limit = DEFAULT_HISTORY_PAGE,
+): {
+  items: HistoryItem[];
+  hasMore: boolean;
+  oldestId: number | null;
+  newestId: number | null;
+} {
+  const db = getDb();
+  if (!db) return { items: [], hasMore: false, oldestId: null, newestId: null };
+
+  const pageSize = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : DEFAULT_HISTORY_PAGE;
+  // One extra row tells us whether an older page exists without a COUNT.
+  const query = buildSessionMessagesBeforeQuery(sessionId, beforeId, pageSize + 1);
+  const rows = db.prepare(query.sql).all(...query.params) as RawMessageRow[];
+
+  const hasMore = rows.length > pageSize;
+  // The extra row from `LIMIT pageSize + 1` is the OLDEST BY ID (the inner query
+  // is `ORDER BY id DESC`), but `rows` was re-sorted by `timestamp, id`. When a
+  // session's timestamps are not monotonic with its ids those orders disagree,
+  // so the extra row must be dropped BY ID, not by position: dropping rows[0]
+  // would keep the extra row and set `oldestId` too high, making the next
+  // `id < cursor` page re-fetch rows that were already shown (duplicates).
+  const page = hasMore
+    ? rows.filter((_, index) => index !== oldestByIdIndex(rows))
+    : rows;
+
+  const canonical = mergeStoredPromptImageAttachments(
+    expandRowsToHistory(page),
+    loadPromptImageAttachments(db, sessionId),
+  );
+
+  // Session-level overlays are re-applied here, but scoped so paging neither
+  // duplicates nor misplaces them:
+  //  - local errors are matched only against rows in THIS page (an error whose
+  //    prompt lives on an older page appears when that page loads, not pinned
+  //    to the bottom of the window now);
+  //  - the file-change chip belongs to the newest assistant turn, so it is
+  //    attached only on the newest page (beforeId === 0);
+  //  - the continuation prefix sits above every stored row, so it is prepended
+  //    only once the OLDEST page has been reached (hasMore === false).
+  // Unmatched historical errors must never be replayed as new tail rows.
+  const withErrors = mergeSessionLocalErrors(
+    canonical,
+    loadSessionLocalErrors(db, sessionId),
+    { appendUnmatched: false },
+  );
+  const withChanges =
+    beforeId > 0
+      ? withErrors
+      : attachSessionFileChanges(withErrors, loadSessionFileChanges(db, sessionId));
+  const items = hasMore
+    ? withChanges
+    : [...loadSessionContinuationItems(db, sessionId), ...withChanges];
+
+  // The cursor must be the smallest ID in the page (the inner query selects by
+  // id), not the first row of the timestamp-ordered output.
+  let oldestId: number | null = null;
+  let newestId: number | null = null;
+  for (const row of page) {
+    if (oldestId === null || row.id < oldestId) oldestId = row.id;
+    if (newestId === null || row.id > newestId) newestId = row.id;
+  }
+  return { items, hasMore, oldestId, newestId };
+}
+
+/** Index of the row with the smallest `id` (the paging cursor's extra row). */
+function oldestByIdIndex(rows: ReadonlyArray<RawMessageRow>): number {
+  let index = 0;
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i]!.id < rows[index]!.id) index = i;
+  }
+  return index;
 }
 
 export function applySessionLocalOverlays(

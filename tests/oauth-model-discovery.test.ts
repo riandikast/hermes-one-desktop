@@ -41,6 +41,7 @@ vi.mock("../src/main/installer", () => ({
   HERMES_REPO: "/tmp/hermes-repo",
   HERMES_HOME: "/tmp/hermes-home",
   getEnhancedPath: () => process.env.PATH || "",
+  hermesPythonArgs: (code: string, args: string[] = []) => ["-c", code, ...args],
 }));
 
 vi.mock("../src/main/config", () => ({

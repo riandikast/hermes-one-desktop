@@ -10,6 +10,8 @@ export default {
   send: "Kirim",
   custom: "Kustom",
   searchModels: "Cari model...",
+  ungrouped: "Tidak Dikelompokkan",
+  addAndSelect: "Tambah & Pilih",
   typeModelName: "Ketik nama model...",
   emptyTitle: "Apa yang bisa saya bantu hari ini?",
   emptyHint:

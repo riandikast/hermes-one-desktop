@@ -9,7 +9,9 @@ import {
   FolderPlus,
   FolderMinus,
   Trash2,
+  Plus,
 } from "lucide-react";
+import { OPENAI_COMPATIBLE_BASE_URLS } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 import BrandLogo from "../../components/common/BrandLogo";
 import type { ModelGroup } from "./types";
@@ -62,6 +64,18 @@ export const ModelPicker = memo(function ModelPicker({
   const [groupTarget, setGroupTarget] = useState<string | null>(null);
   // New-group creation flow.
   const [newGroupName, setNewGroupName] = useState("");
+  // Add-model-to-provider flow.
+  const [addingProvider, setAddingProvider] = useState<{
+    groupKey: string;
+    brand: string;
+    label: string;
+    provider: string;
+    baseUrl: string;
+    providerLabel?: string;
+  } | null>(null);
+  const [newModelInput, setNewModelInput] = useState("");
+  const [newModelBusy, setNewModelBusy] = useState(false);
+  const [newModelError, setNewModelError] = useState<string | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -99,6 +113,8 @@ export const ModelPicker = memo(function ModelPicker({
       setIsOpen(true);
       setSearchInput("");
       setSelectedBrand(null);
+      setEditingModel(null);
+      setAddingProvider(null);
     }
     window.addEventListener("model-picker:open", handleExternalOpen);
     return () =>
@@ -135,6 +151,42 @@ export const ModelPicker = memo(function ModelPicker({
     }
     return `brand:${g.provider}`;
   }
+
+  function resolveRouteForGroup(g: ModelGroup): {
+    provider: string;
+    baseUrl: string;
+    providerLabel?: string;
+  } {
+    const sample = g.models[0];
+    const isCustomNamed =
+      g.provider === "custom" &&
+      g.providerLabel &&
+      g.providerLabel !== "OpenAI Compatible / Local";
+
+    let provider = sample?.provider;
+    if (!provider) {
+      provider =
+        g.provider in OPENAI_COMPATIBLE_BASE_URLS ? "custom" : g.provider;
+    }
+
+    let baseUrl = sample?.baseUrl;
+    if (baseUrl === undefined) {
+      baseUrl = OPENAI_COMPATIBLE_BASE_URLS[g.provider] || "";
+    }
+
+    const providerLabel = isCustomNamed
+      ? g.providerLabel
+      : sample?.provider === "custom" && isCustomNamed
+        ? g.providerLabel
+        : undefined;
+
+    return {
+      provider,
+      baseUrl,
+      providerLabel,
+    };
+  }
+
   // Left rail: one entry per provider group present (post-search) + counts.
   // `groupKey` disambiguates multiple custom providers that otherwise all share
   // brand "custom". Previously the rail used `brand` as its key, which collapsed
@@ -144,6 +196,7 @@ export const ModelPicker = memo(function ModelPicker({
     label: g.providerLabel,
     groupKey: groupKeyOf(g),
     count: g.models.length,
+    group: g,
   }));
   // Flat model rows carrying their groupKey + brand/display label for the right pane.
   // Each row keeps its raw provider/baseUrl so selection routing is unchanged.
@@ -222,6 +275,8 @@ export const ModelPicker = memo(function ModelPicker({
     setIsOpen((v) => !v);
     setSearchInput("");
     setSelectedBrand(null);
+    setEditingModel(null);
+    setAddingProvider(null);
   }
 
   function select(
@@ -289,8 +344,61 @@ export const ModelPicker = memo(function ModelPicker({
 
   function openAliasEditor(model: { id?: string; model: string; label: string }): void {
     if (!model.id) return;
+    setAddingProvider(null);
     setEditingModel({ id: model.id, model: model.model });
     setAliasInput(model.label === model.model ? "" : model.label);
+  }
+
+  function openAddModel(p: (typeof railProviders)[number]): void {
+    const fullGroup =
+      modelGroups.find((mg) => groupKeyOf(mg) === p.groupKey) || p.group;
+    const route = resolveRouteForGroup(fullGroup);
+    setEditingModel(null);
+    setAddingProvider({
+      groupKey: p.groupKey,
+      brand: p.brand,
+      label: p.label,
+      provider: route.provider,
+      baseUrl: route.baseUrl,
+      providerLabel: route.providerLabel,
+    });
+    setNewModelInput("");
+    setNewModelError(null);
+    setSelectedBrand(p.groupKey);
+  }
+
+  async function handleAddModel(selectAfterAdd: boolean): Promise<void> {
+    const model = newModelInput.trim();
+    if (!model || !addingProvider || newModelBusy) return;
+    setNewModelBusy(true);
+    setNewModelError(null);
+    try {
+      const displayName = model.split("/").pop() || model;
+      await window.hermesAPI.addModel(
+        displayName,
+        addingProvider.provider,
+        model,
+        addingProvider.baseUrl,
+        undefined,
+        addingProvider.providerLabel,
+      );
+      await onOpenRef.current();
+      if (selectAfterAdd) {
+        select(
+          addingProvider.provider,
+          model,
+          addingProvider.baseUrl,
+          addingProvider.providerLabel,
+        );
+      } else {
+        setNewModelInput("");
+      }
+      setAddingProvider(null);
+    } catch (err) {
+      setNewModelError((err as Error)?.message || "Failed to add model");
+    } finally {
+      setNewModelBusy(false);
+    }
   }
 
   async function saveAlias(): Promise<void> {
@@ -420,20 +528,44 @@ export const ModelPicker = memo(function ModelPicker({
                         r.groupKey === p.groupKey && groupedRowKeys.has(r.rowKey),
                     ).length;
                   return (
-                    <button
+                    <div
                       key={p.groupKey}
-                      type="button"
-                      className={`chat-model-rail-item ${activeBrand === p.groupKey ? "active" : ""}`}
-                      onClick={() =>
-                        setSelectedBrand((cur) =>
-                          cur === p.groupKey ? null : p.groupKey,
-                        )
-                      }
+                      className={`chat-model-rail-item-holder ${activeBrand === p.groupKey ? "active" : ""}`}
                     >
-                      <BrandLogo provider={p.brand} size={16} matchTheme />
-                      <span className="chat-model-rail-label">{t(p.label)}</span>
-                      <span className="chat-model-rail-count">{ungroupedCount}</span>
-                    </button>
+                      <button
+                        type="button"
+                        className={`chat-model-rail-item ${activeBrand === p.groupKey ? "active" : ""}`}
+                        onClick={() =>
+                          setSelectedBrand((cur) =>
+                            cur === p.groupKey ? null : p.groupKey,
+                          )
+                        }
+                      >
+                        <BrandLogo provider={p.brand} size={16} matchTheme />
+                        <span className="chat-model-rail-label">{t(p.label)}</span>
+                        <span className="chat-model-rail-count">{ungroupedCount}</span>
+                      </button>
+                      <span
+                        className="chat-model-rail-add"
+                        role="button"
+                        tabIndex={0}
+                        title={`${t("models.addModel") || "Add model"} (${t(p.label)})`}
+                        aria-label={`${t("models.addModel") || "Add model"} (${t(p.label)})`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openAddModel(p);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openAddModel(p);
+                          }
+                        }}
+                      >
+                        <Plus size={12} />
+                      </span>
+                    </div>
                   );
                 })}
               </div>
@@ -617,8 +749,100 @@ export const ModelPicker = memo(function ModelPicker({
                   );
                 })
               )}
+              {activeBrand && !activeBrand.startsWith("custom:") && (
+                <button
+                  type="button"
+                  className="chat-model-add-row"
+                  onClick={() => {
+                    const found = railProviders.find(
+                      (p) => p.groupKey === activeBrand,
+                    );
+                    if (found) openAddModel(found);
+                  }}
+                >
+                  <Plus size={13} aria-hidden />
+                  <span>{t("models.addModel") || "Add model"}</span>
+                </button>
+              )}
             </div>
           </div>
+          {addingProvider && (
+            <div
+              className="chat-model-alias-editor"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="chat-model-alias-header">
+                <strong>
+                  {t("models.addModel") || "Add Model"} · {t(addingProvider.label)}
+                </strong>
+                <span
+                  className="chat-model-row-alias"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setAddingProvider(null)}
+                  aria-label="Close"
+                >
+                  <X size={15} />
+                </span>
+              </div>
+              <div className="chat-model-alias-model">
+                {addingProvider.baseUrl || addingProvider.provider}
+              </div>
+              <input
+                className="input"
+                autoFocus
+                value={newModelInput}
+                onChange={(e) => {
+                  setNewModelInput(e.target.value);
+                  if (newModelError) setNewModelError(null);
+                }}
+                placeholder={
+                  t("providers.models.addModelId") || "Model ID (e.g. gpt-4o)"
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void handleAddModel(true);
+                  if (e.key === "Escape") setAddingProvider(null);
+                }}
+              />
+              {newModelError && (
+                <div
+                  className="chat-model-error-hint"
+                  style={{
+                    color: "var(--danger, #ef4444)",
+                    fontSize: 11,
+                    marginBottom: 8,
+                  }}
+                >
+                  {newModelError}
+                </div>
+              )}
+              <div className="chat-model-alias-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setAddingProvider(null)}
+                >
+                  {t("common.cancel") || "Cancel"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={!newModelInput.trim() || newModelBusy}
+                  onClick={() => void handleAddModel(false)}
+                >
+                  {t("common.add") || "Add"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  disabled={!newModelInput.trim() || newModelBusy}
+                  onClick={() => void handleAddModel(true)}
+                >
+                  {t("chat.addAndSelect") || "Add & Select"}
+                </button>
+              </div>
+            </div>
+          )}
           {editingModel && (
             <div
               className="chat-model-alias-editor"

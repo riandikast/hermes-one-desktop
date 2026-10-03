@@ -8,7 +8,7 @@ vi.mock("./installer", () => ({
   HERMES_HOME: "/tmp/h",
   HERMES_REPO: "/tmp/r",
   HERMES_PYTHON: "python3",
-  hermesCliArgs: (args: string[]) => args,
+  hermesCliArgs: (args: string[] = []) => ["-I", "-c", "bootstrap", ...args],
   getEnhancedPath: () => "",
 }));
 vi.mock("./utils", () => ({
@@ -26,6 +26,25 @@ describe("skill hub CLI wrappers", () => {
     mockedExec.mockReset();
   });
   afterEach(() => vi.restoreAllMocks());
+
+  it("keeps the managed bootstrap intact when selecting a profile", () => {
+    mockedExec.mockReturnValue(Buffer.from("Installed ok"));
+    installHubSkill("skills-sh/x/y", "work");
+    expect(mockedExec.mock.calls[0]?.slice(0, 2)).toEqual([
+      "python3",
+      [
+        "-I",
+        "-c",
+        "bootstrap",
+        "-p",
+        "work",
+        "skills",
+        "install",
+        "skills-sh/x/y",
+        "--yes",
+      ],
+    ]);
+  });
 
   it("installHubSkill runs hermes skills install <id> --yes", () => {
     mockedExec.mockReturnValue(Buffer.from("Installed ok"));

@@ -43,6 +43,34 @@ function runningTool(messages: ChatMessage[]): { name: string } | null {
 }
 
 /**
+ * The live elapsed counter, isolated so its 1 Hz tick re-renders ONLY this
+ * span.
+ *
+ * It used to live in `ChatTurnStatus` itself, which receives `messages`. Since
+ * `messages` is a fresh array on every parent render, `memo()` on
+ * `ChatTurnStatus` could never bail out, so each tick re-rendered the status
+ * strip AND (because the state update belonged to that component) propagated a
+ * commit through the chat tree — measured at ~1 commit/second while idle.
+ * Keeping `now` in a leaf whose props are two primitives confines the re-render
+ * to this node.
+ */
+const ElapsedLabel = memo(function ElapsedLabel({
+  startedAt,
+}: {
+  startedAt: number;
+}): React.JSX.Element {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+  const elapsed = Math.max(0, now - startedAt);
+  return (
+    <span className="chat-turn-status-elapsed">{formatElapsed(elapsed)}</span>
+  );
+});
+
+/**
  * Always-visible agent-turn status strip (Codex / Claude Code style): while
  * the turn is loading it shows a spinner plus what the agent is doing —
  * "Thinking…", "Working…", or "Running <tool> · 1m 23s" with a live elapsed
@@ -60,18 +88,16 @@ export const ChatTurnStatus = memo(function ChatTurnStatus({
   messages: ChatMessage[];
   activeSubagentCount?: number;
 }): React.JSX.Element | null {
+  // Anchor for the elapsed label. Held in a ref so the 1s tick cannot cause
+  // this component to re-render; only `ElapsedLabel` re-renders. Assigned
+  // during render (not in an effect) so the label is present on the very first
+  // loading render instead of one commit later.
   const startRef = useRef<number | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!isLoading) {
-      startRef.current = null;
-      return;
-    }
+  if (isLoading) {
     if (startRef.current === null) startRef.current = Date.now();
-    const t = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(t);
-  }, [isLoading]);
+  } else {
+    startRef.current = null;
+  }
 
   if (!isLoading && !activeSubagentCount) return null;
 
@@ -86,8 +112,6 @@ export const ChatTurnStatus = memo(function ChatTurnStatus({
       : lastKind === "reasoning"
         ? "Thinking…"
         : "Working…";
-  const elapsed =
-    startRef.current !== null ? Math.max(0, now - startRef.current) : 0;
 
   return (
     <div className="chat-turn-status" role="status" aria-live="polite">
@@ -96,10 +120,8 @@ export const ChatTurnStatus = memo(function ChatTurnStatus({
       {isLoading && activeSubagentCount > 0 && (
         <span> · {childrenLabel} active</span>
       )}
-      {isLoading && elapsed >= 1000 && (
-        <span className="chat-turn-status-elapsed">
-          {formatElapsed(elapsed)}
-        </span>
+      {isLoading && startRef.current !== null && (
+        <ElapsedLabel startedAt={startRef.current} />
       )}
     </div>
   );

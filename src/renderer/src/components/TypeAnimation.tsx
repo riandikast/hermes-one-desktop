@@ -13,18 +13,14 @@ import { memo, useEffect, useRef, useState } from "react";
  *  - When `text` grows (e.g. new tokens arrive) we resume from the current
  *    `revealed` count, so the animation never restarts or jumps backwards.
  *  - When `active` flips off the full text is shown immediately.
+ *
+ * PERF CONTRACT: this component is a thin pass-through. The reveal tick state
+ * lives in `TypeReveal` below so a 50ms `setRevealed` re-renders only the
+ * revealed text. Do not move that state back up here, and do not add work to
+ * TypeReveal: while a thought is typing it re-renders ~20×/s, and anything
+ * expensive in it becomes periodic main-thread work.
  */
-export const TypeAnimation = memo(function TypeAnimation({
-  text,
-  active,
-  charsPerSecond = 40,
-  maxDurationMs,
-  className,
-  children,
-  showCaret = true,
-  startFrom = 0,
-  maxCharsPerTick,
-}: {
+export interface TypeAnimationProps {
   text: string;
   active: boolean;
   charsPerSecond?: number;
@@ -55,7 +51,50 @@ export const TypeAnimation = memo(function TypeAnimation({
    *  burst; the duration budget then simply takes longer to empty. Absent
    *  (default) means no ceiling — the budget scales freely as before. */
   maxCharsPerTick?: number;
-}): React.JSX.Element {
+}
+
+export const TypeAnimation = memo(function TypeAnimation({
+  text,
+  active,
+  charsPerSecond = 40,
+  maxDurationMs,
+  className,
+  children,
+  showCaret = true,
+  startFrom = 0,
+  maxCharsPerTick,
+}: TypeAnimationProps): React.JSX.Element {
+  // Delegate to the leaf that owns the tick — see the PERF CONTRACT above.
+  return (
+    <TypeReveal
+      text={text}
+      active={active}
+      charsPerSecond={charsPerSecond}
+      maxDurationMs={maxDurationMs}
+      maxCharsPerTick={maxCharsPerTick}
+      startFrom={startFrom}
+      className={className}
+      showCaret={showCaret}
+    >
+      {children}
+    </TypeReveal>
+  );
+});
+
+/** Leaf that owns the reveal tick. Kept intentionally tiny: its only job is to
+ *  advance `revealed` on a timer and emit the slice. Nothing expensive may be
+ *  added here — every 50ms tick re-renders this component and nothing above it. */
+const TypeReveal = memo(function TypeReveal({
+  text,
+  active,
+  charsPerSecond = 40,
+  maxDurationMs,
+  className,
+  children,
+  showCaret = true,
+  startFrom = 0,
+  maxCharsPerTick,
+}: TypeAnimationProps): React.JSX.Element {
   // Number of characters currently visible.
   const [revealed, setRevealed] = useState(active ? startFrom : text.length);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);

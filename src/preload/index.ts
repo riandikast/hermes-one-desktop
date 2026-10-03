@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import type { AppLocale } from "../shared/i18n/types";
 import type { Attachment } from "../shared/attachments";
+import type { SessionHistoryPage } from "../shared/session-history";
 import type { SessionModelOverride } from "../shared/model-override";
 import type { DesktopSessionContinuationItem } from "../shared/session-continuation";
 import type { DesktopSessionLocalError } from "../shared/session-continuation";
@@ -98,9 +99,15 @@ const electronAPI = {
     minimize: (): Promise<void> => ipcRenderer.invoke("window:minimize"),
     maximize: (): Promise<void> => ipcRenderer.invoke("window:maximize"),
     close: (): Promise<void> => ipcRenderer.invoke("window:close"),
-    isMaximized: (): Promise<boolean> => ipcRenderer.invoke("window:is-maximized"),
-    onMaximizedChange: (callback: (maximized: boolean) => void): (() => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, value: boolean): void => {
+    isMaximized: (): Promise<boolean> =>
+      ipcRenderer.invoke("window:is-maximized"),
+    onMaximizedChange: (
+      callback: (maximized: boolean) => void,
+    ): (() => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        value: boolean,
+      ): void => {
         callback(value);
       };
       ipcRenderer.on("window:maximized-changed", listener);
@@ -899,6 +906,18 @@ const hermesAPI = {
     }>
   > => ipcRenderer.invoke("list-sessions", limit, offset),
 
+  getSessionMessagesBefore: (
+    sessionId: string,
+    beforeId?: number,
+    limit?: number,
+  ): Promise<SessionHistoryPage> =>
+    ipcRenderer.invoke(
+      "get-session-messages-before",
+      sessionId,
+      beforeId,
+      limit,
+    ),
+
   getSessionMessages: (
     sessionId: string,
     afterId?: number,
@@ -1144,7 +1163,9 @@ const hermesAPI = {
     ipcRenderer.invoke("uninstall-skill", name, profile),
 
   // Capabilities — dashboard skills/toolsets + skill hub
-  getDashboardSkills: (profile?: string): Promise<
+  getDashboardSkills: (
+    profile?: string,
+  ): Promise<
     Array<{
       name: string;
       enabled: boolean;
@@ -1160,7 +1181,9 @@ const hermesAPI = {
     profile?: string,
   ): Promise<boolean> =>
     ipcRenderer.invoke("set-dashboard-skill-enabled", name, enabled, profile),
-  getDashboardToolsets: (profile?: string): Promise<
+  getDashboardToolsets: (
+    profile?: string,
+  ): Promise<
     Array<{
       name: string;
       label: string;
@@ -1178,7 +1201,9 @@ const hermesAPI = {
     profile?: string,
   ): Promise<boolean> =>
     ipcRenderer.invoke("set-dashboard-toolset-enabled", name, enabled, profile),
-  getHubSources: (profile?: string): Promise<{
+  getHubSources: (
+    profile?: string,
+  ): Promise<{
     sources: Array<{
       id: string;
       label: string;
@@ -1211,8 +1236,7 @@ const hermesAPI = {
     }>;
     installed: Record<string, { name: string }>;
     timedOut: string[];
-  }> =>
-    ipcRenderer.invoke("search-hub-skills", query, source, limit, profile),
+  }> => ipcRenderer.invoke("search-hub-skills", query, source, limit, profile),
   previewHubSkill: (
     identifier: string,
     profile?: string,
@@ -1736,6 +1760,10 @@ const hermesAPI = {
   openTerminal: (dirPath: string): Promise<boolean> =>
     ipcRenderer.invoke("open-terminal", dirPath),
   gitRepoStatus: (dir: string) => ipcRenderer.invoke("git-repo-status", dir),
+  gitLog: (dir: string, opts?: { max?: number }) =>
+    ipcRenderer.invoke("git-log", dir, opts),
+  gitCommitDiff: (dir: string, hash: string) =>
+    ipcRenderer.invoke("git-commit-diff", dir, hash),
   gitRemoteHost: (dir: string) => ipcRenderer.invoke("git-remote-host", dir),
   gitSetToken: (host: string, token: string) =>
     ipcRenderer.invoke("git-set-token", host, token),
@@ -1826,7 +1854,7 @@ const hermesAPI = {
   deleteCommand: (id: string) => ipcRenderer.invoke("commands:delete", id),
   terminalCreate: (payload: { cwd: string; cols: number; rows: number }) =>
     ipcRenderer.invoke("terminal:create", payload),
-  terminalWrite: (payload: { id: string; data: string }) =>
+  terminalWrite: (payload: { id: string; data: string; cwd?: string }) =>
     ipcRenderer.invoke("terminal:write", payload),
   terminalResize: (payload: { id: string; cols: number; rows: number }) =>
     ipcRenderer.invoke("terminal:resize", payload),

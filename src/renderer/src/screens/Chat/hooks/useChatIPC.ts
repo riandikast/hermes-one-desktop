@@ -20,6 +20,13 @@ interface UseChatIPCArgs {
   runId: string;
   /** The session currently visible in this Chat, if already known. */
   sessionScopeId: string | null;
+  /**
+   * Highest state.db id already merged into the transcript at mount. A session
+   * opened on its newest page (not the whole history) must seed the poll cursor
+   * here, or the first 750ms poll re-reads the entire session — silently
+   * undoing the paging win.
+   */
+  initialLastSyncedId?: number | null;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   setHermesSessionId: (id: string) => void;
   setToolProgress: (tool: string | null) => void;
@@ -47,6 +54,7 @@ export function eventMatchesRun(eventRunId: string, ownRunId: string): boolean {
 export function useChatIPC({
   runId,
   sessionScopeId,
+  initialLastSyncedId,
   setMessages,
   setHermesSessionId,
   setToolProgress,
@@ -68,7 +76,11 @@ export function useChatIPC({
    * the full read was stalling the main thread ~240 ms/sec (the visible stutter,
    * worst during prompt processing because that is when the poll is active).
    */
-  const lastSyncedDbIdRef = useRef(0);
+  const lastSyncedDbIdRef = useRef(
+    initialLastSyncedId != null && initialLastSyncedId > 0
+      ? initialLastSyncedId
+      : 0,
+  );
 
   const stopDbPolling = useCallback((): void => {
     if (dbPollRef.current !== null) {
@@ -253,12 +265,20 @@ export function useChatIPC({
           return;
         }
         try {
+          // CURSOR-SCOPED, mirroring the 750ms poll: a full read here costs
+          // ~450ms of blocking SQLite on a 29k-row session (measured) and was
+          // paid on EVERY turn end — the stutter. The already-merged prefix is
+          // in `messages`, so only the new tail needs reading. A zero cursor
+          // (nothing merged yet, e.g. a fresh run) still does the full read.
+          const doneCursor = lastSyncedDbIdRef.current;
           const items = (await window.hermesAPI.getSessionMessages(
             sessionId,
+            doneCursor > 0 ? doneCursor : undefined,
           )) as DbHistoryItem[];
           const dbMessages = dbItemsToChatMessages(items);
           console.info("[gate-diag] legacy chat-done", {
             dbMessages: dbMessages.length,
+            cursor: doneCursor,
             lastRoles: dbMessages
               .slice(-4)
               .map((m) =>
@@ -266,9 +286,18 @@ export function useChatIPC({
               ),
           });
           if (dbMessages.length > 0) {
+            const highest = highestDbId(dbMessages);
             setMessages((prev) =>
-              reconcileAfterDbRefresh(prev, dbMessages, { activeTurn }),
+              doneCursor > 0
+                ? reconcileTailAfterDbRefresh(prev, dbMessages, {
+                    activeTurn,
+                    lastSyncedDbId: doneCursor,
+                  })
+                : reconcileAfterDbRefresh(prev, dbMessages, { activeTurn }),
             );
+            if (highest > lastSyncedDbIdRef.current) {
+              lastSyncedDbIdRef.current = highest;
+            }
           }
           if (activeTurn) activeTurn.status = "completed";
         } catch {

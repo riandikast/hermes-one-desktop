@@ -22,6 +22,7 @@ vi.mock("@xterm/xterm", () => ({
     cols = 80;
     rows = 24;
     open(): void {}
+    focus(): void {}
     write(): void {}
     dispose(): void {}
     loadAddon(): void {}

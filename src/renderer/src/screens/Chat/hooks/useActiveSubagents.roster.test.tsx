@@ -192,3 +192,66 @@ describe("useActiveSubagents — child_session_id preservation", () => {
     expect(result.current.activeSubagents[0]?.child_session_id).toBe("child-xyz");
   }, 20_000);
 });
+
+/**
+ * The poll rebuilds `children` (and every row object) on EVERY tick, so
+ * committing it unconditionally re-rendered the whole chat transcript even when
+ * the roster was unchanged. Measured with an empty roster — the common case — a
+ * 300-450 ms main-thread block every 5 s with ZERO DOM changes. The hook must
+ * now skip the state write when the roster is equivalent.
+ */
+describe("roster identity (no-op poll must not re-render)", () => {
+  it("rostersEqual matches equivalent rosters field-by-field", async () => {
+    const { rostersEqual } = await import("./useActiveSubagents");
+    const a = {
+      session: "s",
+      children: [{ subagent_id: "a", goal: "g", tool_count: 2 }],
+    };
+    // Same content, different object identities (what a poll produces).
+    const b = {
+      session: "s",
+      children: [{ subagent_id: "a", goal: "g", tool_count: 2 }],
+    };
+    expect(rostersEqual(a, b)).toBe(true);
+    expect(rostersEqual(a, { ...b, session: "other" })).toBe(false);
+    expect(rostersEqual(a, { session: "s", children: [] })).toBe(false);
+    expect(
+      rostersEqual(a, {
+        session: "s",
+        children: [{ subagent_id: "a", goal: "g", tool_count: 3 }],
+      }),
+    ).toBe(false);
+    expect(
+      rostersEqual(a, {
+        session: "s",
+        children: [{ subagent_id: "a", goal: "different" }],
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps the same array identity across identical polls", async () => {
+    const runtimeSessionIdRef = { current: "parent" };
+    const clientRef = {
+      // The backend repeats the SAME snapshot on every call.
+      current: {
+        request: vi.fn().mockResolvedValue({
+          subagents: [{ subagent_id: "a", status: "running" }],
+        }),
+      },
+    };
+    const { result } = renderHook(() =>
+      useActiveSubagents(true, runtimeSessionIdRef, clientRef),
+    );
+    await act(async () => {});
+    const first = result.current.activeSubagents;
+    expect(first.map((c) => c.subagent_id)).toEqual(["a"]);
+
+    // A second poll returning the same content must not produce a new array.
+    // (The roster is committed through state, so identity is preserved only if
+    // the reducer returns the previous object.)
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5_200));
+    });
+    expect(result.current.activeSubagents).toBe(first);
+  }, 15_000);
+});

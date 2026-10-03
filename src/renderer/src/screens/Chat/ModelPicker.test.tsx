@@ -19,6 +19,7 @@ vi.mock("lucide-react", () => ({
   FolderPlus: () => null,
   FolderMinus: () => null,
   Trash2: () => null,
+  Plus: () => null,
 }));
 
 vi.mock("../../components/common/BrandLogo", () => ({
@@ -475,5 +476,132 @@ describe("ModelPicker custom groups (frontend-only)", () => {
     const second = renderPicker();
     const dropdown2 = openPicker(second.container);
     expect(within(dropdown2).getByText("Persisted")).toBeTruthy();
+  });
+});
+
+describe("ModelPicker add model to provider", () => {
+  beforeEach(() => {
+    (window as unknown as { hermesAPI?: unknown }).hermesAPI = {
+      addModel: vi.fn().mockResolvedValue({ id: "new-id" }),
+      updateModel: vi.fn().mockResolvedValue(true),
+    };
+  });
+
+  it("shows an add button on each provider rail item in the ungrouped section", () => {
+    const { container } = renderPicker();
+    const dropdown = openPicker(container);
+    const addButtons = dropdown.querySelectorAll(".chat-model-rail-add");
+    expect(addButtons.length).toBe(groups.length);
+  });
+
+  it("opens add model dialog when + is clicked on a provider", () => {
+    const { container } = renderPicker();
+    const dropdown = openPicker(container);
+    const addButtons = dropdown.querySelectorAll(".chat-model-rail-add");
+    fireEvent.click(addButtons[0]);
+
+    expect(dropdown.querySelector(".chat-model-alias-editor")).toBeTruthy();
+    expect(
+      dropdown.querySelector(
+        'input[placeholder="providers.models.addModelId"]',
+      ),
+    ).toBeTruthy();
+  });
+
+  it("adds and selects the model when Add & Select is clicked or Enter is pressed", async () => {
+    const { container, onSelectModel, onOpen } = renderPicker();
+    const dropdown = openPicker(container);
+    const addButtons = dropdown.querySelectorAll(".chat-model-rail-add");
+    fireEvent.click(addButtons[0]); // openrouter
+
+    const input = dropdown.querySelector(
+      'input[placeholder="providers.models.addModelId"]',
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "meta-llama/llama-3.3-70b" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    expect(
+      (window as unknown as { hermesAPI: { addModel: Mock } }).hermesAPI.addModel,
+    ).toHaveBeenCalledWith(
+      "llama-3.3-70b",
+      "openrouter",
+      "meta-llama/llama-3.3-70b",
+      "",
+      undefined,
+      undefined,
+    );
+    expect(onOpen).toHaveBeenCalled();
+    expect(onSelectModel).toHaveBeenCalledWith(
+      "openrouter",
+      "meta-llama/llama-3.3-70b",
+      "",
+    );
+  });
+
+  it("shows + Add model row at bottom of model list when a provider is selected", () => {
+    const { container } = renderPicker();
+    const dropdown = openPicker(container);
+    const openrouterRail = within(dropdown)
+      .getByText("providers.openrouter")
+      .closest("button")!;
+    fireEvent.click(openrouterRail);
+
+    const addRow = container.querySelector(".chat-model-add-row");
+    expect(addRow).toBeTruthy();
+    fireEvent.click(addRow!);
+    expect(container.querySelector(".chat-model-alias-editor")).toBeTruthy();
+  });
+
+  it("adds model to custom named provider with providerLabel and baseUrl", async () => {
+    const customNamedGroups: ModelGroup[] = [
+      {
+        provider: "custom",
+        providerLabel: "9router",
+        models: [
+          {
+            provider: "custom",
+            model: "old-model",
+            label: "Old Model",
+            baseUrl: "https://api.9router.com/v1",
+          },
+        ],
+      },
+    ];
+    const { container, onSelectModel } = renderPicker({
+      modelGroups: customNamedGroups,
+      currentModel: "old-model",
+      currentProvider: "custom",
+      currentBaseUrl: "https://api.9router.com/v1",
+    });
+    const dropdown = openPicker(container);
+    const addBtn = dropdown.querySelector(".chat-model-rail-add")!;
+    fireEvent.click(addBtn);
+
+    const input = dropdown.querySelector(
+      'input[placeholder="providers.models.addModelId"]',
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "ag/gemini-3.8-flash-high" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    expect(
+      (window as unknown as { hermesAPI: { addModel: Mock } }).hermesAPI.addModel,
+    ).toHaveBeenCalledWith(
+      "gemini-3.8-flash-high",
+      "custom",
+      "ag/gemini-3.8-flash-high",
+      "https://api.9router.com/v1",
+      undefined,
+      "9router",
+    );
+    expect(onSelectModel).toHaveBeenCalledWith(
+      "custom",
+      "ag/gemini-3.8-flash-high",
+      "https://api.9router.com/v1",
+      "9router",
+    );
   });
 });

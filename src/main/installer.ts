@@ -7,7 +7,7 @@ import {
   writeFileSync,
   unlinkSync,
 } from "fs";
-import { join, delimiter, resolve } from "path";
+import { join, delimiter, resolve, dirname, isAbsolute } from "path";
 import { homedir, tmpdir } from "os";
 import { randomBytes } from "crypto";
 import { app, type BrowserWindow } from "electron";
@@ -130,40 +130,105 @@ export const HERMES_HOME =
   readHermesHomeOverride() ||
   defaultHermesHome();
 export const HERMES_REPO = join(HERMES_HOME, "hermes-agent");
-export const HERMES_VENV = join(HERMES_REPO, "venv");
-// On Windows, use console-subsystem `python.exe` with windowsHide so the
-// backend owns one hidden console. Descendant console apps (git.exe,
-// powershell.exe) inherit that hidden console instead of allocating visible
-// popups. Using `pythonw.exe` prevents the parent console, but reintroduces
-// descendant flicker; see NousResearch/hermes-agent#53342.
-export const HERMES_PYTHON = IS_WINDOWS
-  ? join(HERMES_VENV, "Scripts", "python.exe")
-  : join(HERMES_VENV, "bin", "python");
-export const HERMES_SCRIPT = IS_WINDOWS
-  ? join(HERMES_VENV, "Scripts", "hermes.exe")
-  : join(HERMES_REPO, "hermes");
+let installBinaries = installBinariesFor(HERMES_HOME);
+export let HERMES_VENV = installBinaries.venv;
+export let HERMES_PYTHON = installBinaries.python;
+export let HERMES_SCRIPT = installBinaries.script;
 export const HERMES_ENV_FILE = join(HERMES_HOME, ".env");
 export const HERMES_CONFIG_FILE = join(HERMES_HOME, "config.yaml");
 export const HERMES_AUTH_FILE = join(HERMES_HOME, "auth.json");
 
-/** The Python + hermes-script paths for a Hermes install rooted at `home`,
- *  in the layout the desktop's own installer produces. */
-function installBinariesFor(home: string): { python: string; script: string } {
+function installBinariesFor(home: string): {
+  venv: string;
+  python: string;
+  script: string;
+  args: string[];
+  managed: boolean;
+} {
   const repo = join(home, "hermes-agent");
-  const venv = join(repo, "venv");
-  return IS_WINDOWS
-    ? {
-        python: join(venv, "Scripts", "python.exe"),
-        script: join(venv, "Scripts", "hermes.exe"),
+  const pythonIn = (venv: string): string =>
+    join(
+      venv,
+      IS_WINDOWS ? "Scripts" : "bin",
+      IS_WINDOWS ? "python.exe" : "python",
+    );
+  const venv =
+    [join(repo, "venv"), join(repo, ".venv")].find((dir) =>
+      existsSync(pythonIn(dir)),
+    ) ?? join(repo, "venv");
+  const launcher = join(
+    repo,
+    ".hermes",
+    "bin",
+    IS_WINDOWS ? "hermes.exe" : "hermes",
+  );
+  if (existsSync(launcher)) {
+    try {
+      // Ask this installation, not PATH or a dependency generation that PM can remove.
+      const command: unknown = JSON.parse(
+        execFileSync(launcher, ["--print-runtime-command"], {
+          cwd: repo,
+          env: { ...process.env, HERMES_HOME: home },
+          encoding: "utf8",
+          timeout: 10000,
+          maxBuffer: 64 * 1024,
+          ...HIDDEN_SUBPROCESS_OPTIONS,
+        }),
+      );
+      if (
+        Array.isArray(command) &&
+        command.length > 1 &&
+        command.every((part) => typeof part === "string") &&
+        isAbsolute(command[0]) &&
+        existsSync(command[0])
+      ) {
+        return {
+          venv,
+          python: command[0],
+          script: launcher,
+          args: command.slice(1),
+          managed: true,
+        };
       }
-    : { python: join(venv, "bin", "python"), script: join(repo, "hermes") };
+    } catch {
+      // A broken published runtime must not fall back to stale in-tree dependencies.
+    }
+    return { venv, python: "", script: launcher, args: [], managed: true };
+  }
+  const script = IS_WINDOWS
+    ? join(venv, "Scripts", "hermes.exe")
+    : join(repo, "hermes");
+  return {
+    venv,
+    python: pythonIn(venv),
+    script,
+    args: IS_WINDOWS ? ["-m", "hermes_cli.main"] : [script],
+    managed: false,
+  };
+}
+
+function refreshInstallBinaries(): void {
+  installBinaries = installBinariesFor(HERMES_HOME);
+  HERMES_VENV = installBinaries.venv;
+  HERMES_PYTHON = installBinaries.python;
+  HERMES_SCRIPT = installBinaries.script;
+  _verifyCache = null;
 }
 
 export function hermesCliArgs(args: string[] = []): string[] {
-  if (process.platform === "win32") {
-    return ["-m", "hermes_cli.main", ...args];
-  }
-  return [HERMES_SCRIPT, ...args];
+  return [...installBinaries.args, ...args];
+}
+
+export function hermesPythonArgs(code: string, args: string[] = []): string[] {
+  if (!installBinaries.managed) return ["-c", code, ...args];
+  const bootstrap = [
+    "import os, sys",
+    "os.environ.pop('PYTHONHOME', None); os.environ.pop('PYTHONPATH', None); os.environ.pop('VIRTUAL_ENV', None)",
+    `sys.path.insert(0, ${JSON.stringify(HERMES_REPO)})`,
+    "import hermes_bootstrap",
+    code,
+  ].join("\n");
+  return ["-I", "-c", bootstrap, ...args];
 }
 
 function canInvokeHermesCli(): boolean {
@@ -237,7 +302,12 @@ export function getEnhancedPath(): string {
           "/opt/homebrew/sbin",
         ]
   ).filter((entry): entry is string => Boolean(entry));
-  return [...extra, process.env.PATH || ""].filter(Boolean).join(delimiter);
+  const runtimePath = [HERMES_SCRIPT, HERMES_PYTHON]
+    .filter(Boolean)
+    .map((file) => dirname(file));
+  return [...runtimePath, ...extra, process.env.PATH || ""]
+    .filter(Boolean)
+    .join(delimiter);
 }
 
 /** Resolve the active nvm node version's bin directory. */
@@ -959,6 +1029,7 @@ export async function runInstall(
       });
 
       proc.on("close", (code) => {
+        refreshInstallBinaries();
         if (code === 0) {
           emit("\nInstallation complete!\n");
           resolve();
@@ -1122,6 +1193,7 @@ async function runInstallWindows(emit: (t: string) => void): Promise<void> {
       } catch {
         /* best-effort */
       }
+      refreshInstallBinaries();
       if (code === 0) {
         emit("\nInstallation complete!\n");
         resolve();
@@ -1502,7 +1574,12 @@ export function readLogs(
   const baseHome = process.env.HERMES_HOME || HERMES_HOME;
   const logsDir = join(baseHome, "logs");
   // Sanitize: allow known log file names
-  const allowed = ["agent.log", "errors.log", "gateway.log", "config-fixes.log"];
+  const allowed = [
+    "agent.log",
+    "errors.log",
+    "gateway.log",
+    "config-fixes.log",
+  ];
   const file = allowed.includes(logFile) ? logFile : "agent.log";
   const fullPath = join(logsDir, file);
 

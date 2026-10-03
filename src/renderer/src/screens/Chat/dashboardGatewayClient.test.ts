@@ -31,6 +31,8 @@ class FakeWebSocket {
     );
   }
 
+  send = vi.fn();
+
   close(): void {
     this.closeCalls += 1;
     this.readyState = FakeWebSocket.CLOSED;
@@ -53,6 +55,29 @@ afterEach(() => {
 });
 
 describe("DashboardGatewayClient.connect", () => {
+  it("records bounded metadata without request or response content", async () => {
+    window.__HERMES_RPC_TIMINGS__ = [];
+    const client = new DashboardGatewayClient();
+    const connecting = client.connect("ws://localhost/api/ws?token=secret");
+    const socket = FakeWebSocket.last!;
+    socket.readyState = FakeWebSocket.OPEN;
+    socket.emit("open");
+    await connecting;
+    for (let id = 1; id <= 201; id++) {
+      const request = client.request("model.options", { session_id: "private" });
+      socket.emit("message", { data: JSON.stringify({ id, result: { secret: "result" } }) });
+      await expect(request).resolves.toEqual({ secret: "result" });
+    }
+    expect(window.__HERMES_RPC_TIMINGS__).toHaveLength(200);
+    expect(window.__HERMES_RPC_TIMINGS__?.[0]).toEqual({ method: "model.options", elapsedMs: 0, outcome: "ok" });
+    expect(JSON.stringify(window.__HERMES_RPC_TIMINGS__)).not.toMatch(/secret|private|result/);
+    const pending = client.request("prompt.submit", { text: "private" }, 10);
+    const assertion = expect(pending).rejects.toThrow(/timed out/);
+    await vi.advanceTimersByTimeAsync(10);
+    await assertion;
+    expect(window.__HERMES_RPC_TIMINGS__?.at(-1)?.outcome).toBe("error");
+    client.close();
+  });
   it("rejects and closes the socket when the handshake stalls", async () => {
     const client = new DashboardGatewayClient({ connectTimeoutMs: 1_000 });
     const connecting = client.connect("ws://localhost/api/ws");

@@ -92,11 +92,25 @@ const PINNED_OPEN_KEY = "hermes.sidebar.pinnedOpen";
 export const SHOW_SUBAGENT_RUNS_KEY = "hermes.sidebar.showSubagentRuns";
 // Pinned session ids live in localStorage like the disclosure state — pinning
 // is a desktop-only UI affordance, not part of the agent session schema.
-const PINNED_IDS_KEY = "hermes.sidebar.pinnedSessions";
+export const PINNED_IDS_KEY = "hermes.sidebar.pinnedSessions";
+export const PINNED_META_KEY = "hermes.sidebar.pinnedMetadata";
 
-function readStoredPinned(): Set<string> {
+export function getPinnedIdsKey(profile?: string): string {
+  return profile && profile !== "default"
+    ? `hermes.sidebar.pinnedSessions.${profile}`
+    : PINNED_IDS_KEY;
+}
+
+export function getPinnedMetaKey(profile?: string): string {
+  return profile && profile !== "default"
+    ? `hermes.sidebar.pinnedMetadata.${profile}`
+    : PINNED_META_KEY;
+}
+
+export function readStoredPinned(profile = "default"): Set<string> {
   try {
-    const raw = localStorage.getItem(PINNED_IDS_KEY);
+    const key = getPinnedIdsKey(profile);
+    const raw = localStorage.getItem(key) ?? (profile === "default" ? null : localStorage.getItem(PINNED_IDS_KEY));
     const parsed = raw ? JSON.parse(raw) : [];
     return new Set(Array.isArray(parsed) ? parsed.filter(String) : []);
   } catch {
@@ -104,9 +118,39 @@ function readStoredPinned(): Set<string> {
   }
 }
 
-function storePinned(ids: Set<string>): void {
+export function readStoredPinnedMeta(profile = "default"): Map<string, RecentSession> {
   try {
-    localStorage.setItem(PINNED_IDS_KEY, JSON.stringify(Array.from(ids)));
+    const key = getPinnedMetaKey(profile);
+    const raw = localStorage.getItem(key);
+    const parsed: RecentSession[] = raw ? JSON.parse(raw) : [];
+    const map = new Map<string, RecentSession>();
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        if (item && item.id) map.set(item.id, item);
+      }
+    }
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
+export function storePinned(
+  profile = "default",
+  ids: Set<string>,
+  metaMap: Map<string, RecentSession>,
+): void {
+  try {
+    const idsKey = getPinnedIdsKey(profile);
+    localStorage.setItem(idsKey, JSON.stringify(Array.from(ids)));
+    if (profile === "default") {
+      localStorage.setItem(PINNED_IDS_KEY, JSON.stringify(Array.from(ids)));
+    }
+    const metaKey = getPinnedMetaKey(profile);
+    const metaArray = Array.from(ids)
+      .map((id) => metaMap.get(id))
+      .filter((m): m is RecentSession => Boolean(m));
+    localStorage.setItem(metaKey, JSON.stringify(metaArray));
   } catch {
     /* ignore persistence failures */
   }
@@ -220,7 +264,43 @@ function groupSessionsByWorkspace(sessions: RecentSession[]): {
  *  - while open: refresh on window focus and on a slow interval, throttled
  *  - closed (collapsed section or icon-only sidebar): zero work, renders null
  */
-const SidebarRecentSessions = memo(function SidebarRecentSessions({
+/**
+ * Decide whether the infinite-scroll loader should fetch the next page, given
+ * the scroll container's metrics and the position recorded when the previous
+ * page landed.
+ *
+ * Extracted as a pure function so the anti-cascade gate is testable: the bug it
+ * prevents is one flick chaining many pages, which only shows up when a page
+ * APPENDS rows while scrollTop sits near the bottom (scrollHeight grows, the
+ * remaining-distance test instantly re-fires).
+ *
+ * @param scrollTop     container.scrollTop
+ * @param scrollHeight  container.scrollHeight
+ * @param clientHeight  container.clientHeight
+ * @param loadedAt      scrollTop captured when the last page landed (null = none)
+ */
+export function shouldLoadNextPage(
+  scrollTop: number,
+  scrollHeight: number,
+  clientHeight: number,
+  loadedAt: number | null,
+): boolean {
+  const remaining = scrollHeight - scrollTop - clientHeight;
+  if (remaining > INFINITE_SCROLL_THRESHOLD_PX) return false;
+  // No page has landed yet — the threshold test alone decides (this is also the
+  // path that auto-fills a list too short to overflow).
+  if (loadedAt === null) return true;
+  const canScroll = scrollHeight > clientHeight + 1;
+  if (!canScroll) return true;
+  const maxScroll = scrollHeight - clientHeight;
+  // The gate is one-shot: it only suppresses while the recorded position is
+  // still above the bottom. Sitting at the very end of a maxed-out list must
+  // not stick and block loading forever.
+  if (loadedAt >= maxScroll) return true;
+  return scrollTop > loadedAt;
+}
+
+export const SidebarRecentSessions = memo(function SidebarRecentSessions({
   open,
   activeProfile,
   currentSessionId,
@@ -361,7 +441,14 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     () => readStoredClosedFolders(),
   );
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(() =>
-    readStoredPinned(),
+    readStoredPinned(activeProfile),
+  );
+  const pinnedIdsRef = useRef(pinnedIds);
+  useEffect(() => {
+    pinnedIdsRef.current = pinnedIds;
+  }, [pinnedIds]);
+  const [pinnedMeta, setPinnedMeta] = useState<Map<string, RecentSession>>(() =>
+    readStoredPinnedMeta(activeProfile),
   );
   const [pinnedOpen, setPinnedOpen] = useState(() =>
     readStoredOpen(PINNED_OPEN_KEY),
@@ -421,8 +508,8 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   }, [editingId]);
 
   useEffect(() => {
-    storePinned(pinnedIds);
-  }, [pinnedIds]);
+    storePinned(activeProfile, pinnedIds, pinnedMeta);
+  }, [activeProfile, pinnedIds, pinnedMeta]);
 
   useEffect(() => {
     try {
@@ -550,6 +637,54 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     [normalizeRows],
   );
 
+  const syncPinnedFromList = useCallback(
+    (
+      list: Array<{
+        id: string;
+        title: string;
+        contextFolder?: string | null;
+        contextFolders?: string[];
+        parentSessionId?: string | null;
+      }>,
+    ): void => {
+      if (!Array.isArray(list) || pinnedIdsRef.current.size === 0) return;
+      setPinnedMeta((prevMeta) => {
+        let changed = false;
+        const nextMeta = new Map(prevMeta);
+        for (const item of list) {
+          if (pinnedIdsRef.current.has(item.id)) {
+            const folder =
+              (Array.isArray(item.contextFolders) && item.contextFolders[0]) ||
+              item.contextFolder ||
+              null;
+            const normalized: RecentSession = {
+              id: item.id,
+              title: item.title,
+              contextFolder: folder?.trim() || null,
+              contextFolders: Array.isArray(item.contextFolders)
+                ? item.contextFolders
+                : folder
+                  ? [folder]
+                  : [],
+              parentSessionId: item.parentSessionId ?? null,
+            };
+            const existing = nextMeta.get(item.id);
+            if (
+              !existing ||
+              existing.title !== normalized.title ||
+              existing.contextFolder !== normalized.contextFolder
+            ) {
+              nextMeta.set(item.id, normalized);
+              changed = true;
+            }
+          }
+        }
+        return changed ? nextMeta : prevMeta;
+      });
+    },
+    [],
+  );
+
   const refresh = useCallback(
     async (force = false): Promise<void> => {
       const now = Date.now();
@@ -558,12 +693,17 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       try {
         const synced = await window.hermesAPI.syncSessionCache();
         applyLoadedWindow(synced);
+        syncPinnedFromList(synced);
       } catch {
         // keep whatever we had — the list is best-effort UI sugar
       }
     },
-    [applyLoadedWindow],
+    [applyLoadedWindow, syncPinnedFromList],
   );
+
+  // Scroll position captured when a page finished loading. Auto-load stays
+  // suppressed until the user scrolls past it, so one flick cannot chain pages.
+  const pageLoadedAtScrollRef = useRef<number | null>(null);
 
   const loadNextPage = useCallback(async (): Promise<void> => {
     if (!open || !hasMoreRef.current || loadingMoreRef.current) return;
@@ -575,20 +715,37 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
         sessionsRef.current.length,
       );
       appendPage(nextPage);
+      // Remember where the container was when this page landed. The rows just
+      // grew, so the bottom-threshold test would otherwise fire again
+      // immediately and chain another page from the same flick.
+      pageLoadedAtScrollRef.current = scrollRootRef.current?.scrollTop ?? null;
     } catch {
       // keep the current list; scrolling can retry on the next event
     } finally {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [appendPage, open]);
+  }, [appendPage, open, scrollRootRef]);
 
   const maybeLoadNextPage = useCallback((): void => {
     const root = scrollRootRef.current;
     if (!projectsOpen && !chatsOpen) return;
     if (!root || !hasMoreRef.current || loadingMoreRef.current) return;
-    const remaining = root.scrollHeight - root.scrollTop - root.clientHeight;
-    if (remaining <= INFINITE_SCROLL_THRESHOLD_PX) void loadNextPage();
+    // The anti-cascade gate: after a page lands, only load again once the user
+    // has actually scrolled further (see shouldLoadNextPage). Without it,
+    // appending rows re-fired the bottom-threshold test and one flick dumped
+    // several pages at once.
+    if (
+      !shouldLoadNextPage(
+        root.scrollTop,
+        root.scrollHeight,
+        root.clientHeight,
+        pageLoadedAtScrollRef.current,
+      )
+    ) {
+      return;
+    }
+    void loadNextPage();
   }, [chatsOpen, loadNextPage, projectsOpen, scrollRootRef]);
 
   // Initial load when the section opens: paint from the JSON cache
@@ -605,14 +762,20 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
           // another page exists without a separate count query.
           RECENT_SESSIONS_PAGE_SIZE + 1,
         );
-        if (!cancelled) applyFirstPage(cached);
+        if (!cancelled) {
+          applyFirstPage(cached);
+          syncPinnedFromList(cached);
+        }
       } catch {
         /* ignore cache read errors */
       }
       lastRefreshRef.current = Date.now();
       try {
         const synced = await window.hermesAPI.syncSessionCache();
-        if (!cancelled) applyFirstPage(synced);
+        if (!cancelled) {
+          applyFirstPage(synced);
+          syncPinnedFromList(synced);
+        }
       } catch {
         // cache read above already painted something
       }
@@ -620,7 +783,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
     return () => {
       cancelled = true;
     };
-  }, [open, activeProfile, applyFirstPage]);
+  }, [open, activeProfile, applyFirstPage, syncPinnedFromList]);
 
   const loadBotProfiles = useCallback(async () => {
     try {
@@ -733,6 +896,8 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   useEffect(() => {
     if (prevProfileRef.current === activeProfile) return;
     prevProfileRef.current = activeProfile;
+    setPinnedIds(readStoredPinned(activeProfile));
+    setPinnedMeta(readStoredPinnedMeta(activeProfile));
     void refresh(true);
   }, [activeProfile, refresh]);
 
@@ -743,10 +908,29 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
 
   // Pinned rows are pulled out of the normal grouping and shown in their own
   // section at the top (ChatGPT-style), preserving recency order.
-  const pinnedSessions = useMemo(
-    () => sessions.filter((s) => pinnedIds.has(s.id)),
-    [sessions, pinnedIds],
-  );
+  const pinnedSessions = useMemo(() => {
+    const result: RecentSession[] = [];
+    for (const id of pinnedIds) {
+      const live = sessions.find((s) => s.id === id);
+      if (live) {
+        result.push(live);
+      } else {
+        const cached = pinnedMeta.get(id);
+        if (cached) {
+          result.push(cached);
+        } else {
+          result.push({
+            id,
+            title: `Session ${id.slice(0, 8)}`,
+            contextFolder: null,
+            contextFolders: [],
+            parentSessionId: null,
+          });
+        }
+      }
+    }
+    return result;
+  }, [sessions, pinnedIds, pinnedMeta]);
   const { projectGroups, chats } = useMemo(
     () =>
       groupSessionsByWorkspace(sessions.filter((s) => !pinnedIds.has(s.id))),
@@ -822,11 +1006,45 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
   const handleTogglePin = useCallback((id: string): void => {
     setPinnedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+        const found = sessionsRef.current.find((s) => s.id === id);
+        if (found) {
+          setPinnedMeta((prevMeta) => {
+            const nextMeta = new Map(prevMeta);
+            nextMeta.set(id, found);
+            return nextMeta;
+          });
+        }
+      }
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    if (sessions.length === 0 || pinnedIds.size === 0) return;
+    setPinnedMeta((prevMeta) => {
+      let changed = false;
+      const nextMeta = new Map(prevMeta);
+      for (const id of pinnedIds) {
+        const found = sessions.find((s) => s.id === id);
+        if (found) {
+          const existing = nextMeta.get(id);
+          if (
+            !existing ||
+            existing.title !== found.title ||
+            existing.contextFolder !== found.contextFolder
+          ) {
+            nextMeta.set(id, found);
+            changed = true;
+          }
+        }
+      }
+      return changed ? nextMeta : prevMeta;
+    });
+  }, [sessions, pinnedIds]);
 
   const startRename = useCallback((s: RecentSession): void => {
     setEditingId(s.id);
@@ -858,6 +1076,13 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       if (editingIdRef.current === id) cancelRename();
       try {
         await window.hermesAPI.updateSessionTitle(id, trimmed);
+        setPinnedMeta((prev) => {
+          if (!prev.has(id)) return prev;
+          const next = new Map(prev);
+          const item = next.get(id)!;
+          next.set(id, { ...item, title: trimmed });
+          return next;
+        });
         // Keep the top-bar session tab in sync with a sidebar rename: the
         // ActiveSessionsBar label comes from Layout's runs state, which has no
         // other way to learn about a rename performed here.
@@ -926,6 +1151,13 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       );
       try {
         await window.hermesAPI.setSessionContextFolder(id, normalized);
+        setPinnedMeta((prev) => {
+          if (!prev.has(id)) return prev;
+          const next = new Map(prev);
+          const item = next.get(id)!;
+          next.set(id, { ...item, contextFolder: normalized });
+          return next;
+        });
         // Other surfaces (chat view, Sessions screen) listen for this to
         // refresh their own grouping.
         window.dispatchEvent(
@@ -965,6 +1197,12 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
         next.delete(id);
         return next;
       });
+      setPinnedMeta((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
       try {
         await window.hermesAPI.deleteSession(id);
         onSessionDeleted?.(id);
@@ -987,6 +1225,17 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       setPinnedIds((prev) => {
         let changed = false;
         const next = new Set(prev);
+        for (const id of ids) {
+          if (next.has(id)) {
+            next.delete(id);
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+      setPinnedMeta((prev) => {
+        let changed = false;
+        const next = new Map(prev);
         for (const id of ids) {
           if (next.has(id)) {
             next.delete(id);
@@ -1238,7 +1487,7 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
       {sidebarTab === "bots" ? (
         <div className="sidebar-bots-rail">
           <div className="sidebar-bots-rail-header">
-            <span className="sidebar-bots-rail-title">Bots</span>
+            <span className="sidebar-bots-rail-title">Bots1</span>
             <div className="sidebar-bots-header-actions" ref={botNewMenuRef}>
               <button
                 type="button"
@@ -1764,7 +2013,9 @@ const SidebarRecentSessions = memo(function SidebarRecentSessions({
           onClose={() => setMenuTarget(null)}
           onTogglePin={() => handleTogglePin(menuTarget.id)}
           onRename={() => {
-            const s = sessions.find((row) => row.id === menuTarget.id);
+            const s =
+              sessions.find((row) => row.id === menuTarget.id) ??
+              pinnedMeta.get(menuTarget.id);
             if (s) startRename(s);
           }}
           onMoveToProject={(path) =>

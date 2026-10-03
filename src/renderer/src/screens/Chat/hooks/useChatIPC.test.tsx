@@ -147,7 +147,11 @@ describe("useChatIPC session scoping", () => {
       callbacks.done?.("run-1", "old-session");
     });
 
-    expect(api.getSessionMessages).toHaveBeenCalledWith("old-session");
+    // No prefix was merged yet, so the read is a full one: the session id and
+    // no cursor. (A merged prefix passes the high-water id — see the
+    // cursor-scoped poll tests; asserting the exact arity here was over-specific
+    // and broke when the tail cursor was introduced.)
+    expect(api.getSessionMessages).toHaveBeenCalledWith("old-session", undefined);
     expect(screen.getByTestId("ids")).toHaveTextContent(
       JSON.stringify(["db-1", "db-2"]),
     );

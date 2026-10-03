@@ -1,0 +1,57 @@
+feat(chat): source control graph, focused diffs, and mid-turn recovery fixes
+
+Source Control
+- Add a full-page Source Control view (portaled to <body> so it escapes the
+  FloatingDialog's clipping/stacking context) with a Changes | Graph tab bar.
+- New read-only history: gitLog() and gitCommitDiff() in main/git.ts, exposed
+  over two IPC channels. git-log parses a machine-readable format (US/RS
+  separators, bounded --max-count); gitCommitDiff validates the hash before it
+  reaches git.
+- gitGraph.ts: pure lane layout (leftmost-free-lane, first parent keeps the
+  column, merge parents fan out) with unit tests.
+- CommitGraph.tsx: SVG lane rendering so merges curve, lane-coloured dots,
+  ref chips, author/hash/relative time, click to select.
+- diffHighlight.ts: hand-written language-agnostic tokenizer plus unified-diff
+  parser with real old/new line numbers. DiffViewer.tsx renders the three-column
+  VS Code-style view with +/- stats.
+- Fix "diff unavailable" in the file-changes dialog: prefer the race-free hunk
+  from the tool payload over the async readFile snapshot (which usually resolved
+  after the write and clobbered `before`), and report the actual reason
+  (no previous version / edited / too large) instead of one vague message.
+
+Prompt processing
+- Fix a false turn completion that fired the finish chime and reset the
+  thinking/tool timers mid-turn: dbTailShowsLiveTurnDone treated "any agent text
+  exists" as done, but the model commonly writes interim commentary and then
+  calls a tool. Both branches now refuse to settle while a tool is pending
+  (new hasPendingToolInTail, matched by callId), and the chime is gated on it.
+- Keep recovery alive when an event is dropped for a stale runtime id, and bound
+  quiet-finalize retries so a transient read failure cannot loop forever.
+- Guard one file-changes chip per turn so a second finalize cannot duplicate it.
+
+Sidebar scroll
+- Fix elastic overscroll/bounce at the end of the list: drop the compositor
+  scroll-layer hints (translateZ, will-change: scroll-position,
+  -webkit-overflow-scrolling, contain: layout paint) and use
+  overscroll-behavior-y: none plus overflow-anchor.
+- Fix "scroll down is too much": appending a page grew scrollHeight while
+  scrollTop stayed put, so the bottom-threshold test instantly re-fired and
+  chained pages. Add a one-shot position gate (shouldLoadNextPage, extracted and
+  unit-tested), keeping auto-fill for short lists and never sticking at the end.
+
+Model picker
+- Add a model to a provider directly from the model selection dialog (+ on the
+  provider rail), so the Providers page is only needed to add a whole provider.
+
+Pinned chats
+- Persist pinned messages per session (pinnedMessages.ts) so they survive tab
+  closes and app restarts, and make pinned sessions profile-aware.
+
+Terminal
+- Spawn the terminal in the current project directory, reuse an existing session
+  for that directory, and autofocus it; run @ command templates with the
+  template's saved cwd, and toggle the suggestion dialog closed on a second @.
+
+Tests: 260+ across the changed areas (git log/commit diff against a real repo,
+lane layout, diff tokenizer, dialog wiring, session-history gating, scroll gate,
+model picker, pinned persistence, terminal templates).

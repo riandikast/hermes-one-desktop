@@ -222,7 +222,17 @@ function normalizeText(value: string): string {
 export function mergeSessionLocalErrors(
   items: ReadonlyArray<HistoryItem>,
   errors: ReadonlyArray<DesktopSessionLocalError>,
+  options: {
+    /**
+     * When false, errors whose user message is not present in `items` are
+     * dropped instead of appended at the end. A paged read uses this: an error
+     * belonging to an older, not-yet-loaded page must not be pinned to the
+     * bottom of the visible window (it appears when its own page loads).
+     */
+    appendUnmatched?: boolean;
+  } = {},
 ): HistoryItem[] {
+  const appendUnmatched = options.appendUnmatched === true;
   if (errors.length === 0) return [...items];
 
   const output: HistoryItem[] = [];
@@ -267,15 +277,17 @@ export function mergeSessionLocalErrors(
     }
   }
 
-  for (let i = 0; i < errors.length; i++) {
-    if (used.has(i)) continue;
-    output.push({
-      kind: "assistant",
-      id: ERROR_SYNTHETIC_ID_BASE - errorOrdinal++,
-      content: "",
-      error: errors[i].error,
-      timestamp: Number.MAX_SAFE_INTEGER,
-    });
+  if (appendUnmatched) {
+    for (let i = 0; i < errors.length; i++) {
+      if (used.has(i)) continue;
+      output.push({
+        kind: "assistant",
+        id: ERROR_SYNTHETIC_ID_BASE - errorOrdinal++,
+        content: "",
+        error: errors[i].error,
+        timestamp: items.at(-1)?.timestamp ?? 0,
+      });
+    }
   }
 
   return output;

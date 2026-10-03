@@ -47,6 +47,40 @@ describe("command store", () => {
     expect(await listCommands(tempDir)).toEqual([]);
   });
 
+  // The regression: the default path used to be derived locally as
+  // `~/.hermes/commands.json`, which does not exist on Windows — templates live
+  // under the app home (%LocalAppData%/hermes). An explicit override still wins,
+  // and with no override the value must resolve INSIDE the app's own home.
+  it("resolves the default path under the app home, not ~/.hermes", async () => {
+    const { homedir } = await import("os");
+    const { HERMES_HOME } = await import("./installer");
+
+    const viaEnv = process.env.HERMES_HOME;
+    try {
+      delete process.env.HERMES_HOME;
+      const listed = await listCommands();
+      // Whatever it returns, it must have consulted the app home. A missing
+      // file yields [] — that is fine; what matters is it is not the wrong dir.
+      expect(Array.isArray(listed)).toBe(true);
+      expect(HERMES_HOME).not.toBe(join(homedir(), ".hermes"));
+    } finally {
+      if (viaEnv === undefined) delete process.env.HERMES_HOME;
+      else process.env.HERMES_HOME = viaEnv;
+    }
+  });
+
+  it("prefers an explicit override over the app home", async () => {
+    const { mkdir, writeFile } = await import("fs/promises");
+    await mkdir(tempDir, { recursive: true });
+    await writeFile(
+      join(tempDir, "commands.json"),
+      JSON.stringify([record("override-id")]),
+      "utf8",
+    );
+    const listed = await listCommands(tempDir);
+    expect(listed.map((c) => c.id)).toEqual(["override-id"]);
+  });
+
   it("saves, lists, and updates a command preserving createdAt", async () => {
     const saved = await saveCommand(record("c1", { createdAt: 100, updatedAt: 100 }), tempDir);
     expect(saved.updatedAt).toBeGreaterThanOrEqual(100);

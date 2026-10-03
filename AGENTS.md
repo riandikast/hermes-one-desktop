@@ -1,5 +1,12 @@
 # Before starting work
 
+## Resource budget
+
+- Run one heavy test/build/browser job at a time across sessions. Use `node scripts/resource-queue.mjs <node-script> [args...]` for Node jobs; `npm test -- <paths>` already uses the shared queue. Do not bypass it with direct `npx vitest`.
+- Test only affected paths first. Run the full suite at most once per code revision; retain complete logs and exit codes. Do not rerun merely to recover truncated output.
+- Keep Vitest at two workers maximum. Browser tests use one worker. Reuse an existing agent-owned browser; never launch another Electron/dev instance just for profiling without explicit approval.
+- Clean up only processes launched by the current task. Never terminate the user's desktop/backend/browser. Do not run builds or tests concurrently with profiling.
+
 - Run `lat search` to find sections relevant to your task. Read them to understand the design intent before writing code.
 - Run `lat expand` on user prompts to expand any `[[refs]]` — this resolves section names to file locations and provides context.
 

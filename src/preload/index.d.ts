@@ -1,5 +1,6 @@
 import type { AppLocale } from "../shared/i18n/types";
 import type { Attachment } from "../shared/attachments";
+import type { SessionHistoryPage } from "../shared/session-history";
 import type { SessionModelOverride } from "../shared/model-override";
 import type { DesktopSessionContinuationItem } from "../shared/session-continuation";
 import type { DesktopSessionLocalError } from "../shared/session-continuation";
@@ -77,6 +78,23 @@ interface GitStatusResult {
 interface GitActionResult {
   ok: boolean;
   output?: string;
+  error?: string;
+}
+
+/** One commit row for the Source Control graph (see main/git.ts). */
+interface GitCommitEntry {
+  hash: string;
+  shortHash: string;
+  parents: string[];
+  refs: string[];
+  author: string;
+  date: string;
+  subject: string;
+}
+
+interface GitLogResult {
+  ok: boolean;
+  commits: GitCommitEntry[];
   error?: string;
 }
 
@@ -634,6 +652,11 @@ interface HermesAPI {
       preview: string;
     }>
   >;
+  getSessionMessagesBefore: (
+    sessionId: string,
+    beforeId?: number,
+    limit?: number,
+  ) => Promise<SessionHistoryPage>;
   getSessionMessages: (sessionId: string, afterId?: number) => Promise<
     Array<
       | {
@@ -1280,6 +1303,8 @@ interface HermesAPI {
   openFileInEditor: (filePath: string) => Promise<boolean>;
   openTerminal: (dirPath: string) => Promise<boolean>;
   gitRepoStatus: (dir: string) => Promise<GitStatusResult>;
+  gitLog: (dir: string, opts?: { max?: number }) => Promise<GitLogResult>;
+  gitCommitDiff: (dir: string, hash: string) => Promise<GitActionResult>;
   gitRemoteHost: (dir: string) => Promise<string | null>;
   gitSetToken: (host: string, token: string) => Promise<boolean>;
   gitGetToken: (host: string) => Promise<string | null>;
@@ -1406,6 +1431,7 @@ interface HermesAPI {
   terminalWrite: (payload: {
     id: string;
     data: string;
+    cwd?: string;
   }) => Promise<{ ok: boolean }>;
   terminalResize: (payload: {
     id: string;

@@ -1057,6 +1057,8 @@ function Layout({
   const preloadedSessionRef = useRef<{
     id: string;
     messages: ReturnType<typeof dbItemsToChatMessages>;
+    oldestId: number | null;
+    hasMore: boolean;
   } | null>(null);
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -1065,12 +1067,12 @@ function Layout({
           const cached = await window.hermesAPI.listCachedSessions(1);
           const latest = cached[0];
           if (!latest?.id) return;
-          const items = (await window.hermesAPI.getSessionMessages(
-            latest.id,
-          )) as DbHistoryItem[];
+          const page = await window.hermesAPI.getSessionMessagesBefore(latest.id);
           preloadedSessionRef.current = {
             id: latest.id,
-            messages: dbItemsToChatMessages(items),
+            messages: dbItemsToChatMessages(page.items),
+            oldestId: page.oldestId,
+            hasMore: page.hasMore,
           };
         } catch {
           /* best-effort warm */
@@ -1098,6 +1100,9 @@ function Layout({
           preloadedSessionRef.current = null;
           const run = mintRun(activeProfile, preloaded.messages);
           run.sessionId = sessionId;
+          run.oldestLoadedId = preloaded.oldestId;
+          run.hasMoreHistory = preloaded.hasMore;
+          run.newestLoadedId = preloaded.newestId;
           setRuns(
             (prev) => openSessionRunTransition(prev, activeRunId, run).runs,
           );
@@ -1105,11 +1110,16 @@ function Layout({
           goTo("chat");
           return;
         }
-        const items = (await window.hermesAPI.getSessionMessages(
-          sessionId,
-        )) as DbHistoryItem[];
-        const run = mintRun(activeProfile, dbItemsToChatMessages(items));
+        // Open on the NEWEST page, not the whole session: a full read is
+        // ~450ms of blocking SQLite + ~14MB across IPC on a 29k-row session,
+        // and the renderer then re-converts and re-groups every row. Older
+        // pages load on demand through the transcript's "Show earlier".
+        const page = await window.hermesAPI.getSessionMessagesBefore(sessionId);
+        const run = mintRun(activeProfile, dbItemsToChatMessages(page.items));
         run.sessionId = sessionId;
+        run.oldestLoadedId = page.oldestId;
+        run.hasMoreHistory = page.hasMore;
+        run.newestLoadedId = page.newestId;
         // Restore the persisted title (possibly user-renamed) so the tab
         // doesn't fall back to the auto-derived first-message title.
         try {
@@ -1153,11 +1163,12 @@ function Layout({
       resumingRef.current.add(sessionId);
       setResumingSessionId(sessionId);
       try {
-        const items = (await window.hermesAPI.getSessionMessages(
-          sessionId,
-        )) as DbHistoryItem[];
-        const run = mintRun(activeProfile, dbItemsToChatMessages(items));
+        const page = await window.hermesAPI.getSessionMessagesBefore(sessionId);
+        const run = mintRun(activeProfile, dbItemsToChatMessages(page.items));
         run.sessionId = sessionId;
+        run.oldestLoadedId = page.oldestId;
+        run.hasMoreHistory = page.hasMore;
+        run.newestLoadedId = page.newestId;
         // A watched child must attach lazily (see ChatRun.watchChild) and must
         // never accept input (ChatRun.readOnly).
         run.watchChild = true;
@@ -1593,6 +1604,12 @@ function Layout({
                   initialSessionId={run.sessionId}
                   initialTitle={run.title}
                   initialContextFolders={run.initialContextFolders}
+
+                  initialOldestId={run.oldestLoadedId}
+
+                  initialHasMoreHistory={run.hasMoreHistory}
+
+                  initialNewestId={run.newestLoadedId}
                   active={run.runId === activeRunId}
                   profile={run.profile}
                   watchChild={run.watchChild}

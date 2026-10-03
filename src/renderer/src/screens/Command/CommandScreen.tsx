@@ -260,7 +260,8 @@ export function CommandScreen(): React.JSX.Element {
         cwd: cmd.cwd,
         command: cmd.command,
       });
-      dockRef.current?.attachSession(id, cmd.name);
+      // Pass the template's folder so cd-completion resolves relatives there.
+      dockRef.current?.attachSession(id, cmd.name, cmd.cwd || undefined);
     } catch {
       setError("Failed to start terminal session.");
     }

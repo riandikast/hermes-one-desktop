@@ -17,6 +17,10 @@ vi.mock("@xterm/xterm", () => ({
     cols = 80;
     rows = 24;
     open(): void {}
+    focus(): void {
+      const store = (globalThis as unknown as { __focusCalls?: number[] });
+      (store.__focusCalls ??= []).push(Date.now());
+    }
     write(): void {}
     dispose(): void {}
     loadAddon(): void {}
@@ -74,6 +78,28 @@ function renderDock(onNewSession: () => void): {
 }
 
 describe('terminal dock "+" button', () => {
+  it("creates only on empty opening, preserves sessions on reopen, stays lazy closed", () => {
+    const ref = createRef<TerminalDockHandle>();
+    const onNewSession = vi.fn();
+    const dock = (open: boolean) => <TerminalDock ref={ref} open={open}
+      onNewSession={onNewSession} onResizeStart={() => undefined}
+      onResizeMove={() => undefined} onResizeEnd={() => undefined} />;
+    const view = render(dock(false));
+    expect(onNewSession).not.toHaveBeenCalled();
+    view.rerender(dock(true));
+    view.rerender(dock(true));
+    expect(onNewSession).toHaveBeenCalledTimes(1);
+    act(() => ref.current?.attachSession("existing", "Existing"));
+    view.rerender(dock(false));
+    view.rerender(dock(true));
+    expect(onNewSession).toHaveBeenCalledTimes(1);
+    expect(view.container.querySelectorAll('[role="tab"]')).toHaveLength(1);
+    fireEvent.click(screen.getByLabelText("Close terminal"));
+    expect(onNewSession).toHaveBeenCalledTimes(1);
+    view.rerender(dock(false));
+    view.rerender(dock(true));
+    expect(onNewSession).toHaveBeenCalledTimes(2);
+  });
   it("invokes the supplied onNewSession handler", () => {
     const onNewSession = vi.fn();
     renderDock(onNewSession);
@@ -134,5 +160,98 @@ describe('terminal dock "+" button', () => {
     renderDock(onNewSession);
     const btn = screen.getByLabelText("New terminal session");
     expect((btn as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe("terminal dock project-directory sessions", () => {
+  it("finds an existing session by cwd, normalizing case and trailing slashes", () => {
+    const ref = createRef<TerminalDockHandle>();
+    render(
+      <TerminalDock
+        ref={ref}
+        onNewSession={() => undefined}
+        onResizeStart={() => undefined}
+        onResizeMove={() => undefined}
+        onResizeEnd={() => undefined}
+      />,
+    );
+
+    act(() => ref.current?.attachSession("term-a", "Proj", "D:\\Work\\App\\"));
+    expect(ref.current?.findSessionByCwd("d:/work/app")).toBe("term-a");
+    expect(ref.current?.findSessionByCwd("D:\\Work\\App")).toBe("term-a");
+    expect(ref.current?.findSessionByCwd("D:\\Work\\Other")).toBeNull();
+  });
+
+  it("returns null for a blank cwd so callers do not match everything", () => {
+    const ref = createRef<TerminalDockHandle>();
+    render(
+      <TerminalDock
+        ref={ref}
+        onNewSession={() => undefined}
+        onResizeStart={() => undefined}
+        onResizeMove={() => undefined}
+        onResizeEnd={() => undefined}
+      />,
+    );
+    act(() => ref.current?.attachSession("term-a", "Proj", "C:/proj"));
+    expect(ref.current?.findSessionByCwd("")).toBeNull();
+    expect(ref.current?.findSessionByCwd("   ")).toBeNull();
+  });
+
+  it("forgets a closed session so its directory can spawn fresh", () => {
+    const ref = createRef<TerminalDockHandle>();
+    render(
+      <TerminalDock
+        ref={ref}
+        onNewSession={() => undefined}
+        onResizeStart={() => undefined}
+        onResizeMove={() => undefined}
+        onResizeEnd={() => undefined}
+      />,
+    );
+    act(() => ref.current?.attachSession("term-a", "Proj", "C:/proj"));
+    expect(ref.current?.findSessionByCwd("C:/proj")).toBe("term-a");
+
+    fireEvent.click(screen.getByLabelText("Close terminal"));
+    expect(ref.current?.findSessionByCwd("C:/proj")).toBeNull();
+  });
+
+  it("activates and focuses the requested session", () => {
+    const ref = createRef<TerminalDockHandle>();
+    const { container } = render(
+      <TerminalDock
+        ref={ref}
+        onNewSession={() => undefined}
+        onResizeStart={() => undefined}
+        onResizeMove={() => undefined}
+        onResizeEnd={() => undefined}
+      />,
+    );
+    act(() => ref.current?.attachSession("term-a", "A"));
+    act(() => ref.current?.attachSession("term-b", "B"));
+    act(() => ref.current?.focusSession("term-a"));
+
+    const active = container.querySelector('[role="tab"][aria-selected="true"]');
+    expect(active?.textContent).toContain("A");
+  });
+
+  it("calls term.focus() when a session is attached (autofocus)", () => {
+    // The regression: focus was attempted in a single frame while the floating
+    // overlay was still `visibility: hidden`, where focus cannot land. The
+    // dock now retries; what matters here is that it does call focus at all.
+    const calls = (globalThis as unknown as { __focusCalls: number[] });
+    calls.__focusCalls.length = 0;
+    const ref = createRef<TerminalDockHandle>();
+    render(
+      <TerminalDock
+        ref={ref}
+        onNewSession={() => undefined}
+        onResizeStart={() => undefined}
+        onResizeMove={() => undefined}
+        onResizeEnd={() => undefined}
+      />,
+    );
+    act(() => ref.current?.attachSession("term-focus", "Focus"));
+    expect(calls.__focusCalls.length).toBeGreaterThan(0);
   });
 });

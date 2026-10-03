@@ -24,6 +24,7 @@ export default {
   deleteGroup: "Delete group",
   deleteGroupConfirm: "Delete this group? Models are NOT removed from the picker.",
   ungrouped: "Ungrouped",
+  addAndSelect: "Add & Select",
   typeModelName: "Type model name...",
   reasoningEffort: {
     title: "Reasoning Level",

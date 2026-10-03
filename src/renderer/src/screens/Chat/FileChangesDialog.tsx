@@ -22,6 +22,16 @@ function diffStats(change: FileChange): React.JSX.Element {
     );
   }
   if (change.before !== null && change.after !== null) {
+    // before === after with no hunk means the async snapshot lost the race with
+    // the tool's write. The LCS would produce an all-"same" diff, which reads
+    // as "no changes" — misleading. Report the real reason instead.
+    if (
+      change.before === change.after &&
+      !change.removed &&
+      !change.added
+    ) {
+      return <span>Edited — full diff unavailable</span>;
+    }
     const computed = diffLines(change.before, change.after);
     if (computed) {
       const del = computed.filter((l) => l.type === "del").length;
@@ -33,8 +43,12 @@ function diffStats(change: FileChange): React.JSX.Element {
         </span>
       );
     }
+    // Budget-exceeded LCS on a very large file — the contents are known, only
+    // the line diff was skipped, so say that rather than "unavailable".
+    return <span>Changed — file too large to diff</span>;
   }
-  return <span>Changed — diff unavailable</span>;
+  // No baseline at all: the path was learned after the edit landed.
+  return <span>Changed — no previous version</span>;
 }
 
 function ReadOnlyCode({ content }: { content: string }): React.JSX.Element {

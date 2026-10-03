@@ -18,8 +18,8 @@ import {
 } from "../fileChanges";
 import {
   dbItemsToChatMessages,
-  reconcileAfterDbRefresh,
   reconcileTailAfterDbRefresh,
+  dbTailShowsLiveTurnDone,
   highestDbId,
   type DbHistoryItem,
 } from "../sessionHistory";
@@ -751,9 +751,13 @@ function hasUnresolvedTool(messages: ReadonlyArray<ChatMessage>): boolean {
   return false;
 }
 
+type SendStage = "send-start" | "client-ready" | "session-ready" | "model-ready" | "submit" | "submit-ack" | "first-delta";
+let nextDiagnosticSend = 0;
+
 declare global {
   interface Window {
     __HERMES_DASHBOARD_EVENTS__?: DashboardEventSummary[];
+    __HERMES_SEND_TIMINGS__?: { send: number; stage: SendStage; elapsedMs: number }[];
   }
 }
 
@@ -872,6 +876,23 @@ export function estimateContextTokens(
     }
   }
   return Math.max(Math.round((totalChars - lastAssistantBubbleChars) / 4), 0);
+}
+
+/** The backend's selection-guard ask: a model switch above
+ *  `model.switch_context_confirm_tokens` (default 100k tokens) returns a confirm
+ *  request instead of applying the switch. `/model` routes this through
+ *  `slash.exec`, whose result carries only `warning` — so the guard text is the
+ *  signal. Treating it as a switch FAILURE rejected the send and demanded a
+ *  confirm the client never surfaced. */
+export function isModelSwitchConfirmation(response: {
+  output?: string;
+  warning?: string;
+} | null | undefined): boolean {
+  const text = `${response?.warning || ""}\n${response?.output || ""}`;
+  return (
+    /LARGE CONTEXT MODEL SWITCH|switch_context_confirm_tokens/i.test(text) ||
+    /Confirm only if you intend to switch/i.test(text)
+  );
 }
 
 export function completionFailed(payload: unknown): boolean {
@@ -1063,6 +1084,14 @@ export function useDashboardChatTransport({
   onDashboardUnavailable,
   onKnowledgeChanged,
 }: UseDashboardChatTransportArgs): UseDashboardChatTransportResult {
+  const sendTimingRef = useRef<{ send: number; started: number; submitted: boolean; firstDelta: boolean } | null>(null);
+  const markSendStage = (stage: SendStage): void => {
+    const timing = sendTimingRef.current;
+    if (!timing) return;
+    const rows = window.__HERMES_SEND_TIMINGS__ ?? [];
+    rows.push({ send: timing.send, stage, elapsedMs: Math.round(performance.now() - timing.started) });
+    window.__HERMES_SEND_TIMINGS__ = rows.slice(-200);
+  };
   const clientRef = useRef<DashboardGatewayClient | null>(null);
   const connectingRef = useRef<Promise<DashboardGatewayClient> | null>(null);
   const clientGenerationRef = useRef(0);
@@ -1074,7 +1103,12 @@ export function useDashboardChatTransport({
   // immediately. Reset on connection change (see the effect below).
   const dashboardUnavailableRef = useRef(false);
   const runtimeSessionIdRef = useRef<string | null>(null);
-  const { activeSubagents, onSubagentEvent } = useActiveSubagents(enabled, runtimeSessionIdRef, clientRef);
+  const { activeSubagents, onSubagentEvent } = useActiveSubagents(
+    enabled,
+    runtimeSessionIdRef,
+    clientRef,
+    active,
+  );
   const runtimeSessionPromiseRef = useRef<Promise<string> | null>(null);
   const storedSessionIdRef = useRef<string | null>(hermesSessionId);
   const messagesRef = useRef<ChatMessage[]>(messages);
@@ -1089,6 +1123,12 @@ export function useDashboardChatTransport({
   providerRef.current = provider;
   const reasoningSegmentClosedRef = useRef(false);
   const appliedModelRef = useRef<string | null>(null);
+  const modelOptionsCacheRef = useRef<{
+    key: string;
+    client: DashboardGatewayClient;
+    expiresAt: number;
+    value: ModelOptionsResponse;
+  } | null>(null);
   const recreateRuntimeSessionRef = useRef(false);
   const lastRuntimeSessionWasCreatedRef = useRef(false);
   // Foreign-turn watcher bookkeeping (see the active_list poller effect):
@@ -1126,6 +1166,13 @@ export function useDashboardChatTransport({
   // Per-turn file-change capture: path → latest before/after pair. Reset on
   // each new user turn; attached to the assistant bubble on message.complete.
   const fileChangesRef = useRef<Map<string, FileChange>>(new Map());
+  // Guards ONE chip per turn. `finalizeFileChanges` has three call sites
+  // (message.complete, the quiet-finalize recovery, and the reconnect path) and
+  // its body is async, so two of them could both pass the ref-clear and each
+  // append a chip — the duplicate-badge report. While a finalize is in flight,
+  // or after one already emitted for this turn, later calls are no-ops.
+  const fileChangesFinalizingRef = useRef(false);
+  const fileChangesEmittedRef = useRef(false);
   // Working-tree snapshot taken at TURN START (path → status|after). At
   // finalize the current tree is compared against it so ONLY files the agent
   // actually modified THIS turn are reported — files that were already dirty
@@ -1273,6 +1320,7 @@ export function useDashboardChatTransport({
     runtimeSessionPromiseRef.current = null;
     reasoningSegmentClosedRef.current = false;
     appliedModelRef.current = null;
+    modelOptionsCacheRef.current = null;
     recreateRuntimeSessionRef.current = false;
     lastRuntimeSessionWasCreatedRef.current = false;
     pendingClarifyRequestIdRef.current = null;
@@ -1286,7 +1334,8 @@ export function useDashboardChatTransport({
 
   useEffect(() => {
     appliedModelRef.current = null;
-  }, [model, provider]);
+    modelOptionsCacheRef.current = null;
+  }, [model, provider, modelBaseUrl]);
 
   useEffect(() => {
     clientGenerationRef.current += 1;
@@ -1298,6 +1347,7 @@ export function useDashboardChatTransport({
     runtimeSessionPromiseRef.current = null;
     reasoningSegmentClosedRef.current = false;
     appliedModelRef.current = null;
+    modelOptionsCacheRef.current = null;
     recreateRuntimeSessionRef.current = false;
     lastRuntimeSessionWasCreatedRef.current = false;
     pendingClarifyRequestIdRef.current = null;
@@ -1319,6 +1369,15 @@ export function useDashboardChatTransport({
   const TURN_STALL_TIMEOUT_MS = 120_000;
   /** Long budget for model-switch `/model` slash work (mirrors slashExec.ts). */
   const SLASH_COMMAND_TIMEOUT_MS = 600_000;
+  /**
+   * How long a successful `model.options` result is reused before the catalog
+   * is probed again. The catalog only changes on a connection / profile / model
+   * -selection change, and every one of those paths clears the cache
+   * explicitly, so a long TTL is safe. An uncached call re-probes the custom
+   * provider's `/v1/models` (2.7-4.6 s measured) and used to run on essentially
+   * every send.
+   */
+  const MODEL_OPTIONS_CACHE_MS = 5 * 60_000;
 
   const clearStallTimer = useCallback((): void => {
     if (stallTimerRef.current !== null) {
@@ -1377,6 +1436,12 @@ export function useDashboardChatTransport({
     null,
   );
   const QUIET_FINALIZE_MS = 10_000;
+  // Bounded retries for the quiet-finalize read. A transient IPC/sqlite error
+  // used to re-arm forever with no settle, so a turn that could not be read
+  // stayed "loading" until the tab was reopened. After this many consecutive
+  // failures the recovery stops retrying and lets the stall watchdog own it.
+  const QUIET_FINALIZE_MAX_ERRORS = 5;
+  const quietFinalizeErrorsRef = useRef(0);
   // After the first quiet read, wait again and re-read before finalizing.
   // The gateway writes assistant rows INCREMENTALLY, and the transport renders
   // answer deltas with renderAssistantDeltas:false — so the answer text is
@@ -1424,6 +1489,12 @@ export function useDashboardChatTransport({
   // swallow the badge), and persist for reopen. Runs at message.complete and
   // the quiet-finalize recovery path.
   const finalizeFileChanges = useCallback((): void => {
+    // One chip per turn: a second finalize (another call site, or a reopen)
+    // must not append a duplicate badge for changes already reported.
+    if (fileChangesFinalizingRef.current || fileChangesEmittedRef.current) {
+      return;
+    }
+    fileChangesFinalizingRef.current = true;
     const captured = Array.from(fileChangesRef.current.values());
     console.info("[file-changes] captured", {
       toolPaths: captured.map((c) => c.path),
@@ -1506,10 +1577,16 @@ export function useDashboardChatTransport({
           c.after = null;
         }
       }
+
       const changes = Array.from(byPath.values()).filter(
         (c) => c.after !== null || c.before !== null,
       );
-      if (changes.length === 0) return;
+      if (changes.length === 0) {
+        // Nothing to report: leave the turn un-emitted so a later finalize
+        // (e.g. after a late tool event) can still produce the chip.
+        fileChangesFinalizingRef.current = false;
+        return;
+      }
       const chip: ChatMessage = {
         id: `fc-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         kind: "file_changes",
@@ -1519,6 +1596,10 @@ export function useDashboardChatTransport({
       const next = [...messagesRef.current, chip];
       messagesRef.current = next;
       setMessages(next);
+      // Mark done BEFORE releasing: the chip is in the transcript now, so any
+      // further finalize for this turn must not add a second one.
+      fileChangesEmittedRef.current = true;
+      fileChangesFinalizingRef.current = false;
       const storedSessionId = storedSessionIdRef.current;
       const record = window.hermesAPI.recordSessionFileChanges;
       if (
@@ -1528,7 +1609,11 @@ export function useDashboardChatTransport({
       ) {
         void record(storedSessionId, changes).catch(() => undefined);
       }
-    })();
+    })().catch(() => {
+      // A failed body must not wedge the guard, or the turn could never
+      // report changes again.
+      fileChangesFinalizingRef.current = false;
+    });
   }, [connectionMode, contextFolder, setMessages]);
 
   const resetQuietFinalize = useCallback((): void => {
@@ -1545,14 +1630,15 @@ export function useDashboardChatTransport({
             storedSessionId,
             isLoading: true,
           });
-          // NOTE: deliberately a FULL read. The catch-up guard below compares
-          // whole-session user COUNTS, which a tail slice cannot provide, and
-          // this path also re-baselines the tail cursor from what it reconciles
-          // (see below). It runs ONCE per turn end — not on a 750ms timer — so
-          // the ~180ms read is a single one-off cost rather than the recurring
-          // stall that the mid-turn poll caused. Left as-is on purpose.
+          // Read only the rows newer than the highest id already reconciled.
+          // This path used to re-read the WHOLE session: on a long one that is
+          // ~450 ms of blocking main-process sqlite plus a multi-MB IPC payload
+          // — the turn-end stall. A canonical prefix is already in the
+          // transcript, so only the un-reconciled tail can differ.
+          const afterId = lastSyncedDbIdRef.current;
           const items = (await window.hermesAPI.getSessionMessages(
             storedSessionId,
+            afterId > 0 ? afterId : undefined,
           )) as DbHistoryItem[];
           const dbMessages = dbItemsToChatMessages(items);
           console.info("[quiet-finalize] db rows", {
@@ -1565,47 +1651,16 @@ export function useDashboardChatTransport({
                   : `${m.role}(len ${String(m.content).length})`,
               ),
           });
-          // Guard: only finalize when state.db has CAUGHT UP to the live
-          // transcript's last user message. If the user has already sent the
-          // next message but it isn't persisted yet, reconciling now would
-          // delete that message and resurrect the previous turn's canonical
-          // answer — the "sent message vanished, old answer got fuller" bug.
-          // The live/DB arrays are ChatMessage unions; only the user variant
-          // carries role/content, so view them through a user-shaped lens for
-          // the catch-up comparison (FileChangesMessage etc. have neither).
-          //
-          // Scanned BACKWARD in place rather than `[...arr].reverse().find()`:
-          // that copied the whole transcript twice per attempt (~21k-element
-          // arrays on a long session) purely to read the last user row.
-          type UserShaped = { role: string; content?: unknown };
-          const lastUserOf = (arr: ReadonlyArray<unknown>): UserShaped | null => {
-            for (let i = arr.length - 1; i >= 0; i--) {
-              const m = arr[i] as UserShaped;
-              if (m?.role === "user") return m;
-            }
-            return null;
-          };
-          // Content match alone has a hole: sending the SAME message twice
-          // matches while the DB only persisted the FIRST occurrence, so an
-          // equal user-message COUNT is required too. Both counts are simple
-          // zero-allocation loops (the old `.filter()` allocated an array per
-          // call just to take its length).
-          let liveUserCount = 0;
-          for (const m of messagesRef.current) {
-            if ((m as UserShaped).role === "user") liveUserCount += 1;
-          }
-          let dbUserCount = 0;
-          for (const m of dbMessages) {
-            if ((m as UserShaped).role === "user") dbUserCount += 1;
-          }
-          const liveLastUser = lastUserOf(messagesRef.current);
-          const dbLastUser = lastUserOf(dbMessages);
-          const dbCaughtUp =
-            !!liveLastUser &&
-            !!dbLastUser &&
-            liveUserCount === dbUserCount &&
-            String(liveLastUser.content).replace(/\s+/g, " ").trim() ===
-              String(dbLastUser.content).replace(/\s+/g, " ").trim();
+          // Guard: only finalize when state.db (or a prior reconcile) already
+          // holds the answer for the live turn. Finalizing early would delete
+          // the just-sent message and resurrect the previous answer — the
+          // "sent message vanished, old answer got fuller" bug. The tail read
+          // carries no settled prefix, so the test works from the tail plus
+          // the live transcript (see `dbTailShowsLiveTurnDone`).
+          const dbCaughtUp = dbTailShowsLiveTurnDone(
+            messagesRef.current,
+            dbMessages,
+          );
           console.info("[quiet-finalize] dbCaughtUp", { dbCaughtUp });
           if (!dbCaughtUp) {
             // DB is behind the live transcript — keep waiting, do NOT touch
@@ -1613,35 +1668,10 @@ export function useDashboardChatTransport({
             resetQuietFinalize();
             return;
           }
-          // Completed = the last user turn is followed by an assistant bubble
-          // with non-empty content.
-          let lastUserIdx = -1;
-          for (let i = dbMessages.length - 1; i >= 0; i--) {
-            if (dbMessages[i].role === "user") {
-              lastUserIdx = i;
-              break;
-            }
-          }
-          const hasAnswer =
-            lastUserIdx >= 0 &&
-            dbMessages
-              .slice(lastUserIdx + 1)
-              .some(
-                (m) =>
-                  m.role === "agent" &&
-                  !("kind" in m) &&
-                  String(m.content).trim().length > 0,
-              );
-          console.info("[quiet-finalize] hasAnswer", { hasAnswer });
-          if (!hasAnswer) {
-            // Turn still in flight (or never persisted) — keep waiting.
-            resetQuietFinalize();
-            return;
-          }
-          // STABILITY GATE: the first read passed, but the answer may still be
+          // STABILITY GATE: the read passed, but the answer may still be
           // GROWING (incremental db writes during a silent generation). Re-read
-          // after a short window; if the answer tail changed, the turn is
-          // alive — re-arm (which also pushes the stall watchdog out, since
+          // the tail after a short window; if the answer tail changed, the turn
+          // is alive — re-arm (which also pushes the stall watchdog out, since
           // db growth is proof the gateway is working).
           const firstSig = answerTailSignature(dbMessages);
           console.info("[quiet-finalize] answer sig len", firstSig.length);
@@ -1650,6 +1680,7 @@ export function useDashboardChatTransport({
           );
           const confirmItems = (await window.hermesAPI.getSessionMessages(
             storedSessionId,
+            afterId > 0 ? afterId : undefined,
           )) as DbHistoryItem[];
           const confirmMessages = dbItemsToChatMessages(confirmItems);
           const confirmSig = answerTailSignature(confirmMessages);
@@ -1661,25 +1692,39 @@ export function useDashboardChatTransport({
             resetStallTimer();
             return;
           }
-          messagesRef.current = reconcileAfterDbRefresh(
+          // Splice the reconciled tail onto the untouched prefix instead of
+          // re-normalizing the whole transcript (~700 ms on a long session).
+          messagesRef.current = reconcileTailAfterDbRefresh(
             messagesRef.current,
             confirmMessages,
-            { activeTurn },
+            { activeTurn, lastSyncedDbId: afterId },
           );
-          // This path reads/keeps the FULL DB rows (its catch-up guard needs
-          // whole-session user counts), so re-baseline the tail cursor to the
-          // ids it just reconciled — the next completion can then read only
-          // the new tail instead of the whole session again.
+          // Re-baseline the tail cursor to the ids just reconciled — the next
+          // completion then reads only the new tail instead of the session.
           lastSyncedDbIdRef.current = highestDbId(messagesRef.current);
           setMessages(messagesRef.current);
           activeTurnRef.current = null;
           setToolProgress(null);
           setIsLoading(false);
           lastLocalActivityAtRef.current = Date.now();
+          // A successful settle clears the failure streak.
+          quietFinalizeErrorsRef.current = 0;
               // FILE-CHANGES: emit the summary chip (lost message.complete must
           // not lose the badge either).
           finalizeFileChanges();
         } catch {
+          // Count consecutive read failures. Retrying forever left the turn
+          // spinning with no way out except a reopen; past the cap, stop and
+          // let the stall watchdog surface the failure to the user.
+          quietFinalizeErrorsRef.current += 1;
+          if (quietFinalizeErrorsRef.current >= QUIET_FINALIZE_MAX_ERRORS) {
+            console.warn(
+              "[quiet-finalize] giving up after repeated read failures",
+              { attempts: quietFinalizeErrorsRef.current },
+            );
+            quietFinalizeErrorsRef.current = 0;
+            return;
+          }
           resetQuietFinalize();
         }
       })();
@@ -1728,10 +1773,29 @@ export function useDashboardChatTransport({
           runtimeSessionIdRef.current = event.session_id;
         } else {
           logDashboardEvent(event, "dropped", runtimeSessionId);
+          // A dropped event must NOT also stop the recovery clock. The turn may
+          // still be running (e.g. the gateway rotated the runtime id and this
+          // event belonged to the previous one); returning here without
+          // re-arming left the spinner frozen until the tab was reopened — the
+          // "prompt looks stopped, I have to reopen the session" report. The
+          // quiet-finalize read is the tie-breaker: if state.db shows the turn
+          // finished it settles, otherwise it re-arms again.
+          if (activeTurnRef.current) {
+            resetStallTimer();
+            resetQuietFinalize();
+          }
           return;
         }
       }
       logDashboardEvent(event, "accepted", runtimeSessionId);
+      const timing = sendTimingRef.current;
+      if (timing?.submitted && !timing.firstDelta && activeTurnRef.current &&
+          event.session_id === runtimeSessionIdRef.current &&
+          ["message.delta", "reasoning.delta", "thinking.delta"].includes(event.type) &&
+          payloadText(asRecord(event.payload), "text", "delta", "reasoning", "content")) {
+        timing.firstDelta = true;
+        markSendStage("first-delta");
+      }
       if (
         watchChild &&
         event.session_id &&
@@ -1750,14 +1814,16 @@ export function useDashboardChatTransport({
 
       // Change-watcher broadcast: the shared state.db mtime moved — a write
       // from ANY process (this gateway's stream, another desktop app, a cron
-      // run, a messaging platform). Drives foreign-turn liveness for this
-      // session; nothing else to apply from the broadcast itself.
-      // Change-watcher broadcast: the shared state.db mtime moved — a write
-      // from ANY process (this gateway's stream, another desktop app, a cron
       // run, a messaging platform). Foreign-turn liveness is handled by the
       // active_list poller (see the foreign-turn watcher effect); nothing
-      // else to apply from the broadcast itself.
+      // else to apply from the broadcast itself — but the written change may
+      // have been a model switch, so drop BOTH the cached catalog and the
+      // applied-model bookkeeping. Clearing only the catalog left the
+      // "already applied" key set, which let the send path's fast return skip
+      // the re-read entirely.
       if (event.type === "sessions.changed") {
+        appliedModelRef.current = null;
+        modelOptionsCacheRef.current = null;
         return;
       }
       // Background (`/btw`) prompts run on a separate agent and report back via
@@ -1930,10 +1996,19 @@ export function useDashboardChatTransport({
                 : startArgs && typeof startArgs.new_string === "string"
                   ? startArgs.new_string
                   : undefined;
+            // Patch tools hand us the exact hunk IN THE PAYLOAD, synchronously.
+            // That is race-free, unlike the async `readFile` snapshot below —
+            // use it as the before/after so the diff survives a fast write.
+            const hunkBefore =
+              startOld === undefined ? null : startOld === "" ? "" : startOld;
+            const hunkAfter =
+              startNew === undefined ? null : startNew === "" ? "" : startNew;
             fileChangesRef.current.set(path, {
               path,
-              before: null,
-              after: null,
+              before: hunkBefore,
+              after: hunkAfter,
+              // Only a real snapshot confirms the file existed; a hunk alone
+              // does not prove the baseline, so beforeKnown stays false.
               beforeKnown: false,
               removed:
                 startOld === undefined
@@ -1953,6 +2028,19 @@ export function useDashboardChatTransport({
               .then((res) => {
                 const current = fileChangesRef.current.get(path);
                 if (!current) return;
+                // A payload hunk is already the authoritative pre-edit text and
+                // is race-free. This read is asynchronous, so by the time it
+                // resolves the tool has usually ALREADY written the file —
+                // overwriting `before` here replaced the real baseline with the
+                // post-edit content, making before === after and losing the diff
+                // ("diff unavailable"). Never clobber a known hunk.
+                if (current.removed || current.added) {
+                  fileChangesRef.current.set(path, {
+                    ...current,
+                    beforeKnown: true,
+                  });
+                  return;
+                }
                 // Read succeeded → the file existed before the tool ran.
                 fileChangesRef.current.set(path, {
                   ...current,
@@ -2034,11 +2122,23 @@ export function useDashboardChatTransport({
             }
           } else {
             // The before was never captured (path unknown at tool.start) —
-            // the file may already be modified by the time we read.
+            // the file may already be modified by the time we read. The payload
+            // may still carry the exact hunk, which is race-free; prefer it over
+            // the async read so the dialog has something to render.
             fileChangesRef.current.set(path, {
               path,
-              before: null,
-              after: null,
+              before:
+                oldString === undefined
+                  ? null
+                  : oldString === ""
+                    ? ""
+                    : oldString,
+              after:
+                newString === undefined
+                  ? null
+                  : newString === ""
+                    ? ""
+                    : newString,
               beforeKnown: false,
               removed,
               added,
@@ -2047,8 +2147,13 @@ export function useDashboardChatTransport({
           void window.hermesAPI
             .readFile(path)
             .then((res) => {
+              // Re-read on every capture (not only the first): a later capture
+              // for the same path must not be skipped just because an entry
+              // already exists. Only fills `after` when the payload had no hunk,
+              // so a real hunk is never overwritten by the whole file.
               const current = fileChangesRef.current.get(path);
               if (!current) return;
+              if (current.removed || current.added) return;
               fileChangesRef.current.set(path, {
                 ...current,
                 after: res?.content ?? null,
@@ -2151,6 +2256,7 @@ export function useDashboardChatTransport({
         });
         if (failed) {
           appliedModelRef.current = null;
+          modelOptionsCacheRef.current = null;
           recreateRuntimeSessionRef.current = true;
           const storedSessionId = storedSessionIdRef.current;
           const userContent = userContentById(
@@ -2409,6 +2515,8 @@ export function useDashboardChatTransport({
             onClose: () => {
               if (clientRef.current === client) {
                 clientRef.current = null;
+                appliedModelRef.current = null;
+                modelOptionsCacheRef.current = null;
               }
             },
           });
@@ -2647,18 +2755,86 @@ export function useDashboardChatTransport({
         storedSessionIdRef.current = storedSessionId;
         reasoningSegmentClosedRef.current = false;
         appliedModelRef.current = null;
+        modelOptionsCacheRef.current = null;
         return ensureRuntimeSession(client);
       };
 
+      const selectionKey = (id: string): string => JSON.stringify([
+        id, selectedProvider, selectedModel, selectedBaseUrl ?? "", profile ?? "default",
+      ]);
+      const readOptions = async (id: string, fresh = false): Promise<ModelOptionsResponse> => {
+        const key = selectionKey(id);
+        const cached = modelOptionsCacheRef.current;
+        if (!fresh && cached?.client === client && cached.key === key && Date.now() < cached.expiresAt) {
+          return cached.value;
+        }
+        // The catalog only changes when the connection/profile/model selection
+        // changes — every one of those paths clears modelOptionsCacheRef
+        // explicitly (see the null assignments on connection/profile effects).
+        // A short TTL therefore bought nothing and, combined with the
+        // unconditional invalidate above, meant a re-probe on essentially every
+        // send. The backend's uncached path re-probes the custom provider's
+        // /v1/models (2.7-4.6 s measured).
+        const expiresAt = Date.now() + MODEL_OPTIONS_CACHE_MS;
+        const value = await client.request<ModelOptionsResponse>("model.options", { session_id: id });
+        modelOptionsCacheRef.current = { key, client, value, expiresAt };
+        return value;
+      };
       const switchAndValidate = async (
         targetSessionId: string,
       ): Promise<string> => {
-        let before = await client.request<ModelOptionsResponse>(
-          "model.options",
-          {
-            session_id: targetSessionId,
-          },
-        );
+        // Read live identity on every send: foreign clients need not broadcast a
+        // model change. Unlike model.options, status does not discover catalogs.
+        const status = await client.request<{ output?: string }>("session.status", {
+          session_id: targetSessionId,
+          ...(profile ? { profile } : {}),
+        }).catch((err: unknown) => {
+          if (/unknown method|method not found|unsupported/i.test(String(err))) return null;
+          throw err;
+        });
+        const match = status?.output?.match(/^Model: (.+) \(([^\n]+)\)\s*$/m);
+        const identity = match ? { model: match[1], provider: match[2] } : null;
+        // Live identity already matches the selection => nothing to switch, and
+        // (critically) NO catalog probe is needed. This used to be gated on
+        // `!selectedBaseUrl && selectedProvider !== "custom"`, so a custom
+        // provider with a base_url — the common self-hosted setup — never took
+        // the early return and fell through to the `model.options` probe on
+        // every single send. `dashboardModelMatches` already accepts the
+        // backend reporting a custom provider as `custom:<slug>`.
+        if (dashboardModelMatches(selectedProvider, selectedModel, identity)) {
+          appliedModelRef.current = selectionKey(targetSessionId);
+          return targetSessionId;
+        }
+        // Invalidate the cached catalog ONLY when the session's live identity
+        // CONTRADICTS the model we believe is applied. The old code did
+        // `if (identity) cache = null`, and `identity` parses on virtually every
+        // send — so the cache was dropped on the line immediately before it was
+        // read, making the reuse check below dead code and re-running the
+        // `model.options` RPC (2.7-4.6 s measured; the backend probes the custom
+        // provider's /v1/models on every uncached call) for every message.
+        const appliedKey = selectionKey(targetSessionId);
+        if (identity && appliedModelRef.current !== appliedKey) {
+          // Nothing applied for this selection yet — do not trust a stale entry.
+          appliedModelRef.current = null;
+          modelOptionsCacheRef.current = null;
+        } else if (
+          identity &&
+          !dashboardModelMatches(selectedProvider, selectedModel, {
+            provider: identity.provider,
+            model: identity.model,
+          } as ModelOptionsResponse)
+        ) {
+          // The backend is live on a DIFFERENT model than the one we applied
+          // (someone switched it out from under us) — the cached inventory is
+          // no longer authoritative.
+          appliedModelRef.current = null;
+          modelOptionsCacheRef.current = null;
+        }
+        const cached = modelOptionsCacheRef.current;
+        if (appliedModelRef.current === selectionKey(targetSessionId) &&
+            cached?.key === appliedModelRef.current && cached.client === client &&
+            Date.now() < cached.expiresAt) return targetSessionId;
+        let before = await readOptions(targetSessionId);
         let dashboardProvider = resolveDashboardProviderForModel(
           selectedProvider,
           selectedModel,
@@ -2666,33 +2842,17 @@ export function useDashboardChatTransport({
           before,
         );
 
-        // Only reset the session if the model actually changed AND we don't match
-        if (
-          storedSessionIdRef.current &&
-          !dashboardModelMatches(dashboardProvider, selectedModel, before)
-        ) {
-          targetSessionId = await resetRuntimeSession(targetSessionId);
-          before = await client.request<ModelOptionsResponse>("model.options", {
-            session_id: targetSessionId,
-          });
-          dashboardProvider = resolveDashboardProviderForModel(
-            selectedProvider,
-            selectedModel,
-            selectedBaseUrl,
-            before,
-          );
-          if (dashboardModelMatches(dashboardProvider, selectedModel, before)) {
-            appliedModelRef.current = `${targetSessionId}\n${dashboardProvider}\n${selectedModel}`;
-            return targetSessionId;
-          }
-        }
-
-        // Re-read runtime session ID in case resetRuntimeSession updated it
-        targetSessionId = runtimeSessionIdRef.current || targetSessionId;
+        // Model changes are in-place; close/resume discards a healthy runtime.
         const resolvedCommand = dashboardModelCommand(dashboardProvider, selectedModel);
         if (!resolvedCommand) return targetSessionId;
-        const key = `${targetSessionId}\n${dashboardProvider}\n${selectedModel}`;
-        if (appliedModelRef.current === key) return targetSessionId;
+        const key = selectionKey(targetSessionId);
+        // Fresh gateway state is authoritative, even before our first local send.
+        if (dashboardModelMatches(dashboardProvider, selectedModel, before)) {
+          appliedModelRef.current = key;
+          return targetSessionId;
+        }
+        appliedModelRef.current = null;
+        modelOptionsCacheRef.current = null;
         const slashResponse = await client.request<SlashExecResponse>(
           "slash.exec",
           {
@@ -2707,24 +2867,67 @@ export function useDashboardChatTransport({
           SLASH_COMMAND_TIMEOUT_MS,
         );
 
-        const live = await client.request<ModelOptionsResponse>(
-          "model.options",
-          {
-            session_id: targetSessionId,
-          },
-        );
+        // The backend refused nothing — it ASKED. A switch above
+        // model.switch_context_confirm_tokens returns a confirm request and
+        // applies nothing yet. The desktop has no surface to answer that
+        // prompt, so leaving it pending parked the session FOREVER (the turn
+        // never landed and only an app restart cleared it). Auto-accept
+        // instead: re-issue the switch, which is the same thing the "once"
+        // button does, and continue once the live model matches.
+        if (isModelSwitchConfirmation(slashResponse)) {
+          let liveOnConfirm = await readOptions(targetSessionId, true).catch(
+            () => null,
+          );
+          if (
+            !liveOnConfirm ||
+            !dashboardModelMatches(dashboardProvider, selectedModel, liveOnConfirm)
+          ) {
+            // The pending confirm is answered with the gateway's confirm
+            // command ("/approve"), NOT by re-sending /model — re-issuing would
+            // just raise a second guard prompt, which is exactly the loop the
+            // old code sat in.
+            await client
+              .request(
+                "slash.exec",
+                {
+                  session_id: targetSessionId,
+                  command: "/approve",
+                },
+                SLASH_COMMAND_TIMEOUT_MS,
+              )
+              .catch(() => undefined);
+            liveOnConfirm = await readOptions(targetSessionId, true).catch(
+              () => null,
+            );
+          }
+          if (
+            liveOnConfirm &&
+            dashboardModelMatches(dashboardProvider, selectedModel, liveOnConfirm)
+          ) {
+            appliedModelRef.current = key;
+            return targetSessionId;
+          }
+          // The confirm did not take (older backend, or the model genuinely
+          // cannot be served). Fall through to the normal validation below so
+          // the user sees the real reason rather than a silent hang.
+          appliedModelRef.current = null;
+          modelOptionsCacheRef.current = null;
+        }
+
+        // Never validate a switch against the pre-switch inventory.
+        const live = await readOptions(targetSessionId, true);
         if (!dashboardModelMatches(dashboardProvider, selectedModel, live)) {
           appliedModelRef.current = null;
+          modelOptionsCacheRef.current = null;
           const warning = slashResponse?.warning
             ? `; /model warning: ${slashResponse.warning}`
             : "";
           const output = slashResponse?.output
             ? `; /model output: ${slashResponse.output}`
             : "";
-          console.warn(
-            `Hermes dashboard did not report ${dashboardProvider}/${selectedModel}; live model is ${live.provider || "unknown"}/${live.model || "unknown"}${warning}${output}; custom inventory: ${modelOptionsSummary(before)}; continuing on ${targetSessionId}`,
+          throw new Error(
+            `Hermes dashboard did not switch to ${dashboardProvider}/${selectedModel}; live model is ${live.provider || "unknown"}/${live.model || "unknown"}${warning}${output}; custom inventory: ${modelOptionsSummary(before)}`,
           );
-          return targetSessionId;
         }
         appliedModelRef.current = key;
         return targetSessionId;
@@ -2735,11 +2938,12 @@ export function useDashboardChatTransport({
       } catch (err) {
         if (!isDashboardSlashWorkerExitError(err)) throw err;
         appliedModelRef.current = null;
+        modelOptionsCacheRef.current = null;
         const freshSessionId = await resetRuntimeSession(sessionId);
         return switchAndValidate(freshSessionId);
       }
     },
-    [ensureRuntimeSession],
+    [ensureRuntimeSession, profile],
   );
 
   const syncDashboardAttachments = useCallback(
@@ -2907,14 +3111,22 @@ export function useDashboardChatTransport({
   const sendMessage = useCallback(
     async (text: string, attachments?: Attachment[]): Promise<boolean> => {
       if (!enabled) return false;
+      sendTimingRef.current = { send: ++nextDiagnosticSend, started: performance.now(), submitted: false, firstDelta: false };
+      markSendStage("send-start");
       // Stamp LOCAL activity BEFORE the send's await window (ensureClient →
       // ensureRuntimeSession → ensureSelectedModel → syncAttachments can take
       // 1-3s) — during it activeTurnRef is still null, and without a fresh
       // stamp the 2s foreign poll would see the gateway already "working",
       // enter foreign mode and run a full DB reconcile on the UI thread.
       lastLocalActivityAtRef.current = Date.now();
-      // FILE-CHANGES: a new user turn starts a fresh accumulator.
+      // FILE-CHANGES: a new user turn starts a fresh accumulator AND clears
+      // both per-turn guards, so the previous turn's emitted chip can never
+      // suppress this turn's badge.
       fileChangesRef.current = new Map();
+      fileChangesFinalizingRef.current = false;
+      fileChangesEmittedRef.current = false;
+      // Fresh turn, fresh recovery budget.
+      quietFinalizeErrorsRef.current = 0;
       // Start a fresh quiet-finalize window. The stall watchdog is armed
       // immediately after the optimistic turn is registered below, so setup
       // stalls are covered too.
@@ -3054,6 +3266,7 @@ export function useDashboardChatTransport({
       let client: DashboardGatewayClient;
       try {
         client = await ensureClient();
+        markSendStage("client-ready");
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         // On 429 rate limit or 400 bad request or dashboard error, do NOT double-send via fallback
@@ -3086,6 +3299,7 @@ export function useDashboardChatTransport({
           runtimeSessionIdRef.current = null;
           reasoningSegmentClosedRef.current = false;
           appliedModelRef.current = null;
+          modelOptionsCacheRef.current = null;
         }
         // Do NOT force-create a new stored session on failure recovery: that
         // mints a brand-new row in the sidebar ("random new section" bug).
@@ -3096,6 +3310,7 @@ export function useDashboardChatTransport({
           forceCreate: false,
         });
         runtimeSessionIdRef.current = runtimeSessionId;
+        markSendStage("session-ready");
         if (
           lastRuntimeSessionWasCreatedRef.current ||
           pendingRecoveredContinuationRef.current.length > 0
@@ -3110,6 +3325,10 @@ export function useDashboardChatTransport({
           client,
           runtimeSessionId,
         );
+        markSendStage("model-ready");
+        // A guarded switch is now auto-accepted inside ensureSelectedModel, so
+        // there is nothing pending to surface here — the send continues on the
+        // model the switch actually landed on.
         await recordContinuationItems(mergePendingRecoveredContinuation([]));
         const syncedAttachments = await syncDashboardAttachments(
           client,
@@ -3130,6 +3349,8 @@ export function useDashboardChatTransport({
         // overload / dropped request), fail the turn instead of loading
         // forever. Any accepted stream event pushes the deadline out.
         resetStallTimer();
+        if (sendTimingRef.current) sendTimingRef.current.submitted = true;
+        markSendStage("submit");
         await submitDashboardPromptWithRecovery(client, {
           sessionId: selectedSessionId,
           storedSessionId: storedSessionIdRef.current,
@@ -3137,12 +3358,16 @@ export function useDashboardChatTransport({
           profile,
           onRecoveredSessionId: (recoveredSessionId) => {
             runtimeSessionIdRef.current = recoveredSessionId;
+            appliedModelRef.current = null;
+            modelOptionsCacheRef.current = null;
           },
         });
+        markSendStage("submit-ack");
         return true;
       } catch (err) {
         clearStallTimer();
         appliedModelRef.current = null;
+        modelOptionsCacheRef.current = null;
         recreateRuntimeSessionRef.current = true;
         const message = err instanceof Error ? err.message : String(err);
         return failActiveTurn(message);
@@ -3179,6 +3404,8 @@ export function useDashboardChatTransport({
         const client = await ensureClient();
         const runtimeSessionId = await ensureRuntimeSession(client);
         const sessionId = await ensureSelectedModel(client, runtimeSessionId);
+        appliedModelRef.current = null;
+        modelOptionsCacheRef.current = null;
         return await executeSlash({
           command,
           sessionId,
@@ -3367,6 +3594,8 @@ export function useDashboardChatTransport({
       if (!enabled) return;
       const command = dashboardModelCommand(provider, model);
       if (!command) return;
+      appliedModelRef.current = null;
+      modelOptionsCacheRef.current = null;
       try {
         const client = await ensureClient();
         let sessionId = runtimeSessionIdRef.current;
@@ -3379,6 +3608,9 @@ export function useDashboardChatTransport({
         });
       } catch {
         // Best-effort: ensureSelectedModel will retry on send if this fails.
+      } finally {
+        appliedModelRef.current = null;
+        modelOptionsCacheRef.current = null;
       }
     },
     [enabled, ensureClient, ensureRuntimeSession],

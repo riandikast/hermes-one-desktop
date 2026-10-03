@@ -8,7 +8,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getGitWorkingTreeChanges,
   gitCommit,
+  gitCommitDiff,
   gitDiff,
+  gitLog,
   gitRepoStatus,
   gitResolveConflict,
   gitStage,
@@ -205,6 +207,90 @@ describe("git source control", () => {
       expect(changes.map((c) => c.path)).toEqual([
         join(repo, "sub", "inside.txt"),
       ]);
+    });
+  });
+
+  describe("gitLog", () => {
+    it("returns commits newest-first with hash, parents, and refs", async () => {
+      await writeFile(join(repo, "a.txt"), "second\n", "utf8");
+      git(repo, "add", "a.txt");
+      git(repo, "commit", "-q", "-m", "second commit");
+
+      const res = await gitLog(repo, { max: 10 });
+      expect(res.ok).toBe(true);
+      expect(res.commits).toHaveLength(2);
+      // Newest first, and the tip carries the branch ref.
+      expect(res.commits[0].subject).toBe("second commit");
+      expect(res.commits[0].refs).toContain("main");
+      // The root commit has no parents; the tip has exactly one.
+      expect(res.commits[0].parents).toHaveLength(1);
+      expect(res.commits[1].parents).toHaveLength(0);
+      // The tip's parent is the root commit's hash.
+      expect(res.commits[0].parents[0]).toBe(res.commits[1].hash);
+      expect(
+        res.commits[0].shortHash.startsWith(res.commits[0].hash.slice(0, 7)),
+      ).toBe(true);
+    });
+
+    it("records both parents for a merge commit", async () => {
+      git(repo, "checkout", "-q", "-b", "feature");
+      await writeFile(join(repo, "f.txt"), "feature\n", "utf8");
+      git(repo, "add", "f.txt");
+      git(repo, "commit", "-q", "-m", "feature work");
+      git(repo, "checkout", "-q", "main");
+      await writeFile(join(repo, "m.txt"), "main\n", "utf8");
+      git(repo, "add", "m.txt");
+      git(repo, "commit", "-q", "-m", "main work");
+      git(repo, "merge", "--no-ff", "-q", "-m", "merge feature", "feature");
+
+      const res = await gitLog(repo, { max: 10 });
+      expect(res.ok).toBe(true);
+      const merge = res.commits.find((c) => c.subject === "merge feature");
+      expect(merge).toBeTruthy();
+      expect(merge!.parents).toHaveLength(2);
+    }, 30_000);
+
+    it("respects the max bound", async () => {
+      for (let i = 0; i < 4; i += 1) {
+        await writeFile(join(repo, "a.txt"), `v${i}\n`, "utf8");
+        git(repo, "add", "a.txt");
+        git(repo, "commit", "-q", "-m", `commit ${i}`);
+      }
+      const res = await gitLog(repo, { max: 3 });
+      expect(res.commits).toHaveLength(3);
+    });
+
+    it("returns an empty history (not an error) for a repo with no commits", async () => {
+      const fresh = await mkdtemp(join(tmpdir(), "hermes-git-empty-"));
+      try {
+        git(fresh, "init", "-q", "-b", "main");
+        const res = await gitLog(fresh);
+        expect(res.ok).toBe(true);
+        expect(res.commits).toEqual([]);
+      } finally {
+        await rm(fresh, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("gitCommitDiff", () => {
+    it("shows the change a commit introduced", async () => {
+      await writeFile(join(repo, "a.txt"), "hello world\n", "utf8");
+      git(repo, "add", "a.txt");
+      git(repo, "commit", "-q", "-m", "change a");
+      const hash = git(repo, "rev-parse", "HEAD").trim();
+
+      const res = await gitCommitDiff(repo, hash);
+      expect(res.ok).toBe(true);
+      expect(res.output).toContain("-hello");
+      expect(res.output).toContain("+hello world");
+      expect(res.output).toContain("change a");
+    });
+
+    it("rejects a malformed hash instead of passing it to git", async () => {
+      const res = await gitCommitDiff(repo, "HEAD; rm -rf /");
+      expect(res.ok).toBe(false);
+      expect(res.error).toContain("invalid commit hash");
     });
   });
 });

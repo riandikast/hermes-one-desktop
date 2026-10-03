@@ -65,6 +65,8 @@ import {
   gitFetch,
   gitResolveConflict,
   gitRemoteHost,
+  gitLog,
+  gitCommitDiff,
   getGitWorkingTreeChanges,
   setGitTokenProvider,
 } from "../git";
@@ -255,6 +257,7 @@ import {
   applySessionLocalOverlays,
   listSessions,
   getSessionMessages,
+  getSessionMessagesBefore,
   searchSessions,
   deleteSession,
   deleteSessions,
@@ -1945,7 +1948,10 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("window:close", () => {
     getMainWindow()?.close();
   });
-  ipcMain.handle("window:is-maximized", () => getMainWindow()?.isMaximized() ?? false);
+  ipcMain.handle(
+    "window:is-maximized",
+    () => getMainWindow()?.isMaximized() ?? false,
+  );
 
   // Taskbar attention flash: the agent is BLOCKED on the user (a clarify card is
   // waiting). Only fires when the window is not focused — flashing a window the
@@ -2132,6 +2138,12 @@ export function registerIpcHandlers(context: IpcContext): void {
       );
     return listSessions(limit, offset);
   });
+
+  ipcMain.handle(
+    "get-session-messages-before",
+    (_event, sessionId: string, beforeId?: number, limit?: number) =>
+      getSessionMessagesBefore(sessionId, beforeId ?? 0, limit),
+  );
 
   ipcMain.handle(
     "get-session-messages",
@@ -2576,8 +2588,13 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
   ipcMain.handle(
     "search-hub-skills",
-    (_event, query: string, source?: string, limit?: number, profile?: string) =>
-      searchHubSkills(query, source, limit, profile),
+    (
+      _event,
+      query: string,
+      source?: string,
+      limit?: number,
+      profile?: string,
+    ) => searchHubSkills(query, source, limit, profile),
   );
   ipcMain.handle(
     "preview-hub-skill",
@@ -3333,9 +3350,9 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(
     "terminal:write",
-    async (_event, payload: { id: string; data: string }) => {
+    async (_event, payload: { id: string; data: string; cwd?: string }) => {
       try {
-        writeToSession(payload.id, payload.data);
+        writeToSession(payload.id, payload.data, payload.cwd);
         return { ok: true };
       } catch {
         return { ok: false };
@@ -3546,6 +3563,14 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
   ipcMain.handle("git-repo-status", async (_event, dir: string) =>
     gitRepoStatus(dir),
+  );
+  // Read-only history for the Source Control graph (bounded by max-count).
+  ipcMain.handle(
+    "git-log",
+    async (_event, dir: string, opts?: { max?: number }) => gitLog(dir, opts),
+  );
+  ipcMain.handle("git-commit-diff", async (_event, dir: string, hash: string) =>
+    gitCommitDiff(dir, hash),
   );
   ipcMain.handle(
     "git-diff",

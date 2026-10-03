@@ -10,6 +10,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { Plus, X } from "../../assets/icons";
+import { TerminalCommandPicker } from "./TerminalCommandPicker";
 import {
   applyCompletion,
   buildInsertion,
@@ -28,6 +29,18 @@ export interface TerminalDockHandle {
    * shell does too.
    */
   attachSession(id: string, title: string, cwd?: string): void;
+  /**
+   * Find an existing session whose working directory matches `cwd` (normalized
+   * for case and trailing separators). Returns its id, or null when no session
+   * was spawned in that directory. Lets a caller reuse instead of spawning a
+   * duplicate terminal for the same project folder.
+   */
+  findSessionByCwd(cwd: string): string | null;
+  /**
+   * Activate a session and put the keyboard focus inside its terminal, so the
+   * user can start typing without clicking the pane first.
+   */
+  focusSession(id: string): void;
   /**
    * Re-fit the active terminal to its container and push the new geometry to
    * the pty. Required after the dock has been hidden: xterm measures zero/tiny
@@ -69,19 +82,60 @@ export const TerminalDock = forwardRef<
      * rather than an inline height overriding the dialog's layout.
      */
     dockHeight?: number;
+    commandTemplates?: boolean;
+    open?: boolean;
     onResizeStart: (e: React.PointerEvent<HTMLDivElement>) => void;
     onResizeMove: (e: React.PointerEvent<HTMLDivElement>) => void;
     onResizeEnd: (e: React.PointerEvent<HTMLDivElement>) => void;
   }
 >(function TerminalDock(
-  { onNewSession, dockHeight, onResizeStart, onResizeMove, onResizeEnd },
+  { onNewSession, dockHeight, commandTemplates = false, open = false, onResizeStart, onResizeMove, onResizeEnd },
   ref,
 ): React.JSX.Element {
+  const [pickerSession, setPickerSession] = useState<string | null>(null);
   const [sessions, setSessions] = useState<SessionState[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const sessionsRef = useRef<Map<string, DockSession>>(new Map());
   const containerRef = useRef<HTMLDivElement | null>(null);
   const tabsScrollRef = useRef<HTMLDivElement | null>(null);
+  // Terminal panes live inside a floating overlay that fades in via
+  // `visibility: hidden` -> `visible` (0.16s). A hidden element CANNOT take
+  // focus, so a single requestAnimationFrame lands during the hidden window and
+  // the focus is silently dropped. Retry across a few frames until the element
+  // is actually visible and focus sticks.
+  const focusWhenVisible = useCallback((id: string, attempt = 0): void => {
+    requestAnimationFrame(() => {
+      const dock = sessionsRef.current.get(id);
+      if (!dock) return;
+      const el = dock.pane;
+      const visible =
+        el.isConnected &&
+        el.offsetParent !== null &&
+        getComputedStyle(el).visibility !== "hidden";
+      dock.term.focus();
+      // Verify: if the caret did not land, keep trying until the fade completes.
+      const landed = document.activeElement === el ||
+        el.contains(document.activeElement);
+      if (!landed && visible && attempt < 30) {
+        focusWhenVisible(id, attempt + 1);
+      } else if (!visible && attempt < 30) {
+        focusWhenVisible(id, attempt + 1);
+      }
+    });
+  }, []);
+
+  const openedRef = useRef(false);
+  useEffect(() => {
+    const opening = open && !openedRef.current;
+    openedRef.current = open;
+    if (opening && sessionsRef.current.size === 0) onNewSession();
+    // Reopening an existing dock: put the caret back in the active terminal so
+    // the user can keep typing without clicking the pane.
+    if (opening) {
+      const id = activeIdRef.current;
+      if (id) focusWhenVisible(id);
+    }
+  }, [open, onNewSession, focusWhenVisible]);
 
   // Keep the newest tab visible: when a session is added, scroll the tab
   // strip to the end so the fresh tab is always in view.
@@ -144,9 +198,11 @@ export const TerminalDock = forwardRef<
   const attachSession = useCallback(
     (id: string, title: string, cwd?: string): void => {
       if (typeof cwd === "string" && cwd) cwdRef.current.set(id, cwd);
+      activeIdRef.current = id;
       const existing = sessionsRef.current.get(id);
       if (existing) {
         setActiveId(id);
+        focusWhenVisible(id);
         return;
       }
       const dock = createXterm(id);
@@ -169,8 +225,37 @@ export const TerminalDock = forwardRef<
       };
       setSessions((prev) => [...prev, dock.state]);
       setActiveId(id);
+      // Autofocus the freshly spawned terminal so the user can type right away.
+      focusWhenVisible(id);
     },
-    [createXterm, registerDataListeners],
+    [createXterm, registerDataListeners, focusWhenVisible],
+  );
+
+  /** Normalize a path for comparison: trim, drop trailing separators, fold case. */
+  const normalizeCwd = (value: string): string =>
+    value.trim().replace(/[\\/]+$/, "").replace(/\\/g, "/").toLowerCase();
+
+  const findSessionByCwd = useCallback(
+    (cwd: string): string | null => {
+      const wanted = normalizeCwd(cwd);
+      if (!wanted) return null;
+      for (const [id, dir] of cwdRef.current) {
+        if (normalizeCwd(dir) === wanted && sessionsRef.current.has(id)) {
+          return id;
+        }
+      }
+      return null;
+    },
+    [],
+  );
+
+  const focusSession = useCallback(
+    (id: string): void => {
+      setActiveId(id);
+      activeIdRef.current = id;
+      focusWhenVisible(id);
+    },
+    [focusWhenVisible],
   );
 
   // ── `cd` path completion ────────────────────────────────────────────────
@@ -241,6 +326,16 @@ export const TerminalDock = forwardRef<
 
   const handleTerminalInput = useCallback(
     (id: string, data: string): void => {
+      // Reserve a standalone @ for the picker; never send it to the shell.
+      if (commandTemplates && data === "@" && !(linesRef.current.get(id) ?? "")) {
+        setCompletion(null);
+        if (pickerSession) {
+          setPickerSession(null);
+          return;
+        }
+        setPickerSession(id);
+        return;
+      }
       // Tab with no dropdown open: offer completions instead of sending Tab to
       // the shell (the shell's own completion cannot be shown in a dropdown).
       if (data === "\t") {
@@ -292,7 +387,7 @@ export const TerminalDock = forwardRef<
 
       window.hermesAPI.terminalWrite({ id, data });
     },
-    [completion, openCompletion, commitCompletion],
+    [completion, openCompletion, commitCompletion, commandTemplates, pickerSession],
   );
 
   // Keep the ref pointing at the latest handler without re-subscribing xterm,
@@ -330,8 +425,10 @@ export const TerminalDock = forwardRef<
     });
   }, [activeId]);
 
-  useImperativeHandle(ref, () => ({ attachSession, refit }), [
+  useImperativeHandle(ref, () => ({ attachSession, findSessionByCwd, focusSession, refit }), [
     attachSession,
+    findSessionByCwd,
+    focusSession,
     refit,
   ]);
 
@@ -449,6 +546,23 @@ export const TerminalDock = forwardRef<
       </div>
       <div className="terminal-dock-body" ref={containerRef} />
 
+      {pickerSession && <TerminalCommandPicker
+        key={pickerSession}
+        onRun={async (cmd) => {
+          if (activeIdRef.current !== pickerSession || !sessionsRef.current.has(pickerSession)) {
+            throw new Error("Terminal changed");
+          }
+          const result = await window.hermesAPI.terminalWrite({
+            id: pickerSession, data: `${cmd.command}\r`, cwd: cmd.cwd,
+          });
+          if (!result.ok) throw new Error("Terminal write failed");
+          linesRef.current.set(pickerSession, "");
+        }}
+        onClose={() => {
+          setPickerSession(null);
+          sessionsRef.current.get(activeIdRef.current ?? pickerSession)?.term.focus();
+        }}
+      />}
       {/* `cd` completion dropdown. Rendered INSIDE the dock but absolutely
           positioned, so it floats above the terminal without disturbing xterm's
           measured geometry (a sibling in normal flow would resize the pane and

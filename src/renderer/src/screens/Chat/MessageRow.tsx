@@ -9,6 +9,7 @@ import { MediaSegmentView } from "../../components/MediaImage";
 import { TypeAnimation } from "../../components/TypeAnimation";
 import { useI18n } from "../../components/useI18n";
 import { parseMediaTokens, cleanLeakedToolTags } from "./mediaUtils";
+import { isSilencedErrorMessage } from "./chatMessages";
 import { useReasoningGate } from "./useReasoningGate";
 import type { ChatBubbleMessage, ChatMessage } from "./types";
 
@@ -441,7 +442,7 @@ export const MessageRow = memo(function MessageRow({
           ))
         )}
       </div>
-      {msg.error && (
+      {msg.error && !isSilencedErrorMessage(msg.error) && (
         <div className="chat-error-message" role="alert">
           {msg.error}
         </div>

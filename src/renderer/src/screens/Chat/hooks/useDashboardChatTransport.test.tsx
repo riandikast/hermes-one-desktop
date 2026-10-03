@@ -85,6 +85,8 @@ function Harness({
   fallbackOnUnavailable = false,
   initialConnectionMode = "local",
   initialPlanMode = false,
+  modelBaseUrl,
+  profile,
   onDashboardUnavailable,
   setUsage = vi.fn() as SetUsageMock,
 }: {
@@ -94,6 +96,8 @@ function Harness({
   fallbackOnUnavailable?: boolean;
   initialConnectionMode?: "local" | "remote" | "ssh";
   initialPlanMode?: boolean;
+  modelBaseUrl?: string;
+  profile?: string;
   onDashboardUnavailable?: (reason: string) => void;
   setUsage?: SetUsageMock;
 }): null {
@@ -129,7 +133,8 @@ function Harness({
     messages,
     model,
     planMode,
-    profile: undefined,
+    profile,
+    modelBaseUrl,
     provider,
     setHermesSessionId: vi.fn(),
     setIsLoading: vi.fn(),
@@ -190,6 +195,35 @@ describe("useDashboardChatTransport recovery", () => {
         getKnowledgeIndex: vi.fn(async () => "KNOWLEDGE-INDEX"),
       },
     });
+  });
+
+  it("records private stage timings and only the first accepted nonempty delta", async () => {
+    window.__HERMES_SEND_TIMINGS__ = [];
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      return {};
+    });
+    const api: HarnessApi = {};
+    render(<Harness api={api} />);
+    await act(async () => { await api.send?.("private prompt"); });
+    const stages = () => window.__HERMES_SEND_TIMINGS__?.map((row) => row.stage);
+    expect(stages()).toEqual(["send-start", "client-ready", "session-ready", "model-ready", "submit", "submit-ack"]);
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "message.delta", session_id: "foreign", payload: { text: "secret" } });
+      dashboardMock.onEvent?.({ type: "message.delta", session_id: "live", payload: { text: "" } });
+    });
+    expect(stages()).not.toContain("first-delta");
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "reasoning.delta", session_id: "live", payload: { text: "secret reasoning" } });
+      dashboardMock.onEvent?.({ type: "message.delta", session_id: "live", payload: { text: "secret answer" } });
+    });
+    expect(stages()?.filter((stage) => stage === "first-delta")).toHaveLength(1);
+    for (const row of window.__HERMES_SEND_TIMINGS__ ?? []) {
+      expect(Object.keys(row).sort()).toEqual(["elapsedMs", "send", "stage"]);
+      expect(row.elapsedMs).toBeGreaterThanOrEqual(0);
+    }
+    expect(JSON.stringify(window.__HERMES_SEND_TIMINGS__)).not.toMatch(/private|secret|live|stored/);
   });
 
   it("retains the parent child roster after message.complete", async () => {
@@ -377,6 +411,174 @@ describe("useDashboardChatTransport recovery", () => {
     vi.clearAllMocks();
   });
 
+  it("uses live status without catalog or resets after slow repeated sends", async () => {
+    let now = 100_000;
+    let liveModel = "bad-model";
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: `Hermes TUI Status\nModel: ${liveModel} (bad-provider)\nTokens: 0` };
+      if (method === "model.options") { now += 5_900; return { model: liveModel, provider: "bad-provider", providers: [] }; }
+      if (method === "slash.exec") liveModel = String(params.command).split(" ")[1];
+      return {};
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} />);
+    try {
+      await act(async () => { await api.send?.("first"); });
+      now += 33_000;
+      await act(async () => { await api.send?.("second"); });
+      expect(dashboardMock.request.mock.calls.map(([method]) => method)).toEqual([
+        "session.create", "session.status", "prompt.submit", "session.status", "prompt.submit",
+      ]);
+      liveModel = "foreign-model";
+      await act(async () => { await api.send?.("restore selection"); });
+      expect(liveModel).toBe("bad-model");
+      expect(dashboardMock.request.mock.calls.some(([method]) => method === "session.close")).toBe(false);
+      expect(dashboardMock.request.mock.calls.filter(([method]) => method === "prompt.submit")).toHaveLength(3);
+    } finally { view.unmount(); clock.mockRestore(); }
+  });
+
+  it("reuses validated model options across sends (no re-probe per message)", async () => {
+    let now = 100_000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create" || method === "session.resume")
+        return { session_id: "live", stored_session_id: "stored" };
+      if (method === "model.options")
+        return { model: "bad-model", provider: "bad-provider", providers: [] };
+      return {};
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} />);
+    const optionsCount = () => dashboardMock.request.mock.calls.filter(([method]) => method === "model.options").length;
+    try {
+      await act(async () => { await api.send?.("first"); });
+      const initial = optionsCount();
+      // One probe to learn the live inventory (the switch is then attempted).
+      expect(initial).toBeGreaterThanOrEqual(1);
+      // A later send with the same selection must NOT re-probe the provider
+      // catalog. This was the per-message delay: an uncached `model.options`
+      // re-probes the custom provider's /v1/models (2.7-4.6 s measured).
+      now += 60_000;
+      await act(async () => { await api.send?.("repeat"); });
+      expect(optionsCount()).toBe(initial);
+      now += 60_000;
+      await act(async () => { await api.send?.("repeat-again"); });
+      expect(optionsCount()).toBe(initial);
+    } finally {
+      view.unmount();
+      clock.mockRestore();
+    }
+  });
+
+  it.each(["model", "provider", "baseUrl", "profile", "reconnect", "failure", "foreign", "broadcast"])("invalidates model inventory on %s", async (reason) => {
+    let now = 100_000;
+    let liveModel = "bad-model";
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      if (method === "session.create" || method === "session.resume")
+        return { session_id: "live", stored_session_id: "stored" };
+      // Report the live identity so a FOREIGN model change is observable. Without
+      // this the fixture returned `{}`, leaving `identity` null — so the old
+      // `if (identity) cache = null` line could never fire and the "foreign"
+      // case was really only passing because the 2s TTL expired.
+      if (method === "session.status")
+        return { output: `Model: ${liveModel} (bad-provider)\nTokens: 0` };
+      if (method === "model.options")
+        return { model: liveModel, provider: "bad-provider", providers: [] };
+      if (method === "slash.exec") liveModel = String(params.command).split(" ")[1];
+      return {};
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} />);
+    try {
+      await act(async () => { await api.send?.("first"); });
+      const first = dashboardMock.request.mock.calls.length;
+      await act(async () => {
+        if (reason === "model") api.setModel?.("new-model");
+        if (reason === "provider") api.setProvider?.("new-provider");
+        if (reason === "baseUrl") view.rerender(<Harness api={api} modelBaseUrl="https://other.invalid" />);
+        if (reason === "profile") view.rerender(<Harness api={api} profile="other" />);
+        if (reason === "reconnect") dashboardMock.instances[0].connected = false;
+        if (reason === "failure") dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { status: "error", error: "test" } });
+        if (reason === "broadcast") dashboardMock.onEvent?.({ type: "sessions.changed", payload: {} });
+        if (reason === "foreign") { liveModel = "foreign-model"; now += 2_001; }
+        // The invalidation paths exist to protect against the session's live
+        // model having moved underneath us (the DB is shared, so ANY process can
+        // switch it). Model that directly: after the invalidation the live
+        // session is on a different model than the one we selected, so the send
+        // path must re-read the inventory rather than trusting a fast return.
+        if (!["model", "foreign"].includes(reason)) liveModel = "moved-model";
+      });
+      await act(async () => { await api.send?.("next"); });
+      const calls = dashboardMock.request.mock.calls.slice(first);
+      expect(calls.some(([method]) => method === "model.options")).toBe(true);
+      // The fixture never applies a provider switch: fail closed, not on the old provider.
+      expect(calls.some(([method]) => method === "prompt.submit")).toBe(reason !== "provider");
+      if (reason === "model" || reason === "foreign") {
+        const switchIndex = calls.findIndex(([method]) => method === "slash.exec");
+        expect(switchIndex).toBeGreaterThanOrEqual(0);
+        expect(calls[switchIndex + 1][0]).toBe("model.options");
+        expect(liveModel).toBe(reason === "model" ? "new-model" : "bad-model");
+      }
+    } finally { view.unmount(); clock.mockRestore(); }
+  });
+
+  it("auto-accepts a large-context switch confirmation so the turn is never parked", async () => {
+    let liveModel = "bad-model";
+    let liveProvider = "bad-provider";
+    const slashCommands: string[] = [];
+    let submitted = false;
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      if (method === "session.create" || method === "session.resume")
+        return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status")
+        return { output: `Model: ${liveModel} (${liveProvider})\nTokens: 0` };
+      if (method === "model.options")
+        return { model: liveModel, provider: liveProvider, providers: [] };
+      if (method === "slash.exec") {
+        const command =
+          params && typeof params === "object" && "command" in params
+            ? String(params.command)
+            : "";
+        slashCommands.push(command);
+        const match = command.match(/^\/model\s+(.+?)\s+--provider\s+(.+)$/);
+        if (match) {
+          // The guard ask applies NOTHING; the gateway confirm reply (/approve)
+          // is what actually lands the switch.
+          return {
+            warning:
+              "!!! LARGE CONTEXT MODEL SWITCH !!!\n\nThis session holds ~144,295 tokens of context.\n" +
+              "Threshold: model.switch_context_confirm_tokens (currently 100,000; 0 disables this check).\n" +
+              "Confirm only if you intend to switch now.",
+            output: "",
+          };
+        }
+        if (command === "/approve") {
+          liveModel = "cbai/deepseek-v4.1-flash";
+          return { output: "Model switched", warning: "" };
+        }
+        return {};
+      }
+      if (method === "prompt.submit") submitted = true;
+      return {};
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} />);
+    try {
+      await act(async () => {
+        api.setModel?.("cbai/deepseek-v4.1-flash");
+      });
+      await act(async () => { await api.send?.("hello"); });
+      // The confirm is auto-answered: the switch lands and the turn is sent,
+      // rather than parking on a prompt the desktop cannot render.
+      expect(submitted).toBe(true);
+      expect(liveModel).toBe("cbai/deepseek-v4.1-flash");
+      expect(slashCommands).toContain("/approve");
+    } finally { view.unmount(); }
+  });
+
   it("creates a clean runtime after a failed provider turn", async () => {
     const requests: Array<{ method: string; params: unknown }> = [];
     let liveModel = "bad-model";
@@ -497,7 +699,7 @@ describe("useDashboardChatTransport recovery", () => {
     expect(window.hermesAPI.recordSessionContinuation).not.toHaveBeenCalled();
   });
 
-  it("sends when model.options lags behind an accepted slash switch", async () => {
+  it("blocks submission when an accepted slash switch cannot be validated", async () => {
     // @lat: [[model-selection#Session model override#Non-blocking switch validation]]
     const requests: Array<{ method: string; params: unknown }> = [];
     dashboardMock.request.mockImplementation(async (method, params) => {
@@ -541,7 +743,7 @@ describe("useDashboardChatTransport recovery", () => {
       },
     });
     expect(requests.some((request) => request.method === "prompt.submit")).toBe(
-      true,
+      false,
     );
   });
 
@@ -1335,7 +1537,7 @@ describe("subagent watch lifecycle", () => {
         { id: "db-1", role: "user", content: "child task" },
       ]);
       useDashboardChatTransport({
-        activeTurnRef, contextFolder: null, connectionMode: "local", enabled: true,
+        active: true, activeTurnRef, contextFolder: null, connectionMode: "local", enabled: true,
         fallbackOnUnavailable: false, hermesSessionId: "stored-child", watchChild: true,
         messages, setMessages, setIsLoading, setHermesSessionId: vi.fn(),
         setToolProgress: vi.fn(), setUsage: vi.fn(),
@@ -1370,6 +1572,44 @@ describe("subagent watch lifecycle", () => {
     });
     expect(setIsLoading).toHaveBeenLastCalledWith(false);
     expect(activeTurnRef.current).toBeNull();
+    view.unmount();
+  });
+});
+
+// A lost `message.complete` used to leave the turn spinning until the tab was
+// reopened. Two things kept the recovery clock alive: a dropped event (runtime
+// id rotated out from under an in-flight turn) must still re-arm instead of
+// silently stopping, and the read must not retry forever on repeated failures.
+describe("recovery liveness", () => {
+  it("keeps re-arming when an event is dropped for a stale runtime id", async () => {
+    const activeTurnRef = {
+      current: null as { turnId: string; userId: string; startIndex: number; status: string } | null,
+    };
+    const setIsLoading = vi.fn();
+    function Harness(): null {
+      const [messages, setMessages] = useState<ChatMessage[]>([
+        { id: "db-1", role: "user", content: "do it" },
+      ]);
+      useDashboardChatTransport({
+        active: true, activeTurnRef: activeTurnRef as never, contextFolder: null,
+        connectionMode: "local", enabled: true, fallbackOnUnavailable: false,
+        hermesSessionId: "stored-1", messages, setMessages, setIsLoading,
+        setHermesSessionId: vi.fn(), setToolProgress: vi.fn(), setUsage: vi.fn(),
+      });
+      return null;
+    }
+    const view = render(<Harness />);
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "message.start", session_id: "live-1" });
+    });
+    const turnBefore = activeTurnRef.current;
+    // An event for an unrelated session id is dropped, but must not settle or
+    // clear the live turn — only the DB read may do that.
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "message.delta", session_id: "stale-other", payload: { text: "x" } });
+    });
+    expect(activeTurnRef.current).toBe(turnBefore);
+    expect(setIsLoading).not.toHaveBeenLastCalledWith(false);
     view.unmount();
   });
 });

@@ -169,6 +169,17 @@ interface MessageListProps {
    * turn has no DOM to scroll to or highlight until that turn is included.
    */
   revealMessageId?: string | null;
+  /**
+   * True when older history exists in the DB beyond what was loaded. Long
+   * sessions open on their newest page (a full read is ~450ms of blocking
+   * SQLite on a 29k-row session); this drives the "Show earlier" affordance
+   * that hydrates the previous page on demand.
+   */
+  olderAvailable?: boolean;
+  /** Load the previous page of history. Absent = no paging for this run. */
+  onLoadEarlier?: () => void | Promise<void>;
+  /** True while a page is in flight, so the button can show progress. */
+  loadingEarlier?: boolean;
 }
 
 function TypingIndicator({
@@ -458,6 +469,9 @@ export const MessageList = memo(function MessageList({
   modelRef,
   sessionKey,
   revealMessageId,
+  olderAvailable: olderAvailableProp = false,
+  onLoadEarlier,
+  loadingEarlier = false,
 }: MessageListProps): React.JSX.Element {
   const isGatewaySystemMarker = (m: ChatMessage): boolean =>
     m.role === 'user' && typeof m.content === 'string' && m.content.trimStart().startsWith('[System:');
@@ -490,11 +504,7 @@ export const MessageList = memo(function MessageList({
     return -1;
   })();
 
-  // Structural signature (ids + roles) keys groups; weight ticks separately.
-  const structuralSig = useMemo(
-    () => visibleMessages.map((m, i) => `${i}:${m.id}:${(m as { role?: string }).role ?? (m as { kind?: string }).kind ?? "x"}`).join("\n"),
-    [visibleMessages],
-  );
+
   const weights = useMemo(
     () => forkTranscriptWeight(visibleMessages),
     [visibleMessages],
@@ -671,11 +681,8 @@ export const MessageList = memo(function MessageList({
       out.push(el);
     }
     return out;
-  }, [visibleGroups, visibleMessages, lastUserBubbleIdx, isLoading, tailStart, callbacks, structuralSig]);
+  }, [visibleGroups, visibleMessages, lastUserBubbleIdx, isLoading, tailStart, callbacks]);
 
-  void structuralSig;
-
-  const olderAvailable = false; // fork has no separate store window; DOM paging is the window
 
   return (
     <>
@@ -690,13 +697,19 @@ export const MessageList = memo(function MessageList({
         />
       )}
       <StickyTodoPanel todos={stickyTodos} />
-      {(realHiddenCount > 0 || olderAvailable) && (
+      {(realHiddenCount > 0 || olderAvailableProp) && (
         <button
           type="button"
           className="chat-show-earlier"
-          onClick={showEarlier}
+          disabled={loadingEarlier}
+          onClick={() => {
+            // Expand the rendered window first (instant, no I/O), then pull the
+            // next page of history when the DOM budget alone cannot reveal it.
+            showEarlier();
+            if (olderAvailableProp && onLoadEarlier) void onLoadEarlier();
+          }}
         >
-          Show earlier
+          {loadingEarlier ? "Loading earlier…" : "Show earlier"}
         </button>
       )}
       {turnRows}

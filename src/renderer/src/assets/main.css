@@ -200,7 +200,7 @@
   --bg-elevated: #333333;
   --bg-hover: #2a2d2e;
   --bg-active: #094771;
-  --accent: #0078d4;
+  --accent: #0071d9;
   --accent-hover: #1a8adb;
   --accent-subtle: rgba(0, 120, 212, 0.18);
   --accent-text: #4fc1ff;
@@ -217,7 +217,7 @@
   --error-bg: rgba(244, 135, 113, 0.14);
   --warning: #d7ba7d;
   --warning-bg: rgba(215, 186, 125, 0.14);
-  --user-bubble: #0078d4;
+  --user-bubble: #0071d9;
   --user-bubble-text: #ffffff;
   --agent-bubble: #2d2d30;
   --agent-bubble-text: #cccccc;
@@ -2808,11 +2808,19 @@ body:has(.shell-vibrant),
   overflow-x: hidden;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-  will-change: scroll-position;
-  contain: layout paint;
-  transform: translateZ(0);
+  /* Contain the scroll chain: reaching the end must NOT scroll the ancestor or
+     rubber-band the window. `none` (not `contain`) also stops the CHAIN, which
+     is what produced the end-of-list bounce/overshoot. */
+  overscroll-behavior-y: none;
+  /* Anchor the scroll position when rows are appended/inserted above the
+     viewport (infinite-scroll paging + recency reorders). Without this the
+     browser keeps the raw scrollTop and the list visibly jumps. */
+  overflow-anchor: auto;
+  /* NOT translateZ(0) / will-change: scroll-position / -webkit-overflow-
+     scrolling. Those promote the element to a compositor scrolling layer, which
+     in Electron/Chromium is the known cause of elastic overscroll at the END of
+     a scroll container — the reported "scrolls too far then bounces" glitch.
+     This is a plain overflowing block; leave it on the normal paint path. */
 }
 
 .sidebar-chat-scroll::-webkit-scrollbar {
@@ -2886,7 +2894,7 @@ body:has(.shell-vibrant),
   display: flex;
   align-items: center;
   gap: 2px;
-  background: var(--bg-tertiary, #1e1e24);
+  background: transparent;
   border: 1px solid var(--border-subtle, var(--border));
   border-radius: var(--radius-sm);
   padding: 2px;
@@ -2918,7 +2926,7 @@ body:has(.shell-vibrant),
 }
 
 .sidebar-mode-tab.active {
-  background: var(--bg-elevated, #2a2a34);
+  background: var(--accent, #2c2e30);
   color: var(--text-primary);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
@@ -4512,7 +4520,7 @@ body:has(.shell-vibrant),
   padding: 2px 8px; /* official row inset: pl-2 pr-1 py-0.5 */
   border: none;
   background: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   text-align: left;
   font-family: var(--font-sans);
@@ -11414,6 +11422,49 @@ body:has(.shell-vibrant),
 .chat-model-rail-delete:hover {
   color: var(--text-primary);
   background: var(--bg-tertiary);
+}
+.chat-model-rail-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border-radius: 5px;
+  color: var(--text-muted);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity var(--duration-fast, 0.15s), color var(--duration-fast, 0.15s), background var(--duration-fast, 0.15s);
+}
+.chat-model-rail-item-holder:hover .chat-model-rail-add,
+.chat-model-rail-item-holder.active .chat-model-rail-add,
+.chat-model-rail-add:focus-visible {
+  opacity: 0.8;
+}
+.chat-model-rail-add:hover {
+  opacity: 1;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+.chat-model-add-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  margin-top: 4px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color var(--duration-fast, 0.15s), border-color var(--duration-fast, 0.15s), background var(--duration-fast, 0.15s);
+}
+.chat-model-add-row:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover, var(--border));
+  background: var(--bg-secondary);
 }
 .chat-model-group-menu {
   position: absolute;
@@ -22148,6 +22199,42 @@ body:has(.shell-vibrant),
   color: var(--text-muted);
   font-size: 10px;
 }
+.terminal-command-picker {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+.terminal-command-picker input {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+.terminal-command-picker input::placeholder,
+.terminal-command-picker .terminal-complete-hint,
+.terminal-command-meta {
+  color: var(--text-secondary);
+}
+.terminal-command-picker [role="option"] {
+  display: block;
+  width: 100%;
+}
+.terminal-command-picker [role="option"] > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.terminal-command-title {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.terminal-command-preview {
+  color: color-mix(in srgb, var(--text-primary) 75%, var(--accent-text));
+}
+.terminal-command-picker .terminal-complete-item:is(:hover, .is-active) {
+  background: var(--accent-subtle);
+}
+.terminal-command-picker :is(button, input):focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: -2px;
+}
 .terminal-dock-pane {
   position: absolute;
   inset: 6px 8px;
@@ -22157,24 +22244,33 @@ body:has(.shell-vibrant),
   height: 100%;
 }
 /* ── Source Control dialog (git) ── */
+.source-control-page {
+  /* True full-page host, portaled to <body> so it escapes the FloatingDialog's
+     clipping/stacking context. Fixed to the viewport = the whole window. */
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  -webkit-app-region: no-drag;
+  display: flex;
+  background: var(--bg-secondary);
+}
 .source-control-dialog {
-  width: 96vw;
-  max-width: 1600px;
-  height: 94vh;
+  /* Full-page panel: no max-width, no radius, no shadow — it IS the page. */
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
   overflow: hidden;
 }
 .source-control-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
+  /* Extra right padding so the close button never sits hard on the corner. */
+  padding: 12px 20px 12px 16px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .source-control-header-actions {
   display: flex;
@@ -22200,6 +22296,7 @@ body:has(.shell-vibrant),
   display: flex;
   min-height: 0;
   flex: 1;
+  overflow: hidden;
 }
 .source-control-sidebar {
   width: 340px;
@@ -22292,6 +22389,11 @@ body:has(.shell-vibrant),
 .source-control-diff {
   flex: 1;
   min-width: 0;
+  /* min-height:0 is required for a flex child with overflowing content: without
+     it the diff's intrinsic height wins, the row grows past the dialog and the
+     commit footer is pushed out of view (the cropped bottom). */
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -22347,6 +22449,341 @@ body:has(.shell-vibrant),
 .source-control-diff-line.meta {
   color: var(--text-muted);
 }
+
+/* ── Tab bar (Changes | Graph) ─────────────────────────────────────────── */
+.source-control-tabbar {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+.source-control-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.source-control-tab:hover {
+  color: var(--text-primary);
+}
+.source-control-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent, #4f9cf9);
+}
+.source-control-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--bg-primary);
+  background: var(--text-muted);
+}
+.source-control-tab-spinner {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent, #4f9cf9);
+  animation: sc-spin 0.7s linear infinite;
+}
+@keyframes sc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Graph pane: commit list + selected commit diff ────────────────────── */
+.source-control-graph-pane {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.source-control-graph-list {
+  width: 46%;
+  min-width: 340px;
+  flex-shrink: 0;
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+}
+.source-control-graph-diff {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Commit graph ──────────────────────────────────────────────────────── */
+.commit-graph {
+  font-size: 12.5px;
+}
+.commit-graph-empty,
+.diff-viewer-empty {
+  padding: 18px 16px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-style: italic;
+}
+.commit-graph-inner {
+  position: relative;
+}
+.commit-graph-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+.commit-graph-edge {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+.commit-graph-edge--merge {
+  stroke-dasharray: 3 2;
+}
+.commit-graph-dot {
+  stroke-width: 2;
+}
+.commit-graph-dot--selected {
+  r: 5;
+  fill: var(--accent, #4f9cf9);
+}
+.commit-graph-rows {
+  position: relative;
+}
+.commit-graph-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.commit-graph-row:hover {
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.05));
+}
+.commit-graph-row--selected {
+  background: color-mix(in srgb, var(--accent, #4f9cf9) 18%, transparent);
+}
+.commit-graph-subject {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.commit-graph-refs {
+  display: inline-flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.commit-graph-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #0b1220;
+  background: #6ea8fe;
+}
+.commit-graph-tag {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.commit-graph-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.commit-graph-hash {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--accent, #4f9cf9);
+}
+.commit-graph-author {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Syntax-highlighted diff viewer ────────────────────────────────────── */
+.diff-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-primary);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.diff-viewer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.diff-viewer-file {
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.diff-viewer-badge {
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #0b1220;
+  background: #ffd166;
+}
+.diff-viewer-stat {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 8px;
+  font-weight: 700;
+}
+.diff-viewer-stat-add {
+  color: #3fb950;
+}
+.diff-viewer-stat-del {
+  color: #f85149;
+}
+.diff-viewer-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 0;
+}
+.diff-line {
+  display: flex;
+  align-items: flex-start;
+  min-height: 18px;
+  white-space: pre;
+}
+.diff-gutter {
+  flex-shrink: 0;
+  width: 44px;
+  padding: 0 8px 0 4px;
+  text-align: right;
+  color: var(--text-muted);
+  opacity: 0.55;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.diff-marker {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  user-select: none;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+.diff-code {
+  flex: 1;
+  min-width: 0;
+  padding-right: 12px;
+}
+/* Change tint on the whole row (VS Code tints the code cell). */
+.diff-line--add {
+  background: rgba(46, 160, 67, 0.16);
+}
+.diff-line--del {
+  background: rgba(248, 81, 73, 0.14);
+}
+.diff-line--hunk {
+  background: rgba(56, 139, 253, 0.1);
+  color: #79c0ff;
+}
+.diff-line--hunk .diff-code {
+  color: #79c0ff;
+}
+.diff-line--meta {
+  color: var(--text-muted);
+}
+
+/* ── Diff syntax tokens (language-agnostic, theme-neutral) ────────────── */
+.tok--comment {
+  color: #7d8590;
+  font-style: italic;
+}
+.tok--string {
+  color: #a5d6a7;
+}
+.tok--number {
+  color: #f0b072;
+}
+.tok--keyword {
+  color: #ff7b72;
+}
+.tok--type {
+  color: #79c0ff;
+}
+.tok--function {
+  color: #d2a8ff;
+}
+.tok--property {
+  color: #79c0ff;
+}
+.tok--operator {
+  color: #ff7b72;
+}
+.tok--punctuation {
+  color: #8b949e;
+}
+
+/* Lane colours for the commit graph (readable on light and dark themes). */
+:root {
+  --graph-dot-bg: var(--bg-primary);
+  --graph-lane-0: #4f9cf9;
+  --graph-lane-1: #f0883e;
+  --graph-lane-2: #3fb950;
+  --graph-lane-3: #d2a8ff;
+  --graph-lane-4: #f85149;
+  --graph-lane-5: #e3b341;
+  --graph-lane-6: #56d4dd;
+  --graph-lane-7: #db61a2;
+}
+
 .source-control-footer {
   display: flex;
   align-items: flex-end;
@@ -22354,6 +22791,9 @@ body:has(.shell-vibrant),
   padding: 10px 16px;
   border-top: 1px solid var(--border);
   background: var(--bg-primary);
+  /* Never let the body squeeze the commit controls: this row keeps its height
+     so the textarea/button are never half-cropped at the dialog's bottom. */
+  flex-shrink: 0;
 }
 .source-control-token-row {
   display: flex;
@@ -22363,6 +22803,7 @@ body:has(.shell-vibrant),
   border-top: 1px solid var(--border);
   background: var(--bg-primary);
   font-size: 12px;
+  flex-shrink: 0;
 }
 .source-control-token-label {
   flex-shrink: 0;
@@ -22447,6 +22888,10 @@ body:has(.shell-vibrant),
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Breathing room so a max-sized dialog never touches the window edges (the
+     header's close button read as "almost outside" at 96vw with no inset). */
+  padding: 16px;
+  box-sizing: border-box;
 }
 
 /* ── Find in Files dialog (string search across workspace folders) ── */
@@ -22608,9 +23053,11 @@ body:has(.shell-vibrant),
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 .file-changes-dialog {
-  width: 96vw;
-  max-width: 1600px;
-  height: 94vh;
+  /* Same viewport-inset sizing as the Source Control dialog: bare 94vh let the
+     last row crop against the window on short screens. */
+  width: min(96vw, 1600px);
+  height: min(94dvh, calc(100dvh - 32px));
+  max-height: calc(100dvh - 32px);
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);

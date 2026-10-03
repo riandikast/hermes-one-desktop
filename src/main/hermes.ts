@@ -23,6 +23,7 @@ import {
   HERMES_REPO,
   HERMES_PYTHON,
   hermesCliArgs,
+  hermesPythonArgs,
   getEnhancedPath,
 } from "./installer";
 import {
@@ -331,7 +332,7 @@ function transcribeAudioViaLocalPython(
   ].join("\n");
 
   return new Promise((resolve, reject) => {
-    const proc = spawn(HERMES_PYTHON, ["-c", script, audioPath], {
+    const proc = spawn(HERMES_PYTHON, hermesPythonArgs(script, [audioPath]), {
       cwd: HERMES_REPO,
       env: tuiGatewayEnv(profile),
       stdio: ["ignore", "pipe", "pipe"],

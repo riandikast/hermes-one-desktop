@@ -5,6 +5,7 @@ import * as pty from "node-pty";
 export type ShellKind = "pwsh" | "cmd" | "sh";
 
 export interface SessionHandle {
+  shell: ShellKind;
   write(data: string): void;
   resize(cols: number, rows: number): void;
   kill(): void;
@@ -35,7 +36,7 @@ export function resolveShellExecutable(
 
 export function shellKindFor(shell: string): ShellKind {
   const lower = shell.toLowerCase();
-  if (lower.includes("powershell") || lower.endsWith("pwsh")) return "pwsh";
+  if (lower.includes("powershell") || /pwsh(?:\.exe)?$/.test(lower)) return "pwsh";
   if (lower.endsWith("cmd") || lower.endsWith("cmd.exe")) return "cmd";
   return "sh";
 }
@@ -72,6 +73,7 @@ export function createTerminalSession(
   });
 
   sessions.set(id, {
+    shell: shellKindFor(shell),
     write: (data) => child.write(data),
     resize: (c, r) => child.resize(c, r),
     kill: () => {
@@ -85,10 +87,61 @@ export function createTerminalSession(
   return id;
 }
 
-export function writeToSession(id: string, data: string): void {
+export function writeToSession(id: string, data: string, cwd?: string): void {
   const session = sessions.get(id);
   if (!session) throw new Error(`No session with id: ${id}`);
+  if (cwd !== undefined && typeof cwd !== "string") throw new Error("Invalid cwd");
+  const parts = splitCommandLines(data);
+  if (cwd?.trim()) {
+    if (/[\x00-\x1f\x7f]/.test(cwd)) throw new Error("Invalid cwd");
+    if (session.shell === "pwsh") {
+      const quoted = cwd.replace(/'/g, "''");
+      const body = parts.lines.join("; ");
+      data = `Set-Location -LiteralPath '${quoted}'; if ($?) { ${body} }${parts.enter}`;
+    } else if (session.shell === "cmd") {
+      // cmd expands these even inside quotes; reject rather than change the path.
+      if (/["%!]/.test(cwd)) throw new Error("Unsupported cmd cwd");
+      // cmd cannot chain with `;`, so each line is parenthesized and `&&`-joined.
+      const chained = parts.lines.map((line) => `(${line})`).join(" && ");
+      data = `cd /d "${cwd}" && ${chained}${parts.enter}`;
+    } else {
+      const quoted = cwd.replace(/'/g, "'\\''");
+      data = `cd -- '${quoted}' && { ${parts.lines.join("; ")}; }${parts.enter}`;
+    }
+  } else if (parts.lines.length > 1) {
+    // No cwd to wrap, but still keep a multi-line template as ONE submission so
+    // a later line cannot be typed into a prompt that has not returned yet.
+    data = parts.lines.join(session.shell === "cmd" ? " && " : "; ") + parts.enter;
+  }
   session.write(data);
+}
+
+/**
+ * Split a template into its individual command lines, peeling the trailing
+ * Enter off the last one.
+ *
+ * Two reasons this is needed rather than a raw write:
+ *   1. A trailing CR must terminate the WRAPPED line, not sit inside the
+ *      block — interpolating it raw left an unterminated compound statement
+ *      and the shell hung waiting for the closer.
+ *   2. Templates may be genuinely multi-line (`flutter clean` + `flutter pub
+ *      get`). Written raw, the second line races the first command's prompt.
+ */
+function splitCommandLines(data: string): { lines: string[]; enter: string } {
+  // An Enter arrives as a bare CR (what the key sends), a LF, or a CRLF. It is
+  // peeled off FIRST so it can terminate the WRAPPED line; leaving it inside
+  // the block left an unterminated compound statement that hung the shell.
+  const match = data.match(/\r?\n?$/);
+  const hadEnter = match !== null && match[0].length > 0;
+  const body = hadEnter ? data.slice(0, -match[0].length) : data;
+  // A template that omits its own Enter is still submitted; interactive input
+  // always supplies one, and that exact terminator is preserved.
+  const enter = hadEnter ? match[0] : "\r";
+  const lines = body
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  return { lines, enter };
 }
 
 export function resizeSession(id: string, cols: number, rows: number): void {

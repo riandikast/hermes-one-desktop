@@ -934,7 +934,9 @@ export function reconcileTailAfterDbRefresh(
   // No synced prefix yet (fresh session / resume) — the full reconcile is the
   // only correct answer.
   if (!(lastSyncedDbId > 0)) {
-    return reconcileAfterDbRefresh(current, db, { activeTurn: options.activeTurn });
+    return reconcileAfterDbRefresh(current, db, {
+      activeTurn: options.activeTurn,
+    });
   }
 
   // The in-memory prefix is everything the renderer already knows came from
@@ -967,7 +969,9 @@ export function reconcileTailAfterDbRefresh(
   // card, file-changes chip, pending bubble) means the prefix self-heals in
   // ways the tail slice can't see — defer to the full reconcile.
   if (!isCanonicalPrefix(current, tailStart)) {
-    return reconcileAfterDbRefresh(current, db, { activeTurn: options.activeTurn });
+    return reconcileAfterDbRefresh(current, db, {
+      activeTurn: options.activeTurn,
+    });
   }
 
   const prefix = current.slice(0, tailStart);
@@ -1016,6 +1020,119 @@ export function messageDbId(message: ChatMessage): number {
   const n = Number(match[1]);
   if (!Number.isInteger(n) || n === 0) return 0;
   return n;
+}
+
+/**
+ * Decide whether a CURSOR-SCOPED quiet-finalize read proves the live turn is
+ * finished — i.e. the answer is safely in state.db (or already reconciled into
+ * the transcript) and nothing newer is pending.
+ *
+ * quiet-finalize is the recovery for a LOST `message.complete`: it fires after
+ * 10 s of silence, reads state.db, and must not end the turn early (ending it
+ * deletes the just-sent user message and resurrects the previous answer). The
+ * old guard compared WHOLE-session user counts, which forced a FULL session
+ * read — the ~450 ms blocking stall + multi-MB IPC on a long session. A
+ * cursor-scoped read only carries the un-reconciled TAIL, so this decides from
+ * the tail plus the live transcript:
+ *
+ *   - tail ends with an answer for the live turn  → done (reconcile the tail)
+ *     The tail's last user row must be the live turn's last user row (content
+ *     match), so a not-yet-persisted NEXT message can never be finalized over.
+ *   - tail is empty and the live transcript already shows an answer after its
+ *     last user row → done (an earlier reconcile already applied it; the
+ *     scoped read is a no-op reconcile).
+ *   - otherwise → not done; keep waiting.
+ */
+export function dbTailShowsLiveTurnDone(
+  live: ReadonlyArray<ChatMessage>,
+  dbTail: ReadonlyArray<ChatMessage>,
+): boolean {
+  const isUser = (m: ChatMessage): boolean =>
+    isBubbleMessage(m) && m.role === "user";
+  const hasAnswer = (m: ChatMessage): boolean =>
+    isBubbleMessage(m) &&
+    m.role === "agent" &&
+    String(m.content ?? "").trim().length > 0;
+  const same = (a: ChatMessage, b: ChatMessage): boolean =>
+    normalizeMessageText(String(a.content ?? "")) ===
+    normalizeMessageText(String(b.content ?? ""));
+
+  // Synthetic overlay rows (negative ids) are re-prepended on every read and
+  // belong to the settled prefix — never part of the live turn.
+  const tail = dbTail.filter((m) => messageDbId(m) >= 0);
+
+  let liveUserIdx = -1;
+  for (let i = live.length - 1; i >= 0; i--) {
+    if (isUser(live[i])) {
+      liveUserIdx = i;
+      break;
+    }
+  }
+  if (liveUserIdx < 0) return false;
+  const liveLastUser = live[liveUserIdx];
+  const liveAnswerRegion = live.slice(liveUserIdx + 1);
+  // The turn is done in the live transcript only if an answer follows the LAST
+  // user row AND nothing is still running. A pending tool means the model wrote
+  // interim text and is mid-work — treating that as done is exactly what fired
+  // the finish chime between a first response and the continued work. (A
+  // just-typed next message therefore also reads as NOT done.)
+  const liveAnswer =
+    !hasPendingToolInTail(liveAnswerRegion) && liveAnswerRegion.some(hasAnswer);
+  if (liveAnswer) return true;
+
+  let tailUserIdx = -1;
+  for (let i = tail.length - 1; i >= 0; i--) {
+    if (isUser(tail[i])) {
+      tailUserIdx = i;
+      break;
+    }
+  }
+  if (tailUserIdx < 0) return false;
+  // The tail's last user row must BE the live turn's last user row: if the user
+  // already typed the NEXT message and it reached state.db, that row is in the
+  // tail with different content and this stays "not done".
+  if (!same(tail[tailUserIdx], liveLastUser)) return false;
+  const answerRegion = tail.slice(tailUserIdx + 1);
+  // A still-running tool proves the turn is NOT done, even with text present:
+  // the model often writes interim commentary ("let me check that") and then
+  // calls a tool. Without this gate that interim text satisfied the "answer
+  // exists" test below and the turn settled early — firing the finish chime and
+  // resetting the thinking/tool timers mid-turn.
+  if (hasPendingToolInTail(answerRegion)) return false;
+  return answerRegion.some(hasAnswer);
+}
+
+/**
+ * True when an answer-region slice still holds an UNRESOLVED tool call — a
+ * `tool_call` row with no matching `tool_result` after it (matched by callId).
+ *
+ * Completion must not be inferred from "agent text exists" alone: the gateway
+ * persists the interim assistant text before a tool runs, so text is present
+ * (and any tool is pending) for the entire middle of a turn.
+ */
+export function hasPendingToolInTail(
+  messages: ReadonlyArray<ChatMessage>,
+): boolean {
+  const isToolCall = (m: ChatMessage): m is ChatMessage & { callId?: string } =>
+    (m as { kind?: string }).kind === "tool_call";
+  const isToolResult = (m: ChatMessage): boolean =>
+    (m as { kind?: string }).kind === "tool_result";
+
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    if (!isToolCall(m)) continue;
+    const callId = (m as { callId?: string }).callId;
+    let matched = false;
+    for (let j = i + 1; j < messages.length; j++) {
+      const n = messages[j];
+      if (isToolResult(n) && (n as { callId?: string }).callId === callId) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) return true;
+  }
+  return false;
 }
 
 /**

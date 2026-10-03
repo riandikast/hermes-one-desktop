@@ -49,6 +49,46 @@ function numOrUndefined(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+/**
+ * True when two rosters are equivalent: same session and the same children in
+ * the same order with the same fields.
+ *
+ * The poll rebuilds `children` as a fresh array (and fresh objects) on EVERY
+ * tick, so `setRoster` was called unconditionally. React compares state by
+ * identity, so an unchanged roster still produced a new object and re-rendered
+ * every consumer — including the whole chat transcript. Measured with an empty
+ * roster (the common case): a 300-450 ms main-thread block every 5 s while
+ * idle, with ZERO DOM changes, i.e. pure wasted reconciliation. Skipping the
+ * identical write is what removes that wave.
+ *
+ * Compared field-by-field (not by JSON) so the order of keys and any future
+ * key addition cannot silently defeat the check.
+ */
+export function rostersEqual(
+  a: { session: string | null; children: ReadonlyArray<ActiveSubagent> },
+  b: { session: string | null; children: ReadonlyArray<ActiveSubagent> },
+): boolean {
+  if (a.session !== b.session) return false;
+  if (a.children.length !== b.children.length) return false;
+  for (let i = 0; i < a.children.length; i++) {
+    const x = a.children[i]!;
+    const y = b.children[i]!;
+    if (
+      x.subagent_id !== y.subagent_id ||
+      x.goal !== y.goal ||
+      x.child_session_id !== y.child_session_id ||
+      x.last_tool !== y.last_tool ||
+      x.tool_count !== y.tool_count ||
+      x.status !== y.status ||
+      x.started_at !== y.started_at ||
+      x.accepting_steer !== y.accepting_steer
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function childRecord(value: unknown): ActiveSubagent | null {
   if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
@@ -87,6 +127,17 @@ export function useActiveSubagents(
       params: Record<string, unknown>,
     ) => Promise<unknown>;
   } | null>,
+  /**
+   * Whether this run's tab is the VISIBLE one. Every open tab keeps a mounted
+   * <Chat> (Layout hides the inactive ones with `display: none`), so `enabled`
+   * — a CONNECTION-level flag — is true for all of them. Polling from hidden
+   * tabs multiplies the 5s `subagent.list` RPC by the number of open tabs and,
+   * on a long transcript, its roster commit re-renders that tab's whole
+   * message list: the stutter/freeze that grows with each tab opened. A hidden
+   * tab shows no subagent strip, so it has nothing to poll for — it resumes on
+   * activation. Defaults to true so non-tab callers keep working.
+   */
+  active = true,
 ): {
   activeSubagents: ActiveSubagent[];
   onSubagentEvent: (event: DashboardRpcEvent) => void;
@@ -157,7 +208,7 @@ export function useActiveSubagents(
   );
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !active) return;
     let disposed = false;
     let busy = false;
     const poll = async (): Promise<void> => {
@@ -221,7 +272,16 @@ export function useActiveSubagents(
         }
         const committed = [...children.values()];
         rosterRef.current = { session, children: committed };
-        setRoster({ session, children: committed });
+        // Skip the state write when nothing changed. The poll rebuilds the
+        // array every tick, so writing unconditionally re-rendered the entire
+        // transcript (a 300-450 ms main-thread block every 5 s, with no DOM
+        // change) even with no subagents running. `rosterRef` is updated above
+        // regardless, so a later sparse snapshot still merges onto this one.
+        setRoster((prev) =>
+          rostersEqual(prev, { session, children: committed })
+            ? prev
+            : { session, children: committed },
+        );
       } catch {
         // Keep the last known roster; retry even when the parent is idle.
       } finally {
@@ -239,7 +299,7 @@ export function useActiveSubagents(
       clearInterval(timer);
       pendingRef.current = null;
     };
-  }, [enabled, sessionRef, clientRef]);
+  }, [enabled, active, sessionRef, clientRef]);
 
   return {
     activeSubagents:

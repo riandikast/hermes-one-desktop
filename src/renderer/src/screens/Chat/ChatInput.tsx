@@ -1221,20 +1221,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               </>
             )}
             <div className="chat-input-toolbar-spacer" />
-            {contextUsage ? (
-              <ContextGauge
-                {...contextUsage}
-                onCompact={onCompactContext}
-                onNewSessionWithContext={onNewSessionWithContext}
-              />
-            ) : (
-              <ContextGauge
-                used={0}
-                window={0}
-                onCompact={onCompactContext}
-                onNewSessionWithContext={onNewSessionWithContext}
-              />
-            )}
+            <ContextGauge
+              used={0}
+              window={0}
+              {...contextUsage}
+              onCompact={onCompactContext}
+              onNewSessionWithContext={onNewSessionWithContext}
+            />
+
             {isLoading ? (
               <button
                 className={`chat-send-btn chat-stop-btn${

@@ -66,6 +66,7 @@ beforeEach(() => {
   (window as unknown as { hermesAPI: unknown }).hermesAPI = {
     terminalWrite: vi.fn((p: { id: string; data: string }) => {
       written.push(p);
+      return Promise.resolve({ ok: true });
     }),
     terminalKill: vi.fn(),
     terminalResize: vi.fn(),
@@ -85,6 +86,7 @@ function mount() {
   const { container } = render(
     <TerminalDock
       ref={ref}
+      commandTemplates
       onNewSession={() => undefined}
       onResizeStart={() => undefined}
       onResizeMove={() => undefined}
@@ -108,6 +110,111 @@ function type(send: (d: string) => void, text: string): void {
 }
 
 describe("cd completion in the terminal dock", () => {
+  it("offers every saved command on @; explicit selection runs its exact saved cwd", async () => {
+    const saved = { id: "cmd", name: "Saved build", command: "echo harmless", cwd: "D:/saved project", folder: "Build" };
+    const listCommands = vi.fn().mockResolvedValue([saved, { ...saved, id: "other", name: "Other" }]);
+    const commandRun = vi.fn().mockResolvedValue({ id: "new-terminal" });
+    Object.assign(window.hermesAPI, { listCommands, commandRun });
+    const { container, send } = mount();
+    await act(async () => send("@"));
+    expect(container.querySelectorAll('[role="option"]')).toHaveLength(2);
+    expect(container.querySelector('.terminal-command-title')?.textContent).toBe(saved.name);
+    expect(container.querySelector('.terminal-command-meta')?.textContent).toContain(saved.cwd);
+    expect(container.querySelector('.terminal-command-preview')?.textContent).toBe(saved.command);
+    expect(commandRun).not.toHaveBeenCalled();
+    expect(written).toEqual([]);
+    await act(async () => fireEvent.click(container.querySelector('[role="option"]')!));
+    expect(commandRun).not.toHaveBeenCalled();
+    expect(window.hermesAPI.terminalWrite).toHaveBeenCalledExactlyOnceWith({ id: "term-1", data: `${saved.command}\r`, cwd: saved.cwd });
+    expect(container.querySelectorAll('[role="tab"]')).toHaveLength(1);
+    expect(container.querySelector('[aria-label="Command templates"]')).toBeNull();
+  });
+
+  it("searches and runs with Enter; execution failure allows retry", async () => {
+    const terminalWrite = vi.fn().mockResolvedValueOnce({ ok: false }).mockResolvedValue({ ok: true });
+    Object.assign(window.hermesAPI, { listCommands: vi.fn().mockResolvedValue([
+      { id: "a", name: "Alpha", command: "echo a", cwd: "C:/alpha" },
+      { id: "b", name: "Beta", command: "echo b", cwd: "D:/beta" },
+    ]), terminalWrite });
+    const { container, send } = mount();
+    await act(async () => send("@"));
+    const input = container.querySelector("input")!;
+    fireEvent.change(input, { target: { value: "Beta" } });
+    expect(container.querySelectorAll('[role="option"]')).toHaveLength(1);
+    await act(async () => fireEvent.keyDown(input, { key: "Enter" }));
+    expect(container.querySelector("input")).not.toBeNull();
+    await act(async () => fireEvent.keyDown(input, { key: "Enter" }));
+    expect(terminalWrite).toHaveBeenLastCalledWith({ id: "term-1", data: "echo b\r", cwd: "D:/beta" });
+    expect(terminalWrite).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([undefined, "", "   "])("preserves missing or blank cwd: %s", async (cwd) => {
+    Object.assign(window.hermesAPI, { listCommands: vi.fn().mockResolvedValue([
+      { id: "a", name: "Exact", command: "  echo 'unchanged'  ", cwd },
+    ]) });
+    const { container, send } = mount();
+    await act(async () => send("@"));
+    await act(async () => fireEvent.keyDown(container.querySelector("input")!, { key: "Enter" }));
+    expect(window.hermesAPI.terminalWrite).toHaveBeenCalledExactlyOnceWith({
+      id: "term-1", data: "  echo 'unchanged'  \r", cwd,
+    });
+    expect(container.querySelectorAll('[role="tab"]')).toHaveLength(1);
+  });
+
+  it("refuses execution after the current terminal changes", async () => {
+    Object.assign(window.hermesAPI, { listCommands: vi.fn().mockResolvedValue([
+      { id: "a", name: "Exact", command: "echo exact", cwd: "/saved" },
+    ]) });
+    const { container, send, ref } = mount();
+    await act(async () => send("@"));
+    act(() => ref.current?.attachSession("term-2", "Other"));
+    await act(async () => fireEvent.click(container.querySelector('[role="option"]')!));
+    expect(window.hermesAPI.terminalWrite).not.toHaveBeenCalled();
+  });
+
+  it("cancels @ without executing or forwarding it", async () => {
+    const commandRun = vi.fn();
+    Object.assign(window.hermesAPI, { listCommands: vi.fn().mockResolvedValue([]), commandRun });
+    const { container, send } = mount();
+    await act(async () => send("@"));
+    fireEvent.keyDown(container.querySelector("input")!, { key: "Escape" });
+    expect(commandRun).not.toHaveBeenCalled();
+    expect(written).toEqual([]);
+    expect(container.querySelector("input")).toBeNull();
+  });
+
+  it("toggles command picker closed when @ is typed again in picker or terminal and can reopen", async () => {
+    Object.assign(window.hermesAPI, { listCommands: vi.fn().mockResolvedValue([]) });
+    const { container, send } = mount();
+    await act(async () => send("@"));
+    const input = container.querySelector("input")!;
+    expect(input).not.toBeNull();
+    // Typing @ inside the picker input toggles it closed
+    fireEvent.keyDown(input, { key: "@" });
+    expect(container.querySelector("input")).toBeNull();
+    expect(written).toEqual([]);
+
+    // Typing @ again in the terminal reopens it
+    await act(async () => send("@"));
+    expect(container.querySelector("input")).not.toBeNull();
+
+    // Typing @ from terminal data also toggles it closed
+    await act(async () => send("@"));
+    expect(container.querySelector("input")).toBeNull();
+    expect(written).toEqual([]);
+  });
+
+  it("dismisses command picker on click outside without executing", async () => {
+    Object.assign(window.hermesAPI, { listCommands: vi.fn().mockResolvedValue([]) });
+    const { container, send } = mount();
+    await act(async () => send("@"));
+    expect(container.querySelector("input")).not.toBeNull();
+
+    // Click outside on body
+    fireEvent.mouseDown(document.body);
+    expect(container.querySelector("input")).toBeNull();
+    expect(written).toEqual([]);
+  });
   it("does not open a dropdown for ordinary typing", async () => {
     const { container, send } = mount();
     type(send, "cd s");

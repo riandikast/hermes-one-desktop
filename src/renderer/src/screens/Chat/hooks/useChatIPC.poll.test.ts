@@ -197,6 +197,39 @@ describe("mid-turn DB poll is cursor-scoped", () => {
     expect(getSessionMessages.mock.calls.length).toBe(atDone);
   });
 
+  it("reads only the tail on chat-done after a merged prefix", async () => {
+    // The chat-done reconcile used to re-read the WHOLE transcript (no cursor)
+    // on every turn end: ~450ms of blocking SQLite on a 29k-row session,
+    // measured — the visible stall right as the answer finishes. It must use
+    // the same high-water cursor as the 750ms poll.
+    let doneCb: ((runId: string, sessionId: string) => void) | null = null;
+    (window as unknown as { hermesAPI: Record<string, unknown> }).hermesAPI[
+      "onChatDone"
+    ] = (cb: (runId: string, sessionId: string) => void) => {
+      doneCb = cb;
+      return () => undefined;
+    };
+
+    // A first poll merges rows up to id 5, advancing the cursor.
+    getSessionMessages.mockResolvedValueOnce([row(5, "user", "hello")]);
+    mount();
+    await startSessionThenPoll(750);
+    getSessionMessages.mockClear();
+
+    act(() => {
+      doneCb?.("run-1", "session-a");
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getSessionMessages).toHaveBeenCalled();
+    // The tail cursor, NOT a full read (undefined).
+    const [, afterId] = getSessionMessages.mock.calls.at(-1) ?? [];
+    expect(afterId).toBe(5);
+  });
+
   it("does not stack reads while one is in flight", async () => {
     let resolveRead: ((v: unknown) => void) | null = null;
     getSessionMessages.mockImplementation(

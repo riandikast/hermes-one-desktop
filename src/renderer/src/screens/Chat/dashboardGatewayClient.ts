@@ -32,6 +32,12 @@ interface JsonRpcNotification {
   session_id?: string;
 }
 
+declare global {
+  interface Window {
+    __HERMES_RPC_TIMINGS__?: { method: string; elapsedMs: number; outcome: "ok" | "error" }[];
+  }
+}
+
 interface PendingRequest<T = unknown> {
   reject: (reason: Error) => void;
   resolve: (value: T) => void;
@@ -182,6 +188,13 @@ export class DashboardGatewayClient {
       );
     }
 
+    const started = performance.now();
+    const recordTiming = (outcome: "ok" | "error"): void => {
+      // Method names only: never params, results, session IDs, URLs or errors.
+      const rows = window.__HERMES_RPC_TIMINGS__ ?? [];
+      rows.push({ method, elapsedMs: Math.round(performance.now() - started), outcome });
+      window.__HERMES_RPC_TIMINGS__ = rows.slice(-200);
+    };
     const id = this.nextRequestId++;
     const message = { jsonrpc: "2.0", id, method, params };
 
@@ -196,6 +209,12 @@ export class DashboardGatewayClient {
         timeout,
       });
       socket.send(JSON.stringify(message));
+    }).then((value) => {
+      recordTiming("ok");
+      return value;
+    }, (error: unknown) => {
+      recordTiming("error");
+      throw error;
     });
   }
 

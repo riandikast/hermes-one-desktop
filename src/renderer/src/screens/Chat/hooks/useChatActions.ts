@@ -1,6 +1,11 @@
 import { useCallback, useRef } from "react";
 import type { ChatInputHandle } from "../ChatInput";
-import { createTurn, shouldSendToAgent } from "../chatMessages";
+import {
+  createTurn,
+  clearStaleTurnErrors,
+  isSilencedErrorMessage,
+  shouldSendToAgent,
+} from "../chatMessages";
 import { resetReasoningGate } from "../reasoningStall";
 import type { SlashExecOutcome } from "../slashExec";
 import { handleSlashCommand } from "../slash/handleSlashCommand";
@@ -154,7 +159,12 @@ export function useChatActions({
     (content: string, idPrefix = "user", attachments?: Attachment[]) => {
       const turn = createTurn(idPrefix);
       setMessages((prev) => [
-        ...prev,
+        // A new turn supersedes any stale turn-failure bubble. Those are
+        // renderer-only (`localOnly`) rows written by markActiveTurnFailed;
+        // nothing used to remove them, so a transient error (e.g. the backend's
+        // "another Hermes window" lease refusal) sat in the transcript forever.
+        // Canonical DB rows with an error are real history and are kept.
+        ...clearStaleTurnErrors(prev),
         {
           id: turn.userId,
           role: "user",
@@ -242,7 +252,9 @@ export function useChatActions({
       if (runBackgroundViaDashboard && !hasAttachments) {
         pushUser(`💭 ${question}`, "user-btw");
         const r = await runBackgroundViaDashboard(question);
-        if (r.error) addAgentMessage?.(`error: ${r.error}`);
+        if (r.error && !isSilencedErrorMessage(r.error)) {
+          addAgentMessage?.(`error: ${r.error}`);
+        }
         return;
       }
       if (!isLoadingRef.current) await runQuickAsk(question, attachments);
@@ -373,7 +385,11 @@ export function useChatActions({
         });
 
         if (result.type === "error") {
-          if (showPending) replacePending(`error: ${result.message}`);
+          // Silenced transport/validation noise never becomes a visible row;
+          // just drop the pending placeholder so the turn ends cleanly.
+          if (isSilencedErrorMessage(result.message)) {
+            removePending();
+          } else if (showPending) replacePending(`error: ${result.message}`);
           else addAgentMessage?.(`error: ${result.message}`);
         } else if (result.type === "handled") {
           const out = buffer || result.output;

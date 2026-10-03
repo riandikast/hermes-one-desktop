@@ -1,6 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { X, GitPullRequest, GitBranch, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  X,
+  GitPullRequest,
+  GitBranch,
+  RefreshCw,
+  GitCommitHorizontal,
+  FileDiff,
+} from "lucide-react";
 import { useI18n } from "../../components/useI18n";
+import { DiffViewer } from "./DiffViewer";
+import { CommitGraph } from "./CommitGraph";
+import type { GraphCommit } from "./gitGraph";
 
 interface GitFileEntry {
   index: string;
@@ -56,6 +67,15 @@ export function SourceControlDialog({
   const [remoteHost, setRemoteHost] = useState<string | null>(null);
   const [token, setToken] = useState("");
   const [tokenSaved, setTokenSaved] = useState(false);
+  // Tab view: the classic working-tree change list, or the commit graph.
+  const [view, setView] = useState<"changes" | "graph">("changes");
+  const [commits, setCommits] = useState<GraphCommit[]>([]);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [selectedCommit, setSelectedCommit] = useState<GraphCommit | null>(
+    null,
+  );
+  const [commitDiff, setCommitDiff] = useState("");
+  const graphLoadedRef = useRef(false);
 
   // Load the remote host + any stored token for it (token auth on new PCs).
   useEffect(() => {
@@ -101,6 +121,43 @@ export function SourceControlDialog({
       setSelected({ path, staged });
       const res = await window.hermesAPI.gitDiff(dir, path, staged);
       setDiff(res.ok ? (res.output ?? "") : (res.error ?? ""));
+    },
+    [dir],
+  );
+
+  const loadGraph = useCallback(
+    async (max = 60) => {
+      setGraphLoading(true);
+      try {
+        const res = await window.hermesAPI.gitLog(dir, { max });
+        setCommits(res.ok ? res.commits : []);
+      } catch {
+        setCommits([]);
+      } finally {
+        setGraphLoading(false);
+      }
+    },
+    [dir],
+  );
+
+  // Load the history lazily: only when the graph tab is first opened, so a huge
+  // repo's log never delays the dialog's initial paint.
+  useEffect(() => {
+    if (view !== "graph" || graphLoadedRef.current) return;
+    graphLoadedRef.current = true;
+    void loadGraph();
+  }, [view, loadGraph]);
+
+  const showCommit = useCallback(
+    async (commit: GraphCommit) => {
+      setSelectedCommit(commit);
+      setCommitDiff("");
+      try {
+        const res = await window.hermesAPI.gitCommitDiff(dir, commit.hash);
+        setCommitDiff(res.ok ? (res.output ?? "") : (res.error ?? ""));
+      } catch {
+        setCommitDiff("");
+      }
     },
     [dir],
   );
@@ -175,27 +232,33 @@ export function SourceControlDialog({
   );
 
   const stagedCount = status?.staged.length ?? 0;
+  const changeCount =
+    (status?.unstaged.length ?? 0) + (status?.untracked.length ?? 0);
+
+  // A full-page panel, not a modal: it fills the whole window and is portaled
+  // to <body> so it escapes the FloatingDialog it is mounted inside (whose body
+  // container clips and stacks it, which is what made the bottom look cropped
+  // and double-chromed it with a second header). `onClose` is the way back.
+  const Shell = ({ children }: { children: React.ReactNode }): React.JSX.Element =>
+    createPortal(
+      <div className="source-control-page">{children}</div>,
+      document.body,
+    );
 
   if (!status) {
     return (
-      <div className="file-changes-overlay" onClick={onClose}>
-        <div
-          className="source-control-dialog"
-          onClick={(e) => e.stopPropagation()}
-        >
+      <Shell>
+        <div className="source-control-dialog">
           <div className="source-control-loading">{t("worktree.loading")}…</div>
         </div>
-      </div>
+      </Shell>
     );
   }
 
   if (!status.repo) {
     return (
-      <div className="file-changes-overlay" onClick={onClose}>
-        <div
-          className="source-control-dialog"
-          onClick={(e) => e.stopPropagation()}
-        >
+      <Shell>
+        <div className="source-control-dialog">
           <div className="source-control-header">
             <span className="file-changes-title">
               Source Control — {repoName}
@@ -220,7 +283,7 @@ export function SourceControlDialog({
             </button>
           </div>
         </div>
-      </div>
+      </Shell>
     );
   }
 
@@ -236,33 +299,6 @@ export function SourceControlDialog({
       {children}
     </div>
   );
-
-  // Render a raw unified diff with basic coloring (VS Code-ish): `@@` hunks
-  // and file headers muted, `+` green, `-` red, context plain.
-  const renderDiff = (raw: string): React.ReactNode => {
-    if (!raw) return "Select a file to see its diff";
-    return raw.split("\n").map((line, i) => {
-      let cls = "ctx";
-      if (line.startsWith("+++") || line.startsWith("---")) cls = "meta";
-      else if (line.startsWith("@")) cls = "hunk";
-      else if (line.startsWith("+")) cls = "add";
-      else if (line.startsWith("-")) cls = "del";
-      return (
-        <div key={i} className={`source-control-diff-line ${cls}`}>
-          <span className="source-control-diff-marker">
-            {line.startsWith("+")
-              ? "+"
-              : line.startsWith("-")
-                ? "-"
-                : line.startsWith("@")
-                  ? "@"
-                  : " "}
-          </span>
-          <span className="source-control-diff-text">{line}</span>
-        </div>
-      );
-    });
-  };
 
   const FileRow = ({
     path,
@@ -333,11 +369,8 @@ export function SourceControlDialog({
   );
 
   return (
-    <div className="file-changes-overlay" onClick={onClose}>
-      <div
-        className="source-control-dialog"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Shell>
+      <div className="source-control-dialog">
         <div className="source-control-header">
           <span className="file-changes-title">
             Source Control — {repoName}
@@ -407,85 +440,142 @@ export function SourceControlDialog({
           </div>
         </div>
 
-        <div className="source-control-body">
-          <div className="source-control-sidebar">
-            <Section title={`Conflicts (${status.conflicted.length})`}>
-              {status.conflicted.length === 0 ? (
-                <div className="source-control-empty">No conflicts</div>
-              ) : (
-                status.conflicted.map((f) => (
-                  <FileRow
-                    key={f.path}
-                    path={f.path}
-                    entry={f}
-                    staged={false}
-                    isConflict
-                  />
-                ))
-              )}
-            </Section>
-            <Section title={`Staged (${stagedCount})`}>
-              {stagedCount === 0 ? (
-                <div className="source-control-empty">No staged changes</div>
-              ) : (
-                status.staged.map((f) => (
-                  <FileRow key={f.path} path={f.path} entry={f} staged />
-                ))
-              )}
-            </Section>
-            <Section
-              title={`Changes (${(status.unstaged.length ?? 0) + (status.untracked.length ?? 0)})`}
-            >
-              {status.unstaged.length === 0 && status.untracked.length === 0 ? (
-                <div className="source-control-empty">No changes</div>
-              ) : (
-                <>
-                  {status.unstaged.map((f) => (
-                    <FileRow
-                      key={f.path}
-                      path={f.path}
-                      entry={f}
-                      staged={false}
-                    />
-                  ))}
-                  {status.untracked.map((p) => (
-                    <FileRow key={p} path={p} staged={false} />
-                  ))}
-                </>
-              )}
-            </Section>
-          </div>
-          <div className="source-control-diff">
-            <div className="source-control-diff-header">
-              <span className="file-changes-diff-file">
-                {selected ? fileLabel(selected.path) : ""}
-                {selected?.staged ? " (staged)" : ""}
-              </span>
-            </div>
-            <pre className="source-control-diff-body">{renderDiff(diff)}</pre>
-          </div>
-        </div>
-
-        <div className="source-control-footer">
-          <textarea
-            className="source-control-commit-input"
-            value={commitMessage}
-            onChange={(e) => setCommitMessage(e.target.value)}
-            placeholder={`Commit message (${stagedCount} file${stagedCount === 1 ? "" : "s"} staged)`}
-            rows={2}
-            onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void commit();
-            }}
-          />
+        <div className="source-control-tabbar">
           <button
             type="button"
-            className="btn btn-primary btn-sm"
-            disabled={busy || stagedCount === 0 || !commitMessage.trim()}
-            onClick={() => void commit()}
+            className={`source-control-tab${view === "changes" ? " active" : ""}`}
+            onClick={() => setView("changes")}
           >
-            Commit
+            <FileDiff size={13} />
+            Changes
+            {(stagedCount > 0 || changeCount > 0) && (
+              <span className="source-control-tab-count">
+                {stagedCount + changeCount}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            className={`source-control-tab${view === "graph" ? " active" : ""}`}
+            onClick={() => setView("graph")}
+          >
+            <GitCommitHorizontal size={13} />
+            Graph
+            {graphLoading && (
+              <span className="source-control-tab-spinner" aria-hidden />
+            )}
           </button>
         </div>
+
+        <div className="source-control-body">
+          {view === "changes" ? (
+            <>
+              <div className="source-control-sidebar">
+                <Section title={`Conflicts (${status.conflicted.length})`}>
+                  {status.conflicted.length === 0 ? (
+                    <div className="source-control-empty">No conflicts</div>
+                  ) : (
+                    status.conflicted.map((f) => (
+                      <FileRow
+                        key={f.path}
+                        path={f.path}
+                        entry={f}
+                        staged={false}
+                        isConflict
+                      />
+                    ))
+                  )}
+                </Section>
+                <Section title={`Staged (${stagedCount})`}>
+                  {stagedCount === 0 ? (
+                    <div className="source-control-empty">
+                      No staged changes
+                    </div>
+                  ) : (
+                    status.staged.map((f) => (
+                      <FileRow key={f.path} path={f.path} entry={f} staged />
+                    ))
+                  )}
+                </Section>
+                <Section
+                  title={`Changes (${(status.unstaged.length ?? 0) + (status.untracked.length ?? 0)})`}
+                >
+                  {status.unstaged.length === 0 &&
+                  status.untracked.length === 0 ? (
+                    <div className="source-control-empty">No changes</div>
+                  ) : (
+                    <>
+                      {status.unstaged.map((f) => (
+                        <FileRow
+                          key={f.path}
+                          path={f.path}
+                          entry={f}
+                          staged={false}
+                        />
+                      ))}
+                      {status.untracked.map((p) => (
+                        <FileRow key={p} path={p} staged={false} />
+                      ))}
+                    </>
+                  )}
+                </Section>
+              </div>
+              <div className="source-control-diff">
+                <DiffViewer
+                  raw={diff}
+                  path={selected?.path ?? null}
+                  staged={selected?.staged}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="source-control-graph-pane">
+              <div className="source-control-graph-list">
+                <CommitGraph
+                  commits={commits}
+                  selectedHash={selectedCommit?.hash ?? null}
+                  onSelect={(c) => void showCommit(c)}
+                />
+              </div>
+              <div className="source-control-graph-diff">
+                {selectedCommit ? (
+                  <DiffViewer
+                    raw={commitDiff}
+                    path={`${selectedCommit.shortHash} ${selectedCommit.subject}`}
+                  />
+                ) : (
+                  <div className="diff-viewer-empty">
+                    Select a commit to see its changes
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {view === "changes" && (
+          <div className="source-control-footer">
+            <textarea
+              className="source-control-commit-input"
+              value={commitMessage}
+              onChange={(e) => setCommitMessage(e.target.value)}
+              placeholder={`Commit message (${stagedCount} file${stagedCount === 1 ? "" : "s"} staged)`}
+              rows={2}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter")
+                  void commit();
+              }}
+            />
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={busy || stagedCount === 0 || !commitMessage.trim()}
+              onClick={() => void commit()}
+            >
+              Commit
+            </button>
+          </div>
+        )}
         {remoteHost && (
           <div className="source-control-token-row">
             <span className="source-control-token-label" title={remoteHost}>
@@ -522,6 +612,6 @@ export function SourceControlDialog({
           </div>
         )}
       </div>
-    </div>
+    </Shell>
   );
 }
