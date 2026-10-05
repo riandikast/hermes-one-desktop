@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
+  ChevronUp,
   Check,
   Asterisk,
   Search,
@@ -23,6 +24,16 @@ import {
   modelKeyOf,
   type CustomModelGroup,
 } from "./modelGroups";
+import {
+  loadFallbackModels,
+  saveFallbackModels,
+  subscribeFallbackModels,
+  addFallbackModel,
+  removeFallbackModel,
+  moveFallbackModel,
+  fallbackFromRow,
+  type FallbackModel,
+} from "./fallbackModels";
 
 interface ModelPickerProps {
   active?: boolean;
@@ -125,6 +136,15 @@ export const ModelPicker = memo(function ModelPicker({
     const sync = (): void => setCustomGroups(loadModelGroups());
     sync();
     return subscribeModelGroups(sync);
+  }, []);
+
+  // Fallback chain (frontend-only): ordered models to hand a failed turn to.
+  const [fallbackModels, setFallbackModels] = useState<FallbackModel[]>([]);
+  const [fallbackPickerOpen, setFallbackPickerOpen] = useState(false);
+  useEffect(() => {
+    const sync = (): void => setFallbackModels(loadFallbackModels());
+    sync();
+    return subscribeFallbackModels(sync);
   }, []);
 
   const searchQuery = searchInput.trim().toLowerCase();
@@ -303,6 +323,15 @@ export const ModelPicker = memo(function ModelPicker({
     saveModelGroups(next);
     setCustomGroups(next);
     return next;
+  }
+
+  /** Read-modify-write the fallback chain from storage (single source of truth). */
+  function mutateFallbacks(
+    updater: (prev: FallbackModel[]) => FallbackModel[],
+  ): void {
+    const next = updater(loadFallbackModels());
+    saveFallbackModels(next);
+    setFallbackModels(next);
   }
 
   function addToGroup(groupId: string, rowKey: string): void {
@@ -764,6 +793,149 @@ export const ModelPicker = memo(function ModelPicker({
                   <span>{t("models.addModel") || "Add model"}</span>
                 </button>
               )}
+
+              {/* ── Fallback chain ─────────────────────────────────────────
+                  Below every model: an ORDERED list of models a failed turn is
+                  retried against, first to last. Frontend-only — stored in
+                  localStorage, never written to provider config. */}
+              <div className="chat-model-fallback">
+                <div className="chat-model-fallback-head">
+                  <span className="chat-model-fallback-title">
+                    {t("chat.fallbackModels") || "Fallback models"}
+                  </span>
+                  <span className="chat-model-fallback-count">
+                    {fallbackModels.length}
+                  </span>
+                  <button
+                    type="button"
+                    className="chat-model-fallback-add"
+                    onClick={() => setFallbackPickerOpen((v) => !v)}
+                    aria-expanded={fallbackPickerOpen}
+                    title={
+                      t("chat.addFallbackModel") || "Add a fallback model"
+                    }
+                    aria-label={
+                      t("chat.addFallbackModel") || "Add a fallback model"
+                    }
+                  >
+                    <Plus size={13} />
+                  </button>
+                </div>
+                {fallbackModels.length === 0 && !fallbackPickerOpen && (
+                  <div className="chat-model-fallback-empty">
+                    {t("chat.fallbackEmpty") ||
+                      "No fallbacks. Add models to try in order when a send fails."}
+                  </div>
+                )}
+                {fallbackModels.map((m, index) => (
+                  <div key={m.key} className="chat-model-fallback-row">
+                    <span className="chat-model-fallback-order">
+                      {index + 1}
+                    </span>
+                    <span className="chat-model-fallback-body">
+                      <span className="chat-model-fallback-name" title={m.model}>
+                        {m.label || m.model}
+                      </span>
+                      <span className="chat-model-fallback-sub">
+                        {m.provider} · {m.model}
+                      </span>
+                    </span>
+                    <span className="chat-model-fallback-actions">
+                      <button
+                        type="button"
+                        className="chat-model-fallback-act"
+                        disabled={index === 0}
+                        onClick={() =>
+                          mutateFallbacks((prev) =>
+                            moveFallbackModel(prev, m.key, -1),
+                          )
+                        }
+                        title={t("chat.moveUp") || "Move up"}
+                        aria-label={`${t("chat.moveUp") || "Move up"}: ${m.model}`}
+                      >
+                        <ChevronUp size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        className="chat-model-fallback-act"
+                        disabled={index === fallbackModels.length - 1}
+                        onClick={() =>
+                          mutateFallbacks((prev) =>
+                            moveFallbackModel(prev, m.key, 1),
+                          )
+                        }
+                        title={t("chat.moveDown") || "Move down"}
+                        aria-label={`${t("chat.moveDown") || "Move down"}: ${m.model}`}
+                      >
+                        <ChevronDown size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        className="chat-model-fallback-act chat-model-fallback-act--remove"
+                        onClick={() =>
+                          mutateFallbacks((prev) =>
+                            removeFallbackModel(prev, m.key),
+                          )
+                        }
+                        title={t("chat.removeFallback") || "Remove from fallbacks"}
+                        aria-label={`${t("chat.removeFallback") || "Remove from fallbacks"}: ${m.model}`}
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  </div>
+                ))}
+
+                {fallbackPickerOpen && (
+                  <div className="chat-model-fallback-picker">
+                    {visibleRows.length === 0 ? (
+                      <div className="chat-model-fallback-empty">
+                        {t("chat.noModelsMatch")}
+                      </div>
+                    ) : (
+                      visibleRows.map((m) => {
+                        const entry = fallbackFromRow({
+                          provider: m.provider,
+                          model: m.model,
+                          baseUrl: m.baseUrl,
+                          label: m.label,
+                        });
+                        const already = fallbackModels.some(
+                          (f) => f.key === entry.key,
+                        );
+                        return (
+                          <button
+                            key={`fb-${entry.key}`}
+                            type="button"
+                            className="chat-model-fallback-option"
+                            disabled={already}
+                            onClick={() => {
+                              mutateFallbacks((prev) =>
+                                addFallbackModel(prev, entry),
+                              );
+                              setFallbackPickerOpen(false);
+                            }}
+                          >
+                            <span className="chat-model-fallback-name">
+                              {m.label}
+                            </span>
+                            <span className="chat-model-fallback-sub">
+                              {m.provider} · {m.model}
+                            </span>
+                            {already && (
+                              <Check
+                                size={13}
+                                className="chat-model-row-check"
+                                aria-hidden
+                              />
+                            )}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           {addingProvider && (

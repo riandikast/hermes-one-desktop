@@ -13,6 +13,13 @@ export default {
   ungrouped: "Tidak Dikelompokkan",
   addAndSelect: "Tambah & Pilih",
   typeModelName: "Ketik nama model...",
+  fallbackModels: "Model cadangan",
+  fallbackEmpty:
+    "Belum ada cadangan. Tambahkan model untuk dicoba berurutan saat pengiriman gagal.",
+  addFallbackModel: "Tambah model cadangan",
+  removeFallback: "Hapus dari cadangan",
+  moveUp: "Naikkan",
+  moveDown: "Turunkan",
   emptyTitle: "Apa yang bisa saya bantu hari ini?",
   emptyHint:
     "Minta saya menulis kode, menjawab pertanyaan, mencari web, dan lainnya",

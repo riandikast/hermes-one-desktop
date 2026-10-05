@@ -26,6 +26,13 @@ export default {
   ungrouped: "Ungrouped",
   addAndSelect: "Add & Select",
   typeModelName: "Type model name...",
+  fallbackModels: "Fallback models",
+  fallbackEmpty:
+    "No fallbacks. Add models to try in order when a send fails.",
+  addFallbackModel: "Add a fallback model",
+  removeFallback: "Remove from fallbacks",
+  moveUp: "Move up",
+  moveDown: "Move down",
   reasoningEffort: {
     title: "Reasoning Level",
     auto: "Auto",

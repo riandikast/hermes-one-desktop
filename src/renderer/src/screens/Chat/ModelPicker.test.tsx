@@ -11,6 +11,7 @@ vi.mock("../../components/useI18n", () => ({
 
 vi.mock("lucide-react", () => ({
   ChevronDown: () => null,
+  ChevronUp: () => null,
   Check: () => null,
   Asterisk: () => null,
   Search: () => null,
@@ -603,5 +604,138 @@ describe("ModelPicker add model to provider", () => {
       "https://api.9router.com/v1",
       "9router",
     );
+  });
+
+  describe("fallback models", () => {
+    const KEY = "hermes.chat.fallbackModels.v1";
+
+    it("shows an empty-state hint when no fallbacks are set", () => {
+      localStorage.clear();
+      const { container } = renderPicker();
+      const dropdown = openPicker(container);
+      expect(dropdown.querySelector(".chat-model-fallback")).toBeTruthy();
+      expect(
+        dropdown.querySelector(".chat-model-fallback-empty")?.textContent,
+      ).toContain("chat.fallbackEmpty");
+    });
+
+    it("adds a model via the + and lists it in order", async () => {
+      localStorage.clear();
+      const { container } = renderPicker();
+      const dropdown = openPicker(container);
+
+      // Open the inline picker and choose "OWL Beta".
+      fireEvent.click(dropdown.querySelector(".chat-model-fallback-add")!);
+      const options = dropdown.querySelectorAll(".chat-model-fallback-option");
+      const beta = Array.from(options).find((o) =>
+        o.textContent?.includes("OWL Beta"),
+      )!;
+      await act(async () => {
+        fireEvent.click(beta);
+      });
+
+      const rows = dropdown.querySelectorAll(".chat-model-fallback-row");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.textContent).toContain("OWL Beta");
+      // Persisted, so the chain survives a remount.
+      expect(localStorage.getItem(KEY)).toContain("owl-beta");
+    });
+
+    it("disables a model that is already in the chain", async () => {
+      localStorage.clear();
+      localStorage.setItem(
+        KEY,
+        JSON.stringify({
+          models: [
+            {
+              key: "openrouter::::owl-beta",
+              provider: "openrouter",
+              model: "owl-beta",
+              baseUrl: "",
+              label: "OWL Beta",
+            },
+          ],
+        }),
+      );
+      const { container } = renderPicker();
+      const dropdown = openPicker(container);
+      fireEvent.click(dropdown.querySelector(".chat-model-fallback-add")!);
+
+      const options = Array.from(
+        dropdown.querySelectorAll(".chat-model-fallback-option"),
+      );
+      const already = options.find((o) =>
+        o.textContent?.includes("OWL Beta"),
+      ) as HTMLButtonElement;
+      expect(already.disabled).toBe(true);
+    });
+
+    it("reorders the chain with the up/down controls", () => {
+      localStorage.clear();
+      localStorage.setItem(
+        KEY,
+        JSON.stringify({
+          models: [
+            { key: "p::::a", provider: "openrouter", model: "a", baseUrl: "", label: "A" },
+            { key: "p::::b", provider: "openrouter", model: "b", baseUrl: "", label: "B" },
+          ],
+        }),
+      );
+      const { container } = renderPicker();
+      const dropdown = openPicker(container);
+
+      // Move the SECOND row up.
+      const rows = dropdown.querySelectorAll(".chat-model-fallback-row");
+      const upButtons = rows[1]!.querySelectorAll(".chat-model-fallback-act");
+      fireEvent.click(upButtons[0]!);
+
+      const stored = JSON.parse(localStorage.getItem(KEY)!) as {
+        models: { model: string }[];
+      };
+      expect(stored.models.map((m) => m.model)).toEqual(["b", "a"]);
+    });
+
+    it("disables up on the first row and down on the last", () => {
+      localStorage.clear();
+      localStorage.setItem(
+        KEY,
+        JSON.stringify({
+          models: [
+            { key: "p::::a", provider: "openrouter", model: "a", baseUrl: "", label: "A" },
+            { key: "p::::b", provider: "openrouter", model: "b", baseUrl: "", label: "B" },
+          ],
+        }),
+      );
+      const { container } = renderPicker();
+      const dropdown = openPicker(container);
+      const rows = dropdown.querySelectorAll(".chat-model-fallback-row");
+
+      const firstActs = rows[0]!.querySelectorAll(".chat-model-fallback-act");
+      const lastActs = rows[1]!.querySelectorAll(".chat-model-fallback-act");
+      expect((firstActs[0] as HTMLButtonElement).disabled).toBe(true);
+      expect((lastActs[1] as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it("removes an entry", () => {
+      localStorage.clear();
+      localStorage.setItem(
+        KEY,
+        JSON.stringify({
+          models: [
+            { key: "p::::a", provider: "openrouter", model: "a", baseUrl: "", label: "A" },
+          ],
+        }),
+      );
+      const { container } = renderPicker();
+      const dropdown = openPicker(container);
+      const removeBtn = dropdown.querySelector(
+        ".chat-model-fallback-act--remove",
+      )!;
+      fireEvent.click(removeBtn);
+      expect(dropdown.querySelectorAll(".chat-model-fallback-row")).toHaveLength(
+        0,
+      );
+      expect(localStorage.getItem(KEY)).toBeNull();
+    });
   });
 });

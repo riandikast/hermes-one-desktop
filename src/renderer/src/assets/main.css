@@ -11741,6 +11741,181 @@ body:has(.shell-vibrant),
   border-color: var(--border-hover, var(--border));
   background: var(--bg-secondary);
 }
+
+/* ── Fallback model chain ────────────────────────────────────────────────
+   An ordered list under the model list: when a send fails, the turn is retried
+   against these models in order. Frontend-only (localStorage), so it is styled
+   as a distinct sub-section rather than another provider group. */
+.chat-model-fallback {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.chat-model-fallback-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 6px;
+}
+.chat-model-fallback-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.chat-model-fallback-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+}
+/* The "+" to add a fallback, mirroring the provider rail's add affordance. */
+.chat-model-fallback-add {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--duration-fast, 0.15s), background var(--duration-fast, 0.15s);
+}
+.chat-model-fallback-add:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.chat-model-fallback-empty {
+  padding: 4px 6px 6px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.chat-model-fallback-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 8px;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+/* Position number — the chain is ordered, so the order is the information. */
+.chat-model-fallback-order {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--bg-elevated, var(--bg-primary));
+}
+.chat-model-fallback-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.chat-model-fallback-name {
+  font-size: 12.5px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-model-fallback-sub {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-model-fallback-actions {
+  display: inline-flex;
+  gap: 1px;
+  flex-shrink: 0;
+}
+.chat-model-fallback-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--duration-fast, 0.15s), background var(--duration-fast, 0.15s);
+}
+.chat-model-fallback-act:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.chat-model-fallback-act:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.chat-model-fallback-act--remove:hover:not(:disabled) {
+  color: var(--danger, #f85149);
+}
+/* Inline "pick a model" list shown by the "+" button. */
+.chat-model-fallback-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated, var(--bg-secondary));
+}
+.chat-model-fallback-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: start;
+  cursor: pointer;
+  position: relative;
+}
+.chat-model-fallback-option:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.chat-model-fallback-option:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.chat-model-fallback-option .chat-model-row-check {
+  position: absolute;
+  inset-inline-end: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
 .chat-model-group-menu {
   position: absolute;
   top: 34px;

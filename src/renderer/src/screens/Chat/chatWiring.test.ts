@@ -17,6 +17,7 @@
 import { describe, expect, it, vi } from "vitest";
 import chatSource from "./Chat.tsx?raw";
 import chipSource from "./LastPromptChip.tsx?raw";
+import pickerSource from "./ModelPicker.tsx?raw";
 // CSS ?raw is stubbed by Vitest; read actual tokens for the contrast check.
 // @ts-expect-error -- node types are intentionally outside the web tsconfig
 const nodeModule = (await import("node:module")) as unknown as {
@@ -330,5 +331,30 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     const afterLastClose = between.slice(lastCloseIdx + "</div>".length);
     expect(afterLastClose).not.toMatch(/<div[^>]*className="chat-messages"/);
     expect(afterLastClose).not.toMatch(/ref=\{contentRef\}/);
+  });
+
+  it("places the fallback chain BELOW the model list, not inside a provider group", () => {
+    // The fallback section is a sibling of the model list, so it appears under
+    // every provider's models rather than nested inside one of them.
+    const listIdx = pickerSource.indexOf('className="chat-model-list"');
+    const fallbackIdx = pickerSource.indexOf('className="chat-model-fallback"');
+    expect(listIdx).toBeGreaterThan(-1);
+    expect(fallbackIdx).toBeGreaterThan(listIdx);
+    // It must not itself be a .chat-model-row (i.e. a selectable model entry).
+    expect(pickerSource.slice(fallbackIdx, fallbackIdx + 200)).not.toContain(
+      'className="chat-model-row"',
+    );
+  });
+
+  it("styles the fallback rows with the app palette, not hardcoded colors", () => {
+    const start = css.indexOf(".chat-model-fallback {");
+    expect(start).toBeGreaterThan(-1);
+    const block = css.slice(start, css.indexOf(".chat-model-group-menu", start));
+    expect(block.length).toBeGreaterThan(400);
+    // Uses design tokens so it follows the theme.
+    expect(block).toContain("var(--text-muted)");
+    expect(block).toContain("var(--bg-secondary)");
+    // Ordering is the point of the list, so the position badge is styled.
+    expect(block).toContain(".chat-model-fallback-order");
   });
 });
