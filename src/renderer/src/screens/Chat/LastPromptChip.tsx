@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { CornerDownRight, Maximize2 } from "lucide-react";
+import { Check, Copy, CornerDownRight, Maximize2 } from "lucide-react";
 import type { ChatBubbleMessage, ChatMessage } from "./types";
 import { isBubbleMessage } from "./chatMessages";
 import { useAtomValue } from "./hooks/useChatScrollAtoms";
@@ -126,6 +126,9 @@ export const LastPromptChip = memo(function LastPromptChip({
   // The full-prompt dialog. Reading a long prompt happens there, not by
   // scrolling the transcript (which virtualisation + auto-follow made flaky).
   const [open, setOpen] = useState(false);
+  // "Copied" acknowledgement, so the button reflects the action for a moment.
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Timer for the debounced loss of overflow (see SCROLLABLE_LOSS_GRACE_MS).
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Latest scrollable value, so the debounce can compare without re-binding.
@@ -203,6 +206,29 @@ export const LastPromptChip = memo(function LastPromptChip({
 
   const openDialog = useCallback(() => setOpen(true), []);
 
+  const handleCopy = useCallback(async () => {
+    if (!full) return;
+    try {
+      await window.hermesAPI.copyToClipboard(full);
+      setCopied(true);
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => {
+        copyTimerRef.current = null;
+        setCopied(false);
+      }, 2000);
+    } catch {
+      // Clipboard write can fail in some environments; leave the button as-is.
+    }
+  }, [full]);
+
+  // Never let the acknowledgement timer outlive the component.
+  useEffect(
+    () => () => {
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+    },
+    [],
+  );
+
   if (!lastPrompt || !preview) return null;
 
   // Keep the chip on screen while its dialog is open — closing the dialog
@@ -247,7 +273,19 @@ export const LastPromptChip = memo(function LastPromptChip({
           className="last-prompt-dialog"
         >
           <div className="chat-last-prompt-dialog">
-            <div className="chat-last-prompt-dialog-label">Prompt</div>
+            <div className="chat-last-prompt-dialog-head">
+              <span className="chat-last-prompt-dialog-label">Prompt</span>
+              <button
+                type="button"
+                className="chat-last-prompt-dialog-copy"
+                onClick={handleCopy}
+                title={copied ? "Copied!" : "Copy prompt"}
+                aria-label={copied ? "Copied!" : "Copy prompt"}
+              >
+                {copied ? <Check size={13} /> : <Copy size={13} />}
+                <span>{copied ? "Copied" : "Copy"}</span>
+              </button>
+            </div>
             <pre className="chat-last-prompt-dialog-body">{full}</pre>
           </div>
         </FloatingDialog>

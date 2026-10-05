@@ -14,6 +14,8 @@ export default {
   addAndSelect: "Tambah & Pilih",
   typeModelName: "Ketik nama model...",
   fallbackModels: "Model cadangan",
+  fallbackDesc:
+    "Jika pengiriman gagal, percobaan diulang ke model-model ini secara berurutan.",
   fallbackEmpty:
     "Belum ada cadangan. Tambahkan model untuk dicoba berurutan saat pengiriman gagal.",
   addFallbackModel: "Tambah model cadangan",

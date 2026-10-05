@@ -7132,14 +7132,42 @@ body:has(.shell-vibrant),
 }
 /* Material "overline" label: tiny, wide-tracked, muted — it names the content
    instead of shouting it. */
-.chat-last-prompt-dialog-label {
+.chat-last-prompt-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   flex-shrink: 0;
   padding: 0 16px 8px;
+}
+.chat-last-prompt-dialog-label {
+  flex-shrink: 1;
+  min-width: 0;
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-muted, #8b8b99);
+}
+/* A quiet text button on the Material accent: the dialog's one action. */
+.chat-last-prompt-dialog-copy {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-muted, #8b8b99);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--duration-fast, 0.15s), background var(--duration-fast, 0.15s);
+}
+.chat-last-prompt-dialog-copy:hover {
+  color: var(--text-primary, #e4e4e7);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
 }
 /* The prompt body: flat surface, body-text rhythm. Scrolls so a very long
    prompt stays readable without the dialog growing past the viewport. */
@@ -11743,16 +11771,20 @@ body:has(.shell-vibrant),
 }
 
 /* ── Fallback model chain ────────────────────────────────────────────────
-   An ordered list under the model list: when a send fails, the turn is retried
-   against these models in order. Frontend-only (localStorage), so it is styled
-   as a distinct sub-section rather than another provider group. */
+   A rail CATEGORY (under "All models") whose right pane is an ordered list:
+   when a send fails, the turn is retried against these models in order.
+   Frontend-only (localStorage). */
 .chat-model-fallback {
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+.chat-model-fallback-desc {
+  margin: 0 0 8px;
+  padding: 0 6px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
 }
 .chat-model-fallback-head {
   display: flex;

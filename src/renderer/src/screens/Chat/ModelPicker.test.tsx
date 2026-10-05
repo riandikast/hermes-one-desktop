@@ -21,6 +21,7 @@ vi.mock("lucide-react", () => ({
   FolderMinus: () => null,
   Trash2: () => null,
   Plus: () => null,
+  Layers: () => null,
 }));
 
 vi.mock("../../components/common/BrandLogo", () => ({
@@ -609,20 +610,55 @@ describe("ModelPicker add model to provider", () => {
   describe("fallback models", () => {
     const KEY = "hermes.chat.fallbackModels.v1";
 
+    /** Click the rail's Fallback item to show the fallback pane. */
+    function openFallbacks(dropdown: HTMLElement): void {
+      const railItems = Array.from(
+        dropdown.querySelectorAll(".chat-model-rail-item"),
+      );
+      const item = railItems.find((el) =>
+        el.textContent?.includes("chat.fallbackModels"),
+      ) as HTMLElement;
+      fireEvent.click(item);
+    }
+
+    it("exposes Fallback models as a rail category under All models", () => {
+      localStorage.clear();
+      const { container } = renderPicker();
+      const dropdown = openPicker(container);
+      const railItems = Array.from(
+        dropdown.querySelectorAll(".chat-model-rail-item"),
+      );
+      const labels = railItems.map((el) => el.textContent ?? "");
+      // "All models" first, then Fallbacks directly beneath it.
+      expect(labels[0]).toContain("chat.allModels");
+      expect(labels[1]).toContain("chat.fallbackModels");
+    });
+
     it("shows an empty-state hint when no fallbacks are set", () => {
       localStorage.clear();
       const { container } = renderPicker();
       const dropdown = openPicker(container);
+      openFallbacks(dropdown);
       expect(dropdown.querySelector(".chat-model-fallback")).toBeTruthy();
       expect(
         dropdown.querySelector(".chat-model-fallback-empty")?.textContent,
       ).toContain("chat.fallbackEmpty");
     });
 
+    it("hides the model list while the fallback pane is open", () => {
+      localStorage.clear();
+      const { container } = renderPicker();
+      const dropdown = openPicker(container);
+      openFallbacks(dropdown);
+      // The pane shows fallbacks, not the provider's models.
+      expect(dropdown.querySelector(".chat-model-fallback")).toBeTruthy();
+    });
+
     it("adds a model via the + and lists it in order", async () => {
       localStorage.clear();
       const { container } = renderPicker();
       const dropdown = openPicker(container);
+      openFallbacks(dropdown);
 
       // Open the inline picker and choose "OWL Beta".
       fireEvent.click(dropdown.querySelector(".chat-model-fallback-add")!);
@@ -659,6 +695,7 @@ describe("ModelPicker add model to provider", () => {
       );
       const { container } = renderPicker();
       const dropdown = openPicker(container);
+      openFallbacks(dropdown);
       fireEvent.click(dropdown.querySelector(".chat-model-fallback-add")!);
 
       const options = Array.from(
@@ -683,6 +720,7 @@ describe("ModelPicker add model to provider", () => {
       );
       const { container } = renderPicker();
       const dropdown = openPicker(container);
+      openFallbacks(dropdown);
 
       // Move the SECOND row up.
       const rows = dropdown.querySelectorAll(".chat-model-fallback-row");
@@ -708,6 +746,7 @@ describe("ModelPicker add model to provider", () => {
       );
       const { container } = renderPicker();
       const dropdown = openPicker(container);
+      openFallbacks(dropdown);
       const rows = dropdown.querySelectorAll(".chat-model-fallback-row");
 
       const firstActs = rows[0]!.querySelectorAll(".chat-model-fallback-act");
@@ -728,6 +767,7 @@ describe("ModelPicker add model to provider", () => {
       );
       const { container } = renderPicker();
       const dropdown = openPicker(container);
+      openFallbacks(dropdown);
       const removeBtn = dropdown.querySelector(
         ".chat-model-fallback-act--remove",
       )!;
@@ -736,6 +776,44 @@ describe("ModelPicker add model to provider", () => {
         0,
       );
       expect(localStorage.getItem(KEY)).toBeNull();
+    });
+
+    it("shows the chain count on the rail item", () => {
+      localStorage.clear();
+      localStorage.setItem(
+        KEY,
+        JSON.stringify({
+          models: [
+            { key: "p::::a", provider: "openrouter", model: "a", baseUrl: "", label: "A" },
+          ],
+        }),
+      );
+      const { container } = renderPicker();
+      const dropdown = openPicker(container);
+      const item = Array.from(
+        dropdown.querySelectorAll(".chat-model-rail-item"),
+      ).find((el) => el.textContent?.includes("chat.fallbackModels"))!;
+      expect(item.querySelector(".chat-model-rail-count")?.textContent).toBe(
+        "1",
+      );
+    });
+
+    it("leaves the fallback view when another rail item is picked", () => {
+      localStorage.clear();
+      const { container } = renderPicker();
+      const dropdown = openPicker(container);
+      openFallbacks(dropdown);
+      expect(dropdown.querySelector(".chat-model-fallback")).toBeTruthy();
+
+      // Back to "All models".
+      const allItem = Array.from(
+        dropdown.querySelectorAll(".chat-model-rail-item"),
+      ).find((el) => el.textContent?.includes("chat.allModels"))!;
+      fireEvent.click(allItem);
+      expect(dropdown.querySelector(".chat-model-fallback")).toBeNull();
+      expect(dropdown.querySelectorAll(".chat-model-row").length).toBeGreaterThan(
+        0,
+      );
     });
   });
 });

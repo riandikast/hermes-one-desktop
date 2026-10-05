@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, render, screen } from "@testing-library/react";
 import { createRef } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { LastPromptChip } from "./LastPromptChip";
 import { createAtom } from "./hooks/useChatScrollAtoms";
 import type { ChatBubbleMessage } from "./types";
@@ -129,5 +129,74 @@ describe("LastPromptChip interaction", () => {
     });
     // ...while the dialog holds every character.
     expect(dialogBody()).toBe(long);
+  });
+
+  describe("copy button", () => {
+    /** Install a clipboard stub and return the spy it writes to. */
+    function stubClipboard(): ReturnType<typeof vi.fn> {
+      const copyToClipboard = vi.fn(() => Promise.resolve());
+      (window as unknown as { hermesAPI: unknown }).hermesAPI = {
+        copyToClipboard,
+      };
+      return copyToClipboard;
+    }
+
+    it("copies the FULL prompt, not the truncated pill", async () => {
+      const copySpy = stubClipboard();
+      const long = "y".repeat(500);
+      renderChip(long);
+      act(() => {
+        screen.getByRole("button", { name: /show full last prompt/i }).click();
+      });
+
+      const copy = await screen.findByRole("button", {
+        name: /copy prompt/i,
+      });
+      await act(async () => {
+        copy.click();
+      });
+
+      expect(copySpy).toHaveBeenCalledTimes(1);
+      expect(copySpy).toHaveBeenCalledWith(long);
+    });
+
+    it("shows a Copied acknowledgement, then reverts", async () => {
+      stubClipboard();
+      renderChip("copy me");
+      act(() => {
+        screen.getByRole("button", { name: /show full last prompt/i }).click();
+      });
+      // The copy control appears once the dialog is open.
+      const copy = await screen.findByRole("button", { name: /copy prompt/i });
+      await act(async () => {
+        copy.click();
+      });
+
+      // Re-labelled while the acknowledgement is up.
+      expect(screen.getByRole("button", { name: /copied/i })).toBeTruthy();
+
+      // Reverts after the ack window. Real timers + a bounded wait keeps this
+      // honest about the actual delay without freezing the poller.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 2100));
+      });
+      expect(screen.getByRole("button", { name: /copy prompt/i })).toBeTruthy();
+    }, 10000);
+
+    it("survives a clipboard failure without throwing", async () => {
+      (window as unknown as { hermesAPI: unknown }).hermesAPI = {
+        copyToClipboard: vi.fn(() => Promise.reject(new Error("denied"))),
+      };
+      renderChip("nope");
+      act(() => {
+        screen.getByRole("button", { name: /show full last prompt/i }).click();
+      });
+      const copy = await screen.findByRole("button", { name: /copy prompt/i });
+      await act(async () => {
+        copy.click();
+      });
+      // No "Copied" acknowledgement on failure, and no unhandled rejection.
+      expect(screen.getByRole("button", { name: /copy prompt/i })).toBeTruthy();
+    }, 10000);
   });
 });

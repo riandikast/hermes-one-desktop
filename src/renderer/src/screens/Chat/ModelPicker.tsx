@@ -11,6 +11,7 @@ import {
   FolderMinus,
   Trash2,
   Plus,
+  Layers,
 } from "lucide-react";
 import { OPENAI_COMPATIBLE_BASE_URLS } from "../../constants";
 import { useI18n } from "../../components/useI18n";
@@ -141,6 +142,8 @@ export const ModelPicker = memo(function ModelPicker({
   // Fallback chain (frontend-only): ordered models to hand a failed turn to.
   const [fallbackModels, setFallbackModels] = useState<FallbackModel[]>([]);
   const [fallbackPickerOpen, setFallbackPickerOpen] = useState(false);
+  // True when the rail's "Fallback models" category is the active view.
+  const [fallbackView, setFallbackView] = useState(false);
   useEffect(() => {
     const sync = (): void => setFallbackModels(loadFallbackModels());
     sync();
@@ -488,8 +491,11 @@ export const ModelPicker = memo(function ModelPicker({
               <div className="chat-model-rail-list">
                 <button
                   type="button"
-                  className={`chat-model-rail-item ${activeBrand === null ? "active" : ""}`}
-                  onClick={() => setSelectedBrand(null)}
+                  className={`chat-model-rail-item ${activeBrand === null && !fallbackView ? "active" : ""}`}
+                  onClick={() => {
+                    setSelectedBrand(null);
+                    setFallbackView(false);
+                  }}
                 >
                   <span className="chat-model-rail-all-icon" aria-hidden>
                     <Asterisk size={12} />
@@ -499,6 +505,26 @@ export const ModelPicker = memo(function ModelPicker({
                   </span>
                   <span className="chat-model-rail-count">
                     {allRows.length}
+                  </span>
+                </button>
+                {/* Fallbacks sits directly under "All models": a category in the
+                    rail whose pane is the ordered retry chain. */}
+                <button
+                  type="button"
+                  className={`chat-model-rail-item ${fallbackView ? "active" : ""}`}
+                  onClick={() => {
+                    setFallbackView(true);
+                    setSelectedBrand(null);
+                  }}
+                >
+                  <span className="chat-model-rail-all-icon" aria-hidden>
+                    <Layers size={12} />
+                  </span>
+                  <span className="chat-model-rail-label">
+                    {t("chat.fallbackModels") || "Fallback models"}
+                  </span>
+                  <span className="chat-model-rail-count">
+                    {fallbackModels.length}
                   </span>
                 </button>
                 {customRail.length > 0 && (
@@ -514,11 +540,12 @@ export const ModelPicker = memo(function ModelPicker({
                         <button
                           type="button"
                           className={`chat-model-rail-item ${activeBrand === `custom:${c.id}` ? "active" : ""}`}
-                          onClick={() =>
+                          onClick={() => {
+                            setFallbackView(false);
                             setSelectedBrand((cur) =>
                               cur === `custom:${c.id}` ? null : `custom:${c.id}`,
-                            )
-                          }
+                            );
+                          }}
                         >
                           <span className="chat-model-rail-all-icon" aria-hidden>
                             <FolderPlus size={12} />
@@ -564,11 +591,12 @@ export const ModelPicker = memo(function ModelPicker({
                       <button
                         type="button"
                         className={`chat-model-rail-item ${activeBrand === p.groupKey ? "active" : ""}`}
-                        onClick={() =>
+                        onClick={() => {
+                          setFallbackView(false);
                           setSelectedBrand((cur) =>
                             cur === p.groupKey ? null : p.groupKey,
-                          )
-                        }
+                          );
+                        }}
                       >
                         <BrandLogo provider={p.brand} size={16} matchTheme />
                         <span className="chat-model-rail-label">{t(p.label)}</span>
@@ -609,9 +637,156 @@ export const ModelPicker = memo(function ModelPicker({
               </button>
             </div>
 
-            {/* Right pane: flat model list for the active filter */}
+            {/* Right pane: the fallback manager, or the model list for the
+                active filter. */}
             <div className="chat-model-list">
-              {visibleRows.length === 0 ? (
+              {fallbackView ? (
+                <div className="chat-model-fallback">
+                  <div className="chat-model-fallback-head">
+                    <span className="chat-model-fallback-title">
+                      {t("chat.fallbackModels") || "Fallback models"}
+                    </span>
+                    <span className="chat-model-fallback-count">
+                      {fallbackModels.length}
+                    </span>
+                    <button
+                      type="button"
+                      className="chat-model-fallback-add"
+                      onClick={() => setFallbackPickerOpen((v) => !v)}
+                      aria-expanded={fallbackPickerOpen}
+                      title={t("chat.addFallbackModel") || "Add a fallback model"}
+                      aria-label={
+                        t("chat.addFallbackModel") || "Add a fallback model"
+                      }
+                    >
+                      <Plus size={13} />
+                    </button>
+                  </div>
+                  <p className="chat-model-fallback-desc">
+                    {t("chat.fallbackDesc") ||
+                      "If a send fails, the turn is retried against these models in order."}
+                  </p>
+                  {fallbackModels.length === 0 && !fallbackPickerOpen && (
+                    <div className="chat-model-fallback-empty">
+                      {t("chat.fallbackEmpty") ||
+                        "No fallbacks. Add models to try in order when a send fails."}
+                    </div>
+                  )}
+                  {fallbackModels.map((m, index) => (
+                    <div key={m.key} className="chat-model-fallback-row">
+                      <span className="chat-model-fallback-order">
+                        {index + 1}
+                      </span>
+                      <span className="chat-model-fallback-body">
+                        <span
+                          className="chat-model-fallback-name"
+                          title={m.model}
+                        >
+                          {m.label || m.model}
+                        </span>
+                        <span className="chat-model-fallback-sub">
+                          {m.provider} · {m.model}
+                        </span>
+                      </span>
+                      <span className="chat-model-fallback-actions">
+                        <button
+                          type="button"
+                          className="chat-model-fallback-act"
+                          disabled={index === 0}
+                          onClick={() =>
+                            mutateFallbacks((prev) =>
+                              moveFallbackModel(prev, m.key, -1),
+                            )
+                          }
+                          title={t("chat.moveUp") || "Move up"}
+                          aria-label={`${t("chat.moveUp") || "Move up"}: ${m.model}`}
+                        >
+                          <ChevronUp size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          className="chat-model-fallback-act"
+                          disabled={index === fallbackModels.length - 1}
+                          onClick={() =>
+                            mutateFallbacks((prev) =>
+                              moveFallbackModel(prev, m.key, 1),
+                            )
+                          }
+                          title={t("chat.moveDown") || "Move down"}
+                          aria-label={`${t("chat.moveDown") || "Move down"}: ${m.model}`}
+                        >
+                          <ChevronDown size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          className="chat-model-fallback-act chat-model-fallback-act--remove"
+                          onClick={() =>
+                            mutateFallbacks((prev) =>
+                              removeFallbackModel(prev, m.key),
+                            )
+                          }
+                          title={
+                            t("chat.removeFallback") || "Remove from fallbacks"
+                          }
+                          aria-label={`${t("chat.removeFallback") || "Remove from fallbacks"}: ${m.model}`}
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+
+                  {fallbackPickerOpen && (
+                    <div className="chat-model-fallback-picker">
+                      {allRows.length === 0 ? (
+                        <div className="chat-model-fallback-empty">
+                          {t("chat.noModelsMatch")}
+                        </div>
+                      ) : (
+                        allRows.map((m) => {
+                          const entry = fallbackFromRow({
+                            provider: m.provider,
+                            model: m.model,
+                            baseUrl: m.baseUrl,
+                            label: m.label,
+                          });
+                          const already = fallbackModels.some(
+                            (f) => f.key === entry.key,
+                          );
+                          return (
+                            <button
+                              key={`fb-${entry.key}`}
+                              type="button"
+                              className="chat-model-fallback-option"
+                              disabled={already}
+                              onClick={() => {
+                                mutateFallbacks((prev) =>
+                                  addFallbackModel(prev, entry),
+                                );
+                                setFallbackPickerOpen(false);
+                              }}
+                            >
+                              <span className="chat-model-fallback-name">
+                                {m.label}
+                              </span>
+                              <span className="chat-model-fallback-sub">
+                                {m.provider} · {m.model}
+                              </span>
+                              {already && (
+                                <Check
+                                  size={13}
+                                  className="chat-model-row-check"
+                                  aria-hidden
+                                />
+                              )}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : visibleRows.length === 0 ? (
                 <div className="chat-model-list-empty">
                   {t("chat.noModelsMatch")}
                 </div>
@@ -778,7 +953,7 @@ export const ModelPicker = memo(function ModelPicker({
                   );
                 })
               )}
-              {activeBrand && !activeBrand.startsWith("custom:") && (
+              {!fallbackView && activeBrand && !activeBrand.startsWith("custom:") && (
                 <button
                   type="button"
                   className="chat-model-add-row"
@@ -794,148 +969,6 @@ export const ModelPicker = memo(function ModelPicker({
                 </button>
               )}
 
-              {/* ── Fallback chain ─────────────────────────────────────────
-                  Below every model: an ORDERED list of models a failed turn is
-                  retried against, first to last. Frontend-only — stored in
-                  localStorage, never written to provider config. */}
-              <div className="chat-model-fallback">
-                <div className="chat-model-fallback-head">
-                  <span className="chat-model-fallback-title">
-                    {t("chat.fallbackModels") || "Fallback models"}
-                  </span>
-                  <span className="chat-model-fallback-count">
-                    {fallbackModels.length}
-                  </span>
-                  <button
-                    type="button"
-                    className="chat-model-fallback-add"
-                    onClick={() => setFallbackPickerOpen((v) => !v)}
-                    aria-expanded={fallbackPickerOpen}
-                    title={
-                      t("chat.addFallbackModel") || "Add a fallback model"
-                    }
-                    aria-label={
-                      t("chat.addFallbackModel") || "Add a fallback model"
-                    }
-                  >
-                    <Plus size={13} />
-                  </button>
-                </div>
-                {fallbackModels.length === 0 && !fallbackPickerOpen && (
-                  <div className="chat-model-fallback-empty">
-                    {t("chat.fallbackEmpty") ||
-                      "No fallbacks. Add models to try in order when a send fails."}
-                  </div>
-                )}
-                {fallbackModels.map((m, index) => (
-                  <div key={m.key} className="chat-model-fallback-row">
-                    <span className="chat-model-fallback-order">
-                      {index + 1}
-                    </span>
-                    <span className="chat-model-fallback-body">
-                      <span className="chat-model-fallback-name" title={m.model}>
-                        {m.label || m.model}
-                      </span>
-                      <span className="chat-model-fallback-sub">
-                        {m.provider} · {m.model}
-                      </span>
-                    </span>
-                    <span className="chat-model-fallback-actions">
-                      <button
-                        type="button"
-                        className="chat-model-fallback-act"
-                        disabled={index === 0}
-                        onClick={() =>
-                          mutateFallbacks((prev) =>
-                            moveFallbackModel(prev, m.key, -1),
-                          )
-                        }
-                        title={t("chat.moveUp") || "Move up"}
-                        aria-label={`${t("chat.moveUp") || "Move up"}: ${m.model}`}
-                      >
-                        <ChevronUp size={12} />
-                      </button>
-                      <button
-                        type="button"
-                        className="chat-model-fallback-act"
-                        disabled={index === fallbackModels.length - 1}
-                        onClick={() =>
-                          mutateFallbacks((prev) =>
-                            moveFallbackModel(prev, m.key, 1),
-                          )
-                        }
-                        title={t("chat.moveDown") || "Move down"}
-                        aria-label={`${t("chat.moveDown") || "Move down"}: ${m.model}`}
-                      >
-                        <ChevronDown size={12} />
-                      </button>
-                      <button
-                        type="button"
-                        className="chat-model-fallback-act chat-model-fallback-act--remove"
-                        onClick={() =>
-                          mutateFallbacks((prev) =>
-                            removeFallbackModel(prev, m.key),
-                          )
-                        }
-                        title={t("chat.removeFallback") || "Remove from fallbacks"}
-                        aria-label={`${t("chat.removeFallback") || "Remove from fallbacks"}: ${m.model}`}
-                      >
-                        <X size={12} />
-                      </button>
-                    </span>
-                  </div>
-                ))}
-
-                {fallbackPickerOpen && (
-                  <div className="chat-model-fallback-picker">
-                    {visibleRows.length === 0 ? (
-                      <div className="chat-model-fallback-empty">
-                        {t("chat.noModelsMatch")}
-                      </div>
-                    ) : (
-                      visibleRows.map((m) => {
-                        const entry = fallbackFromRow({
-                          provider: m.provider,
-                          model: m.model,
-                          baseUrl: m.baseUrl,
-                          label: m.label,
-                        });
-                        const already = fallbackModels.some(
-                          (f) => f.key === entry.key,
-                        );
-                        return (
-                          <button
-                            key={`fb-${entry.key}`}
-                            type="button"
-                            className="chat-model-fallback-option"
-                            disabled={already}
-                            onClick={() => {
-                              mutateFallbacks((prev) =>
-                                addFallbackModel(prev, entry),
-                              );
-                              setFallbackPickerOpen(false);
-                            }}
-                          >
-                            <span className="chat-model-fallback-name">
-                              {m.label}
-                            </span>
-                            <span className="chat-model-fallback-sub">
-                              {m.provider} · {m.model}
-                            </span>
-                            {already && (
-                              <Check
-                                size={13}
-                                className="chat-model-row-check"
-                                aria-hidden
-                              />
-                            )}
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                )}
-              </div>
             </div>
           </div>
           {addingProvider && (

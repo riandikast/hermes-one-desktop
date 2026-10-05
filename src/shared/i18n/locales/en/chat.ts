@@ -27,6 +27,8 @@ export default {
   addAndSelect: "Add & Select",
   typeModelName: "Type model name...",
   fallbackModels: "Fallback models",
+  fallbackDesc:
+    "If a send fails, the turn is retried against these models in order.",
   fallbackEmpty:
     "No fallbacks. Add models to try in order when a send fails.",
   addFallbackModel: "Add a fallback model",

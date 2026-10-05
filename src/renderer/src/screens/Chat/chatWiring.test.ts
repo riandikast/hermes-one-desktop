@@ -292,6 +292,24 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     expect(css.slice(bodyStart, bodyStart + 600)).toContain("overflow: auto");
   });
 
+  it("gives the last-prompt dialog a copy action wired to the full text", () => {
+    // The dialog carries a copy button that writes the FULL prompt (the pill's
+    // preview is truncated), styled as a quiet Material text button.
+    expect(chipSource).toContain("handleCopy");
+    expect(chipSource).toContain("copyToClipboard");
+    // Copies `full`, never the capped `preview`.
+    const copyIdx = chipSource.indexOf("copyToClipboard(");
+    expect(copyIdx).toBeGreaterThan(-1);
+    expect(chipSource.slice(copyIdx, copyIdx + 40)).toContain("full");
+
+    const start = css.indexOf(".chat-last-prompt-dialog-copy {");
+    expect(start).toBeGreaterThan(-1);
+    const block = css.slice(start, start + 600);
+    // Flat, token-based, no gradient — consistent with the Material dialog.
+    expect(block).not.toContain("linear-gradient");
+    expect(block).toContain("var(--text-muted");
+  });
+
   it("opens the full prompt in a dialog instead of scrolling the transcript", () => {
     // A scroll-based jump was flaky: the target row can be virtualised out of
     // the DOM (nothing to scroll to) and the stick-to-bottom auto-follow fights
@@ -333,17 +351,20 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     expect(afterLastClose).not.toMatch(/ref=\{contentRef\}/);
   });
 
-  it("places the fallback chain BELOW the model list, not inside a provider group", () => {
-    // The fallback section is a sibling of the model list, so it appears under
-    // every provider's models rather than nested inside one of them.
-    const listIdx = pickerSource.indexOf('className="chat-model-list"');
-    const fallbackIdx = pickerSource.indexOf('className="chat-model-fallback"');
-    expect(listIdx).toBeGreaterThan(-1);
-    expect(fallbackIdx).toBeGreaterThan(listIdx);
-    // It must not itself be a .chat-model-row (i.e. a selectable model entry).
-    expect(pickerSource.slice(fallbackIdx, fallbackIdx + 200)).not.toContain(
-      'className="chat-model-row"',
-    );
+  it("exposes Fallbacks as a rail category directly under All models", () => {
+    // The fallback list is a rail CATEGORY (like the provider groups), not a
+    // section appended to the model list: "All models" then "Fallback models".
+    const allIdx = pickerSource.indexOf('{t("chat.allModels")}');
+    const fbIdx = pickerSource.indexOf('{t("chat.fallbackModels")');
+    expect(allIdx).toBeGreaterThan(-1);
+    expect(fbIdx).toBeGreaterThan(allIdx);
+    // Both are rail items, and the fallback one renders BEFORE the custom-group
+    // section, i.e. it sits right beneath "All models".
+    const customIdx = pickerSource.indexOf('{t("chat.customGroups")}');
+    expect(customIdx).toBeGreaterThan(fbIdx);
+    // Selecting it swaps the pane: the fallback manager renders inside the
+    // right pane (.chat-model-list), guarded by the fallbackView flag.
+    expect(pickerSource).toContain("{fallbackView ? (");
   });
 
   it("styles the fallback rows with the app palette, not hardcoded colors", () => {
