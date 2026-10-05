@@ -35,6 +35,8 @@ export default {
   removeFallback: "Remove from fallbacks",
   moveUp: "Move up",
   moveDown: "Move down",
+  backToGroups: "Back to groups",
+  clearSearch: "Clear search",
   reasoningEffort: {
     title: "Reasoning Level",
     auto: "Auto",

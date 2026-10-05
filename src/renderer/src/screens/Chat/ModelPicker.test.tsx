@@ -11,6 +11,7 @@ vi.mock("../../components/useI18n", () => ({
 
 vi.mock("lucide-react", () => ({
   ChevronDown: () => null,
+  ChevronLeft: () => null,
   ChevronUp: () => null,
   Check: () => null,
   Asterisk: () => null,
@@ -621,6 +622,15 @@ describe("ModelPicker add model to provider", () => {
       fireEvent.click(item);
     }
 
+    /** Open the add-list and drill into the bucket whose label matches. */
+    function pickBucket(dropdown: HTMLElement, name: string): void {
+      const buckets = Array.from(
+        dropdown.querySelectorAll(".chat-model-fallback-bucket"),
+      );
+      const bucket = buckets.find((b) => b.textContent?.includes(name))!;
+      fireEvent.click(bucket);
+    }
+
     it("exposes Fallback models as a rail category under All models", () => {
       localStorage.clear();
       const { container } = renderPicker();
@@ -660,8 +670,17 @@ describe("ModelPicker add model to provider", () => {
       const dropdown = openPicker(container);
       openFallbacks(dropdown);
 
-      // Open the inline picker and choose "OWL Beta".
+      // Open the add-list; level 1 lists groups, not a flat dump of models.
       fireEvent.click(dropdown.querySelector(".chat-model-fallback-add")!);
+      expect(
+        dropdown.querySelectorAll(".chat-model-fallback-bucket").length,
+      ).toBeGreaterThan(0);
+      expect(
+        dropdown.querySelectorAll(".chat-model-fallback-option"),
+      ).toHaveLength(0);
+
+      // Drill into the openrouter group, then choose "OWL Beta".
+      pickBucket(dropdown, "providers.openrouter");
       const options = dropdown.querySelectorAll(".chat-model-fallback-option");
       const beta = Array.from(options).find((o) =>
         o.textContent?.includes("OWL Beta"),
@@ -675,6 +694,94 @@ describe("ModelPicker add model to provider", () => {
       expect(rows[0]!.textContent).toContain("OWL Beta");
       // Persisted, so the chain survives a remount.
       expect(localStorage.getItem(KEY)).toContain("owl-beta");
+    });
+
+    it("lists custom groups FIRST, then the ungrouped providers", () => {
+      localStorage.clear();
+      localStorage.setItem(
+        "hermes.chat.modelGroups.v1",
+        JSON.stringify({
+          groups: [
+            { id: "g1", name: "Favourites", modelKeys: ["openrouter::::owl-beta"] },
+          ],
+        }),
+      );
+      const { container } = renderPicker();
+      const dropdown = openPicker(container);
+      openFallbacks(dropdown);
+      fireEvent.click(dropdown.querySelector(".chat-model-fallback-add")!);
+
+      const names = Array.from(
+        dropdown.querySelectorAll(".chat-model-fallback-bucket-name"),
+      ).map((el) => el.textContent);
+      // Custom group first, then provider buckets.
+      expect(names[0]).toBe("Favourites");
+      expect(names.length).toBeGreaterThan(1);
+      localStorage.removeItem("hermes.chat.modelGroups.v1");
+    });
+
+    it("searches across ALL groups, ignoring the drill-in level", async () => {
+      localStorage.clear();
+      const { container } = renderPicker();
+      const dropdown = openPicker(container);
+      openFallbacks(dropdown);
+      fireEvent.click(dropdown.querySelector(".chat-model-fallback-add")!);
+
+      const input = dropdown.querySelector(
+        ".chat-model-fallback-search-input",
+      ) as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(input, { target: { value: "llama" } });
+      });
+
+      // Search spans groups: results appear without drilling in, and the
+      // group-level bucket rows are gone.
+      expect(
+        dropdown.querySelectorAll(".chat-model-fallback-bucket"),
+      ).toHaveLength(0);
+      const options = dropdown.querySelectorAll(".chat-model-fallback-option");
+      expect(options.length).toBeGreaterThan(0);
+      expect(
+        Array.from(options).every((o) => o.textContent?.toLowerCase().includes("llama")),
+      ).toBe(true);
+    });
+
+    it("says so when a search matches nothing", async () => {
+      localStorage.clear();
+      const { container } = renderPicker();
+      const dropdown = openPicker(container);
+      openFallbacks(dropdown);
+      fireEvent.click(dropdown.querySelector(".chat-model-fallback-add")!);
+      const input = dropdown.querySelector(
+        ".chat-model-fallback-search-input",
+      ) as HTMLInputElement;
+      await act(async () => {
+        fireEvent.change(input, { target: { value: "zzzz-no-match" } });
+      });
+      expect(
+        dropdown.querySelectorAll(".chat-model-fallback-option"),
+      ).toHaveLength(0);
+      expect(dropdown.querySelector(".chat-model-fallback-empty")).toBeTruthy();
+    });
+
+    it("returns to the group level from a drilled-in group", () => {
+      localStorage.clear();
+      const { container } = renderPicker();
+      const dropdown = openPicker(container);
+      openFallbacks(dropdown);
+      fireEvent.click(dropdown.querySelector(".chat-model-fallback-add")!);
+      pickBucket(dropdown, "providers.openrouter");
+      expect(
+        dropdown.querySelectorAll(".chat-model-fallback-bucket"),
+      ).toHaveLength(0);
+
+      fireEvent.click(dropdown.querySelector(".chat-model-fallback-back")!);
+      expect(
+        dropdown.querySelectorAll(".chat-model-fallback-bucket").length,
+      ).toBeGreaterThan(0);
+      expect(
+        dropdown.querySelectorAll(".chat-model-fallback-option"),
+      ).toHaveLength(0);
     });
 
     it("disables a model that is already in the chain", async () => {
@@ -697,6 +804,7 @@ describe("ModelPicker add model to provider", () => {
       const dropdown = openPicker(container);
       openFallbacks(dropdown);
       fireEvent.click(dropdown.querySelector(".chat-model-fallback-add")!);
+      pickBucket(dropdown, "providers.openrouter");
 
       const options = Array.from(
         dropdown.querySelectorAll(".chat-model-fallback-option"),

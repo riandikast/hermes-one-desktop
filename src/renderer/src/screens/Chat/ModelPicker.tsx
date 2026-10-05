@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
+  ChevronLeft,
   ChevronUp,
   Check,
   Asterisk,
@@ -35,6 +36,43 @@ import {
   fallbackFromRow,
   type FallbackModel,
 } from "./fallbackModels";
+
+/**
+ * One selectable model in the fallback ADD-LIST. Extracted so the search list
+ * and the drilled-in group list render identically — the only difference is
+ * which rows each supplies.
+ */
+function FallbackOption({
+  label,
+  provider,
+  model,
+  already,
+  onAdd,
+}: {
+  entry: FallbackModel;
+  label: string;
+  provider: string;
+  model: string;
+  already: boolean;
+  onAdd: () => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      className="chat-model-fallback-option"
+      disabled={already}
+      onClick={onAdd}
+    >
+      <span className="chat-model-fallback-name">{label}</span>
+      <span className="chat-model-fallback-sub">
+        {provider} · {model}
+      </span>
+      {already && (
+        <Check size={13} className="chat-model-row-check" aria-hidden />
+      )}
+    </button>
+  );
+}
 
 interface ModelPickerProps {
   active?: boolean;
@@ -142,6 +180,12 @@ export const ModelPicker = memo(function ModelPicker({
   // Fallback chain (frontend-only): ordered models to hand a failed turn to.
   const [fallbackModels, setFallbackModels] = useState<FallbackModel[]>([]);
   const [fallbackPickerOpen, setFallbackPickerOpen] = useState(false);
+  // The add-list is two-level: it lists GROUPS first (custom groups, then the
+  // ungrouped providers) and drills into one group's models on click, rather
+  // than dumping every model at once. A non-empty search overrides the drill-in
+  // and searches across all models, since search is for FINDING a model.
+  const [fallbackPickGroup, setFallbackPickGroup] = useState<string | null>(null);
+  const [fallbackSearch, setFallbackSearch] = useState("");
   // True when the rail's "Fallback models" category is the active view.
   const [fallbackView, setFallbackView] = useState(false);
   useEffect(() => {
@@ -292,6 +336,65 @@ export const ModelPicker = memo(function ModelPicker({
     .map((m, i) => ({ m, i }))
     .sort((a, b) => rank(a.m) - rank(b.m) || a.i - b.i)
     .map((x) => x.m);
+
+  // ── The fallback ADD-LIST (not the chain) ────────────────────────────────
+  // Mirrors the rail's own two levels: custom groups first, then the ungrouped
+  // providers. It is never a flat dump of every model.
+  const fallbackSearchQuery = fallbackSearch.trim().toLowerCase();
+  /** Rows for one add-list bucket, in the picker's own display order. */
+  const bucketRows = (
+    rows: typeof allRows,
+  ): { entry: FallbackModel; label: string; provider: string; model: string }[] =>
+    rows.map((m) => ({
+      entry: fallbackFromRow({
+        provider: m.provider,
+        model: m.model,
+        baseUrl: m.baseUrl,
+        label: m.label,
+      }),
+      label: m.label,
+      provider: m.provider,
+      model: m.model,
+    }));
+  /** Custom groups (with their models), then ungrouped providers, both in rail
+   *  order. A group/provider with no rows is skipped — nothing to add from it. */
+  const fallbackBuckets: {
+    key: string;
+    name: string;
+    kind: "group" | "provider";
+    rows: ReturnType<typeof bucketRows>;
+  }[] = [
+    ...customRail.map((c) => ({
+      key: `custom:${c.id}`,
+      name: c.name,
+      kind: "group" as const,
+      rows: bucketRows(c.rows),
+    })),
+    ...railProviders.map((p) => ({
+      key: p.groupKey,
+      name: t(p.label),
+      kind: "provider" as const,
+      // Ungrouped provider: its rows minus any captured by a custom group, the
+      // same rule the rail uses for its count.
+      rows: bucketRows(
+        allRows.filter(
+          (r) => r.groupKey === p.groupKey && !groupedRowKeys.has(r.rowKey),
+        ),
+      ),
+    })),
+  ].filter((b) => b.rows.length > 0);
+  /** Models matching the search, across EVERY bucket (search spans groups). */
+  const fallbackSearchResults = fallbackSearchQuery
+    ? bucketRows(allRows).filter(
+        (r) =>
+          r.label.toLowerCase().includes(fallbackSearchQuery) ||
+          r.model.toLowerCase().includes(fallbackSearchQuery) ||
+          r.provider.toLowerCase().includes(fallbackSearchQuery),
+      )
+    : [];
+  const fallbackPickBucket = fallbackPickGroup
+    ? fallbackBuckets.find((b) => b.key === fallbackPickGroup) ?? null
+    : null;
 
   function toggle(): void {
     if (!isOpen) onOpen();
@@ -652,7 +755,15 @@ export const ModelPicker = memo(function ModelPicker({
                     <button
                       type="button"
                       className="chat-model-fallback-add"
-                      onClick={() => setFallbackPickerOpen((v) => !v)}
+                      onClick={() =>
+                        setFallbackPickerOpen((v) => {
+                          // Reset the two-level state on every open/close so the
+                          // list always starts at the group level, unsearched.
+                          setFallbackPickGroup(null);
+                          setFallbackSearch("");
+                          return !v;
+                        })
+                      }
                       aria-expanded={fallbackPickerOpen}
                       title={t("chat.addFallbackModel") || "Add a fallback model"}
                       aria-label={
@@ -738,50 +849,134 @@ export const ModelPicker = memo(function ModelPicker({
 
                   {fallbackPickerOpen && (
                     <div className="chat-model-fallback-picker">
-                      {allRows.length === 0 ? (
+                      {/* Search spans ALL models, regardless of group. */}
+                      <div className="chat-model-fallback-search">
+                        {fallbackPickBucket && !fallbackSearchQuery && (
+                          <button
+                            type="button"
+                            className="chat-model-fallback-back"
+                            onClick={() => {
+                              setFallbackPickGroup(null);
+                              setFallbackSearch("");
+                            }}
+                            title={t("chat.backToGroups") || "Back"}
+                            aria-label={t("chat.backToGroups") || "Back"}
+                          >
+                            <ChevronLeft size={13} />
+                          </button>
+                        )}
+                        <Search size={13} className="chat-model-fallback-search-icon" aria-hidden />
+                        <input
+                          className="chat-model-fallback-search-input"
+                          value={fallbackSearch}
+                          onChange={(e) => setFallbackSearch(e.target.value)}
+                          placeholder={
+                            t("chat.searchModels") || "Search models..."
+                          }
+                          aria-label={t("chat.searchModels") || "Search models"}
+                        />
+                        {fallbackSearch && (
+                          <button
+                            type="button"
+                            className="chat-model-fallback-search-clear"
+                            onClick={() => setFallbackSearch("")}
+                            title={t("chat.clearSearch") || "Clear"}
+                            aria-label={t("chat.clearSearch") || "Clear"}
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+
+                      {fallbackSearchQuery ? (
+                        // ── Search mode: flat matches across every group ──────
+                        fallbackSearchResults.length === 0 ? (
+                          <div className="chat-model-fallback-empty">
+                            {t("chat.noModelsMatch")}
+                          </div>
+                        ) : (
+                          fallbackSearchResults.map((r) => (
+                            <FallbackOption
+                              key={`fbs-${r.entry.key}`}
+                              entry={r.entry}
+                              label={r.label}
+                              provider={r.provider}
+                              model={r.model}
+                              already={fallbackModels.some(
+                                (f) => f.key === r.entry.key,
+                              )}
+                              onAdd={() => {
+                                mutateFallbacks((prev) =>
+                                  addFallbackModel(prev, r.entry),
+                                );
+                                setFallbackPickerOpen(false);
+                                setFallbackSearch("");
+                                setFallbackPickGroup(null);
+                              }}
+                            />
+                          ))
+                        )
+                      ) : fallbackPickBucket ? (
+                        // ── Drilled into one group: its models only ──────────
+                        fallbackPickBucket.rows.map((r) => (
+                          <FallbackOption
+                            key={`fb-${r.entry.key}`}
+                            entry={r.entry}
+                            label={r.label}
+                            provider={r.provider}
+                            model={r.model}
+                            already={fallbackModels.some(
+                              (f) => f.key === r.entry.key,
+                            )}
+                            onAdd={() => {
+                              mutateFallbacks((prev) =>
+                                addFallbackModel(prev, r.entry),
+                              );
+                              setFallbackPickerOpen(false);
+                              setFallbackPickGroup(null);
+                            }}
+                          />
+                        ))
+                      ) : fallbackBuckets.length === 0 ? (
                         <div className="chat-model-fallback-empty">
                           {t("chat.noModelsMatch")}
                         </div>
                       ) : (
-                        allRows.map((m) => {
-                          const entry = fallbackFromRow({
-                            provider: m.provider,
-                            model: m.model,
-                            baseUrl: m.baseUrl,
-                            label: m.label,
-                          });
-                          const already = fallbackModels.some(
-                            (f) => f.key === entry.key,
-                          );
-                          return (
-                            <button
-                              key={`fb-${entry.key}`}
-                              type="button"
-                              className="chat-model-fallback-option"
-                              disabled={already}
-                              onClick={() => {
-                                mutateFallbacks((prev) =>
-                                  addFallbackModel(prev, entry),
-                                );
-                                setFallbackPickerOpen(false);
-                              }}
-                            >
-                              <span className="chat-model-fallback-name">
-                                {m.label}
-                              </span>
-                              <span className="chat-model-fallback-sub">
-                                {m.provider} · {m.model}
-                              </span>
-                              {already && (
-                                <Check
-                                  size={13}
-                                  className="chat-model-row-check"
-                                  aria-hidden
+                        // ── Level 1: custom groups first, then ungrouped ─────
+                        fallbackBuckets.map((b) => (
+                          <button
+                            key={`fbb-${b.key}`}
+                            type="button"
+                            className="chat-model-fallback-bucket"
+                            onClick={() => setFallbackPickGroup(b.key)}
+                          >
+                            <span className="chat-model-fallback-bucket-icon" aria-hidden>
+                              {b.kind === "group" ? (
+                                <FolderPlus size={13} />
+                              ) : (
+                                <BrandLogo
+                                  provider={
+                                    railProviders.find((p) => p.groupKey === b.key)
+                                      ?.brand ?? "custom"
+                                  }
+                                  size={15}
+                                  matchTheme
                                 />
                               )}
-                            </button>
-                          );
-                        })
+                            </span>
+                            <span className="chat-model-fallback-bucket-name">
+                              {b.name}
+                            </span>
+                            <span className="chat-model-fallback-bucket-count">
+                              {b.rows.length}
+                            </span>
+                            <ChevronDown
+                              size={13}
+                              className="chat-model-fallback-bucket-chevron"
+                              aria-hidden
+                            />
+                          </button>
+                        ))
                       )}
                     </div>
                   )}

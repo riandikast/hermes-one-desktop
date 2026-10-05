@@ -22,6 +22,8 @@ export default {
   removeFallback: "Hapus dari cadangan",
   moveUp: "Naikkan",
   moveDown: "Turunkan",
+  backToGroups: "Kembali ke grup",
+  clearSearch: "Hapus pencarian",
   emptyTitle: "Apa yang bisa saya bantu hari ini?",
   emptyHint:
     "Minta saya menulis kode, menjawab pertanyaan, mencari web, dan lainnya",

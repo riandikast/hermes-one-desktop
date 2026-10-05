@@ -367,6 +367,34 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     expect(pickerSource).toContain("{fallbackView ? (");
   });
 
+  it("add-list lists GROUPS first and drills in, instead of dumping all models", () => {
+    // The add-list mirrors the rail's two levels. Level 1 renders the bucket
+    // rows; a bucket click sets fallbackPickGroup, which swaps the list to that
+    // group's models. It must never render every model unconditionally.
+    expect(pickerSource).toContain("fallbackBuckets");
+    expect(pickerSource).toContain("chat-model-fallback-bucket");
+    expect(pickerSource).toContain("setFallbackPickGroup");
+    // Custom groups are listed BEFORE the provider buckets.
+    const groupIdx = pickerSource.indexOf("...customRail.map");
+    const providerIdx = pickerSource.indexOf("...railProviders.map");
+    expect(groupIdx).toBeGreaterThan(-1);
+    expect(providerIdx).toBeGreaterThan(groupIdx);
+  });
+
+  it("gives the fallback add-list a search that spans every group", () => {
+    expect(pickerSource).toContain("fallbackSearch");
+    expect(pickerSource).toContain("chat-model-fallback-search-input");
+    // Search results are drawn from ALL rows, not just the drilled-in bucket.
+    expect(pickerSource).toContain("fallbackSearchResults");
+
+    const start = css.indexOf(".chat-model-fallback-search {");
+    expect(start).toBeGreaterThan(-1);
+    const block = css.slice(start, start + 600);
+    // Pinned to the top of the scrolling list so it never scrolls away.
+    expect(block).toContain("position: sticky");
+    expect(block).toContain("var(--bg-elevated");
+  });
+
   it("styles the fallback rows with the app palette, not hardcoded colors", () => {
     const start = css.indexOf(".chat-model-fallback {");
     expect(start).toBeGreaterThan(-1);
