@@ -213,4 +213,111 @@ describe("ChatInput - mention chip citation badges", () => {
       expect(screen.queryByText(/Press again to interrupt/)).toBeNull();
     });
   });
+
+  describe("send confirmation gate", () => {
+    /** Type text and press Enter once (arms), twice (sends). */
+    function arm(text: string): HTMLTextAreaElement {
+      const ta = screen.getByPlaceholderText(
+        "chat.typeMessage",
+      ) as HTMLTextAreaElement;
+      fireEvent.change(ta, { target: { value: text } });
+      fireEvent.keyDown(ta, { key: "Enter" });
+      return ta;
+    }
+
+    it("opens a confirm dialog naming the project on the first Enter", () => {
+      const onSubmit = vi.fn();
+      render(
+        <ChatInput
+          isLoading={false}
+          hasSession={true}
+          onSubmit={onSubmit}
+          onQuickAsk={vi.fn()}
+          onAbort={vi.fn()}
+          slashCommands={[]}
+          contextFolders={["C:\\work\\api-server"]}
+        />,
+      );
+      arm("do the thing");
+
+      // Armed: the dialog names the target project, and nothing sent yet.
+      expect(screen.getByRole("dialog")).toBeTruthy();
+      expect(screen.getByText("api-server")).toBeTruthy();
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it("sends on the second Enter and closes the dialog", () => {
+      const onSubmit = vi.fn();
+      render(
+        <ChatInput
+          isLoading={false}
+          hasSession={true}
+          onSubmit={onSubmit}
+          onQuickAsk={vi.fn()}
+          onAbort={vi.fn()}
+          slashCommands={[]}
+          contextFolders={["C:\\work\\api-server"]}
+        />,
+      );
+      arm("do the thing");
+      expect(onSubmit).not.toHaveBeenCalled();
+
+      // Second Enter — captured by the dialog, dispatching the send.
+      fireEvent.keyDown(document, { key: "Enter" });
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+      expect(onSubmit.mock.calls[0][0]).toBe("do the thing");
+      expect(document.querySelector(".send-confirm-dialog")).toBeNull();
+    });
+
+    it("cancels on Escape without sending", () => {
+      const onSubmit = vi.fn();
+      render(
+        <ChatInput
+          isLoading={false}
+          hasSession={true}
+          onSubmit={onSubmit}
+          onQuickAsk={vi.fn()}
+          onAbort={vi.fn()}
+          slashCommands={[]}
+          contextFolders={["C:\\work\\api-server"]}
+        />,
+      );
+      arm("do the thing");
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(document.querySelector(".send-confirm-dialog")).toBeNull();
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it("skips the gate for slash commands (they are explicit)", () => {
+      const onSubmit = vi.fn();
+      render(
+        <ChatInput
+          isLoading={false}
+          hasSession={true}
+          onSubmit={onSubmit}
+          onQuickAsk={vi.fn()}
+          onAbort={vi.fn()}
+          slashCommands={[]}
+        />,
+      );
+      arm("/clear");
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+      expect(document.querySelector(".send-confirm-dialog")).toBeNull();
+    });
+
+    it("says no project is bound when there are no folders", () => {
+      render(
+        <ChatInput
+          isLoading={false}
+          hasSession={true}
+          onSubmit={vi.fn()}
+          onQuickAsk={vi.fn()}
+          onAbort={vi.fn()}
+          slashCommands={[]}
+        />,
+      );
+      arm("hello");
+      expect(screen.getByText(/no project folder bound/i)).toBeTruthy();
+    });
+  });
 });

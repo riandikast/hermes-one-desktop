@@ -1,4 +1,10 @@
-import { memo, useCallback, useEffect, useImperativeHandle, useRef } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+} from "react";
 import type { BrowserTab } from "./browserTabs";
 
 /**
@@ -17,6 +23,80 @@ export interface WebviewElement extends HTMLElement {
   loadURL(url: string): Promise<unknown>;
   stop(): void;
   executeJavaScript(script: string): Promise<unknown>;
+  /** Current URL; throws before dom-ready, so always call via safeGetUrl. */
+  getURL?(): string;
+}
+
+/**
+ * True for a URL that will be rendered by Chromium's built-in PDF viewer.
+ * Matches a `.pdf` path or an explicit `application/pdf` data/blob URL.
+ */
+export function isPdfUrl(url: string): boolean {
+  if (!url) return false;
+  const withoutQuery = url.split(/[?#]/)[0].toLowerCase();
+  if (withoutQuery.endsWith(".pdf")) return true;
+  return /^data:application\/pdf/i.test(url) || /^blob:.*pdf/i.test(url);
+}
+
+/** getURL() throws before dom-ready; treat that as an empty URL. */
+function safeGetUrl(wv: WebviewElement): string {
+  try {
+    return wv.getURL?.() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Make Chromium's PDF viewer re-measure its fit-to-page zoom.
+ *
+ * The viewer picks its zoom ONCE from the guest's size at load, so a first open
+ * that happens while the <webview> is still 0-height (mid-layout, before the
+ * panel's flex box resolves) renders the page small and pinned toward the top.
+ * Any toolbar zoom action makes it re-measure — which is why pressing +/- fixes
+ * it. This reproduces that nudge automatically: shrink the element for one
+ * frame, then restore, so the viewer's resize handler runs against the settled
+ * layout. Done through inline styles on the host element (not the guest), so no
+ * page content is touched.
+ */
+function nudgePdfRefit(wv: WebviewElement): void {
+  const previousHeight = wv.style.height;
+  const previousWidth = wv.style.width;
+  // Only nudge once the element actually has a resolved box; nudging during the
+  // 0-height phase would re-measure a still-wrong size.
+  const first = (): void => {
+    if (wv.clientHeight <= 0 || wv.clientWidth <= 0) {
+      // Not laid out yet — try again next frame, a bounded number of times.
+      let tries = 0;
+      const retry = (): void => {
+        if (wv.clientHeight > 0 && wv.clientWidth > 0) {
+          doNudge();
+          return;
+        }
+        if (tries++ < 30) requestAnimationFrame(retry);
+      };
+      requestAnimationFrame(retry);
+      return;
+    }
+    doNudge();
+  };
+
+  const doNudge = (): void => {
+    // 1px off each axis is enough to fire the resize handler, and is invisible.
+    wv.style.width = "calc(100% - 1px)";
+    wv.style.height = "calc(100% - 1px)";
+    requestAnimationFrame(() => {
+      wv.style.width = previousWidth;
+      wv.style.height = previousHeight;
+      // A second rAF lets the restored size commit before the viewer measures.
+      requestAnimationFrame(() => {
+        wv.style.width = previousWidth;
+        wv.style.height = previousHeight;
+      });
+    });
+  };
+
+  first();
 }
 
 export interface BrowserTabNavState {
@@ -187,6 +267,14 @@ export const BrowserTabView = memo(function BrowserTabView({
         canGoForward: safeCanGoForward(wv),
         loading: false,
       });
+      // Chromium's built-in PDF viewer computes its fit-to-page zoom ONCE, from
+      // the guest's size at load time. On first open the <webview> can still be
+      // mid-layout (0-height, or before the panel's flex box resolves), so the
+      // document lands slightly small and pinned toward the top — until the user
+      // hits +/- in the PDF toolbar, which makes the viewer re-measure. Force
+      // that re-measure ourselves: a one-frame size nudge after layout settles.
+      // Guarded to PDFs so ordinary pages never see a resize flash.
+      if (isPdfUrl(wv.src || safeGetUrl(wv))) nudgePdfRefit(wv);
     };
     emitNavState.current = sync;
 
@@ -263,7 +351,6 @@ export const BrowserTabView = memo(function BrowserTabView({
       pendingRef.current = [];
     };
     // Only the tab identity matters: the callbacks are read through refs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab.id]);
 
   return (

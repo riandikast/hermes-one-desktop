@@ -16,6 +16,7 @@ import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BrowserTabView,
+  isPdfUrl,
   type BrowserTabViewHandle,
 } from "./BrowserTabView";
 import type { BrowserTab } from "./browserTabs";
@@ -367,5 +368,106 @@ describe("host wiring", () => {
     expect(container.querySelector("webview")?.getAttribute("src")).toBe(
       "https://src.test/page",
     );
+  });
+});
+
+describe("isPdfUrl", () => {
+  it("matches a .pdf path, with or without query/hash", () => {
+    expect(isPdfUrl("https://x.test/doc.pdf")).toBe(true);
+    expect(isPdfUrl("file:///C:/tmp/report.PDF")).toBe(true);
+    expect(isPdfUrl("https://x.test/doc.pdf?token=1")).toBe(true);
+    expect(isPdfUrl("https://x.test/doc.pdf#page=3")).toBe(true);
+  });
+
+  it("matches an explicit pdf data/blob URL", () => {
+    expect(isPdfUrl("data:application/pdf;base64,AAAA")).toBe(true);
+    expect(isPdfUrl("blob:https://x.test/abc-pdf-1")).toBe(true);
+  });
+
+  it("does not match ordinary pages", () => {
+    expect(isPdfUrl("https://x.test/index.html")).toBe(false);
+    expect(isPdfUrl("https://x.test/")).toBe(false);
+    expect(isPdfUrl("")).toBe(false);
+    // A query that merely CONTAINS "pdf" is not a PDF document.
+    expect(isPdfUrl("https://x.test/view?file=pdf")).toBe(false);
+    expect(isPdfUrl("https://x.test/app.js")).toBe(false);
+  });
+});
+
+describe("PDF refit nudge on load", () => {
+  /** A webview that reports a laid-out box, so the nudge proceeds immediately. */
+  function laidOut(wv: MockWebview): void {
+    Object.defineProperty(wv, "clientHeight", {
+      value: 800,
+      configurable: true,
+    });
+    Object.defineProperty(wv, "clientWidth", {
+      value: 600,
+      configurable: true,
+    });
+  }
+
+  it("flashes the webview size for a PDF so Chromium re-measures its zoom", () => {
+    const ref = createRef<BrowserTabViewHandle>();
+    const { container } = render(
+      <BrowserTabView
+        ref={ref}
+        tab={{ id: "pdf1", url: "https://x.test/doc.pdf" }}
+        active
+        onNavigated={() => undefined}
+        onTitleChange={() => undefined}
+        onNavStateChange={() => undefined}
+      />,
+    );
+    const wv = created[0];
+    const el = container.querySelector("webview") as MockWebview;
+    laidOut(wv);
+    // Pin getURL so the guard sees a PDF regardless of the src attribute.
+    wv.getURL = () => "https://x.test/doc.pdf";
+    const styleBefore = el.style.width;
+    guestEvent(wv, "did-stop-loading");
+    // The nudge writes an inline size immediately (then restores it next frame).
+    expect(el.style.width).not.toBe(styleBefore);
+    expect(el.style.width).toContain("calc");
+  });
+
+  it("does not resize an ordinary page", () => {
+    const ref = createRef<BrowserTabViewHandle>();
+    const { container } = render(
+      <BrowserTabView
+        ref={ref}
+        tab={{ id: "web1", url: "https://x.test/index.html" }}
+        active
+        onNavigated={() => undefined}
+        onTitleChange={() => undefined}
+        onNavStateChange={() => undefined}
+      />,
+    );
+    const wv = created[0];
+    const el = container.querySelector("webview") as MockWebview;
+    laidOut(wv);
+    wv.getURL = () => "https://x.test/index.html";
+    guestEvent(wv, "did-stop-loading");
+    expect(el.style.width).toBe("");
+  });
+
+  it("waits for a real layout box before nudging (never measures 0-height)", () => {
+    const ref = createRef<BrowserTabViewHandle>();
+    const { container } = render(
+      <BrowserTabView
+        ref={ref}
+        tab={{ id: "pdf2", url: "https://x.test/slow.pdf" }}
+        active
+        onNavigated={() => undefined}
+        onTitleChange={() => undefined}
+        onNavStateChange={() => undefined}
+      />,
+    );
+    const wv = created[0];
+    const el = container.querySelector("webview") as MockWebview;
+    // clientHeight/clientWidth stay 0 -> the nudge must not fire yet.
+    wv.getURL = () => "https://x.test/slow.pdf";
+    guestEvent(wv, "did-stop-loading");
+    expect(el.style.width).toBe("");
   });
 });

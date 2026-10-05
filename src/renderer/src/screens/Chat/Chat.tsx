@@ -69,6 +69,7 @@ import { WebPreviewPanel } from "./WebPreviewPanel";
 import { useChatScroll } from "./hooks/useChatScroll";
 
 import { ChatNavArrow, JumpToLatest } from "./ChatNavArrows";
+import { LastPromptChip } from "./LastPromptChip";
 
 import { useChatIPC } from "./hooks/useChatIPC";
 
@@ -2669,6 +2670,19 @@ function Chat({
             />
           </div>
         </div>
+
+        {/* "What did I last ask?" — a compact chip over the TOP-LEFT of the
+            scrollport, shown only while scrolled up (at the bottom the real
+            prompt is already on screen). A sibling of .chat-messages, NOT a
+            child of the scrolling content: inside the scroller a sticky chip's
+            containing block ends where it sits in the flow, so it scrolled out
+            of view ("shows then disappears"). Positioned against .chat-body it
+            is immune to scrolling entirely. */}
+        <LastPromptChip
+          messages={messages}
+          containerRef={containerRef}
+          scrolledUpAtom={scrolledUpAtom}
+        />
 
         {/* The worktree and web-preview panels are DIALOGS now, not inline
             panes — see the floating rail below. Rendering them here as

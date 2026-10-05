@@ -16,12 +16,17 @@
 
 import { describe, expect, it, vi } from "vitest";
 import chatSource from "./Chat.tsx?raw";
+import chipSource from "./LastPromptChip.tsx?raw";
 // CSS ?raw is stubbed by Vitest; read actual tokens for the contrast check.
 // @ts-expect-error -- node types are intentionally outside the web tsconfig
 const nodeModule = (await import("node:module")) as unknown as {
-  createRequire: (url: string) => (id: string) => { readFileSync: (path: string, encoding: string) => string };
+  createRequire: (url: string) => (id: string) => {
+    readFileSync: (path: string, encoding: string) => string;
+  };
 };
-const css = nodeModule.createRequire(import.meta.url)("node:fs").readFileSync("src/renderer/src/assets/main.css", "utf8");
+const css = nodeModule
+  .createRequire(import.meta.url)("node:fs")
+  .readFileSync("src/renderer/src/assets/main.css", "utf8");
 
 /** Every `propName={...}` passed to a component, by prop name. */
 function propValues(source: string, prop: string): string[] {
@@ -30,33 +35,58 @@ function propValues(source: string, prop: string): string[] {
 }
 
 describe("Chat.tsx wiring: no silent placeholder handlers", () => {
-  it.each(["dark", "light"])("keeps picker text above AA contrast in %s", (theme) => {
-    expect(css.length).toBeGreaterThan(1000);
-    const block = css.split(`[data-theme="${theme}"] {`)[1].split("}")[0];
-    const rgb = (key: string) => {
-      const hex = block.match(new RegExp(`--${key}: #([0-9a-f]{6})`))![1];
-      return [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
-    };
-    const luminance = (color: number[]) => color.map((channel) => {
-      const c = channel / 255;
-      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-    }).reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
-    const base = rgb("bg-secondary");
-    const overlay = block.match(/--accent-subtle: rgba\(([^)]+)\)/)![1].split(",").map(Number);
-    const selected = base.map((c, i) => c * (1 - overlay[3]) + overlay[i] * overlay[3]);
-    const primary = rgb("text-primary");
-    const accent = rgb("accent-text");
-    for (const foreground of [primary, rgb("text-secondary"), primary.map((c, i) => c * .75 + accent[i] * .25)]) {
-      for (const background of [base, selected, rgb("bg-primary")]) {
-        const values = [luminance(foreground), luminance(background)].sort((a, b) => a - b);
-        expect((values[1] + .05) / (values[0] + .05)).toBeGreaterThanOrEqual(4.5);
+  it.each(["dark", "light"])(
+    "keeps picker text above AA contrast in %s",
+    (theme) => {
+      expect(css.length).toBeGreaterThan(1000);
+      const block = css.split(`[data-theme="${theme}"] {`)[1].split("}")[0];
+      const rgb = (key: string) => {
+        const hex = block.match(new RegExp(`--${key}: #([0-9a-f]{6})`))![1];
+        return [0, 2, 4].map((offset) =>
+          parseInt(hex.slice(offset, offset + 2), 16),
+        );
+      };
+      const luminance = (color: number[]) =>
+        color
+          .map((channel) => {
+            const c = channel / 255;
+            return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+          })
+          .reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
+      const base = rgb("bg-secondary");
+      const overlay = block
+        .match(/--accent-subtle: rgba\(([^)]+)\)/)![1]
+        .split(",")
+        .map(Number);
+      const selected = base.map(
+        (c, i) => c * (1 - overlay[3]) + overlay[i] * overlay[3],
+      );
+      const primary = rgb("text-primary");
+      const accent = rgb("accent-text");
+      for (const foreground of [
+        primary,
+        rgb("text-secondary"),
+        primary.map((c, i) => c * 0.75 + accent[i] * 0.25),
+      ]) {
+        for (const background of [base, selected, rgb("bg-primary")]) {
+          const values = [luminance(foreground), luminance(background)].sort(
+            (a, b) => a - b,
+          );
+          expect(
+            (values[1] + 0.05) / (values[0] + 0.05),
+          ).toBeGreaterThanOrEqual(4.5);
+        }
       }
-    }
-  });
+    },
+  );
   it("wires floating opening to the dock and retains it while closed", () => {
     expect(chatSource.length).toBeGreaterThan(1000);
-    expect(chatSource).toMatch(/<FloatingDialog\s+open=\{onFinishDockOpen\}[\s\S]*?title="Terminal"\s+keepMounted/);
-    expect(chatSource).toMatch(/<TerminalDock\s+ref=\{onFinishDockRef\}[\s\S]*?open=\{onFinishDockOpen\}/);
+    expect(chatSource).toMatch(
+      /<FloatingDialog\s+open=\{onFinishDockOpen\}[\s\S]*?title="Terminal"\s+keepMounted/,
+    );
+    expect(chatSource).toMatch(
+      /<TerminalDock\s+ref=\{onFinishDockRef\}[\s\S]*?open=\{onFinishDockOpen\}/,
+    );
   });
 
   // Extract the real handler body from this repository's own source and run it
@@ -75,20 +105,41 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
   it("coalesces concurrent creation and releases the lock after failure", async () => {
     const body = handlerBody();
     let resolve!: (value: { id: string }) => void;
-    const terminalCreate = vi.fn(() => new Promise<{ id: string }>((done) => { resolve = done; }));
+    const terminalCreate = vi.fn(
+      () =>
+        new Promise<{ id: string }>((done) => {
+          resolve = done;
+        }),
+    );
     const attachSession = vi.fn();
     const findSessionByCwd = vi.fn(() => null);
     const error = vi.fn();
-    const create = new Function("window", "onFinishCreatingRef", "onFinishDockRef", "toast", "contextFolders",
-      `return () => {${body}}`)(
-      { hermesAPI: { terminalCreate } }, { current: false },
-      { current: { attachSession, findSessionByCwd, focusSession: vi.fn() } }, { error }, []);
-    create(); create(); create();
+    const create = new Function(
+      "window",
+      "onFinishCreatingRef",
+      "onFinishDockRef",
+      "toast",
+      "contextFolders",
+      `return () => {${body}}`,
+    )(
+      { hermesAPI: { terminalCreate } },
+      { current: false },
+      { current: { attachSession, findSessionByCwd, focusSession: vi.fn() } },
+      { error },
+      [],
+    );
+    create();
+    create();
+    create();
     expect(terminalCreate).toHaveBeenCalledTimes(1);
     resolve({ id: "one" });
     await Promise.resolve();
     await Promise.resolve();
-    expect(attachSession).toHaveBeenCalledExactlyOnceWith("one", "Terminal", undefined);
+    expect(attachSession).toHaveBeenCalledExactlyOnceWith(
+      "one",
+      "Terminal",
+      undefined,
+    );
     terminalCreate.mockRejectedValueOnce(new Error("failed"));
     create();
     await Promise.resolve();
@@ -107,16 +158,29 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     const focusSession = vi.fn();
     const findSessionByCwd = vi.fn(() => null);
     const projectDir = ["D:", "Work", "App"].join("\\");
-    const create = new Function("window", "onFinishCreatingRef", "onFinishDockRef", "toast", "contextFolders",
-      `return () => {${body}}`)(
-      { hermesAPI: { terminalCreate } }, { current: false },
-      { current: { attachSession, findSessionByCwd, focusSession } }, { error: vi.fn() },
-      [projectDir]);
+    const create = new Function(
+      "window",
+      "onFinishCreatingRef",
+      "onFinishDockRef",
+      "toast",
+      "contextFolders",
+      `return () => {${body}}`,
+    )(
+      { hermesAPI: { terminalCreate } },
+      { current: false },
+      { current: { attachSession, findSessionByCwd, focusSession } },
+      { error: vi.fn() },
+      [projectDir],
+    );
     create();
     await Promise.resolve();
     await Promise.resolve();
     // The pty must be created IN the project folder, titled after it.
-    expect(terminalCreate).toHaveBeenCalledWith({ cwd: projectDir, cols: 80, rows: 24 });
+    expect(terminalCreate).toHaveBeenCalledWith({
+      cwd: projectDir,
+      cols: 80,
+      rows: 24,
+    });
     expect(attachSession).toHaveBeenCalledWith("term-1", "App", projectDir);
   });
 
@@ -126,11 +190,20 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     const attachSession = vi.fn();
     const focusSession = vi.fn();
     const findSessionByCwd = vi.fn(() => "term-existing");
-    const create = new Function("window", "onFinishCreatingRef", "onFinishDockRef", "toast", "contextFolders",
-      `return () => {${body}}`)(
-      { hermesAPI: { terminalCreate } }, { current: false },
-      { current: { attachSession, findSessionByCwd, focusSession } }, { error: vi.fn() },
-      ["C:/proj"]);
+    const create = new Function(
+      "window",
+      "onFinishCreatingRef",
+      "onFinishDockRef",
+      "toast",
+      "contextFolders",
+      `return () => {${body}}`,
+    )(
+      { hermesAPI: { terminalCreate } },
+      { current: false },
+      { current: { attachSession, findSessionByCwd, focusSession } },
+      { error: vi.fn() },
+      ["C:/proj"],
+    );
     create();
     await Promise.resolve();
     await Promise.resolve();
@@ -148,7 +221,9 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
 
     for (const value of values) {
       // The exact shape of the original bug.
-      expect(value).not.toMatch(/^\(\)\s*=>\s*(undefined|void 0|\{\s*\}|null)$/);
+      expect(value).not.toMatch(
+        /^\(\)\s*=>\s*(undefined|void 0|\{\s*\}|null)$/,
+      );
       // A named handler is required, so the behaviour is testable elsewhere.
       expect(value).toMatch(/^[A-Za-z_$][\w$]*$/);
     }
@@ -185,5 +260,75 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     expect(idx).toBeGreaterThan(-1);
     const before = chatSource.slice(Math.max(0, idx - 900), idx);
     expect(before).not.toMatch(/\{onFinishArmed\s*&&\s*\(/);
+  });
+
+  it("styles the last-prompt chip plainly and the dialog as Material", () => {
+    // The CHIP must stay a plain pill — a neutral surface with only an accent
+    // border on hover, not a tinted/gradient highlight treatment.
+    const start = css.indexOf(".chat-last-prompt {");
+    expect(start).toBeGreaterThan(-1);
+    const block = css.slice(
+      start,
+      css.indexOf("/* ── Last-prompt reader", start),
+    );
+    expect(block).not.toContain("linear-gradient");
+    expect(block).not.toContain("::before");
+    expect(block).toContain("border: 1px solid var(--border");
+
+    // The DIALOG is the Material surface: flat fill, small radius, modest
+    // elevation — and specifically NOT a gradient wash.
+    const dialogStart = css.indexOf(".last-prompt-dialog {");
+    expect(dialogStart).toBeGreaterThan(-1);
+    const dialogBlock = css.slice(
+      dialogStart,
+      css.indexOf("/* Empty state */", dialogStart),
+    );
+    expect(dialogBlock).toContain("border-radius: 8px");
+    expect(dialogBlock).toContain("box-shadow");
+    expect(dialogBlock).not.toContain("linear-gradient");
+    // The reader still scrolls for very long prompts.
+    const bodyStart = css.indexOf(".chat-last-prompt-dialog-body {");
+    expect(css.slice(bodyStart, bodyStart + 600)).toContain("overflow: auto");
+  });
+
+  it("opens the full prompt in a dialog instead of scrolling the transcript", () => {
+    // A scroll-based jump was flaky: the target row can be virtualised out of
+    // the DOM (nothing to scroll to) and the stick-to-bottom auto-follow fights
+    // a programmatic scroll. The chip therefore exposes no onJump at all — it
+    // renders a dialog, which always shows the complete prompt.
+    const chipIdx = chatSource.indexOf("<LastPromptChip");
+    expect(chipIdx).toBeGreaterThan(-1);
+    const end = chatSource.indexOf("/>", chipIdx);
+    const props = chatSource.slice(chipIdx, end);
+    expect(props).not.toContain("onJump");
+    expect(props).toContain("containerRef={containerRef}");
+    // The dialog lives inside the chip component itself.
+    expect(chipSource).toContain("FloatingDialog");
+    expect(chipSource).toContain("chat-last-prompt-dialog-body");
+  });
+
+  it("mounts LastPromptChip OUTSIDE the scrolling transcript", () => {
+    // A sticky element only sticks within its parent's bounds, so a chip placed
+    // inside the scroll content scrolls out of view — the reported "shows for a
+    // second, then disappears". It must be a sibling of .chat-messages.
+    const chipIdx = chatSource.indexOf("<LastPromptChip");
+    expect(chipIdx).toBeGreaterThan(-1);
+
+    // The transcript's inner content wrapper must CLOSE before the chip appears.
+    const scrollDivIdx = chatSource.indexOf('className="chat-messages"');
+    expect(scrollDivIdx).toBeGreaterThan(-1);
+    expect(chipIdx).toBeGreaterThan(scrollDivIdx);
+
+    const between = chatSource.slice(scrollDivIdx, chipIdx);
+    // Two closing </div> tags: the contentRef wrapper and .chat-messages.
+    const closes = between.match(/<\/div>/g) ?? [];
+    expect(closes.length).toBeGreaterThanOrEqual(2);
+
+    // The chip must come after the LAST closing div in that span — i.e. it is a
+    // sibling of .chat-messages, never nested inside the scrolling content.
+    const lastCloseIdx = between.lastIndexOf("</div>");
+    const afterLastClose = between.slice(lastCloseIdx + "</div>".length);
+    expect(afterLastClose).not.toMatch(/<div[^>]*className="chat-messages"/);
+    expect(afterLastClose).not.toMatch(/ref=\{contentRef\}/);
   });
 });

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { X } from "../../assets/icons";
 
 /**
@@ -22,6 +28,7 @@ export function FloatingDialog({
   children,
   size = "terminal",
   keepMounted = false,
+  className = "",
 }: {
   open: boolean;
   onClose: () => void;
@@ -37,6 +44,9 @@ export function FloatingDialog({
    * Required for anything that cannot be recreated cheaply (a live terminal).
    */
   keepMounted?: boolean;
+  /** Extra classes on the panel, for a caller-specific skin (e.g. the
+   *  Material-styled last-prompt reader) without restyling every dialog. */
+  className?: string;
 }): React.JSX.Element {
   const panelRef = useRef<HTMLDivElement | null>(null);
   // Offset from the centered position, in px. Kept separate from the layout so
@@ -126,7 +136,7 @@ export function FloatingDialog({
         ref={panelRef}
         className={`terminal-dialog terminal-dialog--${size}${
           dragging ? " is-dragging" : ""
-        }`}
+        }${className ? ` ${className}` : ""}`}
         role="dialog"
         aria-label={title}
         aria-modal="false"
@@ -161,4 +171,3 @@ export function FloatingDialog({
     </div>
   );
 }
-

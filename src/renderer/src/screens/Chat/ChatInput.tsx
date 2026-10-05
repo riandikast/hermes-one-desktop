@@ -52,6 +52,7 @@ import {
 } from "./mention";
 import { searchFiles } from "./fileSearch";
 import { ContextGauge, type ContextUsage } from "./ContextGauge";
+import { SendConfirmDialog } from "./SendConfirmDialog";
 import type { Attachment } from "../../../../shared/attachments";
 
 export interface ChatInputHandle {
@@ -434,25 +435,33 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       if (inputRef.current) inputRef.current.style.height = "auto";
     }
 
+    function dispatchSend(): void {
+      const raw = input.trim();
+      const text = expandTags(raw);
+      if (text.length === 0 && attachments.length === 0) return;
+      setSlashMenuOpen(false);
+      setConfirmPending(null);
+      const sendAttachments = attachments;
+      clearAfterSend(raw);
+      onSubmit(text, sendAttachments);
+    }
+
     function handleSend(): void {
       const raw = input.trim();
       const text = expandTags(raw);
       const hasPayload = text.length > 0 || attachments.length > 0;
       if (!hasPayload) return;
 
-      // Double-Enter confirmation gate: the first Enter arms a pending send
-      // (showing a confirm chip); a second Enter dispatches it. Esc or editing
-      // the text cancels. Slash commands skip the gate (they are explicit).
+      // Double-Enter confirmation gate: the first Enter arms a pending send and
+      // opens the confirm dialog (which names the target project); a second
+      // Enter dispatches it. Esc or editing the text cancels. Slash commands
+      // skip the gate (they are explicit).
       if (!text.startsWith("/") && confirmPending !== text) {
         setConfirmPending(text);
         return;
       }
 
-      setSlashMenuOpen(false);
-      setConfirmPending(null);
-      const sendAttachments = attachments;
-      clearAfterSend(raw);
-      onSubmit(text, sendAttachments);
+      dispatchSend();
     }
 
     function handleQuickAsk(): void {
@@ -1150,18 +1159,14 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             rows={1}
             autoFocus
           />
-          {confirmPending !== null && (
-            <div className="chat-confirm-banner">
-              <span>Press Enter again to send, Esc to cancel</span>
-              <button
-                type="button"
-                className="btn-ghost btn-xs"
-                onClick={() => setConfirmPending(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          )}
+          {/* Confirmation gate: a modal naming the target project. Enter again
+              sends (handled by the dialog), Esc cancels. */}
+          <SendConfirmDialog
+            open={confirmPending !== null}
+            folders={contextFolders}
+            onConfirm={dispatchSend}
+            onCancel={() => setConfirmPending(null)}
+          />
           {interruptConfirm && (
             <div className="chat-confirm-banner">
               <span>Press again to interrupt, Esc to cancel</span>

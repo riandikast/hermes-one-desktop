@@ -5807,6 +5807,9 @@ body:has(.shell-vibrant),
   display: flex;
   flex: 1;
   overflow: hidden;
+  /* Positioned so overlay affordances pinned to the scrollport (the last-prompt
+     chip) anchor HERE, not to an outer ancestor that includes the composer. */
+  position: relative;
 }
 
 /* Worktree panel - file explorer on the right */
@@ -6998,6 +7001,278 @@ body:has(.shell-vibrant),
   left: auto;
   right: 16px;
   transform: none;
+}
+
+/* ── Last-prompt chip ────────────────────────────────────────────────────
+   Shows the most recent user prompt while scrolled up, so an old conversation
+   can be identified without scrolling to the bottom. Top-LEFT and compact —
+   intentionally not the centered top placement the pinned bar uses.
+
+   Absolutely positioned against .chat-body (the scrollport's parent), NOT
+   sticky inside the scroller: a sticky element only sticks within its parent's
+   bounds, so one placed late in the content flow scrolls out of view — the
+   "shows for a second then disappears" bug. Anchored outside the scroller, the
+   chip is unaffected by scroll position entirely. */
+.chat-last-prompt-wrap {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 29;
+  pointer-events: none;
+}
+.chat-last-prompt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(72vw, 640px);
+  padding: 3px 8px 3px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #3a3f4b);
+  background: color-mix(in srgb, var(--bg-elevated, #1e1e2e) 92%, transparent);
+  backdrop-filter: blur(6px);
+  color: var(--text-secondary, #c7c7d1);
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: left;
+  pointer-events: auto;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.15s ease,
+    visibility 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+.chat-last-prompt:hover {
+  background: var(--bg-hover, #2a2f3a);
+  border-color: var(--accent, #4f9cf9);
+}
+.chat-last-prompt:hover .chat-last-prompt-text {
+  color: var(--accent, #4f9cf9);
+}
+.chat-last-prompt:not(.chat-last-prompt--visible) {
+  pointer-events: none;
+}
+.chat-last-prompt--visible {
+  opacity: 1;
+  visibility: visible;
+}
+/* The expand glyph is decorative (the whole pill is the button). */
+.chat-last-prompt-expand {
+  flex-shrink: 0;
+  color: var(--text-muted, #8b8b99);
+}
+.chat-last-prompt-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--accent, #4f9cf9);
+}
+.chat-last-prompt-label {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--text-muted, #8b8b99);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.chat-last-prompt-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary, #e4e4e7);
+}
+/* ── Last-prompt reader dialog (Material) ────────────────────────────────
+   Scoped to .last-prompt-dialog so the shared FloatingDialog keeps its own look
+   for the terminal and web preview. Material means: a flat opaque surface, one
+   modest elevation shadow, a small corner radius, a quiet header label, and no
+   gradients or accent washes. */
+.last-prompt-dialog {
+  border-radius: 8px;
+  border: none;
+  background: var(--bg-elevated, #1e1e2e);
+  /* Material elevation (level 2-ish): a single soft, wide shadow — not the
+     heavy 24px/60px bloom the default dialog uses. */
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 4px 12px rgba(0, 0, 0, 0.28);
+}
+.last-prompt-dialog .terminal-dialog-head {
+  /* Material dialog header: no divider line, roomier, quiet title. */
+  border-bottom: none;
+  padding: 12px 8px 4px 16px;
+}
+.last-prompt-dialog .terminal-dialog-title {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--text-secondary, #c7c7d1);
+}
+/* Material icon button: circular, hairline-free, ripple-ish hover wash. */
+.last-prompt-dialog .terminal-dialog-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: var(--text-muted, #8b8b99);
+}
+.last-prompt-dialog .terminal-dialog-close:hover {
+  background: var(--hover, rgba(127, 127, 127, 0.14));
+  color: var(--text-primary, #e4e4e7);
+}
+.last-prompt-dialog .terminal-dialog-body {
+  padding: 0;
+}
+.chat-last-prompt-dialog {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+/* Material "overline" label: tiny, wide-tracked, muted — it names the content
+   instead of shouting it. */
+.chat-last-prompt-dialog-label {
+  flex-shrink: 0;
+  padding: 0 16px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted, #8b8b99);
+}
+/* The prompt body: flat surface, body-text rhythm. Scrolls so a very long
+   prompt stays readable without the dialog growing past the viewport. */
+.chat-last-prompt-dialog-body {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 16px 16px;
+  overflow: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary, #e4e4e7);
+  background: transparent;
+}
+
+/* ── Send-confirmation dialog ────────────────────────────────────────────
+   Names the project a prompt is about to be sent into, so a prompt can be
+   caught before it lands in the wrong session. Keyboard-first: Enter sends,
+   Esc cancels (both wired on the document, so focus stays in the composer). */
+.send-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.45);
+  -webkit-app-region: no-drag;
+}
+.send-confirm-dialog {
+  width: min(440px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 18px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border, #3a3f4b);
+  background: var(--bg-elevated, #1e1e2e);
+  /* Material-ish elevation: one soft, wide shadow. */
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 6px 20px rgba(0, 0, 0, 0.35);
+}
+.send-confirm-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-text, var(--accent, #4f9cf9));
+}
+.send-confirm-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #e4e4e7);
+}
+.send-confirm-project {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg-secondary, #212121);
+  border: 1px solid var(--border, #3a3f4b);
+  min-width: 0;
+}
+.send-confirm-project-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted, #8b8b99);
+}
+.send-confirm-project-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary, #e4e4e7);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.send-confirm-project-more {
+  font-size: 11px;
+  color: var(--text-muted, #8b8b99);
+}
+/* Full path: the whole point is telling apart same-named folders. `direction:
+   rtl` keeps the TAIL visible when the path is elided, which is the part that
+   distinguishes two folders of the same name. */
+.send-confirm-project-path {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text-muted, #8b8b99);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+.send-confirm-project-none {
+  font-size: 12.5px;
+  color: var(--text-secondary, #c7c7d1);
+}
+.send-confirm-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.send-confirm-hint {
+  font-size: 11.5px;
+  color: var(--text-muted, #8b8b99);
+}
+.send-confirm-hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  margin: 0 1px;
+  border-radius: 4px;
+  border: 1px solid var(--border, #3a3f4b);
+  background: var(--bg-primary, #17171b);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  color: var(--text-secondary, #c7c7d1);
+}
+.send-confirm-buttons {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 /* Empty state */
@@ -20539,8 +20814,15 @@ body:has(.shell-vibrant),
 }
 
 .web-preview-webview {
-  width: 100%;
-  height: 100%;
+  /* The tab view is absolutely positioned with inset:0, so anchor the webview
+     to it directly rather than relying on 100% resolved against a parent whose
+     height may not be settled yet. A guest that loads at 0-height makes
+     Chromium's PDF viewer pick the wrong fit-to-page zoom (page lands small and
+     toward the top) — anchoring to the sized ancestor avoids that first paint. */
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
   border: 0;
 }
 
