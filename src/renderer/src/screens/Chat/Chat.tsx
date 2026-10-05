@@ -113,6 +113,7 @@ import type {
 } from "./types";
 import { buildSessionHandoff } from "./sessionHandoff";
 import { knowledgeChangeNotice } from "./hooks/knowledgeChange";
+import { recoveryNoticeMessage } from "./recoveryEngine";
 
 import type { ContextUsage } from "./ContextGauge";
 
@@ -1727,6 +1728,18 @@ function Chat({
       // The gateway rebuilds its context on the NEXT prompt, so say so
       // rather than let the user assume the toggle applied retroactively.
       addAgentMessage(knowledgeChangeNotice(summary));
+    },
+    // Auto-recovery: the transport decides WHEN, Chat owns the switch itself
+    // (session-scoped, so the user's saved default model is not overwritten).
+    onSwitchModel: async (provider, model, baseUrl) => {
+      await modelConfig.selectModel(provider, model, baseUrl, {
+        persist: false,
+      });
+    },
+    onRecoveryNotice: (notice) => {
+      // Always tell the user: an unannounced switch looks like the app changing
+      // the model on its own.
+      addAgentMessage(recoveryNoticeMessage(notice));
     },
   });
 

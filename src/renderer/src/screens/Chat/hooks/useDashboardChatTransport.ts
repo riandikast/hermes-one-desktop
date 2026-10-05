@@ -36,6 +36,18 @@ import type {
 import type { DesktopSessionContinuationItem } from "../../../../../shared/session-continuation";
 import type { SessionModelOverride } from "../../../../../shared/model-override";
 import { knowledgeChange, knowledgeKey } from "./knowledgeChange";
+import {
+  buildRecoveryPrompt,
+  detectWedgedSubagent,
+  initialSubagentWatch,
+  nextRecoveryAction,
+} from "../recoveryEngine";
+import {
+  fallbackChainFor,
+  loadFallbackModels,
+  primaryKeyOf,
+  type FallbackModel,
+} from "../fallbackModels";
 
 /** First non-empty string field among the given keys (mirrors the adapter's
  *  canonical payload keys — gateway events vary between them). */
@@ -181,6 +193,25 @@ interface UseDashboardChatTransportArgs {
    *  session to be rebuilt on the next prompt (the agent only gains
    *  the bundle from then on, never retroactively). */
   onKnowledgeChanged?: (summary: string) => void;
+  /**
+   * Switch the active model for auto-recovery. Owned by the model config (Chat
+   * passes it in). When absent, recovery never switches models — the safe
+   * default, so no caller gets auto-switching without opting in.
+   */
+  onSwitchModel?: (
+    provider: string,
+    model: string,
+    baseUrl: string,
+  ) => Promise<void> | void;
+  /**
+   * Surface WHAT auto-recovery just did (retried / switched to X). Without a
+   * visible notice a switch looks like the app changed the model on its own.
+   */
+  onRecoveryNotice?: (notice: {
+    kind: "retried" | "switched";
+    attempt?: number;
+    model?: string;
+  }) => void;
 }
 
 interface UseDashboardChatTransportResult {
@@ -1082,6 +1113,8 @@ export function useDashboardChatTransport({
   setToolProgress,
   setUsage,
   onDashboardUnavailable,
+  onSwitchModel,
+  onRecoveryNotice,
   onKnowledgeChanged,
 }: UseDashboardChatTransportArgs): UseDashboardChatTransportResult {
   const sendTimingRef = useRef<{ send: number; started: number; submitted: boolean; firstDelta: boolean } | null>(null);
@@ -1140,6 +1173,32 @@ export function useDashboardChatTransport({
   const foreignRefreshSeqRef = useRef(0);
   const lastLocalActivityAtRef = useRef(0);
   const childTurnRef = useRef<ActiveTurn | null>(null);
+  // ── Auto-recovery bookkeeping (see recoveryEngine.ts for the rules) ──────
+  // Attempts spent on the CURRENT turn; reset when a fresh user turn starts.
+  const recoveryAttemptsRef = useRef(0);
+  // Index into the fallback chain the turn is currently running on (0=primary).
+  const recoveryChainIndexRef = useRef(0);
+  // Latches once the user presses stop. Cleared only by a NEW user turn, so a
+  // late-arriving failure can never resurrect recovery after an interrupt.
+  const recoveryCancelledRef = useRef(false);
+  // Per-episode latch: one recovery per stuck episode, so a genuinely dead run
+  // is not "Continued" every poll tick.
+  const recoveryFiredForEpisodeRef = useRef(false);
+  // Subagent no-progress tracking (id → last tool/count + when it last moved).
+  const subagentWatchRef = useRef(initialSubagentWatch());
+  // The text of the turn being recovered, captured at send time.
+  const originalPromptRef = useRef("");
+  // The chain in use, snapshotted at send time (the picker can change later).
+  const fallbackChainRef = useRef<FallbackModel[]>([]);
+  /**
+   * Indirection for runRecovery.
+   *
+   * Recovery calls `sendMessage`, but the stall watchdog that must TRIGGER it is
+   * declared long before `sendMessage` exists. Routing through a ref breaks that
+   * ordering knot: the trigger sites only need "something to call", and the
+   * real implementation is assigned once it is defined.
+   */
+  const runRecoveryRef = useRef<(fromWedge: boolean) => void>(() => undefined);
   const beginChildTurn = useCallback((): void => {
     if (!activeTurnRef.current) {
       activeTurnRef.current = {
@@ -1418,6 +1477,9 @@ export function useDashboardChatTransport({
       setToolProgress(null);
       setIsLoading(false);
       lastLocalActivityAtRef.current = Date.now();
+      // A stalled turn is a failure like any other — same recovery rules.
+      // Called through a ref: runRecovery is defined later (it needs sendMessage).
+      runRecoveryRef.current(false);
     }, TURN_STALL_TIMEOUT_MS);
   }, [clearStallTimer, setMessages, setToolProgress, setIsLoading]);
 
@@ -3253,6 +3315,11 @@ export function useDashboardChatTransport({
         activeTurnRef.current = null;
         setToolProgress(null);
         setIsLoading(false);
+        // Auto-recovery: a failed turn is the retry trigger. Guarded inside
+        // runRecovery (interrupt latch, one-per-episode, attempt cap), and a
+        // no-op when no chain/switch callback is configured. Through a ref
+        // because runRecovery is declared below (it needs sendMessage).
+        runRecoveryRef.current(false);
         return true;
       };
       if (dashboardText === null) {
@@ -3344,6 +3411,27 @@ export function useDashboardChatTransport({
         const submitText = dashboardPromptTextWithAttachmentRefs(
           promptText,
           syncedAttachments.refs,
+        );
+        // ── Auto-recovery: arm the episode ────────────────────────────────
+        // A NEW user turn clears the interrupt latch and the attempt counters.
+        // Without this reset, one earlier stop would permanently disable
+        // recovery for the rest of the session.
+        recoveryCancelledRef.current = false;
+        recoveryAttemptsRef.current = 0;
+        recoveryChainIndexRef.current = 0;
+        recoveryFiredForEpisodeRef.current = false;
+        subagentWatchRef.current = initialSubagentWatch();
+        // Remember what to replay, and which chain this turn rides. Snapshotted
+        // (not read live) so editing the picker mid-turn cannot change a
+        // recovery already in flight.
+        originalPromptRef.current = promptText;
+        fallbackChainRef.current = fallbackChainFor(
+          loadFallbackModels(),
+          primaryKeyOf(
+            providerRef.current ?? "",
+            modelBaseUrlRef.current ?? "",
+            modelRef.current ?? "",
+          ),
         );
         // Arm the stall watchdog: if the gateway never answers (provider
         // overload / dropped request), fail the turn instead of loading
@@ -3533,6 +3621,11 @@ export function useDashboardChatTransport({
 
   const abort = useCallback(() => {
     if (!enabled) return;
+    // THE interrupt guarantee: latch recovery OFF before anything else. A
+    // failure that lands after this must never trigger an automatic
+    // switch-and-resend — the app typing on the user's behalf after they
+    // pressed stop is the one outcome that must be impossible.
+    recoveryCancelledRef.current = true;
     const sessionId = runtimeSessionIdRef.current;
     // STOP receiving FIRST: close the shared streaming client so no late
     // events keep updating the transcript after the interrupt.
@@ -3578,6 +3671,109 @@ export function useDashboardChatTransport({
     lastLocalActivityAtRef.current = Date.now();
     setToolProgress(null);
   }, [clearQuietFinalize, enabled, ensureClient, profile, setIsLoading, setToolProgress]);
+
+  /**
+   * Run ONE recovery step: decide from the engine, switch the model if the
+   * engine says so, then re-send the recovery prompt.
+   *
+   * Everything that could make this dangerous is gated here rather than in the
+   * engine: the engine decides the SHAPE, this refuses to act when acting would
+   * be wrong (interrupted, already fired this episode, nothing to send).
+   */
+  const runRecovery = useCallback(
+    async (fromWedge: boolean): Promise<void> => {
+      // Interrupt is absolute — re-checked at the moment of action, not just
+      // when the trigger fired, because the user may have pressed stop during
+      // the async gap.
+      if (recoveryCancelledRef.current) return;
+      // One recovery per stuck episode.
+      if (recoveryFiredForEpisodeRef.current) return;
+      // Only recover a turn we actually started.
+      const original = originalPromptRef.current;
+      if (!original) return;
+
+      const action = nextRecoveryAction({
+        state: {
+          attempts: recoveryAttemptsRef.current,
+          chainIndex: recoveryChainIndexRef.current,
+          userCancelled: recoveryCancelledRef.current,
+          firedForEpisode: recoveryFiredForEpisodeRef.current,
+        },
+        chain: fallbackChainRef.current,
+        fromWedge,
+      });
+      if (action.kind === "give-up") return;
+      recoveryFiredForEpisodeRef.current = true;
+      recoveryAttemptsRef.current = action.attempt;
+
+      if (action.kind === "switch-model") {
+        // The switch itself lives with the model config (Chat owns it); the
+        // transport only decides WHEN. Absent callback = no auto-switch, which
+        // is the safe default for any caller that has not opted in.
+        if (!onSwitchModel) return;
+        try {
+          await onSwitchModel(
+            action.model.provider,
+            action.model.model,
+            action.model.baseUrl,
+          );
+        } catch {
+          // Could not switch (unknown provider / bad URL). Do not send on a
+          // model we failed to select — that would replay the prompt into the
+          // same broken setup.
+          return;
+        }
+        recoveryChainIndexRef.current += 1;
+        onRecoveryNotice?.({
+          kind: "switched",
+          model: action.model.label || action.model.model,
+        });
+      } else {
+        onRecoveryNotice?.({ kind: "retried", attempt: action.attempt });
+      }
+
+      // The action may have been decided a moment ago; re-check before sending.
+      if (recoveryCancelledRef.current) return;
+      await sendMessage(buildRecoveryPrompt(original));
+    },
+    [onRecoveryNotice, onSwitchModel, sendMessage],
+  );
+
+  // Publish the implementation for the trigger sites declared earlier (the
+  // stall watchdog and the fail path), which cannot reference it directly.
+  useEffect(() => {
+    runRecoveryRef.current = (fromWedge: boolean): void => {
+      void runRecovery(fromWedge);
+    };
+  }, [runRecovery]);
+
+  /**
+   * Subagent wedge watcher: a child that has been running a long time AND whose
+   * tool progress has stopped advancing is wedged. Time alone is not enough —
+   * a healthy 10-minute build must not be interrupted (see recoveryEngine).
+   */
+  useEffect(() => {
+    if (!enabled || !active) return;
+    if (activeSubagents.length === 0) {
+      // Roster empty: drop stale tracking so a finished child's old timestamp
+      // cannot later read as "quiet for ages".
+      subagentWatchRef.current = initialSubagentWatch();
+      return;
+    }
+    // Only meaningful while OUR turn is running.
+    if (!activeTurnRef.current) return;
+    const wedged = detectWedgedSubagent(
+      subagentWatchRef.current,
+      activeSubagents.map((c) => ({
+        id: c.subagent_id,
+        startedAt: c.started_at,
+        toolCount: c.tool_count,
+        lastTool: c.last_tool,
+      })),
+      Date.now(),
+    );
+    if (wedged) void runRecovery(true);
+  }, [active, activeSubagents, enabled, runRecovery]);
 
   useEffect(
     () => () => {
