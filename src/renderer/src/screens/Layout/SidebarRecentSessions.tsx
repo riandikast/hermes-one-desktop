@@ -22,7 +22,7 @@ import {
   Bot,
   Plus,
 } from "../../assets/icons";
-import { Bell, BellOff, Users } from "lucide-react";
+import { Bell, BellOff, Check, Users } from "lucide-react";
 import ProfileAvatar from "../../components/common/ProfileAvatar";
 import { CreateGroupChatModal } from "../../components/CreateGroupChatModal";
 import SidebarSessionMenu, {
@@ -35,12 +35,21 @@ import {
   setProjectAlias,
   useProjectAliases,
 } from "./projectAliases";
+import {
+  setProjectSort,
+  sortProjectGroups,
+  useProjectSort,
+  type ProjectSort,
+} from "./projectSort";
 
 interface RecentSession {
   id: string;
   title: string;
   contextFolder?: string | null;
   contextFolders?: string[];
+  /** Session start time (ms). Sessions arrive newest-first from the cache, so
+   *  the first entry in a project group is that project's latest activity. */
+  startedAt?: number;
   /** Set for subagent/branch runs — hidden from the default list. */
   parentSessionId?: string | null;
 }
@@ -211,7 +220,10 @@ function sameSessions(a: RecentSession[], b: RecentSession[]): boolean {
     if (
       a[i].id !== b[i].id ||
       a[i].title !== b[i].title ||
-      folderA !== folderB
+      folderA !== folderB ||
+      // Recency feeds the "sort by last update" order, so a changed timestamp
+      // must count as a change or the groups would not re-order.
+      a[i].startedAt !== b[i].startedAt
     ) {
       return false;
     }
@@ -224,6 +236,8 @@ function groupSessionsByWorkspace(sessions: RecentSession[]): {
     path: string;
     name: string;
     sessions: RecentSession[];
+    /** Newest session time in the group — 0 when no session reports one. */
+    latestAt: number;
   }>;
   chats: RecentSession[];
 } {
@@ -247,6 +261,12 @@ function groupSessionsByWorkspace(sessions: RecentSession[]): {
       path,
       name: projectDisplayName(path),
       sessions: list,
+      // Sessions arrive newest-first, but take the MAX rather than list[0] so
+      // the recency signal can't depend on the array staying pre-sorted.
+      latestAt: list.reduce(
+        (max, s) => Math.max(max, s.startedAt ?? 0),
+        0,
+      ),
     })),
     chats,
   };
@@ -471,6 +491,12 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
     x: number;
     y: number;
   } | null>(null);
+  // Context menu for the "Projects" SECTION HEADING (right-click) — currently
+  // just the sort order. Separate from `projectMenu`, which is per-project.
+  const [projectsSectionMenu, setProjectsSectionMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   // Inline project rename: the folder path being edited and its working alias.
   const [editingProjectPath, setEditingProjectPath] = useState<string | null>(
     null,
@@ -540,6 +566,7 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
         title: string;
         contextFolder?: string | null;
         contextFolders?: string[];
+        startedAt?: number;
         parentSessionId?: string | null;
       }>,
       limit?: number,
@@ -556,6 +583,7 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
             title,
             contextFolder,
             contextFolders,
+            startedAt,
             parentSessionId,
           }) => {
             const folder =
@@ -571,6 +599,7 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
                 : folder
                   ? [folder]
                   : [],
+              startedAt: typeof startedAt === "number" ? startedAt : undefined,
               parentSessionId: parentSessionId ?? null,
             };
           },
@@ -936,6 +965,13 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
       groupSessionsByWorkspace(sessions.filter((s) => !pinnedIds.has(s.id))),
     [sessions, pinnedIds, projectAliasesVersion],
   );
+  // Ordering of the Projects section (right-click the "Projects" heading to
+  // change it). Persisted in localStorage, so it survives an app restart.
+  const projectSort = useProjectSort();
+  const sortedProjectGroups = useMemo(
+    () => sortProjectGroups(projectGroups, projectSort),
+    [projectGroups, projectSort],
+  );
 
   // Session search (the magnifier next to the collapse toggle): filters every
   // section by title or context folder, case-insensitively.
@@ -962,11 +998,11 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
   const filteredGroups = useMemo(
     () =>
       q
-        ? projectGroups
+        ? sortedProjectGroups
             .map((g) => ({ ...g, sessions: g.sessions.filter(matchesQuery) }))
             .filter((g) => g.sessions.length > 0)
-        : projectGroups,
-    [projectGroups, q],
+        : sortedProjectGroups,
+    [sortedProjectGroups, q],
   );
   const noMatches = q && filteredChats.length === 0 && filteredPinned.length === 0 && filteredGroups.length === 0;
   // Auto-focus on open; clear the query when closed.
@@ -1137,6 +1173,19 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
     document.addEventListener("mousedown", onMouseDown);
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, [projectMenu]);
+
+  // Dismiss the Projects-heading menu the same way.
+  useEffect(() => {
+    if (!projectsSectionMenu) return;
+    const onMouseDown = (e: MouseEvent): void => {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest(".sidebar-project-sort-menu")) {
+        setProjectsSectionMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [projectsSectionMenu]);
 
   const handleMoveToProject = useCallback(
     async (id: string, folder: string | null): Promise<void> => {
@@ -1752,6 +1801,12 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
               type="button"
               className="sidebar-recent-section-toggle"
               onClick={toggleProjects}
+              onContextMenu={(e) => {
+                // Right-click the heading to choose the project sort order.
+                e.preventDefault();
+                setProjectMenu(null);
+                setProjectsSectionMenu({ x: e.clientX, y: e.clientY });
+              }}
               aria-expanded={effectiveProjectsOpen}
               tabIndex={expanded ? 0 : -1}
             >
@@ -2001,6 +2056,46 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
                 targetPathCount(projectMenu.path, chats, pinnedSessions, projectGroups)
               })
             </button>
+          </div>,
+          document.body,
+        )}
+      {expanded &&
+        projectsSectionMenu &&
+        createPortal(
+          <div
+            className="sidebar-project-rename-menu sidebar-project-sort-menu"
+            style={{ left: projectsSectionMenu.x, top: projectsSectionMenu.y }}
+            role="menu"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sidebar-project-sort-title">
+              {t("navigation.sortProjects")}
+            </div>
+            {(
+              [
+                ["name", t("navigation.sortByName")],
+                ["updated", t("navigation.sortByUpdated")],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="menuitemradio"
+                aria-checked={projectSort === value}
+                className={`sidebar-project-sort-item ${
+                  projectSort === value ? "active" : ""
+                }`}
+                onClick={() => {
+                  setProjectSort(value as ProjectSort);
+                  setProjectsSectionMenu(null);
+                }}
+              >
+                <span className="sidebar-project-sort-item-label">{label}</span>
+                {projectSort === value && (
+                  <Check size={13} aria-hidden />
+                )}
+              </button>
+            ))}
           </div>,
           document.body,
         )}

@@ -1,0 +1,209 @@
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  getProjectSort,
+  setProjectSort,
+  sortProjectGroups,
+} from "./projectSort";
+// The web tsconfig deliberately excludes node types, so importing node:fs
+// directly fails typecheck. chatWiring.test.ts uses the same escape hatch; read
+// the sidebar source for the WIRING assertions below.
+// @ts-expect-error -- node types are intentionally outside the web tsconfig
+const nodeModule = (await import("node:module")) as unknown as {
+  createRequire: (url: string) => (id: string) => {
+    readFileSync: (path: string, encoding: string) => string;
+  };
+};
+
+/**
+ * Projects-section ordering. Two things matter: "last updated" must order by the
+ * NEWEST session in each project (so a project rises when any of its sessions is
+ * used), and the order must be STABLE — equal keys must not shuffle between
+ * renders.
+ */
+
+const group = (
+  path: string,
+  name: string,
+  latestAt: number,
+): { path: string; name: string; latestAt: number } => ({
+  path,
+  name,
+  latestAt,
+});
+
+beforeEach(() => {
+  localStorage.clear();
+});
+
+describe("sortProjectGroups", () => {
+  it("sorts by name, case-insensitively", () => {
+    const groups = [
+      group("c", "zeta", 10),
+      group("a", "Alpha", 20),
+      group("b", "beta", 30),
+    ];
+    expect(sortProjectGroups(groups, "name").map((g) => g.name)).toEqual([
+      "Alpha",
+      "beta",
+      "zeta",
+    ]);
+  });
+
+  it("sorts by name with numeric awareness (v2 before v10)", () => {
+    const groups = [group("a", "proj v10", 1), group("b", "proj v2", 1)];
+    expect(sortProjectGroups(groups, "name").map((g) => g.name)).toEqual([
+      "proj v2",
+      "proj v10",
+    ]);
+  });
+
+  it("sorts by last update, newest project first", () => {
+    const groups = [
+      group("a", "alpha", 100),
+      group("b", "beta", 300),
+      group("c", "gamma", 200),
+    ];
+    expect(sortProjectGroups(groups, "updated").map((g) => g.name)).toEqual([
+      "beta",
+      "gamma",
+      "alpha",
+    ]);
+  });
+
+  it("a project rises when ANY of its sessions is newest", () => {
+    // "old" holds the globally newest session, so it must lead — even though its
+    // other session is the oldest of all. This is the "one of the session is the
+    // latest among other project" rule.
+    const groups = [
+      group("new", "new", 900),
+      group("old", "old", 5000),
+    ];
+    expect(sortProjectGroups(groups, "updated").map((g) => g.name)).toEqual([
+      "old",
+      "new",
+    ]);
+  });
+
+  it("breaks ties by name so the order is stable", () => {
+    // Equal timestamps (e.g. a batch of sessions sharing one start time) must
+    // not shuffle between renders.
+    const groups = [
+      group("c", "gamma", 42),
+      group("a", "alpha", 42),
+      group("b", "beta", 42),
+    ];
+    expect(sortProjectGroups(groups, "updated").map((g) => g.name)).toEqual([
+      "alpha",
+      "beta",
+      "gamma",
+    ]);
+    // Same input, same output — and the input array is not mutated.
+    expect(sortProjectGroups(groups, "updated").map((g) => g.name)).toEqual([
+      "alpha",
+      "beta",
+      "gamma",
+    ]);
+    expect(groups.map((g) => g.name)).toEqual(["gamma", "alpha", "beta"]);
+  });
+
+  it("breaks name ties by recency", () => {
+    const groups = [
+      group("a", "same", 10),
+      group("b", "same", 99),
+    ];
+    expect(sortProjectGroups(groups, "name").map((g) => g.latestAt)).toEqual([
+      99, 10,
+    ]);
+  });
+
+  it("treats a project with no timestamp as oldest", () => {
+    const groups = [group("a", "alpha", 0), group("b", "beta", 5)];
+    expect(sortProjectGroups(groups, "updated").map((g) => g.name)).toEqual([
+      "beta",
+      "alpha",
+    ]);
+  });
+});
+
+describe("project sort persistence", () => {
+  it("defaults to last-updated", () => {
+    expect(getProjectSort()).toBe("updated");
+  });
+
+  it("round-trips a choice through localStorage", () => {
+    setProjectSort("name");
+    expect(getProjectSort()).toBe("name");
+    expect(localStorage.getItem("hermes.sidebar.projectSort")).toBe("name");
+  });
+
+  it("ignores a corrupt stored value and falls back", () => {
+    localStorage.setItem("hermes.sidebar.projectSort", "bogus");
+    expect(getProjectSort()).toBe("updated");
+  });
+
+  it("survives a remount (value is read from storage, not memory)", () => {
+    setProjectSort("name");
+    // A fresh read models the next app launch.
+    expect(getProjectSort()).toBe("name");
+  });
+});
+
+describe("SidebarRecentSessions wiring", () => {
+  // Read the component source: these are WIRING facts (does the UI actually
+  // call the sorter, is the timestamp carried through) that a pure-logic test
+  // cannot see.
+  const source = nodeModule
+    .createRequire(import.meta.url)("node:fs")
+    .readFileSync(
+      "src/renderer/src/screens/Layout/SidebarRecentSessions.tsx",
+      "utf8",
+    );
+
+  it("carries session recency through the normalizer", () => {
+    // Without startedAt surviving normalizeRows, "last updated" could only ever
+    // see zeros and the sort would silently do nothing.
+    expect(source).toContain("startedAt?: number");
+    expect(source).toMatch(/startedAt:\s*typeof startedAt === "number"/);
+  });
+
+  it("derives each project's recency from its NEWEST session", () => {
+    // The max (not list[0]) so the order does not depend on the array arriving
+    // pre-sorted.
+    expect(source).toMatch(/latestAt:\s*list\.reduce/);
+    expect(source).toContain("Math.max(max, s.startedAt ?? 0)");
+  });
+
+  it("sorts the groups it actually renders", () => {
+    expect(source).toContain("sortProjectGroups(projectGroups, projectSort)");
+    // filteredGroups feeds the render. When there is no search it must BE the
+    // sorted array — not the raw projectGroups, which would silently undo the
+    // preference.
+    const idx = source.indexOf("const filteredGroups");
+    expect(idx).toBeGreaterThan(-1);
+    const block = source.slice(idx, idx + 400);
+    expect(block).toContain("sortedProjectGroups");
+    expect(block).not.toMatch(/:\s*projectGroups,/);
+  });
+
+  it("exposes the sort menu on right-click of the Projects heading", () => {
+    // Anchor on the Projects section heading itself: it renders the projects
+    // label, and the toggle directly above it carries the right-click handler.
+    const labelIdx = source.indexOf('{t("navigation.projects")}');
+    expect(labelIdx).toBeGreaterThan(-1);
+    const before = source.slice(Math.max(0, labelIdx - 700), labelIdx);
+    expect(before).toContain("sidebar-recent-section-toggle");
+    expect(before).toContain("onContextMenu");
+    expect(before).toContain("setProjectsSectionMenu");
+    // And choosing an option persists it.
+    expect(source).toContain("setProjectSort(value");
+  });
+
+  it("detects a changed timestamp so re-orders actually reach the UI", () => {
+    // sameSessions short-circuits state updates; if startedAt were excluded, a
+    // session that only bumped its time would never re-sort the list.
+    const sameIdx = source.indexOf("function sameSessions");
+    const block = source.slice(sameIdx, sameIdx + 700);
+    expect(block).toContain("startedAt");
+  });
+});

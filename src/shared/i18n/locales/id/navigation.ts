@@ -3,6 +3,9 @@ export default {
   newChat: "Obrolan Baru",
   sessions: "Sesi",
   projects: "Proyek",
+  sortProjects: "Urutkan proyek",
+  sortByName: "Nama",
+  sortByUpdated: "Terakhir diperbarui",
   chats: "Obrolan",
   noChats: "Tidak ada obrolan",
 
