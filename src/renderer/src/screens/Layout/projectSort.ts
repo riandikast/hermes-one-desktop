@@ -16,6 +16,21 @@ import { useSyncExternalStore } from "react";
 export type ProjectSort = "name" | "updated";
 
 const SORT_KEY = "hermes.sidebar.projectSort";
+/**
+ * Remembered recency per project.
+ *
+ * The Projects section is built from the LOADED sessions — a paginated window
+ * (30 at a time) of a globally recency-sorted list. So a project whose sessions
+ * fall outside that window is represented by whichever one session happened to
+ * be inside it, and its recency reads as "just now" even when its next-newest
+ * session is far older. That made a project look like a one-session project
+ * permanently pinned to the top.
+ *
+ * Recording the newest time we have ever SEEN for a project means the sort keeps
+ * a truthful value once a project has been observed, instead of degrading to
+ * "whatever is loaded right now".
+ */
+const RECENCY_KEY = "hermes.sidebar.projectRecency";
 
 // Listeners fired on every change (local writes and cross-tab `storage`
 // events). The snapshot is the sort value itself — a primitive string, which
@@ -53,6 +68,77 @@ export function subscribeProjectSort(listener: () => void): () => void {
   return () => {
     listeners.delete(listener);
   };
+}
+
+// ── Remembered project recency ────────────────────────────────────────────
+
+function readRecency(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(RECENCY_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: Record<string, number> = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === "number" && Number.isFinite(value)) out[key] = value;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Fold the recency of the currently-loaded groups into the stored map.
+ *
+ * Only ever moves a timestamp FORWARD (max), so scrolling a project's older
+ * sessions into view can never make it look less recent than it was.
+ * Returns the merged map; writes only when something actually changed.
+ */
+export function rememberProjectRecency(
+  groups: ReadonlyArray<{ path: string; latestAt: number }>,
+): Record<string, number> {
+  const stored = readRecency();
+  let changed = false;
+  for (const group of groups) {
+    if (group.latestAt <= 0) continue;
+    const previous = stored[group.path] ?? 0;
+    if (group.latestAt > previous) {
+      stored[group.path] = group.latestAt;
+      changed = true;
+    }
+  }
+  if (changed) {
+    try {
+      localStorage.setItem(RECENCY_KEY, JSON.stringify(stored));
+    } catch {
+      /* ignore persistence failures (quota / private mode) */
+    }
+  }
+  return stored;
+}
+
+export function getProjectRecency(): Record<string, number> {
+  return readRecency();
+}
+
+/**
+ * Replace each group's `latestAt` with the newest value ever observed for it.
+ *
+ * This is the fix for "the project sorts by whatever one session is loaded":
+ * a group's own `latestAt` is only as good as the current window, so the
+ * remembered value wins whenever it is larger. A project never before seen
+ * keeps its own value (and gets remembered on the next fold).
+ */
+export function applyRememberedRecency<
+  T extends { path: string; latestAt: number },
+>(groups: T[], remembered: Record<string, number>): T[] {
+  return groups.map((group) => {
+    const known = remembered[group.path];
+    return known !== undefined && known > group.latestAt
+      ? { ...group, latestAt: known }
+      : group;
+  });
 }
 
 export function getProjectSortSnapshot(): ProjectSort {

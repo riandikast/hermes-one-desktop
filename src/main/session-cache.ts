@@ -30,6 +30,16 @@ export interface CachedSession {
   id: string;
   title: string;
   startedAt: number;
+  /**
+   * When the session was last USED — the newest message timestamp.
+   *
+   * Distinct from `startedAt`, which is when the session was OPENED. A session
+   * begun in the morning and used all day reports the morning for startedAt, so
+   * ordering by it makes "last updated" mean "last started", not "last used".
+   * Falls back to `startedAt` when the session has no messages (or the DB has
+   * no messages table yet), so it is never 0 for a real session.
+   */
+  lastActiveAt: number;
   source: string;
   messageCount: number;
   model: string;
@@ -140,6 +150,42 @@ function hasParentSessionColumn(db: Database.Database): boolean {
   return cacheHasParentColumn;
 }
 
+/**
+ * Newest message timestamp per session — the session's LAST ACTIVITY.
+ *
+ * One batched query rather than per-row reads (the same reasoning as
+ * `attachContextFolders`). Guarded: a state.db without a `messages` table (or
+ * without `timestamp`) yields an empty map, and callers fall back to
+ * `startedAt` — so a schema surprise degrades the ordering signal instead of
+ * breaking the sync.
+ */
+export function lastActivityBySession(
+  db: Database.Database,
+  ids: string[],
+): Map<string, number> {
+  const out = new Map<string, number>();
+  if (ids.length === 0) return out;
+  try {
+    const placeholders = ids.map(() => "?").join(",");
+    const rows = db
+      .prepare(
+        `SELECT session_id, MAX(timestamp) AS last_at
+           FROM messages
+          WHERE session_id IN (${placeholders})
+          GROUP BY session_id`,
+      )
+      .all(...ids) as Array<{ session_id: string; last_at: number | null }>;
+    for (const row of rows) {
+      if (typeof row.last_at === "number" && Number.isFinite(row.last_at)) {
+        out.set(row.session_id, row.last_at);
+      }
+    }
+  } catch {
+    // No messages table / no timestamp column — fall back to started_at.
+  }
+  return out;
+}
+
 // Attach each session's linked folder in a single batched store read, so a
 // full sync stays a couple of queries rather than two per row. The result is
 // written into the JSON cache by `syncSessionCache`, which lets the renderer's
@@ -231,6 +277,9 @@ export function syncSessionCache(): CachedSession[] {
         id: row.id,
         title,
         startedAt: row.started_at,
+        // Overwritten by the batched last-activity pass below; start time is the
+        // correct fallback for a session with no messages yet.
+        lastActiveAt: row.started_at,
         source: row.source,
         messageCount: row.message_count,
         model: row.model || "",
@@ -285,7 +334,25 @@ export function syncSessionCache(): CachedSession[] {
     for (const s of cache.sessions) merged.set(s.id, s);
     for (const s of newSessions) merged.set(s.id, s);
     const allSessions = attachContextFolders(Array.from(merged.values()));
-    allSessions.sort((a, b) => b.startedAt - a.startedAt);
+
+    // Last activity: one batched MAX(timestamp) over the merged id set. A
+    // session that is still accumulating messages keeps advancing, so this must
+    // run on EVERY sync (not just for new rows) or a long session would freeze
+    // at the activity time it had when first cached.
+    const activity = lastActivityBySession(
+      db,
+      allSessions.map((s) => s.id),
+    );
+    for (const session of allSessions) {
+      // Falls back to startedAt so the field is never 0/undefined for a real
+      // session (an empty session has no messages to max over).
+      session.lastActiveAt = activity.get(session.id) ?? session.startedAt;
+    }
+
+    // Sort by LAST ACTIVITY, not start: the sidebar's "last updated" ordering
+    // reads the first entry of each project, and a session opened this morning
+    // but used all day belongs near the top.
+    allSessions.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
 
     const updated: CacheData = {
       sessions: allSessions,

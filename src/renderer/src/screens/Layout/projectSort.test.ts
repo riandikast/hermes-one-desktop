@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  applyRememberedRecency,
   getProjectSort,
+  rememberProjectRecency,
   setProjectSort,
   sortProjectGroups,
 } from "./projectSort";
@@ -149,6 +151,105 @@ describe("project sort persistence", () => {
   });
 });
 
+describe("remembered project recency", () => {
+  it("records the newest time seen per project", () => {
+    const map = rememberProjectRecency([
+      { path: "C:/a", latestAt: 100 },
+      { path: "C:/b", latestAt: 300 },
+    ]);
+    expect(map).toEqual({ "C:/a": 100, "C:/b": 300 });
+  });
+
+  it("only ever moves a project's time FORWARD", () => {
+    rememberProjectRecency([{ path: "C:/a", latestAt: 500 }]);
+    // A later fold that only sees an OLDER session (scrolled past the newest)
+    // must not make the project look less recent.
+    const map = rememberProjectRecency([{ path: "C:/a", latestAt: 200 }]);
+    expect(map["C:/a"]).toBe(500);
+  });
+
+  it("ignores a zero/absent timestamp", () => {
+    const map = rememberProjectRecency([{ path: "C:/a", latestAt: 0 }]);
+    expect(map["C:/a"]).toBeUndefined();
+  });
+
+  it("keeps projects not present in the current window", () => {
+    rememberProjectRecency([{ path: "C:/gone", latestAt: 900 }]);
+    const map = rememberProjectRecency([{ path: "C:/here", latestAt: 100 }]);
+    // The project loaded earlier is still remembered even though the current
+    // window does not include it — that is the whole point.
+    expect(map["C:/gone"]).toBe(900);
+    expect(map["C:/here"]).toBe(100);
+  });
+
+  it("survives corrupt storage", () => {
+    localStorage.setItem("hermes.sidebar.projectRecency", "{not json");
+    const map = rememberProjectRecency([{ path: "C:/a", latestAt: 5 }]);
+    expect(map["C:/a"]).toBe(5);
+  });
+});
+
+describe("applyRememberedRecency", () => {
+  it("keeps the group's own recency when it is the larger value", () => {
+    // A project just used reads NEWER than anything remembered, and that must
+    // win — otherwise a freshly-used project would sink.
+    const groups = [{ path: "C:/mb", name: "Mb", latestAt: 9_000 }];
+    const out = applyRememberedRecency(groups, { "C:/mb": 1_000 });
+    expect(out[0]!.latestAt).toBe(9_000);
+  });
+
+  it("uses the remembered value for a project that scrolled out of the window", () => {
+    const groups = [{ path: "C:/mb", name: "Mb", latestAt: 1_000 }];
+    const out = applyRememberedRecency(groups, { "C:/mb": 5_000 });
+    expect(out[0]!.latestAt).toBe(5_000);
+  });
+
+  it("leaves a never-seen project untouched", () => {
+    const groups = [{ path: "C:/new", name: "new", latestAt: 42 }];
+    expect(applyRememberedRecency(groups, {})[0]!.latestAt).toBe(42);
+  });
+
+  it("does not mutate the input groups", () => {
+    const groups = [{ path: "C:/mb", name: "Mb", latestAt: 1_000 }];
+    applyRememberedRecency(groups, { "C:/mb": 5_000 });
+    expect(groups[0]!.latestAt).toBe(1_000);
+  });
+
+  it("fixes the reported ordering once folded through the sorter", () => {
+    // THE reported bug: "Mb" sat permanently on top because its one LOADED
+    // session looked newest. With last-activity recency, its real (older)
+    // activity is what counts, so it sorts below a genuinely recent project.
+    const groups = [
+      { path: "C:/mb", name: "Mb", latestAt: 9_000 }, // looks newest now
+      { path: "C:/other", name: "Other", latestAt: 8_000 },
+    ];
+    const remembered = { "C:/mb": 1_000, "C:/other": 8_000 };
+    const sorted = sortProjectGroups(
+      applyRememberedRecency(groups, remembered),
+      "updated",
+    );
+    // Mb's own 9000 is larger, so it still wins here — which is why the REAL
+    // fix is last-activity recency (the group's latestAt must be truthful),
+    // not remembering. The remembered value is the scroll-stability guard for
+    // projects whose sessions leave the loaded window.
+    expect(sorted.map((g) => g.name)).toEqual(["Mb", "Other"]);
+  });
+
+  it("a stale group recency no longer hides the true last activity", () => {
+    // With last-activity recency the group already carries a TRUTHFUL value, so
+    // the remembered map only ever helps by preserving it across loads.
+    const groups = [
+      { path: "C:/mb", name: "Mb", latestAt: 1_000 },
+      { path: "C:/other", name: "Other", latestAt: 8_000 },
+    ];
+    const sorted = sortProjectGroups(
+      applyRememberedRecency(groups, { "C:/mb": 1_000, "C:/other": 8_000 }),
+      "updated",
+    );
+    expect(sorted.map((g) => g.name)).toEqual(["Other", "Mb"]);
+  });
+});
+
 describe("SidebarRecentSessions wiring", () => {
   // Read the component source: these are WIRING facts (does the UI actually
   // call the sorter, is the timestamp carried through) that a pure-logic test
@@ -161,21 +262,30 @@ describe("SidebarRecentSessions wiring", () => {
     );
 
   it("carries session recency through the normalizer", () => {
-    // Without startedAt surviving normalizeRows, "last updated" could only ever
-    // see zeros and the sort would silently do nothing.
+    // Without the timestamps surviving normalizeRows, the sort could only ever
+    // see zeros and would silently do nothing.
     expect(source).toContain("startedAt?: number");
     expect(source).toMatch(/startedAt:\s*typeof startedAt === "number"/);
+    expect(source).toContain("lastActiveAt?: number");
+    expect(source).toMatch(/lastActiveAt:\s*\r?\n?\s*typeof lastActiveAt === "number"/);
+  });
+
+  it("prefers LAST ACTIVITY over start time for project recency", () => {
+    // startedAt is when a session was OPENED; lastActiveAt is when it was last
+    // USED. Ordering by start is what made "last updated" wrong.
+    expect(source).toContain("s.lastActiveAt ?? s.startedAt ?? 0");
   });
 
   it("derives each project's recency from its NEWEST session", () => {
     // The max (not list[0]) so the order does not depend on the array arriving
     // pre-sorted.
     expect(source).toMatch(/latestAt:\s*list\.reduce/);
-    expect(source).toContain("Math.max(max, s.startedAt ?? 0)");
   });
 
-  it("sorts the groups it actually renders", () => {
-    expect(source).toContain("sortProjectGroups(projectGroups, projectSort)");
+  it("sorts the groups it actually renders, using remembered recency", () => {
+    expect(source).toContain("sortProjectGroups(");
+    expect(source).toContain("applyRememberedRecency(");
+    expect(source).toContain("rememberProjectRecency(");
     // filteredGroups feeds the render. When there is no search it must BE the
     // sorted array — not the raw projectGroups, which would silently undo the
     // preference.

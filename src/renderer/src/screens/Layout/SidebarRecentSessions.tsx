@@ -36,6 +36,8 @@ import {
   useProjectAliases,
 } from "./projectAliases";
 import {
+  applyRememberedRecency,
+  rememberProjectRecency,
   setProjectSort,
   sortProjectGroups,
   useProjectSort,
@@ -50,6 +52,12 @@ interface RecentSession {
   /** Session start time (ms). Sessions arrive newest-first from the cache, so
    *  the first entry in a project group is that project's latest activity. */
   startedAt?: number;
+  /**
+   * When the session was last USED (newest message time). This is the recency
+   * signal the Projects sort uses — `startedAt` is when the session was opened,
+   * which reads wrong for a session used long after it was created.
+   */
+  lastActiveAt?: number;
   /** Set for subagent/branch runs — hidden from the default list. */
   parentSessionId?: string | null;
 }
@@ -223,7 +231,8 @@ function sameSessions(a: RecentSession[], b: RecentSession[]): boolean {
       folderA !== folderB ||
       // Recency feeds the "sort by last update" order, so a changed timestamp
       // must count as a change or the groups would not re-order.
-      a[i].startedAt !== b[i].startedAt
+      a[i].startedAt !== b[i].startedAt ||
+      a[i].lastActiveAt !== b[i].lastActiveAt
     ) {
       return false;
     }
@@ -263,8 +272,10 @@ function groupSessionsByWorkspace(sessions: RecentSession[]): {
       sessions: list,
       // Sessions arrive newest-first, but take the MAX rather than list[0] so
       // the recency signal can't depend on the array staying pre-sorted.
+      // Prefer LAST ACTIVITY (when the session was last used) over start time:
+      // a session opened in the morning but used all day belongs near the top.
       latestAt: list.reduce(
-        (max, s) => Math.max(max, s.startedAt ?? 0),
+        (max, s) => Math.max(max, s.lastActiveAt ?? s.startedAt ?? 0),
         0,
       ),
     })),
@@ -567,6 +578,7 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
         contextFolder?: string | null;
         contextFolders?: string[];
         startedAt?: number;
+        lastActiveAt?: number;
         parentSessionId?: string | null;
       }>,
       limit?: number,
@@ -584,6 +596,7 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
             contextFolder,
             contextFolders,
             startedAt,
+            lastActiveAt,
             parentSessionId,
           }) => {
             const folder =
@@ -600,6 +613,8 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
                   ? [folder]
                   : [],
               startedAt: typeof startedAt === "number" ? startedAt : undefined,
+              lastActiveAt:
+                typeof lastActiveAt === "number" ? lastActiveAt : undefined,
               parentSessionId: parentSessionId ?? null,
             };
           },
@@ -968,10 +983,16 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
   // Ordering of the Projects section (right-click the "Projects" heading to
   // change it). Persisted in localStorage, so it survives an app restart.
   const projectSort = useProjectSort();
-  const sortedProjectGroups = useMemo(
-    () => sortProjectGroups(projectGroups, projectSort),
-    [projectGroups, projectSort],
-  );
+  // Recency is remembered across loads: a project's latestAt can only be seen
+  // through the LOADED window, so without this a project whose sessions fall
+  // outside that window sorts by whatever one session happened to be in it.
+  const sortedProjectGroups = useMemo(() => {
+    const remembered = rememberProjectRecency(projectGroups);
+    return sortProjectGroups(
+      applyRememberedRecency(projectGroups, remembered),
+      projectSort,
+    );
+  }, [projectGroups, projectSort]);
 
   // Session search (the magnifier next to the collapse toggle): filters every
   // section by title or context folder, case-insensitively.

@@ -996,6 +996,9 @@ interface HermesAPI {
       id: string;
       title: string;
       startedAt: number;
+      /** Newest message time — when the session was last USED (falls back to
+       *  startedAt for a session with no messages). */
+      lastActiveAt: number;
       source: string;
       messageCount: number;
       model: string;
@@ -1008,6 +1011,7 @@ interface HermesAPI {
       id: string;
       title: string;
       startedAt: number;
+      lastActiveAt: number;
       source: string;
       messageCount: number;
       model: string;

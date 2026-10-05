@@ -268,6 +268,9 @@ function normalizeCachedSession(row: RemoteRecord): CachedSession {
     id: summary.id,
     title: summary.title ?? sessionTitle(row, summary.id),
     startedAt: summary.startedAt,
+    // The remote record reports `last_active` when it has one; otherwise fall
+    // back to the start time (same semantics as the local cache).
+    lastActiveAt: numberValue(row.last_active, summary.startedAt),
     source: summary.source,
     messageCount: summary.messageCount,
     model: summary.model,

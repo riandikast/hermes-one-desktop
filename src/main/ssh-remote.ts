@@ -3401,6 +3401,11 @@ export async function sshListCachedSessions(
     id: s.id,
     title: s.title || s.id,
     startedAt: s.startedAt,
+    // The SSH session query selects session columns only — no per-session
+    // MAX(message timestamp) — so last activity is not available over SSH.
+    // Fall back to the start time, which is what this path ordered by before,
+    // so remote ordering is unchanged rather than wrong.
+    lastActiveAt: s.startedAt,
     source: s.source,
     messageCount: s.messageCount,
     model: s.model,
