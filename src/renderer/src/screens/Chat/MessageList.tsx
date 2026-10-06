@@ -357,21 +357,27 @@ function buildRows(
  * its layout is settled before it can be virtualized (no height-snap drift).
  * Fork keeps the same buildRows + row components; only the windowing changes.
  */
-export function PinnedMessagesBar({
-  messages,
-  onUnpin,
-  className,
+/**
+ * The full-text reader for a pinned message.
+ *
+ * Deliberately its OWN component, NOT rendered inside the pinned bar: the bar
+ * lives in `.chat-pinned-float`, which is `position: absolute`. An absolutely
+ * positioned ancestor becomes the containing block for `position: fixed`
+ * descendants, so a FloatingDialog nested in the bar resolved its `inset: 0`
+ * overlay against the bar's ~360px box instead of the window — the reported
+ * "side mini dialog" instead of the same centered reader the last-prompt chip
+ * shows. The host mounts this at its own level (a sibling of the scrollport),
+ * where the overlay can reach the viewport.
+ */
+export function PinnedMessageReader({
+  message,
+  onClose,
 }: {
-  messages: ChatBubbleMessage[];
-  onUnpin: (id: string) => void;
-  /** Extra class for a host that positions it differently (the floating
-   *  top-right mount in Chat vs. the in-flow list placement). */
-  className?: string;
-}): React.JSX.Element {
-  const [collapsed, setCollapsed] = useState(false);
-  // Which pinned message is open in the full-text reader dialog (null = none).
-  const [openId, setOpenId] = useState<string | null>(null);
-  // "Copied" acknowledgement per open dialog, so the button reflects the action.
+  /** The pinned message to read, or null when the reader is closed. */
+  message: ChatBubbleMessage | null;
+  onClose: () => void;
+}): React.JSX.Element | null {
+  // "Copied" acknowledgement, so the button reflects the action for a moment.
   const [copied, setCopied] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -382,20 +388,16 @@ export function PinnedMessagesBar({
     [],
   );
 
-  const openMessage = openId
-    ? (messages.find((m) => m.id === openId) ?? null)
-    : null;
-  const openFull = String(openMessage?.content ?? "").trim();
+  // A new message resets the acknowledgement rather than inheriting the
+  // previous one's.
+  useEffect(() => setCopied(false), [message?.id]);
 
-  const closeReader = useCallback(() => {
-    setOpenId(null);
-    setCopied(false);
-  }, []);
+  const full = String(message?.content ?? "").trim();
 
   const handleCopy = useCallback(async () => {
-    if (!openFull) return;
+    if (!full) return;
     try {
-      await window.hermesAPI.copyToClipboard(openFull);
+      await window.hermesAPI.copyToClipboard(full);
       setCopied(true);
       if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
       copyTimerRef.current = setTimeout(() => {
@@ -405,7 +407,55 @@ export function PinnedMessagesBar({
     } catch {
       // Clipboard write can fail in some environments; leave the button as-is.
     }
-  }, [openFull]);
+  }, [full]);
+
+  if (!message) return null;
+
+  return (
+    <FloatingDialog
+      open
+      onClose={onClose}
+      title={message.role === "user" ? "Pinned — You" : "Pinned — Hermes"}
+      size="wide"
+      className="last-prompt-dialog pinned-reader-dialog"
+    >
+      <div className="chat-last-prompt-dialog">
+        <div className="chat-last-prompt-dialog-head">
+          <span className="chat-last-prompt-dialog-label">Message</span>
+          <button
+            type="button"
+            className="chat-last-prompt-dialog-copy"
+            onClick={handleCopy}
+            title={copied ? "Copied!" : "Copy message"}
+            aria-label={copied ? "Copied!" : "Copy message"}
+          >
+            {copied ? <Check size={13} /> : <Copy size={13} />}
+            <span>{copied ? "Copied" : "Copy"}</span>
+          </button>
+        </div>
+        <pre className="chat-last-prompt-dialog-body">{full}</pre>
+      </div>
+    </FloatingDialog>
+  );
+}
+
+export function PinnedMessagesBar({
+  messages,
+  onUnpin,
+  onOpenMessage,
+  className,
+}: {
+  messages: ChatBubbleMessage[];
+  onUnpin: (id: string) => void;
+  /** Ask the HOST to open the reader — it renders the dialog at its own level
+   *  (see PinnedMessageReader) so the overlay is not trapped in this bar's
+   *  absolutely-positioned box. */
+  onOpenMessage?: (id: string) => void;
+  /** Extra class for a host that positions it differently (the floating
+   *  top-right mount in Chat vs. the in-flow list placement). */
+  className?: string;
+}): React.JSX.Element {
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
     <div
@@ -453,10 +503,7 @@ export function PinnedMessagesBar({
                 <button
                   type="button"
                   className="chat-pinned-expand"
-                  onClick={() => {
-                    setCopied(false);
-                    setOpenId(p.id);
-                  }}
+                  onClick={() => onOpenMessage?.(p.id)}
                   title="Show full"
                   aria-label="Show full"
                 >
@@ -475,34 +522,6 @@ export function PinnedMessagesBar({
             </div>
           ))}
         </div>
-      )}
-
-      {/* Full-text reader, styled like the last-prompt dialog (Material). */}
-      {openMessage && (
-        <FloatingDialog
-          open
-          onClose={closeReader}
-          title={openMessage.role === "user" ? "Pinned — You" : "Pinned — Hermes"}
-          size="wide"
-          className="last-prompt-dialog pinned-reader-dialog"
-        >
-          <div className="chat-last-prompt-dialog">
-            <div className="chat-last-prompt-dialog-head">
-              <span className="chat-last-prompt-dialog-label">Message</span>
-              <button
-                type="button"
-                className="chat-last-prompt-dialog-copy"
-                onClick={handleCopy}
-                title={copied ? "Copied!" : "Copy message"}
-                aria-label={copied ? "Copied!" : "Copy message"}
-              >
-                {copied ? <Check size={13} /> : <Copy size={13} />}
-                <span>{copied ? "Copied" : "Copy"}</span>
-              </button>
-            </div>
-            <pre className="chat-last-prompt-dialog-body">{openFull}</pre>
-          </div>
-        </FloatingDialog>
       )}
     </div>
   );

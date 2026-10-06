@@ -390,6 +390,34 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     expect(messageListSource).toContain("chat-pinned-unpin");
   });
 
+  it("mounts the pinned reader OUTSIDE the pinned bar's positioned box", () => {
+    // A `position: fixed` overlay nested in `.chat-pinned-float` (position:
+    // absolute) resolves its `inset: 0` against that ~360px box, not the
+    // window — the reported "side mini dialog". The reader must therefore be
+    // rendered by Chat, as a sibling of the bar's container, and the bar must
+    // only ASK for it to open.
+    expect(chatSource).toContain("<PinnedMessageReader");
+    // The bar takes a callback, not the dialog itself.
+    expect(chatSource).toContain("onOpenMessage={setPinnedReaderId}");
+    // MessageList defines the reader but must NOT render it inside the bar's
+    // return: the only occurrence is its own definition.
+    const barBody = messageListSource.slice(
+      messageListSource.indexOf("export function PinnedMessagesBar"),
+    );
+    expect(barBody).not.toContain("<FloatingDialog");
+
+    // The reader must be a sibling of the bar container, not a descendant:
+    // after the bar's closing </div> and before the worktree comment.
+    const floatIdx = chatSource.indexOf('className="chat-pinned-float"');
+    const readerIdx = chatSource.indexOf("<PinnedMessageReader");
+    const worktreeIdx = chatSource.indexOf(
+      "The worktree and web-preview panels are DIALOGS now",
+    );
+    expect(floatIdx).toBeGreaterThan(-1);
+    expect(readerIdx).toBeGreaterThan(floatIdx);
+    if (worktreeIdx > -1) expect(readerIdx).toBeLessThan(worktreeIdx);
+  });
+
   it("starts the floating icon rail BELOW the pinned bar", () => {
     // `.chat-pinned-float` occupies top: 48px on the right edge; the icon rail
     // must start far enough down that an expanded bar cannot cover it.

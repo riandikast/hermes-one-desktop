@@ -38,7 +38,7 @@ import { TerminalDock } from "../Command/TerminalDock";
 
 import { ChatEmptyState } from "./ChatEmptyState";
 
-import { MessageList, PinnedMessagesBar } from "./MessageList";
+import { MessageList, PinnedMessagesBar, PinnedMessageReader } from "./MessageList";
 
 import type { MessageListModel } from "./MessageList";
 
@@ -2170,6 +2170,11 @@ function Chat({
       .filter((m): m is ChatBubbleMessage => m !== null);
   }, [messages, pinnedRefs]);
 
+  // Which pinned message is open in the reader dialog (null = closed). Lives
+  // here, not in the bar, so the dialog can mount outside the bar's
+  // absolutely-positioned box (see PinnedMessageReader).
+  const [pinnedReaderId, setPinnedReaderId] = useState<string | null>(null);
+
   const handlePinToggle = useCallback(
     (msgId: string, pinned: boolean) => {
       setMessages((prev) =>
@@ -2724,10 +2729,28 @@ function Chat({
             <PinnedMessagesBar
               messages={pinnedMessages}
               onUnpin={(id) => handlePinToggle(id, false)}
+              onOpenMessage={setPinnedReaderId}
               className="chat-pinned-bar--floating"
             />
           </div>
         )}
+
+        {/* The pinned reader is mounted HERE, at the same level as the pinned
+            bar's container rather than inside it. `.chat-pinned-float` is
+            `position: absolute`, and an absolutely positioned ancestor becomes
+            the containing block for `position: fixed` descendants — so a dialog
+            nested in the bar sized its overlay to the bar's ~360px box ("side
+            mini dialog") instead of the window. As a direct child of the chat
+            body the overlay spans the viewport, matching the last-prompt
+            reader. */}
+        <PinnedMessageReader
+          message={
+            pinnedReaderId
+              ? (pinnedMessages.find((m) => m.id === pinnedReaderId) ?? null)
+              : null
+          }
+          onClose={() => setPinnedReaderId(null)}
+        />
 
         {/* The worktree and web-preview panels are DIALOGS now, not inline
             panes — see the floating rail below. Rendering them here as

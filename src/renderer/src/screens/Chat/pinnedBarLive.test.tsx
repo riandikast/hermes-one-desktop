@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import { useCallback, useEffect, useState } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { PinnedMessagesBar } from "./MessageList";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PinnedMessagesBar, PinnedMessageReader } from "./MessageList";
 import {
   readPinnedMessages,
   writePinnedMessages,
@@ -33,6 +33,8 @@ function Harness({ api }: { api: { renderCount: number } }): React.JSX.Element {
   const [pinnedRefs, setPinnedRefs] = useState<PinnedMessageRef[]>(() =>
     readPinnedMessages(identity),
   );
+  // Which message the reader dialog shows — owned by the host, like Chat.
+  const [readerId, setReaderId] = useState<string | null>(null);
 
   useEffect(() => {
     setPinnedRefs(readPinnedMessages(identity));
@@ -84,10 +86,16 @@ function Harness({ api }: { api: { renderCount: number } }): React.JSX.Element {
           <PinnedMessagesBar
             messages={pinnedMessages}
             onUnpin={(id) => handlePinToggle(id, false)}
+            onOpenMessage={setReaderId}
             className="chat-pinned-bar--floating"
           />
         </div>
       )}
+      {/* Host-level mount, mimicking Chat: a SIBLING of the float container. */}
+      <PinnedMessageReader
+        message={pinnedMessages.find((m) => m.id === readerId) ?? null}
+        onClose={() => setReaderId(null)}
+      />
     </div>
   );
 }
@@ -164,5 +172,72 @@ describe("pinned bar updates live", () => {
     // A brand-new mount reads the store and renders the pinned row.
     render(<Harness api={api} />);
     expect(screen.getByText("first question")).toBeTruthy();
+  });
+});
+
+describe("pinned reader opens as a host-level dialog", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    Object.assign(window, {
+      hermesAPI: { copyToClipboard: async () => undefined },
+    });
+  });
+  afterEach(() => localStorage.clear());
+
+  const openReader = (): void => {
+    act(() => screen.getByText("pin-m1").click());
+    act(() => {
+      screen.getByLabelText("Show full").click();
+    });
+  };
+
+  it("opens the reader dialog from the pinned bar", () => {
+    render(<Harness api={{ renderCount: 0 }} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    openReader();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    // Full text is shown, not the bar's clamped preview.
+    expect(
+      screen.getByText("first question", { selector: "pre" }),
+    ).toBeTruthy();
+  });
+
+  it("renders the reader OUTSIDE the pinned bar's container", () => {
+    // THE bug: the dialog used to be a child of `.chat-pinned-float`, so its
+    // `position: fixed` overlay resolved against that absolutely-positioned
+    // ~360px box (a "side mini dialog"). As a sibling it escapes to the
+    // viewport, like the last-prompt reader.
+    render(<Harness api={{ renderCount: 0 }} />);
+    openReader();
+
+    const dialog = screen.getByRole("dialog");
+    const float = document.querySelector(".chat-pinned-float");
+    expect(float).not.toBeNull();
+    expect(float!.contains(dialog)).toBe(false);
+  });
+
+  it("closes the reader on request", () => {
+    render(<Harness api={{ renderCount: 0 }} />);
+    openReader();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+
+    act(() => {
+      screen.getByLabelText("Close Pinned — You").click();
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("copies the pinned message's full text", async () => {
+    const copyToClipboard = vi.fn().mockResolvedValue(undefined);
+    Object.assign(window, { hermesAPI: { copyToClipboard } });
+
+    render(<Harness api={{ renderCount: 0 }} />);
+    openReader();
+
+    await act(async () => {
+      screen.getByLabelText("Copy message").click();
+    });
+    expect(copyToClipboard).toHaveBeenCalledWith("first question");
   });
 });
