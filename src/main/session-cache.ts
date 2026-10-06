@@ -151,6 +151,21 @@ function hasParentSessionColumn(db: Database.Database): boolean {
 }
 
 /**
+ * Normalize a message timestamp to epoch SECONDS.
+ *
+ * `messages.timestamp` is milliseconds in the schema this app reads from, but a
+ * value that already looks like seconds must not be divided again (that would
+ * shift it to 1970). The discriminator is magnitude: epoch seconds for any
+ * modern date are ~1e9, milliseconds ~1e12 — a factor of 1000 apart, so the
+ * boundary is unambiguous for every realistic timestamp.
+ */
+export function toEpochSeconds(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  // 1e11 sec = year 5138, 1e11 ms = 1973 — so anything at/above 1e11 is ms.
+  return value >= 1e11 ? Math.floor(value / 1000) : Math.floor(value);
+}
+
+/**
  * Newest message timestamp per session — the session's LAST ACTIVITY.
  *
  * One batched query rather than per-row reads (the same reasoning as
@@ -158,6 +173,16 @@ function hasParentSessionColumn(db: Database.Database): boolean {
  * without `timestamp`) yields an empty map, and callers fall back to
  * `startedAt` — so a schema surprise degrades the ordering signal instead of
  * breaking the sync.
+ *
+ * UNIT: returns SECONDS, matching `sessions.started_at`.
+ *
+ * The two tables disagree on units — `messages.timestamp` is epoch
+ * MILLISECONDS (the renderer does `new Date(ms)` with no scaling) while
+ * `sessions.started_at` is epoch SECONDS (`new Date(sec * 1000)`). Since
+ * `lastActiveAt` is stored and compared beside `startedAt`, it must be in the
+ * same unit: returning the raw millisecond value made it ~1000x larger than
+ * every fallback value, so a session without messages (or on a schema that
+ * never produced one) sorted arbitrarily against the rest.
  */
 export function lastActivityBySession(
   db: Database.Database,
@@ -177,7 +202,7 @@ export function lastActivityBySession(
       .all(...ids) as Array<{ session_id: string; last_at: number | null }>;
     for (const row of rows) {
       if (typeof row.last_at === "number" && Number.isFinite(row.last_at)) {
-        out.set(row.session_id, row.last_at);
+        out.set(row.session_id, toEpochSeconds(row.last_at));
       }
     }
   } catch {

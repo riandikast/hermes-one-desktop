@@ -187,6 +187,18 @@ describe("remembered project recency", () => {
     const map = rememberProjectRecency([{ path: "C:/a", latestAt: 5 }]);
     expect(map["C:/a"]).toBe(5);
   });
+
+  it("discards a legacy MILLISECOND entry so it cannot pin a project", () => {
+    // An older build stored ms (~1e12). Left in place it would outrank every
+    // real project forever, which is exactly the "stuck at the top" symptom.
+    localStorage.setItem(
+      "hermes.sidebar.projectRecency",
+      JSON.stringify({ "C:/mb": 1_760_000_000_000 }),
+    );
+    const map = rememberProjectRecency([{ path: "C:/other", latestAt: 1_760_000_000 }]);
+    expect(map["C:/mb"]).toBeUndefined();
+    expect(map["C:/other"]).toBe(1_760_000_000);
+  });
 });
 
 describe("applyRememberedRecency", () => {
@@ -315,5 +327,33 @@ describe("SidebarRecentSessions wiring", () => {
     const sameIdx = source.indexOf("function sameSessions");
     const block = source.slice(sameIdx, sameIdx + 700);
     expect(block).toContain("startedAt");
+  });
+
+  it("defers a background refresh while the user is scrolling", () => {
+    // The apply REPLACES and re-sorts the list, so landing it mid-scroll moves
+    // rows under the user's finger (the intermittent stuck up/down stutter).
+    // Guarded in source because the bug needs a refresh to land during a
+    // gesture, which a unit test cannot reliably stage.
+    const refreshIdx = source.indexOf("const refresh = useCallback(");
+    expect(refreshIdx).toBeGreaterThan(-1);
+    // Bound the body strictly: up to the point it first touches the apply, so a
+    // later check cannot satisfy these assertions.
+    const body = source.slice(refreshIdx, refreshIdx + 1600);
+    expect(body).toContain("canApplyRefreshNow");
+    expect(body).toContain("deferredRefreshRef.current = () => void refresh(force)");
+
+    // The FIRST thing refresh does must be the gate — before it even calls
+    // syncSessionCache. A check placed only AFTER the await would still let the
+    // list change under a finger mid-scroll.
+    const gateIdx = body.indexOf("canApplyRefreshNow");
+    const syncIdx = body.indexOf("syncSessionCache()");
+    expect(syncIdx).toBeGreaterThan(-1);
+    expect(gateIdx).toBeLessThan(syncIdx);
+
+    // Deferred, not dropped: the pending refresh is re-run once scrolling stops.
+    expect(source).toContain("const deferred = deferredRefreshRef.current");
+    expect(source).toContain("deferred?.()");
+    // And the scroll handler records the activity that arms the gate.
+    expect(source).toContain("onScrollActivity()");
   });
 });

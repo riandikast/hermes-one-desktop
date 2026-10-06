@@ -31,6 +31,14 @@ const SORT_KEY = "hermes.sidebar.projectSort";
  * "whatever is loaded right now".
  */
 const RECENCY_KEY = "hermes.sidebar.projectRecency";
+/**
+ * Values are epoch SECONDS. Older builds stored milliseconds (before the unit
+ * mismatch was fixed), which would read as ~1000x too recent and permanently
+ * pin those projects to the top — so a stored value beyond this bound is
+ * discarded rather than trusted. 1e11 seconds is year 5138; nothing real
+ * exceeds it.
+ */
+const MAX_PLAUSIBLE_RECENCY = 1e11;
 
 // Listeners fired on every change (local writes and cross-tab `storage`
 // events). The snapshot is the sort value itself — a primitive string, which
@@ -80,7 +88,16 @@ function readRecency(): Record<string, number> {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     const out: Record<string, number> = {};
     for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-      if (typeof value === "number" && Number.isFinite(value)) out[key] = value;
+      // Drop non-numbers AND implausible values (a legacy millisecond entry
+      // would otherwise outrank every real project forever).
+      if (
+        typeof value === "number" &&
+        Number.isFinite(value) &&
+        value > 0 &&
+        value < MAX_PLAUSIBLE_RECENCY
+      ) {
+        out[key] = value;
+      }
     }
     return out;
   } catch {

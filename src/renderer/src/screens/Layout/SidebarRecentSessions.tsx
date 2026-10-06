@@ -331,6 +331,23 @@ export function shouldLoadNextPage(
   return scrollTop > loadedAt;
 }
 
+/**
+ * May a background refresh APPLY its new list right now, or must it be deferred?
+ *
+ * A refresh replaces and re-sorts the whole list. Applying that mid-scroll moves
+ * rows under the user's finger while the browser re-anchors the position — the
+ * intermittent "stuck up/down" stutter (rare because it needs a refresh to land
+ * during a gesture). Deferring until the scroll settles removes the race
+ * entirely: the refresh still happens, just not while the user is dragging.
+ *
+ * Pure so the rule is testable — the timing that triggers it is not.
+ *
+ * @param isScrolling true while the container saw scroll activity recently
+ */
+export function canApplyRefreshNow(isScrolling: boolean): boolean {
+  return !isScrolling;
+}
+
 export const SidebarRecentSessions = memo(function SidebarRecentSessions({
   open,
   activeProfile,
@@ -733,9 +750,27 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
     async (force = false): Promise<void> => {
       const now = Date.now();
       if (!force && now - lastRefreshRef.current < REFRESH_THROTTLE_MS) return;
+      // Defer while the user is scrolling: the apply REPLACES and re-sorts the
+      // list, so rows would move under their finger (the "stuck up/down"
+      // stutter). Recorded once and run when scrolling settles — a forced
+      // refresh is deferred too, since the reason for it does not change
+      // whether disturbing a gesture is acceptable.
+      if (!canApplyRefreshNow(!isScrollingRef.current)) {
+        deferredRefreshRef.current = () => void refresh(force);
+        return;
+      }
       lastRefreshRef.current = now;
       try {
         const synced = await window.hermesAPI.syncSessionCache();
+        // Re-check: the list may have STARTED scrolling during the await, and
+        // applying now would still move rows mid-gesture.
+        if (!canApplyRefreshNow(!isScrollingRef.current)) {
+          deferredRefreshRef.current = () => {
+            lastRefreshRef.current = 0; // let the retry through the throttle
+            void refresh(force);
+          };
+          return;
+        }
         applyLoadedWindow(synced);
         syncPinnedFromList(synced);
       } catch {
@@ -901,11 +936,38 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
   }, [open, refresh]);
 
   const pendingMaybeLoadRef = useRef(false);
+  // ── Scroll-aware refresh deferral ────────────────────────────────────────
+  // A background refresh REPLACES the session list (applyLoadedWindow), which
+  // re-sorts it by last activity. If that lands mid-scroll, rows move under the
+  // user's finger and the browser's scroll anchoring fights their gesture — the
+  // reported "stuck up/down" stutter. So a refresh requested while the list is
+  // scrolling is DEFERRED until scrolling settles, then run once.
+  const isScrollingRef = useRef(false);
+  const scrollIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deferredRefreshRef = useRef<(() => void) | null>(null);
+  const SCROLL_IDLE_MS = 180;
+
+  const onScrollActivity = useCallback((): void => {
+    isScrollingRef.current = true;
+    if (scrollIdleTimerRef.current !== null) {
+      clearTimeout(scrollIdleTimerRef.current);
+    }
+    scrollIdleTimerRef.current = setTimeout(() => {
+      scrollIdleTimerRef.current = null;
+      isScrollingRef.current = false;
+      // Run whatever was deferred, exactly once.
+      const deferred = deferredRefreshRef.current;
+      deferredRefreshRef.current = null;
+      deferred?.();
+    }, SCROLL_IDLE_MS);
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     const root = scrollRootRef.current;
     if (!root) return;
     const onScroll = (): void => {
+      onScrollActivity();
       if (pendingMaybeLoadRef.current) return;
       pendingMaybeLoadRef.current = true;
       queueMicrotask(() => {
@@ -918,8 +980,24 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
     return () => {
       root.removeEventListener("scroll", onScroll);
       pendingMaybeLoadRef.current = false;
+      if (scrollIdleTimerRef.current !== null) {
+        clearTimeout(scrollIdleTimerRef.current);
+        scrollIdleTimerRef.current = null;
+      }
+      isScrollingRef.current = false;
     };
-  }, [maybeLoadNextPage, open, scrollRootRef]);
+  }, [maybeLoadNextPage, onScrollActivity, open, scrollRootRef]);
+  // The deferral gate must outlive the scroll effect above (which re-subscribes
+  // whenever maybeLoadNextPage changes); this keeps the timer alive across that.
+  useEffect(
+    () => () => {
+      if (scrollIdleTimerRef.current !== null) {
+        clearTimeout(scrollIdleTimerRef.current);
+        scrollIdleTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   // If the first page does not fill the sidebar, keep paging until the scroll
   // container has real overflow or the cache runs out.

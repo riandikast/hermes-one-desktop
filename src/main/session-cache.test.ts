@@ -61,6 +61,31 @@ describe("lastActivityBySession", () => {
     expect(map.get("s2")).toBe(250);
   });
 
+  it("converts MILLISECOND message timestamps to SECONDS", () => {
+    // messages.timestamp is ms; sessions.started_at is seconds. lastActiveAt
+    // sits beside startedAt, so returning raw ms made it ~1000x too recent —
+    // the bug where a project would not move to the top.
+    const { db } = stubDb([{ session_id: "s1", last_at: 1_760_000_000_000 }]);
+    expect(lastActivityBySession(db, ["s1"]).get("s1")).toBe(1_760_000_000);
+  });
+
+  it("leaves an already-seconds timestamp alone", () => {
+    // Dividing again would shift the date to 1970.
+    const { db } = stubDb([{ session_id: "s1", last_at: 1_760_000_000 }]);
+    expect(lastActivityBySession(db, ["s1"]).get("s1")).toBe(1_760_000_000);
+  });
+
+  it("produces a value comparable with a seconds started_at", () => {
+    // The actual regression: a session's lastActiveAt must be the SAME ORDER OF
+    // MAGNITUDE as its startedAt, or the max() over a group mixes units.
+    const startedAt = 1_759_999_000; // seconds
+    const { db } = stubDb([{ session_id: "s1", last_at: 1_760_000_000_000 }]);
+    const lastActiveAt = lastActivityBySession(db, ["s1"]).get("s1")!;
+    expect(lastActiveAt).toBeGreaterThan(startedAt);
+    // A sane session duration, not 55,000 years.
+    expect(lastActiveAt - startedAt).toBeLessThan(86_400 * 365);
+  });
+
   it("asks the DB for MAX(timestamp) grouped per session", () => {
     // The whole point: the newest MESSAGE time, not the session's start column.
     const { db, sql } = stubDb([]);

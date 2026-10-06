@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { shouldLoadNextPage } from "./SidebarRecentSessions";
+import { shouldLoadNextPage, canApplyRefreshNow } from "./SidebarRecentSessions";
 
 /**
  * The infinite-scroll loader appends rows when the list nears the bottom.
@@ -70,5 +70,22 @@ describe("shouldLoadNextPage", () => {
     // loadedAt (2500) < maxScroll (5400) -> the gate is active and suppresses.
     expect(shouldLoadNextPage(2500, 6000, CLIENT, 2500)).toBe(false);
     expect(maxScroll).toBeGreaterThan(2500);
+  });
+});
+
+/**
+ * The refresh-deferral gate. A background refresh replaces and re-sorts the
+ * session list; applying that mid-scroll moves rows under the user's finger,
+ * which is the intermittent "stuck up/down" stutter. The rule is trivial, and
+ * the TIMING is the hard part — so the rule is pinned here and the timing lives
+ * in the component.
+ */
+describe("canApplyRefreshNow", () => {
+  it("allows a refresh when the list is idle", () => {
+    expect(canApplyRefreshNow(false)).toBe(true);
+  });
+
+  it("defers a refresh while the list is scrolling", () => {
+    expect(canApplyRefreshNow(true)).toBe(false);
   });
 });
