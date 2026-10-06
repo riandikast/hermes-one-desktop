@@ -46,6 +46,123 @@ function statusCode(entry: { index: string; worktree: string }): string {
   return entry.worktree;
 }
 
+/**
+ * Full-page wrapper, portaled to <body>.
+ *
+ * HOISTED to module scope on purpose. It used to be defined inside
+ * `SourceControlDialog`'s body, which gave it a NEW function identity on every
+ * render — React treats a changed component type as a different component and
+ * remounts the subtree. `Shell` wraps the entire dialog, so the commit textarea
+ * was destroyed and recreated on every keystroke, losing focus after each
+ * character. Any component defined inline has this defect; keep these stable.
+ *
+ * A full-page panel, not a modal: it fills the window and escapes the
+ * FloatingDialog it is mounted inside (whose body clips and stacks it, which
+ * cropped the bottom and double-chromed it with a second header).
+ */
+function Shell({ children }: { children: React.ReactNode }): React.JSX.Element {
+  return createPortal(
+    <div className="source-control-page">{children}</div>,
+    document.body,
+  );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div className="source-control-section">
+      <div className="source-control-section-title">{title}</div>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * One changed file row. Module scope, like Shell — see the note there.
+ * Takes the dialog's `selected`/`busy` state and its handlers as props rather
+ * than closing over them, so it has a stable identity across renders.
+ */
+function FileRow({
+  path,
+  entry,
+  staged,
+  isConflict,
+  active,
+  busy,
+  onShowDiff,
+  onToggleStaged,
+  onResolveConflict,
+}: {
+  path: string;
+  entry?: { index: string; worktree: string };
+  staged: boolean;
+  isConflict?: boolean;
+  active: boolean;
+  busy: boolean;
+  onShowDiff: (path: string, staged: boolean) => void;
+  onToggleStaged: (path: string, staged: boolean) => void;
+  onResolveConflict: (path: string, side: "ours" | "theirs") => void;
+}): React.JSX.Element {
+  return (
+    <div className={`source-control-file${active ? " active" : ""}`}>
+      <button
+        type="button"
+        className="source-control-file-main"
+        onClick={() => onShowDiff(path, staged)}
+      >
+        <span
+          className={`source-control-file-code ${isConflict ? "conflict" : ""}`}
+        >
+          {isConflict ? "U" : entry ? statusCode(entry) : "?"}
+        </span>
+        <span className="source-control-file-name" title={path}>
+          {fileLabel(path)}
+        </span>
+      </button>
+      <div className="source-control-file-actions">
+        {isConflict && (
+          <>
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              disabled={busy}
+              onClick={() => onResolveConflict(path, "ours")}
+              title="Accept our version"
+            >
+              ours
+            </button>
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              disabled={busy}
+              onClick={() => onResolveConflict(path, "theirs")}
+              title="Accept their version"
+            >
+              theirs
+            </button>
+          </>
+        )}
+        {!isConflict && (
+          <button
+            type="button"
+            className="source-control-stage-btn"
+            disabled={busy}
+            onClick={() => onToggleStaged(path, staged)}
+            title={staged ? "Unstage" : "Stage"}
+          >
+            {staged ? "Unstage" : "+"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function SourceControlDialog({
   dir,
   onClose,
@@ -235,15 +352,22 @@ export function SourceControlDialog({
   const changeCount =
     (status?.unstaged.length ?? 0) + (status?.untracked.length ?? 0);
 
+  // The handler bundle every FileRow needs. Applied once per row via spread so
+  // the row stays a module-scope component with a stable identity.
+  const fileRowHandlers = {
+    busy,
+    onShowDiff: (path: string, staged: boolean) => void showDiff(path, staged),
+    onToggleStaged: (path: string, staged: boolean) =>
+      void toggleStaged(path, staged),
+    onResolveConflict: (path: string, side: "ours" | "theirs") =>
+      void resolveConflict(path, side),
+  };
+
   // A full-page panel, not a modal: it fills the whole window and is portaled
   // to <body> so it escapes the FloatingDialog it is mounted inside (whose body
   // container clips and stacks it, which is what made the bottom look cropped
   // and double-chromed it with a second header). `onClose` is the way back.
-  const Shell = ({ children }: { children: React.ReactNode }): React.JSX.Element =>
-    createPortal(
-      <div className="source-control-page">{children}</div>,
-      document.body,
-    );
+  // (Shell/Section/FileRow are module-scope components — see the note on Shell.)
 
   if (!status) {
     return (
@@ -287,86 +411,6 @@ export function SourceControlDialog({
     );
   }
 
-  const Section = ({
-    title,
-    children,
-  }: {
-    title: string;
-    children: React.ReactNode;
-  }): React.JSX.Element => (
-    <div className="source-control-section">
-      <div className="source-control-section-title">{title}</div>
-      {children}
-    </div>
-  );
-
-  const FileRow = ({
-    path,
-    entry,
-    staged,
-    isConflict,
-  }: {
-    path: string;
-    entry?: { index: string; worktree: string };
-    staged: boolean;
-    isConflict?: boolean;
-  }): React.JSX.Element => (
-    <div
-      className={`source-control-file${
-        selected?.path === path && selected.staged === staged ? " active" : ""
-      }`}
-    >
-      <button
-        type="button"
-        className="source-control-file-main"
-        onClick={() => void showDiff(path, staged)}
-      >
-        <span
-          className={`source-control-file-code ${isConflict ? "conflict" : ""}`}
-        >
-          {isConflict ? "U" : entry ? statusCode(entry) : "?"}
-        </span>
-        <span className="source-control-file-name" title={path}>
-          {fileLabel(path)}
-        </span>
-      </button>
-      <div className="source-control-file-actions">
-        {isConflict && (
-          <>
-            <button
-              type="button"
-              className="btn-ghost btn-sm"
-              disabled={busy}
-              onClick={() => void resolveConflict(path, "ours")}
-              title="Accept our version"
-            >
-              ours
-            </button>
-            <button
-              type="button"
-              className="btn-ghost btn-sm"
-              disabled={busy}
-              onClick={() => void resolveConflict(path, "theirs")}
-              title="Accept their version"
-            >
-              theirs
-            </button>
-          </>
-        )}
-        {!isConflict && (
-          <button
-            type="button"
-            className="source-control-stage-btn"
-            disabled={busy}
-            onClick={() => void toggleStaged(path, staged)}
-            title={staged ? "Unstage" : "Stage"}
-          >
-            {staged ? "Unstage" : "+"}
-          </button>
-        )}
-      </div>
-    </div>
-  );
 
   return (
     <Shell>
@@ -482,6 +526,10 @@ export function SourceControlDialog({
                         entry={f}
                         staged={false}
                         isConflict
+                        {...fileRowHandlers}
+                        active={
+                          selected?.path === f.path && selected.staged === false
+                        }
                       />
                     ))
                   )}
@@ -493,7 +541,16 @@ export function SourceControlDialog({
                     </div>
                   ) : (
                     status.staged.map((f) => (
-                      <FileRow key={f.path} path={f.path} entry={f} staged />
+                      <FileRow
+                        key={f.path}
+                        path={f.path}
+                        entry={f}
+                        staged
+                        {...fileRowHandlers}
+                        active={
+                          selected?.path === f.path && selected.staged === true
+                        }
+                      />
                     ))
                   )}
                 </Section>
@@ -511,10 +568,23 @@ export function SourceControlDialog({
                           path={f.path}
                           entry={f}
                           staged={false}
+                          {...fileRowHandlers}
+                          active={
+                            selected?.path === f.path &&
+                            selected.staged === false
+                          }
                         />
                       ))}
                       {status.untracked.map((p) => (
-                        <FileRow key={p} path={p} staged={false} />
+                        <FileRow
+                          key={p}
+                          path={p}
+                          staged={false}
+                          {...fileRowHandlers}
+                          active={
+                            selected?.path === p && selected.staged === false
+                          }
+                        />
                       ))}
                     </>
                   )}

@@ -84,6 +84,20 @@ export function SearchBar({
       stateRef.current;
     if (!currentResults || index < 0 || index >= currentResults.length) return;
     const entry = currentResults[index] as FileSearchEntry;
+
+    // A DIRECTORY is not a file: dispatching an open for a folder handed the
+    // viewer a path it cannot render, so the click looked like it did nothing
+    // (and directories sort first, so they are often the top hit). Instead,
+    // scope the search to that folder and clear the query, so the next
+    // keystroke searches inside it — the useful action for a folder hit.
+    if (entry.isDirectory) {
+      setFolders([entry.path]);
+      setQuery("");
+      setResults(null);
+      setActiveIndex(-1);
+      return;
+    }
+
     // Carry the searched folders with the file so the opened file tab stays
     // folder-scoped for the next search (Layout stores them as the run's
     // initialContextFolders).

@@ -151,24 +151,31 @@ describe("SearchBar", () => {
     );
     expect(optionPaths).toHaveLength(2);
 
-    // ArrowDown from no selection → 0, ArrowDown → 1, ArrowUp wraps back to 0.
+    // The mock entries are app.ts (file) and styles (DIRECTORY). Opening a
+    // directory no longer dispatches a file-open (it re-scopes the search), so
+    // this test must arrow to the FILE entry — index 1 here, since the shorter
+    // path "styles" ranks first. Index 0 is asserted NOT to dispatch, below.
+    const fileIndex = optionPaths.indexOf("C:/proj/app.ts");
+    expect(fileIndex).toBeGreaterThanOrEqual(0);
+
+    // ArrowDown from no selection → 0, then to the file's index.
     fireEvent.keyDown(document.body, { key: "ArrowDown" });
-    fireEvent.keyDown(document.body, { key: "ArrowDown" });
-    fireEvent.keyDown(document.body, { key: "ArrowUp" });
+    for (let i = 0; i < fileIndex; i += 1) {
+      fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    }
     fireEvent.keyDown(document.body, { key: "Enter" });
-    expect(onOpen.mock.calls[0][0].detail.path).toBe(optionPaths[0]);
+    expect(onOpen.mock.calls[0][0].detail.path).toBe("C:/proj/app.ts");
     // Picking a file closes the dropdown but keeps the query.
     expect(screen.queryByText("app.ts")).toBeNull();
     expect((input as HTMLInputElement).value).toBe("s");
 
-    // Re-search (query change forces the debounced effect to re-run) and
-    // arrow to index 1.
+    // Re-search and pick the DIRECTORY: it must NOT dispatch a file-open (that
+    // was the "click a result and nothing opens" bug — the viewer got a folder).
     fireEvent.change(input, { target: { value: "s " } });
-    await screen.findByText("app.ts");
-    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    await screen.findByText("styles");
     fireEvent.keyDown(document.body, { key: "ArrowDown" });
     fireEvent.keyDown(document.body, { key: "Enter" });
-    expect(onOpen.mock.calls[1][0].detail.path).toBe(optionPaths[1]);
+    expect(onOpen.mock.calls).toHaveLength(1);
 
     window.removeEventListener("hermes-open-file", onOpen);
   });

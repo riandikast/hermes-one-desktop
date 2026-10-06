@@ -191,4 +191,50 @@ describe("SourceControlDialog", () => {
     expect(await screen.findByText("+1")).toBeTruthy();
     expect(screen.getByText("-1")).toBeTruthy();
   });
+
+  it("keeps focus in the commit box while typing (no remount per character)", async () => {
+    // THE bug: Shell/Section/FileRow were defined inside the component body, so
+    // each render produced new component TYPES and React remounted the subtree —
+    // destroying and recreating the commit textarea on every keystroke, which
+    // dropped focus after one character. A stable module-scope Shell keeps the
+    // same DOM node, so focus survives.
+    gitRepoStatus.mockResolvedValue({
+      repo: true,
+      root: "/repo",
+      branch: "main",
+      upstream: null,
+      ahead: 0,
+      behind: 0,
+      conflicted: [],
+      staged: [{ index: "M", worktree: " ", path: "a.ts" }],
+      unstaged: [],
+      untracked: [],
+    });
+    renderDialog("/repo");
+    await waitFor(() => expect(gitRepoStatus).toHaveBeenCalled());
+
+    const textarea = await screen.findByPlaceholderText(/Commit message/);
+    const node = textarea as HTMLTextAreaElement;
+
+    // Type character by character through the real React onChange path.
+    act(() => {
+      node.focus();
+    });
+    expect(document.activeElement).toBe(node);
+
+    for (const char of "hello") {
+      act(() => {
+        node.value += char;
+        node.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      // The SAME node must still be focused after each keystroke. Under the
+      // remount bug this fails on the first character.
+      expect(document.activeElement).toBe(node);
+    }
+
+    expect(node.value).toBe("hello");
+    // Still the same DOM element, not a fresh replacement (the dialog portals
+    // to <body>, so look there rather than in the render container).
+    expect(document.body.querySelector("textarea")).toBe(node);
+  });
 });
