@@ -9571,29 +9571,8 @@ body:has(.shell-vibrant),
   -webkit-box-orient: vertical;
 }
 
-.chat-pinned-content--expanded {
-  display: block;
-  overflow: visible;
-  -webkit-line-clamp: unset;
-  max-height: none;
-}
-
-.chat-pinned-expand {
-  background: transparent;
-  border: 1px solid var(--border, rgba(127, 127, 127, 0.3));
-  border-radius: 4px;
-  padding: 2px 6px;
-  cursor: pointer;
-  color: var(--text-tertiary, #999);
-  font-weight: 700;
-  font-size: 12px;
-  line-height: 1;
-}
-
-.chat-pinned-expand:hover {
-  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
-  color: var(--text-base, #eee);
-}
+/* The reader opens a dialog now (see PinnedMessagesBar), so the inline
+   expand-clamp rule is gone — content always renders clamped in the bar. */
 
 /* Match agent bubble markdown styling inside pinned cards */
 .chat-pinned-bubble .chat-code-block {
@@ -9642,7 +9621,6 @@ body:has(.shell-vibrant),
   gap: 3px;
 }
 
-.chat-pinned-go,
 .chat-pinned-expand,
 .chat-pinned-unpin {
   display: inline-flex;
@@ -9659,7 +9637,6 @@ body:has(.shell-vibrant),
   transition: background 0.12s, color 0.12s;
 }
 
-.chat-pinned-go:hover,
 .chat-pinned-expand:hover,
 .chat-pinned-unpin:hover {
   background: var(--bg-hover, rgba(255, 255, 255, 0.06));
@@ -10324,7 +10301,12 @@ body:has(.shell-vibrant),
    this element) opens to the side rather than over the icons. */
 .chat-display-controls {
   position: absolute;
-  top: 76px;
+  /* Below the floating pinned bar, which occupies top: 48px on this same right
+     edge (it can be up to ~2 rows tall when expanded). The rail used to sit at
+     76px, so an expanded pinned bar overlapped the search/display/terminal
+     icons. 116px clears the bar's band; the bar and rail never both need the
+     same pixels. */
+  top: 116px;
   right: 18px;
   z-index: 8;
   display: flex;

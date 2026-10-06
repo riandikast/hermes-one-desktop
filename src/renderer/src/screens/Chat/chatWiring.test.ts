@@ -375,6 +375,49 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     expect(messageListSource).not.toContain("<PinnedMessagesBar");
   });
 
+  it("keeps the pinned bar's reader a dialog, with no go-to-message control", () => {
+    // Reading a pinned message opens the SAME Material reader dialog the
+    // last-prompt chip uses (copy button included) instead of expanding inline
+    // — inline growth pushed the other pins out of view.
+    expect(messageListSource).toContain("pinned-reader-dialog");
+    expect(messageListSource).toContain("chat-last-prompt-dialog-body");
+    expect(messageListSource).toContain("copyToClipboard");
+    // "Go to message" was removed: the reader is the way to read a pin.
+    expect(messageListSource).not.toContain("chat-pinned-go");
+    expect(messageListSource).not.toContain("Go to message");
+    expect(messageListSource).not.toContain("onGoToMessage");
+    // Delete stays.
+    expect(messageListSource).toContain("chat-pinned-unpin");
+  });
+
+  it("starts the floating icon rail BELOW the pinned bar", () => {
+    // `.chat-pinned-float` occupies top: 48px on the right edge; the icon rail
+    // must start far enough down that an expanded bar cannot cover it.
+    // Read the DECLARATION, not prose: the rail's own comment quotes the bar's
+    // top value, so a naive first `top:` match reads the comment.
+    const declTop = (block: string): number => {
+      const m = block.match(/^\s*top:\s*(\d+)px;/m);
+      expect(m).not.toBeNull();
+      return Number(m![1]);
+    };
+
+    const floatStart = css.indexOf(".chat-pinned-float {");
+    expect(floatStart).toBeGreaterThan(-1);
+    const floatTop = declTop(
+      css.slice(floatStart, css.indexOf(".chat-pinned-bar {", floatStart)),
+    );
+
+    const railStart = css.indexOf(".chat-display-controls {");
+    expect(railStart).toBeGreaterThan(-1);
+    const railBlock = css.slice(
+      railStart,
+      css.indexOf(".chat-display-controls-menu {", railStart),
+    );
+    const railTop = declTop(railBlock);
+
+    expect(railTop).toBeGreaterThan(floatTop + 40);
+  });
+
   it("keeps the pinned bar in the top-RIGHT, clear of the chip and DB counter", () => {
     // The chip owns the top-LEFT band (left: 12px) and the DB counter the
     // top-right of the SAME band (top: 12px; right: 18px). The pinned bar goes

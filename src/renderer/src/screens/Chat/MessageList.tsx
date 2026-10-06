@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, startTransition } from "react";
-import { Check, Circle, FilePlus2, ListTodo, Pin, ChevronDown, ChevronUp, ExternalLink, Trash2 } from "lucide-react";
+import { Check, Circle, Copy, FilePlus2, ListTodo, Maximize2, Pin, Trash2 } from "lucide-react";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
+import { FloatingDialog } from "./FloatingDialog";
 import { HermesAvatar, MessageRow } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
 import type { ChatBubbleMessage } from "./types";
@@ -359,27 +360,52 @@ function buildRows(
 export function PinnedMessagesBar({
   messages,
   onUnpin,
-  onGoToMessage,
   className,
 }: {
   messages: ChatBubbleMessage[];
   onUnpin: (id: string) => void;
-  onGoToMessage: (id: string) => void;
   /** Extra class for a host that positions it differently (the floating
    *  top-right mount in Chat vs. the in-flow list placement). */
   className?: string;
 }): React.JSX.Element {
   const [collapsed, setCollapsed] = useState(false);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Which pinned message is open in the full-text reader dialog (null = none).
+  const [openId, setOpenId] = useState<string | null>(null);
+  // "Copied" acknowledgement per open dialog, so the button reflects the action.
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const toggleExpand = (id: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+  useEffect(
+    () => () => {
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+    },
+    [],
+  );
+
+  const openMessage = openId
+    ? (messages.find((m) => m.id === openId) ?? null)
+    : null;
+  const openFull = String(openMessage?.content ?? "").trim();
+
+  const closeReader = useCallback(() => {
+    setOpenId(null);
+    setCopied(false);
+  }, []);
+
+  const handleCopy = useCallback(async () => {
+    if (!openFull) return;
+    try {
+      await window.hermesAPI.copyToClipboard(openFull);
+      setCopied(true);
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => {
+        copyTimerRef.current = null;
+        setCopied(false);
+      }, 2000);
+    } catch {
+      // Clipboard write can fail in some environments; leave the button as-is.
+    }
+  }, [openFull]);
 
   return (
     <div
@@ -408,51 +434,75 @@ export function PinnedMessagesBar({
       </button>
       {!collapsed && (
         <div className="chat-pinned-cards">
-          {messages.map((p) => {
-            const isExpanded = expanded.has(p.id);
-            const isLong = p.content.length > 120;
-            return (
-              <div key={p.id} className={"chat-pinned-bubble chat-pinned-bubble-" + p.role}>
-                <div className="chat-pinned-meta">{p.role === "user" ? "You" : "Hermes"}</div>
-                <div
-                  className={"chat-pinned-content" + (isExpanded ? " chat-pinned-content--expanded" : "")}
-                >
-                  <AgentMarkdown>{p.content}</AgentMarkdown>
-                </div>
-                <div className="chat-pinned-actions">
-                  {isLong && (
-                    <button
-                      type="button"
-                      className="chat-pinned-expand"
-                      onClick={() => toggleExpand(p.id)}
-                      title={isExpanded ? "Show less" : "Show full"}
-                    >
-                      {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="chat-pinned-go"
-                    onClick={() => onGoToMessage(p.id)}
-                    title="Go to message"
-                    aria-label="Go to message"
-                  >
-                    <ExternalLink size={11} />
-                  </button>
-                  <button
-                    type="button"
-                    className="chat-pinned-unpin"
-                    onClick={() => onUnpin(p.id)}
-                    title="Unpin"
-                    aria-label="Unpin"
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                </div>
+          {messages.map((p) => (
+            <div
+              key={p.id}
+              className={"chat-pinned-bubble chat-pinned-bubble-" + p.role}
+            >
+              <div className="chat-pinned-meta">
+                {p.role === "user" ? "You" : "Hermes"}
               </div>
-            );
-          })}
+              <div className="chat-pinned-content">
+                <AgentMarkdown>{p.content}</AgentMarkdown>
+              </div>
+              <div className="chat-pinned-actions">
+                {/* "Show full" opens the SAME reader dialog the last-prompt chip
+                    uses — reading a long message happens there, with a copy
+                    button, rather than expanding inline (which grew the bar and
+                    pushed the other pins out of view). */}
+                <button
+                  type="button"
+                  className="chat-pinned-expand"
+                  onClick={() => {
+                    setCopied(false);
+                    setOpenId(p.id);
+                  }}
+                  title="Show full"
+                  aria-label="Show full"
+                >
+                  <Maximize2 size={12} />
+                </button>
+                <button
+                  type="button"
+                  className="chat-pinned-unpin"
+                  onClick={() => onUnpin(p.id)}
+                  title="Delete"
+                  aria-label="Delete"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
+      )}
+
+      {/* Full-text reader, styled like the last-prompt dialog (Material). */}
+      {openMessage && (
+        <FloatingDialog
+          open
+          onClose={closeReader}
+          title={openMessage.role === "user" ? "Pinned — You" : "Pinned — Hermes"}
+          size="wide"
+          className="last-prompt-dialog pinned-reader-dialog"
+        >
+          <div className="chat-last-prompt-dialog">
+            <div className="chat-last-prompt-dialog-head">
+              <span className="chat-last-prompt-dialog-label">Message</span>
+              <button
+                type="button"
+                className="chat-last-prompt-dialog-copy"
+                onClick={handleCopy}
+                title={copied ? "Copied!" : "Copy message"}
+                aria-label={copied ? "Copied!" : "Copy message"}
+              >
+                {copied ? <Check size={13} /> : <Copy size={13} />}
+                <span>{copied ? "Copied" : "Copy"}</span>
+              </button>
+            </div>
+            <pre className="chat-last-prompt-dialog-body">{openFull}</pre>
+          </div>
+        </FloatingDialog>
       )}
     </div>
   );

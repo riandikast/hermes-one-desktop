@@ -2112,10 +2112,23 @@ function Chat({
   // reloading / restarting the app) does not drop them. Live messages carry the
   // authoritative text; the stored refs cover ids whose history page is not
   // loaded yet (long sessions open on their newest page).
-  const pinnedRefs = useMemo<PinnedMessageRef[]>(
-    () => readPinnedMessages(pinnedIdentityRef.current),
-    [hermesSessionId],
+  //
+  // STATE, not a useMemo keyed on the session id. The memo only re-read the
+  // store when `hermesSessionId` changed, so pinning/unpinning updated the store
+  // and the message flag but left `pinnedRefs` (and therefore the floating bar,
+  // which reads through `pinnedMessages`) showing the OLD list — the pin only
+  // appeared after closing and reopening the tab. `handlePinToggle` now owns the
+  // update, so the bar re-renders immediately.
+  const [pinnedRefs, setPinnedRefs] = useState<PinnedMessageRef[]>(() =>
+    readPinnedMessages(pinnedIdentityRef.current),
   );
+
+  // Re-read on session switch (and on first mount): the persisted pins belong to
+  // the conversation, so opening a different session must load ITS pins rather
+  // than keep the previous session's.
+  useEffect(() => {
+    setPinnedRefs(readPinnedMessages(pinnedIdentityRef.current));
+  }, [hermesSessionId]);
 
   // Re-apply the persisted pin flags to freshly-loaded history. Transcript rows
   // arrive from state.db with no `pinned` field, so without this a reopened
@@ -2184,6 +2197,9 @@ function Chat({
             ]
         : current.filter((ref) => ref.id !== msgId);
       writePinnedMessages(identity, next);
+      // Drive the render from the SAME array we just persisted, so the floating
+      // bar reflects the change immediately instead of waiting for a remount.
+      setPinnedRefs(next);
     },
     [messages],
   );
@@ -2708,10 +2724,6 @@ function Chat({
             <PinnedMessagesBar
               messages={pinnedMessages}
               onUnpin={(id) => handlePinToggle(id, false)}
-              onGoToMessage={(id) => {
-                const el = document.getElementById("chat-msg-" + id);
-                el?.scrollIntoView({ behavior: "smooth", block: "center" });
-              }}
               className="chat-pinned-bar--floating"
             />
           </div>
