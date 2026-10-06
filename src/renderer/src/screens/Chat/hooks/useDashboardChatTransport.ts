@@ -909,6 +909,14 @@ export function estimateContextTokens(
   return Math.max(Math.round((totalChars - lastAssistantBubbleChars) / 4), 0);
 }
 
+/**
+ * How many times to send `/approve` when answering the large-context switch
+ * guard. The approve is a slash command and can be dropped on a busy gateway;
+ * one silent failure used to fail the send (and, under auto-recovery, burn a
+ * chain attempt) for a switch the user had already asked for.
+ */
+const APPROVE_ATTEMPTS = 3;
+
 /** The backend's selection-guard ask: a model switch above
  *  `model.switch_context_confirm_tokens` (default 100k tokens) returns a confirm
  *  request instead of applying the switch. `/model` routes this through
@@ -924,6 +932,23 @@ export function isModelSwitchConfirmation(response: {
     /LARGE CONTEXT MODEL SWITCH|switch_context_confirm_tokens/i.test(text) ||
     /Confirm only if you intend to switch/i.test(text)
   );
+}
+
+/**
+ * Did `/model` itself report the switch as APPLIED?
+ *
+ * The live-identity read and the slash result come from different places and
+ * can disagree for a moment after a confirmed switch. When the backend says
+ * "Model switched", treating it as a failure produced the false
+ * "did not switch" popup for a switch that HAD applied — so a confirmed
+ * success is trusted over a lagging identity probe.
+ */
+export function modelSwitchReportedSuccess(response: {
+  output?: string;
+  warning?: string;
+} | null | undefined): boolean {
+  const text = `${response?.output || ""}\n${response?.warning || ""}`;
+  return /model switched|switched to|✓\s*model switched/i.test(text);
 }
 
 export function completionFailed(payload: unknown): boolean {
@@ -2842,6 +2867,32 @@ export function useDashboardChatTransport({
         modelOptionsCacheRef.current = { key, client, value, expiresAt };
         return value;
       };
+      /**
+       * Live model identity from `session.status` (the `Model: X (Y)` line).
+       *
+       * This is the source the PRE-switch check trusts, and unlike
+       * `model.options` it reflects a `/model` switch immediately — verifying a
+       * confirmed switch against `model.options` reported the OLD model and
+       * threw "did not switch" for a switch the backend had already confirmed.
+       */
+      const readLiveIdentity = async (
+        id: string,
+      ): Promise<{ provider: string; model: string } | null> => {
+        const status = await client
+          .request<{ output?: string }>("session.status", {
+            session_id: id,
+            ...(profile ? { profile } : {}),
+          })
+          .catch((err: unknown) => {
+            if (/unknown method|method not found|unsupported/i.test(String(err))) {
+              return null;
+            }
+            throw err;
+          });
+        const match = status?.output?.match(/^Model: (.+) \(([^\n]+)\)\s*$/m);
+        return match ? { model: match[1], provider: match[2] } : null;
+      };
+
       const switchAndValidate = async (
         targetSessionId: string,
       ): Promise<string> => {
@@ -2937,35 +2988,66 @@ export function useDashboardChatTransport({
         // instead: re-issue the switch, which is the same thing the "once"
         // button does, and continue once the live model matches.
         if (isModelSwitchConfirmation(slashResponse)) {
-          let liveOnConfirm = await readOptions(targetSessionId, true).catch(
+          // Auto-approve: the desktop has no surface to answer the guard, so
+          // answering it (the gateway's "/approve" = the "once" button) is the
+          // only way the prompt proceeds. The user asked for the switch; the
+          // guard is a cost warning, not a decision to hand back.
+          let liveOnConfirm = await readLiveIdentity(targetSessionId).catch(
             () => null,
           );
           if (
             !liveOnConfirm ||
-            !dashboardModelMatches(dashboardProvider, selectedModel, liveOnConfirm)
+            !dashboardModelMatches(dashboardProvider, selectedModel, {
+              provider: liveOnConfirm.provider,
+              model: liveOnConfirm.model,
+            } as ModelOptionsResponse)
           ) {
             // The pending confirm is answered with the gateway's confirm
             // command ("/approve"), NOT by re-sending /model — re-issuing would
             // just raise a second guard prompt, which is exactly the loop the
             // old code sat in.
-            await client
-              .request(
-                "slash.exec",
-                {
-                  session_id: targetSessionId,
-                  command: "/approve",
-                },
-                SLASH_COMMAND_TIMEOUT_MS,
-              )
-              .catch(() => undefined);
-            liveOnConfirm = await readOptions(targetSessionId, true).catch(
-              () => null,
-            );
+            //
+            // Bounded retries: the approve runs as a slash command and can be
+            // dropped on a busy/slow gateway. One silent failure used to mean a
+            // failed send (and, under auto-recovery, a burned chain attempt)
+            // for a switch the user had already asked for.
+            for (let approveTry = 0; approveTry < APPROVE_ATTEMPTS; approveTry++) {
+              await client
+                .request(
+                  "slash.exec",
+                  {
+                    session_id: targetSessionId,
+                    command: "/approve",
+                  },
+                  SLASH_COMMAND_TIMEOUT_MS,
+                )
+                .catch(() => undefined);
+              liveOnConfirm = await readLiveIdentity(targetSessionId).catch(
+                () => null,
+              );
+              if (
+                liveOnConfirm &&
+                dashboardModelMatches(dashboardProvider, selectedModel, {
+                  provider: liveOnConfirm.provider,
+                  model: liveOnConfirm.model,
+                } as ModelOptionsResponse)
+              ) {
+                break;
+              }
+            }
           }
           if (
-            liveOnConfirm &&
-            dashboardModelMatches(dashboardProvider, selectedModel, liveOnConfirm)
+            (liveOnConfirm &&
+              dashboardModelMatches(dashboardProvider, selectedModel, {
+                provider: liveOnConfirm.provider,
+                model: liveOnConfirm.model,
+              } as ModelOptionsResponse)) ||
+            modelSwitchReportedSuccess(slashResponse)
           ) {
+            // Confirmed by live identity OR by the backend's own success line.
+            // The latter matters because the two are read from different
+            // places and can disagree for a moment — and a switch the gateway
+            // says it applied must not be reported as a failure.
             appliedModelRef.current = key;
             return targetSessionId;
           }
@@ -2976,9 +3058,32 @@ export function useDashboardChatTransport({
           modelOptionsCacheRef.current = null;
         }
 
-        // Never validate a switch against the pre-switch inventory.
-        const live = await readOptions(targetSessionId, true);
-        if (!dashboardModelMatches(dashboardProvider, selectedModel, live)) {
+        // Never validate a switch against the pre-switch inventory. Prefer the
+        // live `session.status` identity (immediate) over `model.options`
+        // (lagging), and never fail a switch the backend already confirmed.
+        const liveIdentity = await readLiveIdentity(targetSessionId).catch(
+          () => null,
+        );
+        const matchesLive =
+          liveIdentity !== null &&
+          dashboardModelMatches(dashboardProvider, selectedModel, {
+            provider: liveIdentity.provider,
+            model: liveIdentity.model,
+          } as ModelOptionsResponse);
+        if (!matchesLive && !modelSwitchReportedSuccess(slashResponse)) {
+          const live = await readOptions(targetSessionId, true).catch(
+            () => null,
+          );
+          // Last chance: the catalog read may disagree while `session.status`
+          // agrees (or vice versa). Only when BOTH say the wrong model is the
+          // switch a real failure.
+          if (
+            live &&
+            dashboardModelMatches(dashboardProvider, selectedModel, live)
+          ) {
+            appliedModelRef.current = key;
+            return targetSessionId;
+          }
           appliedModelRef.current = null;
           modelOptionsCacheRef.current = null;
           const warning = slashResponse?.warning
@@ -2988,7 +3093,7 @@ export function useDashboardChatTransport({
             ? `; /model output: ${slashResponse.output}`
             : "";
           throw new Error(
-            `Hermes dashboard did not switch to ${dashboardProvider}/${selectedModel}; live model is ${live.provider || "unknown"}/${live.model || "unknown"}${warning}${output}; custom inventory: ${modelOptionsSummary(before)}`,
+            `Hermes dashboard did not switch to ${dashboardProvider}/${selectedModel}; live model is ${live?.provider || liveIdentity?.provider || "unknown"}/${live?.model || liveIdentity?.model || "unknown"}${warning}${output}; custom inventory: ${modelOptionsSummary(before)}`,
           );
         }
         appliedModelRef.current = key;

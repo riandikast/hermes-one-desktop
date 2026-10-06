@@ -12,6 +12,8 @@ import type { Mock } from "vitest";
 import type { DashboardRpcEvent } from "../dashboardGatewayClient";
 import {
   ensureDashboardRuntimeSession,
+  isModelSwitchConfirmation,
+  modelSwitchReportedSuccess,
   submitDashboardPromptWithRecovery,
   useDashboardChatTransport,
 } from "./useDashboardChatTransport";
@@ -519,7 +521,9 @@ describe("useDashboardChatTransport recovery", () => {
       if (reason === "model" || reason === "foreign") {
         const switchIndex = calls.findIndex(([method]) => method === "slash.exec");
         expect(switchIndex).toBeGreaterThanOrEqual(0);
-        expect(calls[switchIndex + 1][0]).toBe("model.options");
+        // Verification prefers `session.status` (immediate) over the lagging
+        // `model.options` catalog read.
+        expect(calls[switchIndex + 1][0]).toBe("session.status");
         expect(liveModel).toBe(reason === "model" ? "new-model" : "bad-model");
       }
     } finally { view.unmount(); clock.mockRestore(); }
@@ -711,7 +715,11 @@ describe("useDashboardChatTransport recovery", () => {
         return { session_id: "live-stale", resumed: "stored-stale" };
       }
       if (method === "slash.exec") {
-        return { output: "✓ Model switched: good-model Provider: good-provider" };
+        // A GENUINE failure: no success line, so there is nothing to trust.
+        return { output: "Unknown provider 'good-provider'" };
+      }
+      if (method === "session.status") {
+        return { output: "Model: old-model (old-provider)\nTokens: 0" };
       }
       if (method === "model.options") {
         return { model: "old-model", provider: "custom", providers: [] };
@@ -744,6 +752,54 @@ describe("useDashboardChatTransport recovery", () => {
     });
     expect(requests.some((request) => request.method === "prompt.submit")).toBe(
       false,
+    );
+  });
+
+  it("does NOT block a switch the gateway already confirmed", async () => {
+    // THE reported bug: /model returned "✓ Model switched", the switch HAD
+    // applied, but verification read a lagging identity and threw "did not
+    // switch" — blocking a send the user had explicitly asked for. A confirmed
+    // success must let the turn through.
+    const requests: Array<{ method: string; params: unknown }> = [];
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      requests.push({ method, params });
+      if (method === "session.create") {
+        return { session_id: "live-stale", stored_session_id: "stored-stale" };
+      }
+      if (method === "session.resume") {
+        return { session_id: "live-stale", resumed: "stored-stale" };
+      }
+      if (method === "slash.exec") {
+        // Confirmed success — even though every identity probe below still
+        // reports the OLD model (the lag that caused the false failure).
+        return { output: "✓ Model switched: good-model\n    Provider: good-provider" };
+      }
+      if (method === "session.status") {
+        return { output: "Model: old-model (old-provider)\nTokens: 0" };
+      }
+      if (method === "model.options") {
+        return { model: "old-model", provider: "custom", providers: [] };
+      }
+      return {};
+    });
+
+    const api: HarnessApi = {};
+    render(<Harness api={api} />);
+
+    const initialSend = api.send;
+    await act(async () => {
+      api.setProvider?.("good-provider");
+      api.setModel?.("good-model");
+    });
+    await waitFor(() => expect(api.send).not.toBe(initialSend));
+
+    await act(async () => {
+      await api.send?.("hello");
+    });
+
+    // The prompt goes through despite the stale identity reads.
+    expect(requests.some((request) => request.method === "prompt.submit")).toBe(
+      true,
     );
   });
 
@@ -1862,5 +1918,61 @@ describe("mid-session knowledge toggle", () => {
     const methods = dashboardMock.request.mock.calls.map((c) => c[0]);
     expect(methods).not.toContain("session.close");
     expect(api.knowledgeNotices ?? []).toHaveLength(0);
+  });
+});
+
+/**
+ * The large-context switch guard.
+ *
+ * Above `model.switch_context_confirm_tokens` the backend returns a confirm
+ * request and applies nothing. The desktop has no surface to answer it, so the
+ * transport must auto-approve — and must NOT report failure for a switch the
+ * gateway then confirms. These strings are taken verbatim from the reported
+ * failure so the real payload is what is tested.
+ */
+describe("large-context model switch guard", () => {
+  const GUARD = {
+    warning:
+      "!!! LARGE CONTEXT MODEL SWITCH !!!\n\nThis session holds ~326,196 tokens of context.\nSwitching to cbai/deepseek-v4.1-flash makes the next reply re-read all of it uncached (providers key prompt caches per model) — a one-time full-price input cost.\n\nThreshold: model.switch_context_confirm_tokens (currently 100,000; 0 disables this check).\nConfirm only if you intend to switch now.",
+    output: "",
+  };
+  const SUCCESS = {
+    output:
+      "✓ Model switched: cbai/deepseek-v4.1-flash\n    Provider: 9r\n    Context: 1,000,000 tokens\n    (session only — add --global to persist)",
+    warning: "",
+  };
+
+  it("recognises the guard text", () => {
+    expect(isModelSwitchConfirmation(GUARD)).toBe(true);
+  });
+
+  it("recognises the success text (and not as a guard)", () => {
+    // The confirm text is the SIGNAL for the guard; the success line must not
+    // be mistaken for it, or the transport would try to approve forever.
+    expect(modelSwitchReportedSuccess(SUCCESS)).toBe(true);
+    expect(isModelSwitchConfirmation(SUCCESS)).toBe(false);
+  });
+
+  it("does not treat a plain response as a guard", () => {
+    expect(isModelSwitchConfirmation({ output: "hello" })).toBe(false);
+    expect(isModelSwitchConfirmation(null)).toBe(false);
+    expect(isModelSwitchConfirmation(undefined)).toBe(false);
+  });
+
+  it("does not treat an unrelated error as a confirmed switch", () => {
+    expect(modelSwitchReportedSuccess({ output: "Unknown provider '9r'" })).toBe(
+      false,
+    );
+    expect(modelSwitchReportedSuccess(null)).toBe(false);
+  });
+
+  it("trusts a confirmed switch even when the guard was raised first", () => {
+    // THE reported bug: the guard fired, /approve applied the switch, the
+    // backend reported success — and the transport still threw "did not
+    // switch" because it verified against a lagging read. A confirmed success
+    // must win.
+    expect(modelSwitchReportedSuccess(SUCCESS)).toBe(true);
+    // And the guard text alone must never count as success.
+    expect(modelSwitchReportedSuccess(GUARD)).toBe(false);
   });
 });
