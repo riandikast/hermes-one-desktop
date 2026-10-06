@@ -7047,6 +7047,11 @@ body:has(.shell-vibrant),
   position: absolute;
   top: 12px;
   left: 12px;
+  /* Stop short of the DB counter (top: 12px; right: 18px, ~200px wide). The
+     chip used to reach min(72vw, 640px), which overlapped it on any chat body
+     narrower than ~900px — the two share the same top band. Reserving the
+     right lane here keeps them from ever touching, at any window width. */
+  right: 232px;
   z-index: 29;
   pointer-events: none;
 }
@@ -7054,7 +7059,9 @@ body:has(.shell-vibrant),
   display: flex;
   align-items: center;
   gap: 6px;
-  max-width: min(72vw, 640px);
+  /* Fills the wrap (which already reserves the counter's lane), so the pill is
+     as long as the free space but never longer. */
+  max-width: 100%;
   padding: 3px 8px 3px 5px;
   border-radius: 999px;
   border: 1px solid var(--border, #3a3f4b);
@@ -9422,6 +9429,40 @@ body:has(.shell-vibrant),
 
 /* Pinned messages: expanded = original sticky centered bar; collapsed =
    small centered floating pill (same visual family as Show/Hide-all FAB). */
+/* ── Floating pinned bar ─────────────────────────────────────────────────
+   Mounted as a sibling of the scrollport (see Chat.tsx), so it does not scroll
+   away. Top-RIGHT and below the DB counter's band (top: 12px, ~32px tall) so it
+   never collides with the chip (top-left) or the counter (top-right, higher
+   z-index). `position: absolute` against .chat-body, like the chip. */
+.chat-pinned-float {
+  position: absolute;
+  top: 48px;
+  right: 18px;
+  z-index: 28;
+  pointer-events: none;
+  max-width: min(360px, calc(100% - 36px));
+  display: flex;
+  justify-content: flex-end;
+}
+.chat-pinned-float > * {
+  pointer-events: auto;
+}
+.chat-pinned-bar.chat-pinned-bar--floating {
+  /* Override the in-flow sticky placement: this mount is already positioned. */
+  position: static;
+  width: auto;
+  max-width: 100%;
+  margin: 0;
+  overflow: visible;
+}
+.chat-pinned-bar.chat-pinned-bar--floating .chat-pinned-cards {
+  max-height: min(300px, 50vh);
+  background: var(--bg-elevated, rgba(40, 40, 45, 0.95));
+  border-radius: 10px;
+  margin-top: 4px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
 .chat-pinned-bar {
   position: sticky;
   top: 8px;

@@ -356,14 +356,18 @@ function buildRows(
  * its layout is settled before it can be virtualized (no height-snap drift).
  * Fork keeps the same buildRows + row components; only the windowing changes.
  */
-function PinnedMessagesBar({
+export function PinnedMessagesBar({
   messages,
   onUnpin,
   onGoToMessage,
+  className,
 }: {
   messages: ChatBubbleMessage[];
   onUnpin: (id: string) => void;
   onGoToMessage: (id: string) => void;
+  /** Extra class for a host that positions it differently (the floating
+   *  top-right mount in Chat vs. the in-flow list placement). */
+  className?: string;
 }): React.JSX.Element {
   const [collapsed, setCollapsed] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -378,7 +382,11 @@ function PinnedMessagesBar({
   };
 
   return (
-    <div className={collapsed ? "chat-pinned-bar is-collapsed" : "chat-pinned-bar"}>
+    <div
+      className={`${collapsed ? "chat-pinned-bar is-collapsed" : "chat-pinned-bar"}${
+        className ? ` ${className}` : ""
+      }`}
+    >
       <button
         type="button"
         className="chat-pinned-bar-trigger"
@@ -464,7 +472,6 @@ export const MessageList = memo(function MessageList({
   onUnsendLastUser,
   onOpenFileChanges,
   onPinToggle,
-  pinnedMessages = [],
   containerRef,
   modelRef,
   sessionKey,
@@ -686,16 +693,6 @@ export const MessageList = memo(function MessageList({
 
   return (
     <>
-      {pinnedMessages.length > 0 && (
-        <PinnedMessagesBar
-          messages={pinnedMessages}
-          onUnpin={(id) => onPinToggle?.(id, false)}
-          onGoToMessage={(id) => {
-            const el = document.getElementById("chat-msg-" + id);
-            el?.scrollIntoView({ behavior: "smooth", block: "center" });
-          }}
-        />
-      )}
       <StickyTodoPanel todos={stickyTodos} />
       {(realHiddenCount > 0 || olderAvailableProp) && (
         <button

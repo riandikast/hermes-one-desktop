@@ -24,7 +24,11 @@ describe("local session counter", () => {
   });
   it("anchors DB metadata top-right and keeps model actions in the composer", () => {
     expect(chatSource.length).toBeGreaterThan(1000);
-    expect(chatSource).toContain("refreshing={refreshing} onRefresh={refreshSession}");
+    // Whitespace-tolerant: the two props are on separate lines after
+    // formatting, and asserting the exact run also broke the guard whenever
+    // prettier reflowed it. What matters is that BOTH are wired to Chat's own
+    // state/handler, not that they sit on one line.
+    expect(chatSource).toMatch(/refreshing=\{refreshing\}[\s\S]{0,80}?onRefresh=\{refreshSession\}/);
     expect(counterCss).toContain("position: absolute;");
     expect(counterCss).toContain("top: 12px;");
     expect(counterCss).toContain("right: 18px;");

@@ -18,6 +18,7 @@ import { describe, expect, it, vi } from "vitest";
 import chatSource from "./Chat.tsx?raw";
 import chipSource from "./LastPromptChip.tsx?raw";
 import pickerSource from "./ModelPicker.tsx?raw";
+import messageListSource from "./MessageList.tsx?raw";
 // CSS ?raw is stubbed by Vitest; read actual tokens for the contrast check.
 // @ts-expect-error -- node types are intentionally outside the web tsconfig
 const nodeModule = (await import("node:module")) as unknown as {
@@ -349,6 +350,59 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     const afterLastClose = between.slice(lastCloseIdx + "</div>".length);
     expect(afterLastClose).not.toMatch(/<div[^>]*className="chat-messages"/);
     expect(afterLastClose).not.toMatch(/ref=\{contentRef\}/);
+  });
+
+  it("mounts the pinned bar OUTSIDE the scrolling transcript", () => {
+    // Same trap as the chip: a sticky bar inside the scroll content only sticks
+    // within its own parent's bounds, so it scrolls away exactly when the user
+    // is scrolled up — which is when they would want to reach it (the reported
+    // "pinned icon seems gone"). It must be a sibling of .chat-messages.
+    const barIdx = chatSource.indexOf("<PinnedMessagesBar");
+    expect(barIdx).toBeGreaterThan(-1);
+
+    const scrollDivIdx = chatSource.indexOf('className="chat-messages"');
+    expect(scrollDivIdx).toBeGreaterThan(-1);
+    expect(barIdx).toBeGreaterThan(scrollDivIdx);
+
+    const between = chatSource.slice(scrollDivIdx, barIdx);
+    const closes = between.match(/<\/div>/g) ?? [];
+    expect(closes.length).toBeGreaterThanOrEqual(2);
+    const lastCloseIdx = between.lastIndexOf("</div>");
+    const afterLastClose = between.slice(lastCloseIdx + "</div>".length);
+    expect(afterLastClose).not.toMatch(/<div[^>]*className="chat-messages"/);
+
+    // And it must NOT still be rendered from inside the list.
+    expect(messageListSource).not.toContain("<PinnedMessagesBar");
+  });
+
+  it("keeps the pinned bar in the top-RIGHT, clear of the chip and DB counter", () => {
+    // The chip owns the top-LEFT band (left: 12px) and the DB counter the
+    // top-right of the SAME band (top: 12px; right: 18px). The pinned bar goes
+    // below that band on the right so all three can coexist.
+    const start = css.indexOf(".chat-pinned-float {");
+    expect(start).toBeGreaterThan(-1);
+    const block = css.slice(start, css.indexOf(".chat-pinned-bar {", start));
+    expect(block).toContain("position: absolute");
+    expect(block).toContain("right: 18px");
+    // Below the counter's band, not level with it.
+    const topMatch = block.match(/top:\s*(\d+)px/);
+    expect(topMatch).not.toBeNull();
+    expect(Number(topMatch![1])).toBeGreaterThanOrEqual(40);
+  });
+
+  it("caps the chip so it cannot reach the DB counter's lane", () => {
+    // The chip used to reach min(72vw, 640px) from left: 12px, overlapping the
+    // counter (top: 12px; right: 18px) on any chat body under ~900px wide.
+    const start = css.indexOf(".chat-last-prompt-wrap {");
+    expect(start).toBeGreaterThan(-1);
+    const block = css.slice(start, css.indexOf(".chat-last-prompt {", start));
+    // The wrap reserves the counter's lane...
+    expect(block).toContain("right: 232px");
+    // ...so the pill fills the free space instead of a viewport-relative cap.
+    const pillStart = css.indexOf(".chat-last-prompt {");
+    const pillBlock = css.slice(pillStart, css.indexOf(".chat-last-prompt:hover", pillStart));
+    expect(pillBlock).toContain("max-width: 100%");
+    expect(pillBlock).not.toContain("72vw");
   });
 
   it("exposes Fallbacks as a rail category directly under All models", () => {

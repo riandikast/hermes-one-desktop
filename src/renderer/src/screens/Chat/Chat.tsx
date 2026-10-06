@@ -38,7 +38,7 @@ import { TerminalDock } from "../Command/TerminalDock";
 
 import { ChatEmptyState } from "./ChatEmptyState";
 
-import { MessageList } from "./MessageList";
+import { MessageList, PinnedMessagesBar } from "./MessageList";
 
 import type { MessageListModel } from "./MessageList";
 
@@ -2696,6 +2696,26 @@ function Chat({
           containerRef={containerRef}
           scrolledUpAtom={scrolledUpAtom}
         />
+
+        {/* Pinned messages — a floating sibling of the scrollport, NOT a child.
+            Inside the scrolling content a sticky bar only sticks within its own
+            parent's bounds and scrolls away exactly when the user is scrolled up
+            (i.e. whenever they would want to reach it). Mounted here it is
+            immune to scrolling, the same reasoning as the chip above.
+            Top-RIGHT so it never collides with the chip (top-left). */}
+        {pinnedMessages.length > 0 && (
+          <div className="chat-pinned-float">
+            <PinnedMessagesBar
+              messages={pinnedMessages}
+              onUnpin={(id) => handlePinToggle(id, false)}
+              onGoToMessage={(id) => {
+                const el = document.getElementById("chat-msg-" + id);
+                el?.scrollIntoView({ behavior: "smooth", block: "center" });
+              }}
+              className="chat-pinned-bar--floating"
+            />
+          </div>
+        )}
 
         {/* The worktree and web-preview panels are DIALOGS now, not inline
             panes — see the floating rail below. Rendering them here as
