@@ -1505,6 +1505,33 @@ function Chat({
   );
   const messagesRef = useRef(messages);
 
+  /**
+   * Run the SAME refresh the DB button runs, automatically, once when a session
+   * opens.
+   *
+   * Session open uses a deliberately cheap path: `getSessionMessagesBefore`
+   * reads only the NEWEST PAGE (a full read is ~450ms of blocking SQLite and
+   * ~14MB across IPC on a 29k-row session), and the startup-preload fast path
+   * reads nothing at all. That left the transcript as whatever was loaded at
+   * open time, and hidden staleness cleared only when the user pressed the DB
+   * refresh button. One full `getSessionMessages` pass on open is the stronger,
+   * more reliable source of truth.
+   *
+   * Guarded per session id so it fires ONCE per open — `refreshSession` is
+   * recreated whenever `messages` changes, so without the ref this would re-run
+   * on every streamed chunk. It self-skips while a turn is loading
+   * (`useSessionRefresh` bails on `isLoading` and re-validates before applying),
+   * so it never fights an in-flight turn or a switched session.
+   */
+  const autoRefreshedSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!hermesSessionId) return;
+    if (autoRefreshedSessionRef.current === hermesSessionId) return;
+    if (isLoading || loadingEarlier) return;
+    autoRefreshedSessionRef.current = hermesSessionId;
+    void refreshSession();
+  }, [hermesSessionId, isLoading, loadingEarlier, refreshSession]);
+
   useEffect(() => {
     messagesRef.current = messages;
   });
