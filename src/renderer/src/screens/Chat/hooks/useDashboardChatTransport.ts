@@ -1799,6 +1799,9 @@ export function useDashboardChatTransport({
               // FILE-CHANGES: emit the summary chip (lost message.complete must
           // not lose the badge either).
           finalizeFileChanges();
+          // Same as the message.complete path: the turn's rows just landed in
+          // state.db, so the sidebar's last-activity ordering is now stale.
+          window.dispatchEvent(new Event("hermes-session-db-synced"));
         } catch {
           // Count consecutive read failures. Retrying forever left the turn
           // spinning with no way out except a reopen; past the cap, stop and
@@ -2375,6 +2378,14 @@ export function useDashboardChatTransport({
         lastLocalActivityAtRef.current = Date.now();
           // FILE-CHANGES: emit the per-turn summary chip row (git + tool merge).
         finalizeFileChanges();
+        // The sidebar's "last updated" ordering reads each session's newest
+        // message timestamp. A turn that finishes in an EXISTING session
+        // changed that timestamp but told the sidebar nothing — the only
+        // runtime signals were a 60s poll and a sync fired when a NEW session
+        // row is created. So a project sat at its old position until an app
+        // restart re-ran the initial sync ("they only updated once app
+        // restart"). Ask for a re-sync now that the turn's rows are committed.
+        window.dispatchEvent(new Event("hermes-session-db-synced"));
         // The completion payload only carries the LAST answer text.
         // Intermediate answers (model text emitted between tool rounds) are
         // persisted as separate session rows — the official desktop shows

@@ -19,6 +19,7 @@ import chatSource from "./Chat.tsx?raw";
 import chipSource from "./LastPromptChip.tsx?raw";
 import pickerSource from "./ModelPicker.tsx?raw";
 import messageListSource from "./MessageList.tsx?raw";
+import transportSource from "./hooks/useDashboardChatTransport.ts?raw";
 // CSS ?raw is stubbed by Vitest; read actual tokens for the contrast check.
 // @ts-expect-error -- node types are intentionally outside the web tsconfig
 const nodeModule = (await import("node:module")) as unknown as {
@@ -550,5 +551,23 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     // Every overlay a dialog uses must clear it.
     expect(zOf(".models-modal-overlay")).toBeGreaterThan(tabStrip);
     expect(zOf(".terminal-dialog-overlay")).toBeGreaterThan(tabStrip);
+  });
+
+  it("tells the sidebar to re-sync when a turn completes", () => {
+    // The sidebar's "last updated" project order reads each session's newest
+    // message timestamp. A turn finishing in an EXISTING session changes that
+    // timestamp, so the sidebar must be told — otherwise the order refreshed
+    // only on the 60s poll / app restart ("they only updated once app
+    // restart"). Assert the dispatch exists in BOTH completion paths: the
+    // normal `message.complete` handler and the quiet-finalize fallback.
+    const dispatches =
+      transportSource.match(/hermes-session-db-synced/g)?.length ?? 0;
+    // One for a newly created session row (pre-existing), plus one per
+    // completion path.
+    expect(dispatches).toBeGreaterThanOrEqual(3);
+    // Guard the specific pairing so removing one path is caught.
+    expect(transportSource).toMatch(
+      /finalizeFileChanges\(\);\s*\n\s*\/\/[^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*window\.dispatchEvent\(new Event\("hermes-session-db-synced"\)\)/,
+    );
   });
 });
