@@ -87,14 +87,16 @@ export function SearchBar({
 
     // A DIRECTORY is not a file: dispatching an open for a folder handed the
     // viewer a path it cannot render, so the click looked like it did nothing
-    // (and directories sort first, so they are often the top hit). Instead,
-    // scope the search to that folder and clear the query, so the next
-    // keystroke searches inside it — the useful action for a folder hit.
+    // (and directories sort first, so they are often the top hit). Open the
+    // FILE EXPLORER pointed at that folder instead — the visible, useful action
+    // for a folder hit.
     if (entry.isDirectory) {
-      setFolders([entry.path]);
-      setQuery("");
-      setResults(null);
-      setActiveIndex(-1);
+      window.dispatchEvent(
+        new CustomEvent("hermes-open-folder-in-explorer", {
+          detail: { path: entry.path },
+        }),
+      );
+      closeResults();
       return;
     }
 

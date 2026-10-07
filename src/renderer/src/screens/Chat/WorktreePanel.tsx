@@ -42,17 +42,20 @@ const WIDTH_STORAGE_KEY = "hermes:worktreePanelWidth";
 const maxPanelWidth = (): number =>
   Math.max(MIN_PANEL_WIDTH, window.innerWidth - 360);
 
+/** Shared shape for a row's right-click handler (tree rows and search hits). */
+type RowContextMenuHandler = (
+  path: string,
+  isDirectory: boolean,
+  x: number,
+  y: number,
+) => void;
+
 interface TreeItemProps {
   entry: FileEntry;
   parentPath: string;
   depth: number;
   onFileClick?: (filePath: string) => void;
-  onRowContextMenu?: (
-    path: string,
-    isDirectory: boolean,
-    x: number,
-    y: number,
-  ) => void;
+  onRowContextMenu?: RowContextMenuHandler;
   /** Bumped by the root panel whenever the watched folder changes on disk. */
   refreshVersion: number;
 }
@@ -208,6 +211,124 @@ interface RootSectionProps {
   ) => void;
   onOpenTerminal: (path: string) => Promise<void>;
   refreshVersion: number;
+}
+
+/**
+ * One search hit in the explorer's search list.
+ *
+ * A DIRECTORY hit must be expandable: only showing `Folder — C:/path` as a flat,
+ * un-clickable row is useless (you cannot see what is inside it, and clicking a
+ * folder row previously did nothing at all). Expanding reads the folder's real
+ * children from its ABSOLUTE path, then reuses `TreeItem` for the subtree — a
+ * plain `TreeItem` cannot be used directly here because it composes paths as
+ * `parent + "/" + name`, while a search hit already carries a full path.
+ */
+function SearchResultRow({
+  entry,
+  onFileClick,
+  onRowContextMenu,
+  refreshVersion,
+}: {
+  entry: FileSearchEntry;
+  onFileClick?: (path: string) => void;
+  onRowContextMenu?: RowContextMenuHandler;
+  refreshVersion: number;
+}): React.JSX.Element {
+  const { t } = useI18n();
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [children, setChildren] = useState<FileEntry[] | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const loadChildren = useCallback(async () => {
+    setIsLoading(true);
+    const result = await window.hermesAPI.readDirectory(entry.path);
+    if (result) {
+      // Directories first, then files, both alphabetical — same as the tree.
+      const sorted = [...result].sort((a, b) => {
+        if (a.isDirectory === b.isDirectory) return a.name.localeCompare(b.name);
+        return a.isDirectory ? -1 : 1;
+      });
+      setChildren(sorted);
+    }
+    setIsLoading(false);
+  }, [entry.path]);
+
+  const handleClick = (): void => {
+    if (!entry.isDirectory) {
+      onFileClick?.(entry.path);
+      return;
+    }
+    if (!isExpanded && children === null) void loadChildren();
+    setIsExpanded((prev) => !prev);
+  };
+
+  return (
+    <div className="worktree-item">
+      <div
+        className={`worktree-row ${!entry.isDirectory ? "worktree-row-file" : ""} worktree-search-result`}
+        onClick={handleClick}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onRowContextMenu?.(
+            entry.path,
+            entry.isDirectory,
+            e.clientX,
+            e.clientY,
+          );
+        }}
+        title={entry.path}
+      >
+        {entry.isDirectory ? (
+          <span className="worktree-chevron">
+            {isExpanded ? (
+              <ChevronDown size={14} />
+            ) : (
+              <ChevronRight size={14} />
+            )}
+          </span>
+        ) : (
+          <span className="worktree-chevron-placeholder" />
+        )}
+        {entry.isDirectory ? (
+          <Folder size={14} className="worktree-icon worktree-folder-icon" />
+        ) : (
+          <FileText size={14} className="worktree-icon worktree-file-icon" />
+        )}
+        <span className="worktree-name">
+          {entry.name}
+          <span className="worktree-search-path">
+            {" "}
+            — {truncateSearchPath(entry.path)}
+          </span>
+        </span>
+      </div>
+      {entry.isDirectory && isExpanded && (
+        <div className="worktree-children">
+          {isLoading ? (
+            <div className="worktree-loading" style={{ paddingLeft: 20 }}>
+              {t("chat.worktree.loading")}...
+            </div>
+          ) : children === null ? null : children.length === 0 ? (
+            <div className="worktree-empty" style={{ paddingLeft: 20 }}>
+              {t("chat.worktree.emptyFolder")}
+            </div>
+          ) : (
+            children.map((child) => (
+              <TreeItem
+                key={`${entry.path}/${child.name}`}
+                entry={child}
+                parentPath={entry.path}
+                depth={1}
+                onFileClick={onFileClick}
+                onRowContextMenu={onRowContextMenu}
+                refreshVersion={refreshVersion}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** One collapsible root in the multi-root sidebar. */
@@ -576,50 +697,18 @@ export const WorktreePanel = memo(function WorktreePanel({
             <div className="worktree-empty">{t("chat.worktree.noResults")}</div>
           ) : (
             searchResults.map((entry) => (
-              <div
+              <SearchResultRow
                 key={entry.path}
-                className="worktree-row worktree-row-file worktree-search-result"
-                onClick={() => {
-                  if (!entry.isDirectory) {
-                    // Opens a standalone top-strip tab (Layout listens).
-                    window.dispatchEvent(
-                      new CustomEvent("hermes-open-file", {
-                        detail: entry.path,
-                      }),
-                    );
-                  }
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  handleRowContextMenu(
-                    entry.path,
-                    entry.isDirectory,
-                    e.clientX,
-                    e.clientY,
+                entry={entry}
+                onFileClick={(path) => {
+                  // Opens a standalone top-strip tab (Layout listens).
+                  window.dispatchEvent(
+                    new CustomEvent("hermes-open-file", { detail: path }),
                   );
                 }}
-                title={entry.path}
-              >
-                <span className="worktree-chevron-placeholder" />
-                {entry.isDirectory ? (
-                  <Folder
-                    size={14}
-                    className="worktree-icon worktree-folder-icon"
-                  />
-                ) : (
-                  <FileText
-                    size={14}
-                    className="worktree-icon worktree-file-icon"
-                  />
-                )}
-                <span className="worktree-name">
-                  {entry.name}
-                  <span className="worktree-search-path">
-                    {" "}
-                    — {truncateSearchPath(entry.path)}
-                  </span>
-                </span>
-              </div>
+                onRowContextMenu={handleRowContextMenu}
+                refreshVersion={refreshVersion}
+              />
             ))
           )
         ) : folderPaths.length === 0 ? (

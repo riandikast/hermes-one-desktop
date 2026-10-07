@@ -68,12 +68,15 @@ describe("SearchBar result clicks", () => {
     expect(screen.queryByText("app.ts")).toBeNull();
   });
 
-  it("does NOT open a DIRECTORY as a file", async () => {
-    // Directories are listed as results, but picking one must not dispatch a
-    // file-open for a folder — the viewer cannot render it, so the click looks
-    // like it did nothing.
+  it("opens the FILE EXPLORER for a directory (not a file tab)", async () => {
+    // Directories are listed as results. Picking one must not dispatch a
+    // file-open (the viewer cannot render a folder — that was the "click a
+    // result and nothing opens" bug), and instead must ask the explorer to open
+    // pointed at that folder.
     const onOpen = vi.fn();
+    const onOpenFolder = vi.fn();
     window.addEventListener("hermes-open-file", onOpen);
+    window.addEventListener("hermes-open-folder-in-explorer", onOpenFolder);
     render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
 
     const input = screen.getByPlaceholderText(/Search files/);
@@ -85,13 +88,28 @@ describe("SearchBar result clicks", () => {
       .closest('[role="option"]') as HTMLElement;
     fireEvent.click(option);
 
-    // Either it dispatches a directory-aware detail, or it does not dispatch a
-    // plain file open at all — never a bare file path for a folder.
-    const calls = onOpen.mock.calls.map(
-      (c) => (c[0] as CustomEvent).detail as { path: string; isDirectory?: boolean },
-    );
-    const openedAsFile = calls.filter((d) => d.isDirectory !== true);
-    expect(openedAsFile).toHaveLength(0);
+    // Never a bare file-open for a folder.
+    expect(onOpen).not.toHaveBeenCalled();
+    // The explorer opens on the folder.
+    expect(onOpenFolder).toHaveBeenCalledTimes(1);
+    const detail = (onOpenFolder.mock.calls[0][0] as CustomEvent).detail;
+    expect(detail.path).toBe("C:/proj/styles");
+
     window.removeEventListener("hermes-open-file", onOpen);
+    window.removeEventListener("hermes-open-folder-in-explorer", onOpenFolder);
+  });
+
+  it("closes the dropdown after picking a directory", async () => {
+    render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
+    const input = screen.getByPlaceholderText(/Search files/);
+    fireEvent.change(input, { target: { value: "styles" } });
+    await screen.findByText("styles");
+
+    const option = screen
+      .getByText("styles")
+      .closest('[role="option"]') as HTMLElement;
+    fireEvent.click(option);
+
+    expect(screen.queryByText("styles")).toBeNull();
   });
 });

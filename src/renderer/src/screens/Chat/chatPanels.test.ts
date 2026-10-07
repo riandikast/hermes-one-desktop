@@ -76,16 +76,35 @@ describe("panels are dialogs, not inline panes", () => {
     expect(chatSource).toMatch(
       /<FloatingDialog[\s\S]{0,400}<WebPreviewPanel[\s\S]{0,300}embedded/,
     );
-    expect(chatSource).toMatch(
-      /<FloatingDialog[\s\S]{0,400}<WorktreePanel[\s\S]{0,300}embedded/,
-    );
+    // Anchor on the explorer DIALOG's own marker comment, not on
+    // `title="File explorer"` (which also matches the rail icon's title, far
+    // earlier in the file) nor the first <FloatingDialog> (the web preview's).
+    const explorerDialog = chatSource.indexOf("File explorer dialog");
+    expect(explorerDialog).toBeGreaterThan(-1);
+    // Wide enough to span the marker comment, the mount conditional, and the
+    // dialog's own props before the panel it wraps.
+    const region = chatSource.slice(explorerDialog, explorerDialog + 1600);
+    expect(region).toContain("<FloatingDialog");
+    expect(region).toContain("<WorktreePanel");
+    expect(region).toContain("embedded");
   });
 
   it("passes the embedded flag so the panels fill the dialog", () => {
     // Without it the panel keeps its own width AND its resize handle, which
     // fights the dialog's sizing.
-    expect(chatSource).toContain("<WorktreePanel folderPaths={contextFolders} embedded />");
+    expect(chatSource).toMatch(/<WorktreePanel[\s\S]{0,600}embedded/);
     expect(chatSource).toMatch(/onInspectElement=\{handleInspectElement\}\s*\n?\s*embedded/);
+  });
+
+  it("opens the explorer on the session folders, or a pointed-at folder", () => {
+    // A folder picked in the top search bar points the explorer at it; with no
+    // such folder the session's context folders are shown. Browsing must not
+    // silently retarget the session's context.
+    expect(chatSource).toContain("explorerFocusFolder");
+    expect(chatSource).toMatch(
+      /explorerFocusFolder !== null[\s\S]{0,120}\[explorerFocusFolder\][\s\S]{0,80}: contextFolders/,
+    );
+    expect(chatSource).toContain("hermes-open-folder-in-explorer");
   });
 
   it("does not render the panels as siblings of the transcript", () => {

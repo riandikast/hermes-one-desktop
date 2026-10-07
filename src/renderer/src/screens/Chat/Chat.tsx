@@ -924,6 +924,14 @@ function Chat({
   // Default false so the panel doesn't open automatically and interfere with scrolling
 
   const [worktreeVisible, setWorktreeVisible] = useState<boolean>(false);
+  // A folder the explorer was explicitly pointed at (File > Open Folder, or a
+  // directory picked in the top search bar). Distinct from `contextFolders`,
+  // which is the SESSION's context: pointing the explorer at a folder must not
+  // silently retarget the agent's context. Cleared when the dialog closes so
+  // the next open shows the session folders again.
+  const [explorerFocusFolder, setExplorerFocusFolder] = useState<string | null>(
+    null,
+  );
 
   const [folderPickerOpen, setFolderPickerOpen] = useState<boolean>(false);
 
@@ -944,6 +952,25 @@ function Chat({
   useEffect(() => {
     if (worktreeVisible) setWorktreeEverOpened(true);
   }, [worktreeVisible]);
+
+  // A folder picked elsewhere (the top search bar's directory results) opens
+  // the explorer POINTED AT that folder. Deliberately only sets the explorer's
+  // focus folder, never `contextFolders` — browsing a folder is not the same as
+  // attaching it to the session. `worktreeEverOpened` is set through
+  // `worktreeVisible` below.
+  useEffect(() => {
+    const onOpenFolder = (e: Event): void => {
+      const detail = (e as CustomEvent<string | { path?: string }>).detail;
+      const path =
+        typeof detail === "string" ? detail : (detail?.path ?? "");
+      if (!path) return;
+      setExplorerFocusFolder(path);
+      setWorktreeVisible(true);
+    };
+    window.addEventListener("hermes-open-folder-in-explorer", onOpenFolder);
+    return () =>
+      window.removeEventListener("hermes-open-folder-in-explorer", onOpenFolder);
+  }, []);
 
   const [webPreviewUrl, setWebPreviewUrl] =
     useState<string>("https://google.com");
@@ -2994,16 +3021,32 @@ function Chat({
 
       {/* ── File explorer dialog ────────────────────────────────────────────
           Mounted only while a folder is attached. The tree re-reads on open,
-          so unlike the webview it is safe to unmount when there is no folder. */}
-      {contextFolders.length > 0 && worktreeEverOpened ? (
+          so unlike the webview it is safe to unmount when there is no folder.
+          Opens on the session's context folders, or on a folder the explorer was
+          explicitly pointed at (a directory picked in the top search bar) —
+          which can exist even with no context folders attached. */}
+      {(contextFolders.length > 0 || explorerFocusFolder !== null) &&
+      worktreeEverOpened ? (
         <FloatingDialog
           open={worktreeVisible}
-          onClose={() => setWorktreeVisible(false)}
+          onClose={() => {
+            setWorktreeVisible(false);
+            // Drop the pointed-at folder so the next open shows the session's
+            // folders again rather than a stale navigation target.
+            setExplorerFocusFolder(null);
+          }}
           title="File explorer"
           size="wide"
           keepMounted
         >
-          <WorktreePanel folderPaths={contextFolders} embedded />
+          <WorktreePanel
+            folderPaths={
+              explorerFocusFolder !== null
+                ? [explorerFocusFolder]
+                : contextFolders
+            }
+            embedded
+          />
         </FloatingDialog>
       ) : null}
     </div>
