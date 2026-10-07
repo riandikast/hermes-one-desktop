@@ -3046,6 +3046,7 @@ function Chat({
                 : contextFolders
             }
             embedded
+            open={worktreeVisible}
           />
         </FloatingDialog>
       ) : null}

@@ -531,4 +531,24 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     // Ordering is the point of the list, so the position badge is styled.
     expect(block).toContain(".chat-model-fallback-order");
   });
+
+  it("keeps modal overlays ABOVE the tab strip", () => {
+    // `.top-menu-wrapper` / `.active-sessions-bar` are z-index 1001 (the window
+    // title-bar drag band). An overlay below that paints behind the tabs — the
+    // Ctrl+K sessions dialog visibly spawned under them at z-index 200.
+    const zOf = (selector: string): number => {
+      const start = css.indexOf(`${selector} {`);
+      expect(start, `${selector} not found`).toBeGreaterThan(-1);
+      const block = css.slice(start, css.indexOf("}", start));
+      const m = block.match(/^\s*z-index:\s*(\d+);/m);
+      expect(m, `${selector} has no z-index`).not.toBeNull();
+      return Number(m![1]);
+    };
+
+    const tabStrip = zOf(".top-menu-wrapper");
+    expect(tabStrip).toBe(1001);
+    // Every overlay a dialog uses must clear it.
+    expect(zOf(".models-modal-overlay")).toBeGreaterThan(tabStrip);
+    expect(zOf(".terminal-dialog-overlay")).toBeGreaterThan(tabStrip);
+  });
 });

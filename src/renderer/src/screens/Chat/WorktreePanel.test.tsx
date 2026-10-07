@@ -120,3 +120,58 @@ describe("WorktreePanel search results", () => {
     window.removeEventListener("hermes-open-file", onOpen);
   });
 });
+
+describe("WorktreePanel search is cleared when the dialog closes", () => {
+  const renderWithOpen = (open: boolean): ReturnType<typeof render> =>
+    render(
+      <I18nProvider>
+        <WorktreePanel folderPaths={["C:/proj"]} embedded open={open} />
+      </I18nProvider>,
+    );
+
+  const getInput = (): HTMLInputElement =>
+    document.querySelector(".worktree-search-input") as HTMLInputElement;
+
+  it("clears the query and its results when `open` goes true -> false", async () => {
+    const view = renderWithOpen(true);
+
+    fireEvent.change(getInput(), { target: { value: "src" } });
+    await screen.findByText("src", {}, { timeout: 3000 });
+    expect(getInput().value).toBe("src");
+
+    // Dialog closes.
+    view.rerender(
+      <I18nProvider>
+        <WorktreePanel folderPaths={["C:/proj"]} embedded open={false} />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => expect(getInput().value).toBe(""));
+    // The result list is gone too, so reopening shows a fresh explorer.
+    expect(screen.queryByText("src")).toBeNull();
+  });
+
+  it("does NOT clear the query while the dialog is open", async () => {
+    renderWithOpen(true);
+
+    fireEvent.change(getInput(), { target: { value: "src" } });
+    await screen.findByText("src", {}, { timeout: 3000 });
+
+    // Re-rendering while still open must leave the typed query alone.
+    fireEvent.change(getInput(), { target: { value: "src2" } });
+    await waitFor(() => expect(getInput().value).toBe("src2"));
+  });
+
+  it("leaves a standalone panel (no `open` prop) alone", async () => {
+    // The inline-pane mount passes no `open`; it must never clear itself.
+    render(
+      <I18nProvider>
+        <WorktreePanel folderPaths={["C:/proj"]} />
+      </I18nProvider>,
+    );
+
+    fireEvent.change(getInput(), { target: { value: "src" } });
+    await screen.findByText("src", {}, { timeout: 3000 });
+    expect(getInput().value).toBe("src");
+  });
+});

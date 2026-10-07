@@ -34,6 +34,13 @@ interface WorktreePanelProps {
    * (the default) keeps the original inline-pane behaviour.
    */
   embedded?: boolean;
+  /**
+   * Whether the hosting dialog is OPEN. The panel stays mounted while the
+   * dialog is closed (its expanded tree is expensive to rebuild), so it needs
+   * this signal to know a close happened and clear the search field — a stale
+   * query plus its result list otherwise greets the user on reopen.
+   */
+  open?: boolean;
 }
 
 const MIN_PANEL_WIDTH = 220;
@@ -458,6 +465,7 @@ interface ContextMenuState {
 export const WorktreePanel = memo(function WorktreePanel({
   folderPaths,
   embedded = false,
+  open,
 }: WorktreePanelProps): React.JSX.Element {
   const { t } = useI18n();
   const [sourceControlDir, setSourceControlDir] = useState<string | null>(null);
@@ -520,6 +528,28 @@ export const WorktreePanel = memo(function WorktreePanel({
   const [searching, setSearching] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear the search whenever the hosting dialog CLOSES (open goes true->false).
+  // The panel is kept mounted while closed so its expanded tree survives, which
+  // also meant the query and its result list survived — reopening showed a
+  // stale search instead of a fresh explorer. Keyed on the transition, not on
+  // `!open`, so a standalone (non-dialog) mount with no `open` prop is
+  // unaffected and the field never clears itself while visible.
+  const wasOpenRef = useRef(open ?? true);
+  useEffect(() => {
+    if (open === undefined) return;
+    const was = wasOpenRef.current;
+    wasOpenRef.current = open;
+    if (was && !open) {
+      setQuery("");
+      setSearchResults(null);
+      setSearching(false);
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+    }
+  }, [open]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);

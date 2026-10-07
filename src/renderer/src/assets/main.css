@@ -19486,7 +19486,12 @@ body:has(.shell-vibrant),
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 200;
+  /* Above the tab strip. `.top-menu-wrapper` and `.active-sessions-bar` are
+     z-index 1001 (the window title-bar drag band), so an overlay at 200 painted
+     BEHIND them — the Ctrl+K sessions dialog appeared to spawn under the tabs.
+     1100 matches `.terminal-dialog-overlay`, which documents the same band and
+     sits under `.splash-screen` (9999). */
+  z-index: 1100;
 }
 
 .models-modal {
