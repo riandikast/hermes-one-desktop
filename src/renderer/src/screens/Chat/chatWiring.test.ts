@@ -317,8 +317,21 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     // The panel must NOT be coloured from a --bg-* token: the dialog is painted
     // with --bg-elevated and in several themes those two variables hold the same
     // hex, which is why the container was invisible.
-    expect(panel).toContain("background: color-mix(");
-    expect(panel).toContain("var(--bg-elevated");
+    // The panel is an INSET WELL: --bg-secondary is DARKER than the dialog's
+    // --bg-elevated in every dark theme. Mixing toward the text colour (an
+    // earlier attempt) LIGHTENED it into a grey wash instead.
+    expect(panel).toContain("background: var(--bg-secondary");
+    // All THREE bodies must be in one rule, so the two readers cannot drift
+    // apart again (the original bug: two separate declarations, 6% vs 12%).
+    expect(panel).toContain(".chat-last-prompt-item-preview,");
+    expect(panel).toContain(".chat-last-prompt-item-body,");
+    expect(panel).toContain(".chat-last-prompt-dialog-body {");
+    // And the row override must NOT re-declare a background (that is what made
+    // one reader grey and the other dark).
+    const rowOverride = css.slice(
+      css.indexOf(".chat-last-prompt-item .chat-last-prompt-item-preview,"),
+    );
+    expect(rowOverride.slice(0, 400)).not.toContain("background");
     expect(panel).toContain("padding: 10px 12px");
 
     // The pinned reader must NOT collapse. `flex: 1` + `min-height: 0` belong to

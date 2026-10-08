@@ -7321,42 +7321,27 @@ body:has(.shell-vibrant),
   color: var(--text-primary, #e4e4e7);
 }
 
-/* ONE shared surface for every reader panel. The pinned reader and the
-   last-prompt rows must look IDENTICAL on the same theme; they previously
-   drifted because the row rule mixed at 6% while the shared body mixed at 12%,
-   which made one grey and the other dark. Single value, single place.
+/* ONE shared surface for every reader panel. Both readers must look identical
+   on the same theme; they previously drifted because the row rule mixed at 6%
+   while the shared body mixed at 12%, making one grey and one darker.
 
-   WHY NOT A --bg-* TOKEN: the dialog is painted with `--bg-elevated`, and in
-   dracula / nord / one-dark `--bg-tertiary` holds the IDENTICAL hex (1.000),
-   with dark at 1.014 — a panel coloured from those tokens is the same colour as
-   the surface behind it and is invisible however much padding it carries.
-   Mixing against the dialog's own variable is guaranteed to differ in every
-   theme, including custom and github-light / solarized-light, which a
-   [data-theme="light"] rule would silently miss. */
+   The panel is an INSET WELL: it uses --bg-secondary, which is DARKER than the
+   dialog's own --bg-elevated (dark theme: #171717 inside #303030), so the text
+   sits in a recessed black container rather than a grey wash. An earlier attempt
+   mixed toward the text colour, which LIGHTENED the surface into grey — the
+   opposite of an inset. Tokens are theme-aware, so every theme gets its own
+   correct "one step darker than the dialog" value with no per-theme rule. */
 .chat-last-prompt-item-preview,
 .chat-last-prompt-item-body,
 .chat-last-prompt-dialog-body {
   display: block;
   padding: 10px 12px;
   border-radius: var(--radius-sm, 8px);
-  background: color-mix(
-    in srgb,
-    var(--bg-elevated, #303030) 88%,
-    currentColor 12%
-  );
+  background: var(--bg-secondary, #171717);
   border: 1px solid var(--border-bright, rgba(255, 255, 255, 0.16));
 }
-/* Fallback for engines without color-mix: a mid-grey alpha that differs from
-   both a light and a dark dialog. */
-@supports not (background: color-mix(in srgb, red 50%, blue)) {
-  .chat-last-prompt-item-preview,
-  .chat-last-prompt-item-body,
-  .chat-last-prompt-dialog-body {
-    background: rgba(127, 127, 127, 0.16);
-  }
-}
 /* Rows inside the list are cards already, so their inner panel drops the outer
-   border — but keeps the SAME background mix as the pinned reader, so the two
+   border — but keeps the SAME background as the pinned reader, so the two
    dialogs read as one component rather than two. */
 .chat-last-prompt-item .chat-last-prompt-item-preview,
 .chat-last-prompt-item .chat-last-prompt-item-body {
