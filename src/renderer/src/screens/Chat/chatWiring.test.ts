@@ -302,11 +302,30 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     expect(css.slice(sharedBody, sharedBody + 600)).toContain("overflow: auto");
 
     // Both readers sit on their OWN panel, so the text area reads as a surface
-    // instead of sharing the dialog background.
-    const panelStart = css.indexOf(".chat-last-prompt-item-body,");
-    const panel = css.slice(panelStart, panelStart + 500);
+    // instead of sharing the dialog background. The panel must cover the
+    // COLLAPSED preview too, not just the expanded body — a panel on the body
+    // alone is why it looked like it "only works on the expanded version".
+    // The panel rule is the grouped one naming all three bodies (collapsed
+    // preview, expanded body, pinned reader). Build the needle from a char
+    // code so no line-ending escaping is involved.
+    const nl = String.fromCharCode(13) + String.fromCharCode(10);
+    const panelStart = css.indexOf(
+      ".chat-last-prompt-item-preview," + nl + ".chat-last-prompt-item-body,",
+    );
+    expect(panelStart).toBeGreaterThan(-1);
+    const panel = css.slice(panelStart, panelStart + 400);
     expect(panel).toContain("background: var(--bg-tertiary");
     expect(panel).toContain("padding: 10px 12px");
+
+    // The pinned reader must NOT collapse. `flex: 1` + `min-height: 0` belong to
+    // a flex-column parent and zero-heighted this element, so its panel never
+    // showed.
+    const pinnedStart = css.indexOf(".chat-last-prompt-dialog-body {");
+    const pinnedBlock = css.slice(pinnedStart, css.indexOf("}", pinnedStart));
+    expect(pinnedStart).toBeGreaterThan(-1);
+    expect(pinnedBlock).not.toContain("flex: 1");
+    expect(pinnedBlock).not.toContain("min-height: 0");
+
     // And the token class must NOT re-declare a background further down the
     // file: it shares the element with the panel rule, and a later
     // `background: transparent` would silently win and flatten the panel.

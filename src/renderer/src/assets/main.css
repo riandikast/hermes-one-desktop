@@ -7269,7 +7269,10 @@ body:has(.shell-vibrant),
   color: var(--text-primary, #e4e4e7);
   background: var(--bg-hover, rgba(255, 255, 255, 0.06));
 }
-/* Collapsed one-liner preview. */
+/* Collapsed one-liner preview. Carries the SAME panel as the expanded body, so
+   the container is visible before a row is opened too — previously only the
+   expanded `.chat-last-prompt-item-body` had it, which is why the panel
+   appeared to work "only on the expanded version". */
 .chat-last-prompt-item-preview {
   margin: 0;
   font-size: 12.5px;
@@ -7301,11 +7304,14 @@ body:has(.shell-vibrant),
 }
 /* Shared single-body reader. The pinned-message reader renders ONE message in
    this shape (it has no list), so the class lives on independently of the
-   last-prompt list above — removing it would silently unstyle that dialog. */
+   last-prompt list above — removing it would silently unstyle that dialog.
+   NOTE: no `flex: 1` / `min-height: 0` here. Those belong to a flex COLUMN
+   parent and collapsed this element to zero-height inside the dialog, which is
+   why its panel background never showed. Let it size to its content and cap
+   with max-height instead. */
 .chat-last-prompt-dialog-body {
-  flex: 1;
-  min-height: 0;
   margin: 0 16px 16px;
+  max-height: 60vh;
   overflow: auto;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12.5px;
@@ -7317,7 +7323,10 @@ body:has(.shell-vibrant),
 
 /* A panel behind the text so the reading area reads as its own surface instead
    of sharing the dialog background — an inset card that catches the eye and
-   separates the prompt from the dialog chrome. */
+   separates the prompt from the dialog chrome.
+   Applies to the COLLAPSED preview as well as the expanded body, and to the
+   pinned-message reader, so all three show the same container. */
+.chat-last-prompt-item-preview,
 .chat-last-prompt-item-body,
 .chat-last-prompt-dialog-body {
   display: block;
@@ -7326,8 +7335,10 @@ body:has(.shell-vibrant),
   background: var(--bg-tertiary, rgba(255, 255, 255, 0.05));
   border: 1px solid var(--border, rgba(255, 255, 255, 0.09));
 }
-/* The expanded row inside the list already sits on its own card, so its panel
-   stays flat there — a panel on a panel would read as a double border. */
+/* The expanded row and the collapsed preview sit INSIDE a list item that is
+   already its own card, so a panel on a panel would read as a double border —
+   they get a quieter, sunken surface and no outer border. */
+.chat-last-prompt-item .chat-last-prompt-item-preview,
 .chat-last-prompt-item .chat-last-prompt-item-body {
   background: var(--bg-primary, rgba(0, 0, 0, 0.16));
   border-color: transparent;
