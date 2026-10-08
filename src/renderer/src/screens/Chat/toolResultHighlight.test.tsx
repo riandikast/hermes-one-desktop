@@ -11,8 +11,8 @@
 // backslashed Windows path that a real read_file call carried — the exact shape
 // that has to resolve to `dart`.
 
-import { render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, render as mount } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../components/useI18n", () => ({
   useI18n: () => ({
@@ -24,6 +24,22 @@ vi.mock("../../components/useI18n", () => ({
 
 import { ToolActivityGroup } from "./HistoryRow";
 import type { ToolCallMessage, ToolResultMessage } from "./types";
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  localStorage.setItem("hermes.autoExpandToolCalls", "true");
+});
+afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
+  localStorage.removeItem("hermes.autoExpandToolCalls");
+});
+function render(element: React.JSX.Element): ReturnType<typeof mount> {
+  const view = mount(element);
+  for (let i = 0; vi.getTimerCount() && i < 100; i++)
+    act(() => vi.advanceTimersToNextTimer());
+  return view;
+}
 
 /** A group of [call, result] pairs, as the transcript supplies them. */
 function group(
@@ -68,7 +84,7 @@ describe("read_file results are highlighted by file type", () => {
   // Real read_file envelope: line-numbered Dart source, no path inside it.
   const DART_CONTENT = JSON.stringify({
     content:
-      '618|      ),\n619|    );\n620|  }\n621|\n622|  Widget _buildAttachmentField(_TaskDraft task) {\n623|    final canAdd = task.files.length < 3;',
+      "618|      ),\n619|    );\n620|  }\n621|\n622|  Widget _buildAttachmentField(_TaskDraft task) {\n623|    final canAdd = task.files.length < 3;",
     total_lines: 428,
     truncated: false,
   });
@@ -111,7 +127,10 @@ describe("read_file results are highlighted by file type", () => {
         {
           name: "read_file",
           args: { path: "/repo/src/main.tsx" },
-          content: JSON.stringify({ content: "1|const a = 1;", total_lines: 1 }),
+          content: JSON.stringify({
+            content: "1|const a = 1;",
+            total_lines: 1,
+          }),
         },
       ]),
     );
@@ -199,7 +218,11 @@ describe("terminal output highlighting", () => {
         {
           name: "terminal",
           args: { command: "false" },
-          content: JSON.stringify({ output: "boom", exit_code: 1, error: "fail" }),
+          content: JSON.stringify({
+            output: "boom",
+            exit_code: 1,
+            error: "fail",
+          }),
         },
       ]),
     );

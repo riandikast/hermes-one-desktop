@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 import { CodeBlock } from "../../components/AgentMarkdown";
 import { Brain, ChevronRight, Wrench } from "../../assets/icons";
@@ -24,6 +24,7 @@ import {
 } from "./toolResultLanguage";
 import { TerminalCommand, TerminalOutput } from "./TerminalView";
 import { useAccordionOpen } from "./useAccordionOpen";
+import { useToolDisclosure } from "./useToolDisclosure";
 
 /* ── Reasoning ────────────────────────────────────────────────────────── */
 // Collapse/expand state persists across unmounts (module-scoped, like
@@ -32,19 +33,30 @@ import { useAccordionOpen } from "./useAccordionOpen";
 // must come back in the state the user left it.
 
 const reasoningOpenById = new Set<string>();
-const toolGroupOpenById = new Set<string>();
-const toolItemOpenById = new Set<string>();
+const toolGroupOpenById = new Map<string, boolean>();
+const toolItemOpenById = new Map<string, boolean>();
 
 export type ChatDisplayControls = {
   thoughts: "show" | "hide" | "unset";
   tools: "show" | "hide" | "unset";
 };
 
-let displayControls: ChatDisplayControls = { thoughts: "unset", tools: "unset" };
+let displayControls: ChatDisplayControls = {
+  thoughts: "unset",
+  tools: "unset",
+};
 
-export function setChatDisplayControls(next: Partial<ChatDisplayControls>): void {
+export function setChatDisplayControls(
+  next: Partial<ChatDisplayControls>,
+): void {
   displayControls = { ...displayControls, ...next };
-  window.dispatchEvent(new CustomEvent("hermes-chat-display-control", { detail: next }));
+  if (next.tools !== undefined) {
+    toolGroupOpenById.clear();
+    toolItemOpenById.clear();
+  }
+  window.dispatchEvent(
+    new CustomEvent("hermes-chat-display-control", { detail: next }),
+  );
 }
 
 export function currentChatDisplayControls(): ChatDisplayControls {
@@ -88,13 +100,21 @@ export const ReasoningRow = memo(function ReasoningRow({
 
   useEffect(() => {
     const handleDisplayControl = (event: Event): void => {
-      const detail = (event as CustomEvent<Partial<ChatDisplayControls>>).detail;
+      const detail = (event as CustomEvent<Partial<ChatDisplayControls>>)
+        .detail;
       if (detail.thoughts === "show" || detail.thoughts === "hide") {
         setOpen(detail.thoughts === "show");
       }
     };
-    window.addEventListener("hermes-chat-display-control", handleDisplayControl);
-    return () => window.removeEventListener("hermes-chat-display-control", handleDisplayControl);
+    window.addEventListener(
+      "hermes-chat-display-control",
+      handleDisplayControl,
+    );
+    return () =>
+      window.removeEventListener(
+        "hermes-chat-display-control",
+        handleDisplayControl,
+      );
   }, []);
 
   // Auto-expand live reasoning chunks during streaming if preference is enabled
@@ -335,7 +355,9 @@ export function isTerminalTool(name: string): boolean {
 function parseToolArgs(args: string): Record<string, unknown> | null {
   try {
     const parsed: unknown = JSON.parse(args);
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+    return typeof parsed === "object" &&
+      parsed !== null &&
+      !Array.isArray(parsed)
       ? (parsed as Record<string, unknown>)
       : null;
   } catch {
@@ -347,26 +369,38 @@ function terminalCommand(args: string): { command: string; cwd?: string } {
   const parsed = parseToolArgs(args);
   if (!parsed) return { command: args };
   const command = [parsed.command, parsed.cmd, parsed.script].find(
-    (value): value is string => typeof value === "string" && value.trim().length > 0,
+    (value): value is string =>
+      typeof value === "string" && value.trim().length > 0,
   );
-  const cwd = [parsed.cwd, parsed.workdir, parsed.working_directory, parsed.directory].find(
-    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  const cwd = [
+    parsed.cwd,
+    parsed.workdir,
+    parsed.working_directory,
+    parsed.directory,
+  ].find(
+    (value): value is string =>
+      typeof value === "string" && value.trim().length > 0,
   );
   return { command: command || args, ...(cwd ? { cwd } : {}) };
 }
 
 function isFileTool(name: string): boolean {
-  return /^(read|write|edit|patch|apply[_-]?patch|create|delete|move|copy|rename|replace|str[_-]?replace)([_-]?file)?$/i.test(name) || /file|patch/i.test(name);
+  return (
+    /^(read|write|edit|patch|apply[_-]?patch|create|delete|move|copy|rename|replace|str[_-]?replace)([_-]?file)?$/i.test(
+      name,
+    ) || /file|patch/i.test(name)
+  );
 }
 
 function textArg(parsed: Record<string, unknown>, keys: string[]): string {
   for (const key of keys) {
-    if (typeof parsed[key] === "string" && parsed[key].trim()) return parsed[key] as string;
+    if (typeof parsed[key] === "string" && parsed[key].trim())
+      return parsed[key] as string;
   }
   return "";
 }
 
-function ToolResultBody({
+const ToolResultBody = memo(function ToolResultBody({
   msg,
   sourcePath,
 }: {
@@ -392,7 +426,10 @@ function ToolResultBody({
         ))}
       </div>
       {result.sections.map((section, index) => (
-        <div key={`${section.label}-${index}`} className="chat-terminal-section">
+        <div
+          key={`${section.label}-${index}`}
+          className="chat-terminal-section"
+        >
           {result.sections.length > 1 && (
             <div className="chat-terminal-section-label">{section.label}</div>
           )}
@@ -423,7 +460,7 @@ function ToolResultBody({
       ))}
     </div>
   );
-}
+});
 
 function FileToolBody({
   msg,
@@ -440,18 +477,53 @@ function FileToolBody({
     return <ToolResultBody msg={msg} sourcePath={sourcePath} />;
   }
   const parsed = parseToolArgs(msg.args);
-  if (!parsed) return <pre className="chat-history-pre chat-history-pre--code">{msg.args || "(no arguments)"}</pre>;
-  const path = textArg(parsed, ["path", "file", "file_path", "filename", "target"]);
+  if (!parsed)
+    return (
+      <pre className="chat-history-pre chat-history-pre--code">
+        {msg.args || "(no arguments)"}
+      </pre>
+    );
+  const path = textArg(parsed, [
+    "path",
+    "file",
+    "file_path",
+    "filename",
+    "target",
+  ]);
   const oldText = textArg(parsed, ["old_string", "oldText", "old"]);
   const newText = textArg(parsed, ["new_string", "newText", "new", "content"]);
   const patch = textArg(parsed, ["patch", "diff"]);
   return (
     <div className="chat-file-tool-view">
-      {path && <div className="chat-file-tool-path"><span className="chat-terminal-section-label">File</span><code>{path}</code></div>}
-      {oldText && <div className="chat-terminal-section"><div className="chat-terminal-section-label">Removed</div><CodeBlock language="diff">{oldText}</CodeBlock></div>}
-      {newText && <div className="chat-terminal-section"><div className="chat-terminal-section-label">New content</div><CodeBlock language="javascript">{newText}</CodeBlock></div>}
-      {patch && <div className="chat-terminal-section"><div className="chat-terminal-section-label">Patch</div><CodeBlock language="diff">{patch}</CodeBlock></div>}
-      {!path && !oldText && !newText && !patch && <pre className="chat-history-pre chat-history-pre--code">{msg.args || "(no arguments)"}</pre>}
+      {path && (
+        <div className="chat-file-tool-path">
+          <span className="chat-terminal-section-label">File</span>
+          <code>{path}</code>
+        </div>
+      )}
+      {oldText && (
+        <div className="chat-terminal-section">
+          <div className="chat-terminal-section-label">Removed</div>
+          <CodeBlock language="diff">{oldText}</CodeBlock>
+        </div>
+      )}
+      {newText && (
+        <div className="chat-terminal-section">
+          <div className="chat-terminal-section-label">New content</div>
+          <CodeBlock language="javascript">{newText}</CodeBlock>
+        </div>
+      )}
+      {patch && (
+        <div className="chat-terminal-section">
+          <div className="chat-terminal-section-label">Patch</div>
+          <CodeBlock language="diff">{patch}</CodeBlock>
+        </div>
+      )}
+      {!path && !oldText && !newText && !patch && (
+        <pre className="chat-history-pre chat-history-pre--code">
+          {msg.args || "(no arguments)"}
+        </pre>
+      )}
     </div>
   );
 }
@@ -489,17 +561,17 @@ function TerminalToolBody({
 
 const ToolActivityItem = memo(function ToolActivityItem({
   msg,
-  sourcePath,
+  sourceArgs,
   staggerIndex = 0,
 }: {
   msg: ToolItem;
   /**
-   * The file path from this item's ORIGINATING CALL, passed down by the group
+   * The arguments from this item's ORIGINATING CALL, passed down by the group
    * (which is the only place that can pair a result with its call by callId).
    * Read-file results carry no path of their own, so without this the body
    * cannot be syntax-highlighted.
    */
-  sourcePath?: string;
+  sourceArgs?: string;
   /**
    * Position within the group. Used to stagger the expand so several items
    * that arrive together do not all animate in lockstep — simultaneous
@@ -511,8 +583,10 @@ const ToolActivityItem = memo(function ToolActivityItem({
   const [open, setOpen] = useState(() => {
     try {
       return (
-        toolItemOpenById.has(msg.id) ||
-        localStorage.getItem("hermes.autoExpandToolCalls") === "true"
+        toolItemOpenById.get(msg.id) ??
+        (displayControls.tools !== "unset"
+          ? displayControls.tools === "show"
+          : localStorage.getItem("hermes.autoExpandToolCalls") === "true")
       );
     } catch {
       return false;
@@ -521,8 +595,7 @@ const ToolActivityItem = memo(function ToolActivityItem({
   const toggleOpen = (): void =>
     setOpen((o) => {
       const next = !o;
-      if (next) toolItemOpenById.add(msg.id);
-      else toolItemOpenById.delete(msg.id);
+      toolItemOpenById.set(msg.id, next);
       return next;
     });
   // Auto-expand tool calls when the preference is on, mirroring
@@ -538,8 +611,10 @@ const ToolActivityItem = memo(function ToolActivityItem({
         /* ignore */
       }
     };
-    checkAutoExpand();
-    window.addEventListener("hermes-auto-expand-tool-calls-changed", checkAutoExpand);
+    window.addEventListener(
+      "hermes-auto-expand-tool-calls-changed",
+      checkAutoExpand,
+    );
     return () =>
       window.removeEventListener(
         "hermes-auto-expand-tool-calls-changed",
@@ -548,24 +623,40 @@ const ToolActivityItem = memo(function ToolActivityItem({
   }, []);
   // Animate this item's own panel, so expanding a single tool step is a
   // transition rather than a jump.
-  const openRendered = useAccordionOpen(open, true);
+  const bodyMounted = useToolDisclosure(open) > 0;
+  const openRendered = useAccordionOpen(bodyMounted, true);
   useEffect(() => {
     const handleDisplayControl = (event: Event): void => {
-      const detail = (event as CustomEvent<Partial<ChatDisplayControls>>).detail;
+      const detail = (event as CustomEvent<Partial<ChatDisplayControls>>)
+        .detail;
       if (detail.tools === "show" || detail.tools === "hide") {
         setOpen(detail.tools === "show");
       }
     };
-    window.addEventListener("hermes-chat-display-control", handleDisplayControl);
-    return () => window.removeEventListener("hermes-chat-display-control", handleDisplayControl);
+    window.addEventListener(
+      "hermes-chat-display-control",
+      handleDisplayControl,
+    );
+    return () =>
+      window.removeEventListener(
+        "hermes-chat-display-control",
+        handleDisplayControl,
+      );
   }, []);
   const call = isToolCall(msg);
   const failed = call && msg.status === "failed";
   const hasAttachments =
     !call && !!msg.attachments && msg.attachments.length > 0;
+  const sourcePath = useMemo(() => {
+    if (!bodyMounted || !sourceArgs) return undefined;
+    const parsed = parseToolArgs(sourceArgs);
+    return parsed
+      ? textArg(parsed, ["path", "file", "file_path", "filename"])
+      : undefined;
+  }, [bodyMounted, sourceArgs]);
 
   return (
-    <div className="chat-tool-item">
+    <div className="chat-tool-item" aria-busy={open && !bodyMounted}>
       <button
         type="button"
         className="chat-tool-item-header"
@@ -592,6 +683,7 @@ const ToolActivityItem = memo(function ToolActivityItem({
       </button>
       <div
         className={`chat-tool-collapse${openRendered ? " chat-tool-collapse--open" : ""}`}
+        inert={!open}
         style={
           // Stagger only while opening, and cap it: an unbounded index would
           // delay the 20th item by a second. The first few get a visible
@@ -602,26 +694,28 @@ const ToolActivityItem = memo(function ToolActivityItem({
         }
       >
         <div className="chat-tool-collapse-inner">
-          <div className="chat-tool-item-body">
-            {hasAttachments && (
-              <div className="chat-history-attachments">
-                {msg.attachments!.map((att: Attachment) => (
-                  <AttachmentChip key={att.id} attachment={att} />
-                ))}
-              </div>
-            )}
-            {isTerminalTool(msg.name) ? (
-              <TerminalToolBody msg={msg} />
-            ) : isFileTool(msg.name) ? (
-              <FileToolBody msg={msg} sourcePath={sourcePath} />
-            ) : call ? (
-              <pre className="chat-history-pre chat-history-pre--code">
-                {msg.args || "(no arguments)"}
-              </pre>
-            ) : (
-              <ToolResultBody msg={msg} />
-            )}
-          </div>
+          {bodyMounted && (
+            <div className="chat-tool-item-body">
+              {hasAttachments && (
+                <div className="chat-history-attachments">
+                  {msg.attachments!.map((att: Attachment) => (
+                    <AttachmentChip key={att.id} attachment={att} />
+                  ))}
+                </div>
+              )}
+              {isTerminalTool(msg.name) ? (
+                <TerminalToolBody msg={msg} />
+              ) : isFileTool(msg.name) ? (
+                <FileToolBody msg={msg} sourcePath={sourcePath} />
+              ) : call ? (
+                <pre className="chat-history-pre chat-history-pre--code">
+                  {msg.args || "(no arguments)"}
+                </pre>
+              ) : (
+                <ToolResultBody msg={msg} />
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -656,8 +750,10 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
   const [open, setOpen] = useState(() => {
     try {
       return (
-        (groupKey ? toolGroupOpenById.has(groupKey) : false) ||
-        localStorage.getItem("hermes.autoExpandToolCalls") === "true"
+        (groupKey ? toolGroupOpenById.get(groupKey) : undefined) ??
+        (displayControls.tools !== "unset"
+          ? displayControls.tools === "show"
+          : localStorage.getItem("hermes.autoExpandToolCalls") === "true")
       );
     } catch {
       return false;
@@ -667,15 +763,10 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
     setOpen((o) => {
       const next = !o;
       if (groupKey) {
-        if (next) toolGroupOpenById.add(groupKey);
-        else toolGroupOpenById.delete(groupKey);
+        toolGroupOpenById.set(groupKey, next);
       }
       return next;
     });
-  // Animate the open transition instead of letting the panel spawn at full
-  // height. See useAccordionOpen for why a plain `open &&` render cannot
-  // animate: the first painted frame must be the collapsed one.
-  const openRendered = useAccordionOpen(open, true);
   // Auto-expand the GROUP too, not only the items inside it.
   //
   // The item-level listener was not enough: with only it, the setting opened
@@ -692,7 +783,6 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
         /* ignore */
       }
     };
-    checkAutoExpand();
     window.addEventListener(
       "hermes-auto-expand-tool-calls-changed",
       checkAutoExpand,
@@ -705,13 +795,21 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
   }, []);
   useEffect(() => {
     const handleDisplayControl = (event: Event): void => {
-      const detail = (event as CustomEvent<Partial<ChatDisplayControls>>).detail;
+      const detail = (event as CustomEvent<Partial<ChatDisplayControls>>)
+        .detail;
       if (detail.tools === "show" || detail.tools === "hide") {
         setOpen(detail.tools === "show");
       }
     };
-    window.addEventListener("hermes-chat-display-control", handleDisplayControl);
-    return () => window.removeEventListener("hermes-chat-display-control", handleDisplayControl);
+    window.addEventListener(
+      "hermes-chat-display-control",
+      handleDisplayControl,
+    );
+    return () =>
+      window.removeEventListener(
+        "hermes-chat-display-control",
+        handleDisplayControl,
+      );
   }, []);
   const { waiting } = useReasoningGate({
     waitForReasoningId,
@@ -722,18 +820,21 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
   const detail = itemDetail(last);
   const title = toolActivityGroupTitle(items);
   const soloTool = singleToolName(items);
-  const orderedItems = orderToolActivityItems(items);
-  // Pair each call with the file path it targets, so a read RESULT can be
-  // highlighted by file type. The result envelope carries no path, and the
-  // group is the only place holding both sides of the callId pairing.
-  const sourcePathByCallId = new Map<string, string>();
-  for (const item of items) {
-    if (!isToolCall(item) || !item.callId) continue;
-    const parsed = parseToolArgs(item.args);
-    if (!parsed) continue;
-    const path = textArg(parsed, ["path", "file", "file_path", "filename"]);
-    if (path) sourcePathByCallId.set(item.callId, path);
-  }
+  const visibleCount = useToolDisclosure(open && !waiting, items.length, 8);
+  const openRendered = useAccordionOpen(visibleCount > 0, true);
+  const orderedItems = useMemo(
+    () => (open ? orderToolActivityItems(items) : []),
+    [open, items],
+  );
+  // Keep raw args here; parse the paired path only when its body mounts.
+  const sourceArgsByCallId = useMemo(() => {
+    const args = new Map<string, string>();
+    for (const item of open ? items : []) {
+      if (!isToolCall(item) || !item.callId) continue;
+      args.set(item.callId, item.args);
+    }
+    return args;
+  }, [open, items]);
 
   return (
     <div
@@ -748,6 +849,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
       )}
       <div
         className={`chat-tool-group${active ? " chat-tool-group--active" : ""}`}
+        aria-busy={open && visibleCount < items.length}
       >
         <button
           type="button"
@@ -782,14 +884,15 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
         </button>
         <div
           className={`chat-tool-collapse${openRendered ? " chat-tool-collapse--open" : ""}`}
+          inert={!open}
         >
           <div className="chat-tool-collapse-inner">
             <div className="chat-tool-group-items">
-              {orderedItems.map((it, index) => (
+              {orderedItems.slice(0, visibleCount).map((it, index) => (
                 <ToolActivityItem
-                  key={`${it.id}-${index}`}
+                  key={it.id}
                   msg={it}
-                  sourcePath={sourcePathByCallId.get(it.callId)}
+                  sourceArgs={sourceArgsByCallId.get(it.callId)}
                   staggerIndex={index}
                 />
               ))}

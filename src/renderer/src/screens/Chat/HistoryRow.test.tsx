@@ -4,8 +4,8 @@
 // not dumped as raw JSON. The bug this guards: `{"output": "a\nb"}` used to
 // render as pretty-printed JSON with the payload still escaped as one string.
 
-import { act, fireEvent, render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render as mount } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // HistoryRow renders payloads through CodeBlock, which pulls translations via
 // useI18n (requires the i18next provider). Stub it so the block renders in
@@ -18,8 +18,27 @@ vi.mock("../../components/useI18n", () => ({
   }),
 }));
 
-import { ToolActivityGroup } from "./HistoryRow";
+import { ToolActivityGroup, setChatDisplayControls } from "./HistoryRow";
 import type { ToolCallMessage, ToolResultMessage } from "./types";
+
+function flushTools(): void {
+  for (let i = 0; vi.getTimerCount() && i < 100; i++)
+    act(() => vi.advanceTimersToNextTimer());
+}
+function render(element: React.JSX.Element): ReturnType<typeof mount> {
+  const view = mount(element);
+  flushTools();
+  return view;
+}
+beforeEach(() => {
+  vi.useFakeTimers();
+  setChatDisplayControls({ tools: "unset" });
+});
+afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
+  localStorage.removeItem("hermes.autoExpandToolCalls");
+});
 
 function group(content: string): React.JSX.Element {
   const call: ToolCallMessage = {
@@ -43,6 +62,7 @@ function group(content: string): React.JSX.Element {
 }
 
 describe("tool result rendering", () => {
+  beforeEach(() => localStorage.setItem("hermes.autoExpandToolCalls", "true"));
   it("shows the unescaped output and exit code, not the JSON envelope", () => {
     const { container } = render(
       group(
@@ -132,6 +152,7 @@ describe("auto-expand tool calls", () => {
     act(() => {
       window.dispatchEvent(new Event("hermes-auto-expand-tool-calls-changed"));
     });
+    flushTools();
 
     expect(groupExpanded(container)).toBe(true);
     expect(itemExpanded(container)).toBe(true);

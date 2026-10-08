@@ -29,6 +29,7 @@ import type { ToolCallMessage, ToolResultMessage } from "./types";
 let rafQueue: FrameRequestCallback[] = [];
 
 beforeEach(() => {
+  vi.useFakeTimers();
   rafQueue = [];
   vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
     rafQueue.push(cb);
@@ -38,12 +39,16 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   localStorage.removeItem("hermes.autoExpandToolCalls");
 });
 
 /** Flush the stubbed rAF queue repeatedly, as real frames would. */
 function flushFrames(times = 4): void {
+  for (let i = 0; vi.getTimerCount() && i < 100; i++)
+    act(() => vi.advanceTimersToNextTimer());
   for (let i = 0; i < times; i += 1) {
     const current = rafQueue;
     rafQueue = [];
@@ -109,7 +114,9 @@ describe("accordion stagger wiring", () => {
     expect(collapses.length).toBe(8);
 
     const delays = collapses.map((el) =>
-      el.style.transitionDelay ? Number.parseFloat(el.style.transitionDelay) : 0,
+      el.style.transitionDelay
+        ? Number.parseFloat(el.style.transitionDelay)
+        : 0,
     );
     // Ascending and non-zero after the first.
     expect(delays[0]).toBe(0);
@@ -127,7 +134,9 @@ describe("accordion stagger wiring", () => {
     flushFrames();
 
     const delays = itemCollapses(container).map((el) =>
-      el.style.transitionDelay ? Number.parseFloat(el.style.transitionDelay) : 0,
+      el.style.transitionDelay
+        ? Number.parseFloat(el.style.transitionDelay)
+        : 0,
     );
     expect(delays.length).toBeGreaterThan(8);
     // Uncapped, the 24th row would wait ~0.92s. The cap holds it at 0.16s.
