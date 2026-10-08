@@ -314,7 +314,11 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     );
     expect(panelStart).toBeGreaterThan(-1);
     const panel = css.slice(panelStart, panelStart + 400);
-    expect(panel).toContain("background: var(--bg-tertiary");
+    // The panel must NOT be coloured from a --bg-* token: the dialog is painted
+    // with --bg-elevated and in several themes those two variables hold the same
+    // hex, which is why the container was invisible.
+    expect(panel).toContain("background: color-mix(");
+    expect(panel).toContain("var(--bg-elevated");
     expect(panel).toContain("padding: 10px 12px");
 
     // The pinned reader must NOT collapse. `flex: 1` + `min-height: 0` belong to
