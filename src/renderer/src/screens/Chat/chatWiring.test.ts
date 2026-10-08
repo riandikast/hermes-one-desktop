@@ -289,24 +289,32 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     expect(dialogBlock).toContain("border-radius: 8px");
     expect(dialogBlock).toContain("box-shadow");
     expect(dialogBlock).not.toContain("linear-gradient");
-    // The reader still scrolls for very long prompts.
-    const bodyStart = css.indexOf(".chat-last-prompt-dialog-body {");
-    expect(css.slice(bodyStart, bodyStart + 600)).toContain("overflow: auto");
+    // The reader still scrolls for very long prompts — the LIST scrolls, and an
+    // expanded row caps its own height so one huge prompt cannot grow the dialog
+    // past the viewport.
+    const listStart = css.indexOf(".chat-last-prompt-list {");
+    expect(css.slice(listStart, listStart + 600)).toContain("overflow: auto");
+    const bodyStart = css.indexOf(".chat-last-prompt-item-body {");
+    expect(css.slice(bodyStart, bodyStart + 400)).toContain("overflow: auto");
+    // The shared single-message reader (the pinned-message dialog) keeps its own
+    // scrolling body; deleting this would unstyle that dialog.
+    const sharedBody = css.indexOf(".chat-last-prompt-dialog-body {");
+    expect(css.slice(sharedBody, sharedBody + 600)).toContain("overflow: auto");
   });
 
   it("gives the last-prompt dialog a copy action wired to the full text", () => {
-    // The dialog carries a copy button that writes the FULL prompt (the pill's
-    // preview is truncated), styled as a quiet Material text button.
-    expect(chipSource).toContain("handleCopy");
+    // Each list row carries a copy button that writes that row's FULL prompt
+    // (the pill's preview is truncated), styled as a quiet Material text button.
+    expect(chipSource).toContain("copyText");
     expect(chipSource).toContain("copyToClipboard");
-    // Copies `full`, never the capped `preview`.
+    // Copies the row's `text`, never the capped `preview`.
     const copyIdx = chipSource.indexOf("copyToClipboard(");
     expect(copyIdx).toBeGreaterThan(-1);
-    expect(chipSource.slice(copyIdx, copyIdx + 40)).toContain("full");
+    expect(chipSource.slice(copyIdx, copyIdx + 40)).toContain("text");
 
-    const start = css.indexOf(".chat-last-prompt-dialog-copy {");
+    const start = css.indexOf(".chat-last-prompt-item-toggle,");
     expect(start).toBeGreaterThan(-1);
-    const block = css.slice(start, start + 600);
+    const block = css.slice(start, start + 900);
     // Flat, token-based, no gradient — consistent with the Material dialog.
     expect(block).not.toContain("linear-gradient");
     expect(block).toContain("var(--text-muted");
@@ -323,9 +331,11 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     const props = chatSource.slice(chipIdx, end);
     expect(props).not.toContain("onJump");
     expect(props).toContain("containerRef={containerRef}");
-    // The dialog lives inside the chip component itself.
+    // The dialog lives inside the chip component itself, and lists the RECENT
+    // prompts (injections filtered) with expand + copy per row.
     expect(chipSource).toContain("FloatingDialog");
-    expect(chipSource).toContain("chat-last-prompt-dialog-body");
+    expect(chipSource).toContain("chat-last-prompt-list");
+    expect(chipSource).toContain("findRecentPrompts");
   });
 
   it("mounts LastPromptChip OUTSIDE the scrolling transcript", () => {

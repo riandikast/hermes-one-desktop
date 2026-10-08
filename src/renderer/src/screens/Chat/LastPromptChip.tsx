@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, CornerDownRight, Maximize2 } from "lucide-react";
 import type { ChatBubbleMessage, ChatMessage } from "./types";
 import { isBubbleMessage } from "./chatMessages";
+import { isAutoInjectedPrompt } from "./autoPrompts";
 import { useAtomValue } from "./hooks/useChatScrollAtoms";
 import { FloatingDialog } from "./FloatingDialog";
 
@@ -28,6 +29,14 @@ import { FloatingDialog } from "./FloatingDialog";
 
 /** Single-line preview cap for the pill. The dialog shows the full text. */
 const PREVIEW_MAX = 140;
+
+/**
+ * How many recent prompts the dialog lists. The chip's single newest prompt is
+ * ambiguous when auto-notices arrived after it; a few prompts let the user
+ * identify the conversation even if detection ever misjudges a row.
+ */
+const RECENT_PROMPT_LIMIT = 5;
+
 /**
  * How long the container must stay non-scrollable before the chip hides.
  *
@@ -57,6 +66,12 @@ export function lastPromptPreview(
  * The last USER message in the transcript — the prompt this chip represents.
  * Returns null when there is nothing worth showing (no user message, or the
  * last one has no text, e.g. an attachment-only turn).
+ *
+ * Auto-injected rows are SKIPPED. The runtime writes its own notices into the
+ * same `role="user"` stream (background-process completion, delegation batch
+ * reports, compaction handoffs, model-change notices), so the newest user row
+ * is frequently NOT what the user typed — that is exactly the "last prompt got
+ * mixed by auto background task report prompt" report. See `autoPrompts.ts`.
  */
 export function findLastPrompt(
   messages: ReadonlyArray<ChatMessage>,
@@ -67,9 +82,36 @@ export function findLastPrompt(
     // and non-user rows are skipped.
     if (!isBubbleMessage(m) || m.role !== "user") continue;
     if (!String(m.content ?? "").trim()) continue;
+    // A runtime injection is not a prompt the user wrote.
+    if (isAutoInjectedPrompt(String(m.content ?? ""))) continue;
     return m;
   }
   return null;
+}
+
+/**
+ * The newest `limit` USER prompts, newest first, with runtime injections
+ * excluded.
+ *
+ * The chip shows only the single newest one, which is ambiguous when several
+ * auto-notices arrived after a real prompt. The dialog lists these so the user
+ * can identify the conversation even if detection ever misjudges a row — the
+ * list is the safety net behind the detector, not a replacement for it.
+ */
+export function findRecentPrompts(
+  messages: ReadonlyArray<ChatMessage>,
+  limit = 5,
+): ChatBubbleMessage[] {
+  const out: ChatBubbleMessage[] = [];
+  if (limit <= 0) return out;
+  for (let i = messages.length - 1; i >= 0 && out.length < limit; i -= 1) {
+    const m = messages[i];
+    if (!isBubbleMessage(m) || m.role !== "user") continue;
+    if (!String(m.content ?? "").trim()) continue;
+    if (isAutoInjectedPrompt(String(m.content ?? ""))) continue;
+    out.push(m);
+  }
+  return out;
 }
 
 /**
@@ -126,8 +168,9 @@ export const LastPromptChip = memo(function LastPromptChip({
   // The full-prompt dialog. Reading a long prompt happens there, not by
   // scrolling the transcript (which virtualisation + auto-follow made flaky).
   const [open, setOpen] = useState(false);
-  // "Copied" acknowledgement, so the button reflects the action for a moment.
-  const [copied, setCopied] = useState(false);
+  // "Copied" acknowledgement, keyed by the prompt text that was copied so the
+  // right row lights up in the list.
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Timer for the debounced loss of overflow (see SCROLLABLE_LOSS_GRACE_MS).
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -202,24 +245,27 @@ export const LastPromptChip = memo(function LastPromptChip({
   const preview = lastPrompt
     ? lastPromptPreview(String(lastPrompt.content ?? ""))
     : "";
-  const full = String(lastPrompt?.content ?? "").trim();
 
   const openDialog = useCallback(() => setOpen(true), []);
 
-  const handleCopy = useCallback(async () => {
-    if (!full) return;
+  /**
+   * Copy one prompt. Keeps the per-row "Copied" acknowledgement keyed by row id
+   * so a click on row 3 does not light up row 1.
+   */
+  const copyText = useCallback(async (text: string) => {
+    if (!text) return;
     try {
-      await window.hermesAPI.copyToClipboard(full);
-      setCopied(true);
+      await window.hermesAPI.copyToClipboard(text);
+      setCopiedId(text);
       if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
       copyTimerRef.current = setTimeout(() => {
         copyTimerRef.current = null;
-        setCopied(false);
+        setCopiedId(null);
       }, 2000);
     } catch {
       // Clipboard write can fail in some environments; leave the button as-is.
     }
-  }, [full]);
+  }, []);
 
   // Never let the acknowledgement timer outlive the component.
   useEffect(
@@ -229,12 +275,23 @@ export const LastPromptChip = memo(function LastPromptChip({
     [],
   );
 
+  // The list shown in the dialog. Newest first, injections excluded. Falls back
+  // to the single resolved prompt when the transcript only has one.
+  const recent = findRecentPrompts(messages, RECENT_PROMPT_LIMIT);
+  // Which rows are expanded to full text. Default: the newest only, so the list
+  // stays scannable and a huge prompt does not swamp the dialog on open.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const toggleRow = useCallback((id: string) => {
+    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
+  }, []);
+
   if (!lastPrompt || !preview) return null;
 
   // Keep the chip on screen while its dialog is open — closing the dialog
   // should not leave the user wondering where the chip went because the scroll
   // position moved underneath it.
   const visible = open || shouldShowLastPromptChip(scrollable, scrolledUp);
+  const rows = recent.length > 0 ? recent : [lastPrompt];
 
   return (
     <>
@@ -268,25 +325,76 @@ export const LastPromptChip = memo(function LastPromptChip({
         <FloatingDialog
           open={open}
           onClose={() => setOpen(false)}
-          title="Last prompt"
+          title="Recent prompts"
           size="wide"
           className="last-prompt-dialog"
         >
           <div className="chat-last-prompt-dialog">
             <div className="chat-last-prompt-dialog-head">
-              <span className="chat-last-prompt-dialog-label">Prompt</span>
-              <button
-                type="button"
-                className="chat-last-prompt-dialog-copy"
-                onClick={handleCopy}
-                title={copied ? "Copied!" : "Copy prompt"}
-                aria-label={copied ? "Copied!" : "Copy prompt"}
-              >
-                {copied ? <Check size={13} /> : <Copy size={13} />}
-                <span>{copied ? "Copied" : "Copy"}</span>
-              </button>
+              <span className="chat-last-prompt-dialog-label">
+                {rows.length > 1
+                  ? `Last ${rows.length} prompts`
+                  : "Last prompt"}
+              </span>
+              <span className="chat-last-prompt-dialog-note">
+                Auto-generated notices are hidden
+              </span>
             </div>
-            <pre className="chat-last-prompt-dialog-body">{full}</pre>
+            <ul className="chat-last-prompt-list">
+              {rows.map((row, index) => {
+                const text = String(row.content ?? "").trim();
+                const oneLine = lastPromptPreview(text, 220);
+                const isOpen = expanded[row.id] ?? false;
+                const isNewest = index === 0;
+                return (
+                  <li
+                    key={row.id}
+                    className={`chat-last-prompt-item${
+                      isNewest ? " chat-last-prompt-item--newest" : ""
+                    }`}
+                  >
+                    <div className="chat-last-prompt-item-head">
+                      <span className="chat-last-prompt-item-index">
+                        {isNewest ? "Latest" : `#${index + 1}`}
+                      </span>
+                      <button
+                        type="button"
+                        className="chat-last-prompt-item-toggle"
+                        onClick={() => toggleRow(row.id)}
+                        aria-expanded={isOpen}
+                        title={isOpen ? "Collapse prompt" : "Expand prompt"}
+                      >
+                        {isOpen ? "Collapse" : "Expand"}
+                      </button>
+                      <button
+                        type="button"
+                        className="chat-last-prompt-item-copy"
+                        onClick={() => void copyText(text)}
+                        title={
+                          copiedId === text ? "Copied!" : "Copy this prompt"
+                        }
+                        aria-label={
+                          copiedId === text
+                            ? `Copied prompt ${index + 1}`
+                            : `Copy prompt ${index + 1}`
+                        }
+                      >
+                        {copiedId === text ? (
+                          <Check size={12} />
+                        ) : (
+                          <Copy size={12} />
+                        )}
+                      </button>
+                    </div>
+                    {isOpen ? (
+                      <pre className="chat-last-prompt-item-body">{text}</pre>
+                    ) : (
+                      <p className="chat-last-prompt-item-preview">{oneLine}</p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         </FloatingDialog>
       )}

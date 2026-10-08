@@ -7206,8 +7206,102 @@ body:has(.shell-vibrant),
   color: var(--text-primary, #e4e4e7);
   background: var(--bg-hover, rgba(255, 255, 255, 0.06));
 }
-/* The prompt body: flat surface, body-text rhythm. Scrolls so a very long
-   prompt stays readable without the dialog growing past the viewport. */
+/* The prompt list: one card per recent prompt. Rows are separated by a hairline
+   instead of heavy borders, so a list of five still reads as one block. */
+.chat-last-prompt-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 16px 16px;
+  list-style: none;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.chat-last-prompt-item {
+  flex-shrink: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--bg-elevated, rgba(255, 255, 255, 0.03));
+  border: 1px solid transparent;
+}
+/* The newest prompt is the one the chip represents — mark it, not shout it. */
+.chat-last-prompt-item--newest {
+  border-color: var(--border-subtle, rgba(255, 255, 255, 0.1));
+}
+.chat-last-prompt-item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.chat-last-prompt-item-index {
+  flex: 1;
+  min-width: 0;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted, #8b8b99);
+}
+.chat-last-prompt-item-toggle,
+.chat-last-prompt-item-copy {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-muted, #8b8b99);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--duration-fast, 0.15s), background var(--duration-fast, 0.15s);
+}
+.chat-last-prompt-item-copy {
+  padding: 2px 6px;
+}
+.chat-last-prompt-item-toggle:hover,
+.chat-last-prompt-item-copy:hover {
+  color: var(--text-primary, #e4e4e7);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
+/* Collapsed one-liner preview. */
+.chat-last-prompt-item-preview {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-primary, #e4e4e7);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Expanded full text: mono rhythm, wraps, never grows the dialog past the view. */
+.chat-last-prompt-item-body {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary, #e4e4e7);
+  background: transparent;
+}
+/* Small muted note next to the count (e.g. that injected rows are hidden). */
+.chat-last-prompt-dialog-note {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  color: var(--text-muted, #8b8b99);
+  opacity: 0.8;
+}
+/* Shared single-body reader. The pinned-message reader renders ONE message in
+   this shape (it has no list), so the class lives on independently of the
+   last-prompt list above — removing it would silently unstyle that dialog. */
 .chat-last-prompt-dialog-body {
   flex: 1;
   min-height: 0;

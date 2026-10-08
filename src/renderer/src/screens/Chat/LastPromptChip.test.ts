@@ -53,6 +53,17 @@ describe("findLastPrompt", () => {
     expect(found?.id).toBe("u1");
   });
 
+  it("skips a runtime injection and returns the user's prompt", () => {
+    // The reported bug: a background-task report landed after the real prompt,
+    // so the chip showed the report instead of what the user typed.
+    const found = findLastPrompt([
+      user("u1", "real question"),
+      agent("a1", "answer"),
+      user("i1", "[IMPORTANT: Background process proc_x completed normally"),
+    ]);
+    expect(found?.id).toBe("u1");
+  });
+
   it("ignores overlay rows that are not real prompts", () => {
     const overlay = {
       id: "overlay-1",
