@@ -7279,7 +7279,8 @@ body:has(.shell-vibrant),
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Expanded full text: mono rhythm, wraps, never grows the dialog past the view. */
+/* Expanded full text: mono rhythm, wraps, never grows the dialog past the view.
+   Padding/background come from the shared panel rule below. */
 .chat-last-prompt-item-body {
   margin: 0;
   max-height: 320px;
@@ -7290,7 +7291,6 @@ body:has(.shell-vibrant),
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text-primary, #e4e4e7);
-  background: transparent;
 }
 /* Small muted note next to the count (e.g. that injected rows are hidden). */
 .chat-last-prompt-dialog-note {
@@ -7305,8 +7305,7 @@ body:has(.shell-vibrant),
 .chat-last-prompt-dialog-body {
   flex: 1;
   min-height: 0;
-  margin: 0;
-  padding: 0 16px 16px;
+  margin: 0 16px 16px;
   overflow: auto;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12.5px;
@@ -7314,7 +7313,25 @@ body:has(.shell-vibrant),
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text-primary, #e4e4e7);
-  background: transparent;
+}
+
+/* A panel behind the text so the reading area reads as its own surface instead
+   of sharing the dialog background — an inset card that catches the eye and
+   separates the prompt from the dialog chrome. */
+.chat-last-prompt-item-body,
+.chat-last-prompt-dialog-body {
+  display: block;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.09));
+}
+/* The expanded row inside the list already sits on its own card, so its panel
+   stays flat there — a panel on a panel would read as a double border. */
+.chat-last-prompt-item .chat-last-prompt-item-body {
+  background: var(--bg-primary, rgba(0, 0, 0, 0.16));
+  border-color: transparent;
+  margin-top: 6px;
 }
 
 /* ── Highlighted text body (last-prompt + pinned-message dialogs) ────────
@@ -7329,7 +7346,8 @@ body:has(.shell-vibrant),
   font-size: 12.5px;
   line-height: 1.6;
   color: var(--text-primary, #e4e4e7);
-  background: transparent;
+  /* No background here: the class is combined with the panel rule above, and a
+     `transparent` here would override it (this rule comes LATER in the file). */
 }
 /* URLs are the most useful thing to spot in a link-heavy prompt, so they carry
    the accent; code spans and quotes get a quiet surface instead of a colour,

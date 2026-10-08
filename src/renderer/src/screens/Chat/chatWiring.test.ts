@@ -300,6 +300,22 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     // scrolling body; deleting this would unstyle that dialog.
     const sharedBody = css.indexOf(".chat-last-prompt-dialog-body {");
     expect(css.slice(sharedBody, sharedBody + 600)).toContain("overflow: auto");
+
+    // Both readers sit on their OWN panel, so the text area reads as a surface
+    // instead of sharing the dialog background.
+    const panelStart = css.indexOf(".chat-last-prompt-item-body,");
+    const panel = css.slice(panelStart, panelStart + 500);
+    expect(panel).toContain("background: var(--bg-tertiary");
+    expect(panel).toContain("padding: 10px 12px");
+    // And the token class must NOT re-declare a background further down the
+    // file: it shares the element with the panel rule, and a later
+    // `background: transparent` would silently win and flatten the panel.
+    // Strip comments first — the block documents this very trap.
+    const hlStart = css.indexOf(".chat-hl-text {");
+    const hlBlock = css
+      .slice(hlStart, css.indexOf("}", hlStart))
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(hlBlock).not.toContain("background");
   });
 
   it("gives the last-prompt dialog a copy action wired to the full text", () => {
