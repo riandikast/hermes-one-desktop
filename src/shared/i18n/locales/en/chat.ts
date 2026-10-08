@@ -169,6 +169,24 @@ export default {
   queuedAttachment: "{{count}} attachment(s)",
   queuedCancel: "Remove from queue",
   copyMessage: "Copy message",
+  // The two message readers (last-prompt chip, pinned-message bar) share
+  // this dialog vocabulary so the strings are searchable and translated
+  // once, rather than hardcoded at each call site.
+  reader: {
+    lastPromptTitle: "Recent prompts",
+    lastPromptLabel: "Last prompt",
+    lastPromptsLabel: "Last {{count}} prompts",
+    autoHiddenNote: "Auto-generated notices are hidden",
+    latest: "Latest",
+    expand: "Expand",
+    collapse: "Collapse",
+    copyPrompt: "Copy this prompt",
+    pinnedYou: "Pinned — You",
+    pinnedHermes: "Pinned — Hermes",
+    messageLabel: "Message",
+    showFull: "Show full",
+    showFullPrompt: "Show full last prompt",
+  },
   worktree: {
     title: "Files",
     loading: "Loading",

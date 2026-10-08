@@ -1,4 +1,5 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
+import { renderWithI18n } from "../../test/renderWithI18n";
 import { useCallback, useEffect, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PinnedMessagesBar, PinnedMessageReader } from "./MessageList";
@@ -111,7 +112,7 @@ describe("pinned bar updates live", () => {
 
   it("shows the bar as soon as the FIRST pin is added — no remount", () => {
     const api = { renderCount: 0 };
-    render(<Harness api={api} />);
+    renderWithI18n(<Harness api={api} />);
 
     // Nothing pinned yet.
     expect(screen.queryByText("Pinned")).toBeNull();
@@ -127,7 +128,7 @@ describe("pinned bar updates live", () => {
 
   it("adds a SECOND pin to the open bar immediately", () => {
     const api = { renderCount: 0 };
-    render(<Harness api={api} />);
+    renderWithI18n(<Harness api={api} />);
 
     act(() => screen.getByText("pin-m1").click());
     act(() => screen.getByText("pin-m2").click());
@@ -140,7 +141,7 @@ describe("pinned bar updates live", () => {
 
   it("removes a pin from the bar immediately", () => {
     const api = { renderCount: 0 };
-    render(<Harness api={api} />);
+    renderWithI18n(<Harness api={api} />);
 
     act(() => screen.getByText("pin-m1").click());
     act(() => screen.getByText("pin-m2").click());
@@ -154,7 +155,7 @@ describe("pinned bar updates live", () => {
 
   it("hides the bar again once the last pin is removed", () => {
     const api = { renderCount: 0 };
-    render(<Harness api={api} />);
+    renderWithI18n(<Harness api={api} />);
 
     act(() => screen.getByText("pin-m1").click());
     expect(screen.getByText("Pinned")).toBeTruthy();
@@ -165,12 +166,12 @@ describe("pinned bar updates live", () => {
 
   it("persists the toggle so a fresh mount still sees it", () => {
     const api = { renderCount: 0 };
-    const view = render(<Harness api={api} />);
+    const view = renderWithI18n(<Harness api={api} />);
     act(() => screen.getByText("pin-m1").click());
     view.unmount();
 
     // A brand-new mount reads the store and renders the pinned row.
-    render(<Harness api={api} />);
+    renderWithI18n(<Harness api={api} />);
     expect(screen.getByText("first question")).toBeTruthy();
   });
 });
@@ -192,7 +193,7 @@ describe("pinned reader opens as a host-level dialog", () => {
   };
 
   it("opens the reader dialog from the pinned bar", () => {
-    render(<Harness api={{ renderCount: 0 }} />);
+    renderWithI18n(<Harness api={{ renderCount: 0 }} />);
     expect(screen.queryByRole("dialog")).toBeNull();
 
     openReader();
@@ -208,7 +209,7 @@ describe("pinned reader opens as a host-level dialog", () => {
     // `position: fixed` overlay resolved against that absolutely-positioned
     // ~360px box (a "side mini dialog"). As a sibling it escapes to the
     // viewport, like the last-prompt reader.
-    render(<Harness api={{ renderCount: 0 }} />);
+    renderWithI18n(<Harness api={{ renderCount: 0 }} />);
     openReader();
 
     const dialog = screen.getByRole("dialog");
@@ -218,7 +219,7 @@ describe("pinned reader opens as a host-level dialog", () => {
   });
 
   it("closes the reader on request", () => {
-    render(<Harness api={{ renderCount: 0 }} />);
+    renderWithI18n(<Harness api={{ renderCount: 0 }} />);
     openReader();
     expect(screen.getByRole("dialog")).toBeTruthy();
 
@@ -232,7 +233,7 @@ describe("pinned reader opens as a host-level dialog", () => {
     const copyToClipboard = vi.fn().mockResolvedValue(undefined);
     Object.assign(window, { hermesAPI: { copyToClipboard } });
 
-    render(<Harness api={{ renderCount: 0 }} />);
+    renderWithI18n(<Harness api={{ renderCount: 0 }} />);
     openReader();
 
     await act(async () => {

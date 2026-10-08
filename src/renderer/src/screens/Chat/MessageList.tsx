@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
 import { FloatingDialog } from "./FloatingDialog";
+import { useI18n } from "../../components/useI18n";
 import { HighlightedText } from "./HighlightedText";
 import { HermesAvatar, MessageRow } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
@@ -451,6 +452,7 @@ export function PinnedMessageReader({
   message: ChatBubbleMessage | null;
   onClose: () => void;
 }): React.JSX.Element | null {
+  const { t } = useI18n();
   // "Copied" acknowledgement, so the button reflects the action for a moment.
   const [copied, setCopied] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -500,11 +502,11 @@ export function PinnedMessageReader({
             type="button"
             className="chat-last-prompt-dialog-copy"
             onClick={handleCopy}
-            title={copied ? "Copied!" : "Copy message"}
-            aria-label={copied ? "Copied!" : "Copy message"}
+            title={copied ? t("common.copied") : t("chat.copyMessage")}
+            aria-label={copied ? t("common.copied") : t("chat.copyMessage")}
           >
             {copied ? <Check size={13} /> : <Copy size={13} />}
-            <span>{copied ? "Copied" : "Copy"}</span>
+            <span>{copied ? t("common.copied") : t("common.copy")}</span>
           </button>
         </div>
         <HighlightedText
@@ -533,6 +535,7 @@ export function PinnedMessagesBar({
    *  top-right mount in Chat vs. the in-flow list placement). */
   className?: string;
 }): React.JSX.Element {
+  const { t } = useI18n();
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -545,7 +548,7 @@ export function PinnedMessagesBar({
         type="button"
         className="chat-pinned-bar-trigger"
         onClick={() => setCollapsed((v) => !v)}
-        title={collapsed ? "Expand pinned" : "Collapse pinned"}
+        title={collapsed ? t("chat.reader.showFull") : t("common.hide")}
       >
         {collapsed ? (
           <span className="chat-pinned-bar-pill">
@@ -582,8 +585,8 @@ export function PinnedMessagesBar({
                   type="button"
                   className="chat-pinned-expand"
                   onClick={() => onOpenMessage?.(p.id)}
-                  title="Show full"
-                  aria-label="Show full"
+                  title={t("chat.reader.showFull")}
+                  aria-label={t("chat.reader.showFull")}
                 >
                   <Maximize2 size={12} />
                 </button>
@@ -591,8 +594,8 @@ export function PinnedMessagesBar({
                   type="button"
                   className="chat-pinned-unpin"
                   onClick={() => onUnpin(p.id)}
-                  title="Delete"
-                  aria-label="Delete"
+                  title={t("common.delete")}
+                  aria-label={t("common.delete")}
                 >
                   <Trash2 size={11} />
                 </button>

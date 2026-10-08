@@ -57,3 +57,27 @@ describe("shared i18n", () => {
     );
   });
 });
+
+describe("reader keys fall back to English", () => {
+  // The two message readers (last-prompt chip, pinned-message bar) use
+  // `chat.reader.*`, which is translated in English only. The other locales
+  // must resolve it from the English fallback rather than render the raw key
+  // on screen — the source is `translated ?? fallback ?? key`.
+  it("resolves a reader key in a locale that has no translation for it", () => {
+    const value = t("chat.reader.showFull", "ja");
+    expect(value).toBe("Show full");
+    // The failure mode this guards: the key itself leaking into the UI.
+    expect(value).not.toBe("chat.reader.showFull");
+  });
+
+  it("resolves the pinned dialog titles in a locale without them", () => {
+    expect(t("chat.reader.pinnedYou", "ar")).toBe("Pinned — You");
+    expect(t("chat.reader.messageLabel", "he")).toBe("Message");
+  });
+
+  it("interpolates count through the fallback", () => {
+    expect(t("chat.reader.lastPromptsLabel", "ja", { count: 3 })).toBe(
+      "Last 3 prompts",
+    );
+  });
+});

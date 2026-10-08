@@ -6,6 +6,7 @@ import { isAutoInjectedPrompt } from "./autoPrompts";
 import { HighlightedText } from "./HighlightedText";
 import { useAtomValue } from "./hooks/useChatScrollAtoms";
 import { FloatingDialog } from "./FloatingDialog";
+import { useI18n } from "../../components/useI18n";
 
 /**
  * A floating chip that shows the LAST user prompt, so an old conversation can
@@ -162,6 +163,7 @@ export const LastPromptChip = memo(function LastPromptChip({
     subscribe: (l: () => void) => () => void;
   };
 }): React.JSX.Element | null {
+  const { t } = useI18n();
   const fallback = { get: () => false, subscribe: () => () => {} };
   const scrolledUp = useAtomValue(scrolledUpAtom ?? fallback);
   const containerRefLocal = containerRef;
@@ -304,13 +306,15 @@ export const LastPromptChip = memo(function LastPromptChip({
           }`}
           onClick={openDialog}
           tabIndex={visible ? 0 : -1}
-          title={`Show full prompt: ${preview}`}
-          aria-label={`Show full last prompt: ${preview}`}
+          title={`${t("chat.reader.showFull")}: ${preview}`}
+          aria-label={`${t("chat.reader.showFullPrompt")}: ${preview}`}
         >
           <span className="chat-last-prompt-icon" aria-hidden>
             <CornerDownRight size={13} />
           </span>
-          <span className="chat-last-prompt-label">Last prompt</span>
+          <span className="chat-last-prompt-label">
+            {t("chat.reader.lastPromptLabel")}
+          </span>
           <span className="chat-last-prompt-text">{preview}</span>
           <Maximize2
             size={11}
@@ -326,7 +330,7 @@ export const LastPromptChip = memo(function LastPromptChip({
         <FloatingDialog
           open={open}
           onClose={() => setOpen(false)}
-          title="Recent prompts"
+          title={t("chat.reader.lastPromptTitle")}
           size="wide"
           className="last-prompt-dialog"
         >
@@ -334,11 +338,11 @@ export const LastPromptChip = memo(function LastPromptChip({
             <div className="chat-last-prompt-dialog-head">
               <span className="chat-last-prompt-dialog-label">
                 {rows.length > 1
-                  ? `Last ${rows.length} prompts`
-                  : "Last prompt"}
+                  ? t("chat.reader.lastPromptsLabel", { count: rows.length })
+                  : t("chat.reader.lastPromptLabel")}
               </span>
               <span className="chat-last-prompt-dialog-note">
-                Auto-generated notices are hidden
+                {t("chat.reader.autoHiddenNote")}
               </span>
             </div>
             <ul className="chat-last-prompt-list">
@@ -356,23 +360,23 @@ export const LastPromptChip = memo(function LastPromptChip({
                   >
                     <div className="chat-last-prompt-item-head">
                       <span className="chat-last-prompt-item-index">
-                        {isNewest ? "Latest" : `#${index + 1}`}
+                        {isNewest ? t("chat.reader.latest") : `#${index + 1}`}
                       </span>
                       <button
                         type="button"
                         className="chat-last-prompt-item-toggle"
                         onClick={() => toggleRow(row.id)}
                         aria-expanded={isOpen}
-                        title={isOpen ? "Collapse prompt" : "Expand prompt"}
+                        title={isOpen ? t("chat.reader.collapse") : t("chat.reader.expand")}
                       >
-                        {isOpen ? "Collapse" : "Expand"}
+                        {isOpen ? t("chat.reader.collapse") : t("chat.reader.expand")}
                       </button>
                       <button
                         type="button"
                         className="chat-last-prompt-item-copy"
                         onClick={() => void copyText(text)}
                         title={
-                          copiedId === text ? "Copied!" : "Copy this prompt"
+                          copiedId === text ? t("common.copied") : t("chat.reader.copyPrompt")
                         }
                         aria-label={
                           copiedId === text

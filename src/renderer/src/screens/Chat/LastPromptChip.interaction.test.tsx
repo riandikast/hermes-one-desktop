@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { act, render, screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
+import { renderWithI18n } from "../../test/renderWithI18n";
 import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { LastPromptChip } from "./LastPromptChip";
@@ -37,7 +38,7 @@ function scrollContainer(): React.RefObject<HTMLDivElement | null> {
 }
 
 function renderChip(messages: ReadonlyArray<ChatMessage>): void {
-  render(
+  renderWithI18n(
     <LastPromptChip
       messages={messages}
       containerRef={scrollContainer()}
@@ -125,7 +126,7 @@ describe("LastPromptChip interaction", () => {
 
   it("keeps the chip visible while its dialog is open", async () => {
     const atom = createAtom<boolean>(true);
-    render(
+    renderWithI18n(
       <LastPromptChip
         messages={[prompt("u1", "stay put")]}
         containerRef={scrollContainer()}

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { render } from "@testing-library/react";
+
+import { renderWithI18n } from "../../test/renderWithI18n";
 import { describe, expect, it } from "vitest";
 import { PinnedMessageReader } from "./MessageList";
 import type { ChatBubbleMessage } from "./types";
@@ -24,7 +25,7 @@ const message = (content: string): ChatBubbleMessage => ({
 
 describe("PinnedMessageReader body", () => {
   it("renders the body with the class the panel rule selects", () => {
-    const { container } = render(
+    const { container } = renderWithI18n(
       <PinnedMessageReader message={message("a pinned prompt")} onClose={() => {}} />,
     );
     const body = container.querySelector(".chat-last-prompt-dialog-body");
@@ -35,14 +36,14 @@ describe("PinnedMessageReader body", () => {
   });
 
   it("renders nothing when there is no message", () => {
-    const { container } = render(
+    const { container } = renderWithI18n(
       <PinnedMessageReader message={null} onClose={() => {}} />,
     );
     expect(container.querySelector(".chat-last-prompt-dialog-body")).toBeNull();
   });
 
   it("wraps the body in the dialog panel (not bare on the overlay)", () => {
-    const { container } = render(
+    const { container } = renderWithI18n(
       <PinnedMessageReader message={message("x")} onClose={() => {}} />,
     );
     // The panel class the .last-prompt-dialog rule paints lives on the panel,

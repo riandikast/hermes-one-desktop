@@ -7321,22 +7321,18 @@ body:has(.shell-vibrant),
   color: var(--text-primary, #e4e4e7);
 }
 
-/* A panel behind the text so the reading area reads as its own surface instead
-   of sharing the dialog background.
-   Applies to the COLLAPSED preview as well as the expanded body, and to the
-   pinned-message reader, so all three show the same container.
+/* ONE shared surface for every reader panel. The pinned reader and the
+   last-prompt rows must look IDENTICAL on the same theme; they previously
+   drifted because the row rule mixed at 6% while the shared body mixed at 12%,
+   which made one grey and the other dark. Single value, single place.
 
-   WHY NOT A --bg-* TOKEN (the real reason "just adding a container" did
-   nothing): the dialog itself is painted with `--bg-elevated`. In the default
-   dark theme `--bg-tertiary` is #2f2f2f against a #303030 dialog (contrast
-   ratio 1.014), and in dracula / nord / one-dark the two variables hold the
-   IDENTICAL hex (ratio 1.000), so a panel coloured from those tokens is the
-   same colour as the surface behind it and is invisible however much padding
-   and radius it carries. Only light came out different (1.075).
-
-   `color-mix` against the dialog's own variable is guaranteed to differ in
-   EVERY theme (including custom light themes) without listing theme ids, which
-   would silently miss e.g. github-light and solarized-light. */
+   WHY NOT A --bg-* TOKEN: the dialog is painted with `--bg-elevated`, and in
+   dracula / nord / one-dark `--bg-tertiary` holds the IDENTICAL hex (1.000),
+   with dark at 1.014 — a panel coloured from those tokens is the same colour as
+   the surface behind it and is invisible however much padding it carries.
+   Mixing against the dialog's own variable is guaranteed to differ in every
+   theme, including custom and github-light / solarized-light, which a
+   [data-theme="light"] rule would silently miss. */
 .chat-last-prompt-item-preview,
 .chat-last-prompt-item-body,
 .chat-last-prompt-dialog-body {
@@ -7359,16 +7355,11 @@ body:has(.shell-vibrant),
     background: rgba(127, 127, 127, 0.16);
   }
 }
-/* The expanded row and the collapsed preview sit INSIDE a list item that is
-   already its own card, so a panel on a panel would read as a double border —
-   they get a quieter surface and no outer border. */
+/* Rows inside the list are cards already, so their inner panel drops the outer
+   border — but keeps the SAME background mix as the pinned reader, so the two
+   dialogs read as one component rather than two. */
 .chat-last-prompt-item .chat-last-prompt-item-preview,
 .chat-last-prompt-item .chat-last-prompt-item-body {
-  background: color-mix(
-    in srgb,
-    var(--bg-elevated, #303030) 94%,
-    currentColor 6%
-  );
   border-color: transparent;
   margin-top: 6px;
 }
