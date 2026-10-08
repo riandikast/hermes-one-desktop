@@ -3,6 +3,7 @@ import { Check, Copy, CornerDownRight, Maximize2 } from "lucide-react";
 import type { ChatBubbleMessage, ChatMessage } from "./types";
 import { isBubbleMessage } from "./chatMessages";
 import { isAutoInjectedPrompt } from "./autoPrompts";
+import { HighlightedText } from "./HighlightedText";
 import { useAtomValue } from "./hooks/useChatScrollAtoms";
 import { FloatingDialog } from "./FloatingDialog";
 
@@ -387,7 +388,11 @@ export const LastPromptChip = memo(function LastPromptChip({
                       </button>
                     </div>
                     {isOpen ? (
-                      <pre className="chat-last-prompt-item-body">{text}</pre>
+                      <HighlightedText
+                        text={text}
+                        tone="prompt"
+                        className="chat-last-prompt-item-body"
+                      />
                     ) : (
                       <p className="chat-last-prompt-item-preview">{oneLine}</p>
                     )}

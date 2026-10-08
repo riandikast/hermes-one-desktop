@@ -7317,6 +7317,51 @@ body:has(.shell-vibrant),
   background: transparent;
 }
 
+/* ── Highlighted text body (last-prompt + pinned-message dialogs) ────────
+   Editor-style token colouring for PROSE. Colour comes from theme tokens so a
+   skin/theme switch repaints both dialogs without any re-render, and each
+   token stays within the palette (no one-off hex). */
+.chat-hl-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-primary, #e4e4e7);
+  background: transparent;
+}
+/* URLs are the most useful thing to spot in a link-heavy prompt, so they carry
+   the accent; code spans and quotes get a quiet surface instead of a colour,
+   which keeps a wall of text calm. */
+.chat-hl-text .hl-url {
+  color: var(--accent, #7aa2f7);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.chat-hl-text .hl-code {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.07));
+  border-radius: 3px;
+  padding: 0 3px;
+}
+.chat-hl-text .hl-quote {
+  color: var(--text-secondary, #b6b6c2);
+}
+.chat-hl-text .hl-heading {
+  color: var(--text-primary, #e4e4e7);
+  font-weight: 600;
+}
+.chat-hl-text .hl-fence {
+  color: var(--text-muted, #8b8b99);
+}
+.chat-hl-text .hl-bullet {
+  color: var(--accent, #7aa2f7);
+}
+.chat-hl-text .hl-path,
+.chat-hl-text .hl-env {
+  color: var(--text-secondary, #b6b6c2);
+}
+
 /* ── Send-confirmation dialog ────────────────────────────────────────────
    Names the project a prompt is about to be sent into, so a prompt can be
    caught before it lands in the wrong session. Keyboard-first: Enter sends,
