@@ -55,6 +55,7 @@ interface HarnessApi {
   activeTurnRef?: MutableRefObject<ActiveTurn | null>;
   messages?: ChatMessage[];
   send?: (text: string) => Promise<boolean>;
+  abort?: () => void;
   setConnectionMode?: Dispatch<SetStateAction<"local" | "remote" | "ssh">>;
   setMessages?: Dispatch<SetStateAction<ChatMessage[]>>;
   setModel?: Dispatch<SetStateAction<string>>;
@@ -155,6 +156,7 @@ function Harness({
       messages,
       activeSubagents: transport.activeSubagents,
       send: transport.sendMessage,
+      abort: transport.abort,
       setConnectionMode,
       setMessages,
       setModel,
@@ -411,6 +413,82 @@ describe("useDashboardChatTransport recovery", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it.each([false, true])("closed-pipe selection retry respects interrupt=%s", async (interrupt) => {
+    let rejectSwitch!: (error: Error) => void;
+    let calls = 0;
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: old (bad-provider)" };
+      if (method === "model.options") return { model: "old", provider: "bad-provider" };
+      if (method === "slash.exec") {
+        if (++calls === 1) return new Promise((_resolve, reject) => { rejectSwitch = reject; });
+        return { output: "Model switched" };
+      }
+      return {};
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} />);
+    try {
+      let sent!: Promise<boolean>;
+      await act(async () => { sent = api.send!("hello"); });
+      await waitFor(() => expect(rejectSwitch).toBeTypeOf("function"));
+      expect(dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit")).toHaveLength(0);
+      if (interrupt) act(() => api.abort!());
+      await act(async () => { rejectSwitch(new Error("slash worker closed pipe")); await sent; });
+      expect(calls).toBe(interrupt ? 1 : 2);
+      expect(dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit")).toHaveLength(interrupt ? 0 : 1);
+    } finally { view.unmount(); }
+  });
+
+  it("waits for model switch before first submit and clears its failure on manual retry", async () => {
+    let liveModel = "old-model";
+    let rejectSwitch!: (error: Error) => void;
+    let switching = true;
+    let selectionAttempts = 0;
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      if (method === "session.create" || method === "session.resume")
+        return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status")
+        return { output: `Hermes TUI Status\nModel: ${liveModel} (bad-provider)\nTokens: 0` };
+      if (method === "model.options")
+        return { model: liveModel, provider: "bad-provider", providers: [] };
+      if (method === "slash.exec") {
+        if (switching) {
+          // The transport replays ONLY this idempotent selection, so the first
+          // attempt awaits and is rejected by the test; the retry (attempt 2)
+          // is what must succeed. A third attempt would mean it looped.
+          selectionAttempts += 1;
+          if (selectionAttempts > 1) throw new Error("slash worker closed pipe");
+          return new Promise((_resolve, reject) => { rejectSwitch = reject; });
+        }
+        liveModel = String(params.command).split(" ")[1];
+        return { output: "Model switched" };
+      }
+      return {};
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} />);
+    try {
+      await act(async () => { api.setMessages?.([]); api.setModel?.("selected-model"); });
+      let first!: Promise<boolean>;
+      await act(async () => { first = api.send!("hello"); });
+      await waitFor(() => expect(rejectSwitch).toBeTypeOf("function"));
+      expect(dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit")).toHaveLength(0);
+      await act(async () => { rejectSwitch(new Error("slash worker closed pipe")); await first; });
+      expect(api.messages?.some((m) => "error" in m && m.error === "slash worker closed pipe")).toBe(true);
+      expect(dashboardMock.request.mock.calls.filter(([m]) => m === "slash.exec")).toHaveLength(2);
+      expect(dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit")).toHaveLength(0);
+      switching = false;
+      await act(async () => { await api.send?.("hello"); });
+      expect(api.messages?.some((m) => "error" in m && m.error === "slash worker closed pipe")).toBe(false);
+      expect(dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit")).toHaveLength(1);
+      await act(async () => {
+        dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { status: "success" } });
+      });
+      expect(api.messages?.some((m) => "error" in m && m.error === "slash worker closed pipe")).toBe(false);
+    } finally { view.unmount(); }
   });
 
   it("uses live status without catalog or resets after slow repeated sends", async () => {

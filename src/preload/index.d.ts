@@ -709,6 +709,11 @@ interface HermesAPI {
     sessionId: string,
     error: DesktopSessionLocalError,
   ) => Promise<boolean>;
+  resolveSessionLocalError: (
+    sessionId: string,
+    userContent: string,
+  ) => Promise<boolean>;
+  clearSessionLocalErrors: (sessionId: string) => Promise<boolean>;
   recordSessionFileChanges: (
     sessionId: string,
     changes: unknown,

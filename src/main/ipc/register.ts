@@ -37,6 +37,8 @@ import {
   persistSessionContinuation,
   persistSessionLocalError,
   persistSessionFileChanges,
+  resolveSessionLocalErrorsForPrompt,
+  clearSessionLocalErrors,
 } from "../session-continuation-store";
 import {
   getSessionContextFoldersForSession,
@@ -2190,6 +2192,22 @@ export function registerIpcHandlers(context: IpcContext): void {
       return true;
     },
   );
+
+  // Counterpart to the record above. Without it a failure row outlived the turn
+  // that failed: `mergeSessionLocalErrors` replayed it on every load, so an
+  // error the user had already worked past came back on the next refresh.
+  ipcMain.handle(
+    "resolve-session-local-error",
+    (_event, sessionId: string, userContent: string) => {
+      resolveSessionLocalErrorsForPrompt(sessionId, userContent);
+      return true;
+    },
+  );
+
+  ipcMain.handle("clear-session-local-errors", (_event, sessionId: string) => {
+    clearSessionLocalErrors(sessionId);
+    return true;
+  });
 
   ipcMain.handle(
     "record-session-file-changes",

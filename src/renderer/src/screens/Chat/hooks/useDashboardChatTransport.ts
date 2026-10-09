@@ -1154,6 +1154,7 @@ export function useDashboardChatTransport({
   const clientRef = useRef<DashboardGatewayClient | null>(null);
   const connectingRef = useRef<Promise<DashboardGatewayClient> | null>(null);
   const clientGenerationRef = useRef(0);
+  const sendGenerationRef = useRef(0);
   // Sticky "dashboard transport can't connect on this remote/SSH connection"
   // flag. The dashboard WebSocket (`/api/ws`) never connects against a tunneled
   // `hermes gateway` (issue #667), so once we've learned it's unavailable we
@@ -2837,6 +2838,10 @@ export function useDashboardChatTransport({
       client: DashboardGatewayClient,
       sessionId: string,
     ): Promise<string> => {
+      const generation = sendGenerationRef.current;
+      const checkCancelled = (): void => {
+        if (generation !== sendGenerationRef.current) throw new Error("Send cancelled");
+      };
       const liveOverride = sessionModelOverrideRef?.current;
       const selectedModel = liveOverride?.model ?? modelRef.current;
       const selectedProvider = liveOverride?.provider ?? providerRef.current;
@@ -2978,7 +2983,8 @@ export function useDashboardChatTransport({
         }
         appliedModelRef.current = null;
         modelOptionsCacheRef.current = null;
-        const slashResponse = await client.request<SlashExecResponse>(
+        checkCancelled();
+        const selectModel = () => client.request<SlashExecResponse>(
           "slash.exec",
           {
             session_id: targetSessionId,
@@ -2991,6 +2997,13 @@ export function useDashboardChatTransport({
           // the gateway kept executing the switch anyway.
           SLASH_COMMAND_TIMEOUT_MS,
         );
+        // Only replay our idempotent selection, never a prompt or arbitrary slash.
+        const slashResponse = await selectModel().catch((err: unknown) => {
+          checkCancelled();
+          if (!(err instanceof Error) || err.message !== "slash worker closed pipe") throw err;
+          return selectModel();
+        });
+        checkCancelled();
 
         // The backend refused nothing — it ASKED. A switch above
         // model.switch_context_confirm_tokens returns a confirm request and
@@ -3024,6 +3037,7 @@ export function useDashboardChatTransport({
             // failed send (and, under auto-recovery, a burned chain attempt)
             // for a switch the user had already asked for.
             for (let approveTry = 0; approveTry < APPROVE_ATTEMPTS; approveTry++) {
+              checkCancelled();
               await client
                 .request(
                   "slash.exec",
@@ -3290,6 +3304,9 @@ export function useDashboardChatTransport({
   const sendMessage = useCallback(
     async (text: string, attachments?: Attachment[]): Promise<boolean> => {
       if (!enabled) return false;
+      const sendGeneration = ++sendGenerationRef.current;
+      recoveryCancelledRef.current = false;
+      const cancelled = () => sendGeneration !== sendGenerationRef.current;
       sendTimingRef.current = { send: ++nextDiagnosticSend, started: performance.now(), submitted: false, firstDelta: false };
       markSendStage("send-start");
       // Stamp LOCAL activity BEFORE the send's await window (ensureClient →
@@ -3467,7 +3484,9 @@ export function useDashboardChatTransport({
       try {
         client = await ensureClient();
         markSendStage("client-ready");
+        if (cancelled()) return true;
       } catch (err) {
+        if (cancelled()) return true;
         const message = err instanceof Error ? err.message : String(err);
         // On 429 rate limit or 400 bad request or dashboard error, do NOT double-send via fallback
         if (
@@ -3532,11 +3551,13 @@ export function useDashboardChatTransport({
           continuationItems = [];
         }
         await recordContinuationItems(continuationItems);
+        if (cancelled()) return true;
         const selectedSessionId = await ensureSelectedModel(
           client,
           runtimeSessionId,
         );
         markSendStage("model-ready");
+        if (cancelled()) return true;
         // A guarded switch is now auto-accepted inside ensureSelectedModel, so
         // there is nothing pending to surface here — the send continues on the
         // model the switch actually landed on.
@@ -3560,7 +3581,7 @@ export function useDashboardChatTransport({
         // A NEW user turn clears the interrupt latch and the attempt counters.
         // Without this reset, one earlier stop would permanently disable
         // recovery for the rest of the session.
-        recoveryCancelledRef.current = false;
+        if (cancelled()) return true;
         recoveryAttemptsRef.current = 0;
         recoveryChainIndexRef.current = 0;
         recoveryFiredForEpisodeRef.current = false;
@@ -3595,8 +3616,30 @@ export function useDashboardChatTransport({
           },
         });
         markSendStage("submit-ack");
+        // The turn was accepted, so any recorded failure for THIS prompt is
+        // resolved. Without this the stored error row (written when the prompt
+        // previously failed, e.g. the provider 401 before a model switch) is
+        // replayed by mergeSessionLocalErrors on the next load and the user sees
+        // an error for a turn that is now working.
+        const resolvedSessionId = storedSessionIdRef.current;
+        const resolvedUserContent = userContentById(
+          messagesRef.current,
+          activeTurnRef.current?.userId,
+        );
+        const resolveLocalError = window.hermesAPI.resolveSessionLocalError;
+        if (
+          dashboardShouldPersistLocalOverlays(connectionMode) &&
+          resolvedSessionId &&
+          resolvedUserContent &&
+          typeof resolveLocalError === "function"
+        ) {
+          void resolveLocalError(resolvedSessionId, resolvedUserContent).catch(
+            () => undefined,
+          );
+        }
         return true;
       } catch (err) {
+        if (cancelled()) return true;
         clearStallTimer();
         appliedModelRef.current = null;
         modelOptionsCacheRef.current = null;
@@ -3765,6 +3808,7 @@ export function useDashboardChatTransport({
 
   const abort = useCallback(() => {
     if (!enabled) return;
+    sendGenerationRef.current++;
     // THE interrupt guarantee: latch recovery OFF before anything else. A
     // failure that lands after this must never trigger an automatic
     // switch-and-resend — the app typing on the user's behalf after they

@@ -943,6 +943,15 @@ const hermesAPI = {
   ): Promise<boolean> =>
     ipcRenderer.invoke("record-session-local-error", sessionId, error),
 
+  resolveSessionLocalError: (
+    sessionId: string,
+    userContent: string,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("resolve-session-local-error", sessionId, userContent),
+
+  clearSessionLocalErrors: (sessionId: string): Promise<boolean> =>
+    ipcRenderer.invoke("clear-session-local-errors", sessionId),
+
   recordSessionFileChanges: (
     sessionId: string,
     changes: unknown,

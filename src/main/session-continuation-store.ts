@@ -293,6 +293,42 @@ export function mergeSessionLocalErrors(
   return output;
 }
 
+/**
+ * Drop the recorded failure for one user message once its turn SUCCEEDS.
+ *
+ * `persistSessionLocalError` had no counterpart: every failed turn left a row
+ * in `desktop_session_local_errors`, and `mergeSessionLocalErrors` re-attached
+ * it to the transcript on every subsequent load. Clearing the bubble in the
+ * renderer only hid it — the next reload (or app restart) replayed the error,
+ * so a provider 401 the user had already worked past kept reappearing.
+ *
+ * Matching is by the user's prompt, not the error text: a retry that fails
+ * differently still means that prompt is no longer broken, and leaving the old
+ * row behind reproduces the same stale bubble.
+ */
+export function resolveSessionLocalErrorsForPrompt(
+  sessionId: string,
+  userContent: unknown,
+): void {
+  const promptText = typeof userContent === "string" ? userContent.trim() : "";
+  if (!sessionId || !promptText) return;
+  const db = getDbConnection(false);
+  if (!db) return;
+  if (!tableExists(db, ERROR_TABLE)) return;
+  db.prepare(
+    `DELETE FROM ${ERROR_TABLE} WHERE session_id = ? AND user_content = ?`,
+  ).run(sessionId, promptText);
+}
+
+/** Drop every recorded failure for a session (e.g. the transcript was rebuilt). */
+export function clearSessionLocalErrors(sessionId: string): void {
+  if (!sessionId) return;
+  const db = getDbConnection(false);
+  if (!db) return;
+  if (!tableExists(db, ERROR_TABLE)) return;
+  db.prepare(`DELETE FROM ${ERROR_TABLE} WHERE session_id = ?`).run(sessionId);
+}
+
 export function loadSessionLocalErrors(
   db: Database.Database,
   sessionId: string,
