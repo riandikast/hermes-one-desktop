@@ -548,6 +548,43 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
   const sessionsRef = useRef<RecentSession[]>([]);
   const hasMoreRef = useRef(false);
   const loadingMoreRef = useRef(false);
+  /**
+   * How many rows the CURRENT list window represents, updated SYNCHRONOUSLY
+   * wherever the list is written (`appendPage`, `applyLoadedWindow`).
+   *
+   * This is the paging OFFSET. It deliberately is not derived from
+   * `sessionsRef`, which only catches up in a post-paint effect: during the
+   * await in `loadNextPage` the state has not committed yet, so a ref read
+   * there returns the PREVIOUS length and re-requests the same page. That
+   * page then dedupes to nothing, `scrollHeight` never grows, and the bottom
+   * threshold stays satisfied — an endless load/at-bottom loop (the reported
+   * "auto scroll up and down infinitely until I scroll up").
+   *
+   * SCOPE: this closes a zero-progress re-request. It is a correctness fix
+   * for the paging offset, NOT a verified fix for the reported oscillation:
+   * a component-level repro was attempted and did NOT go red against the
+   * original code, so the oscillation itself remains unproven here.
+   */
+  const loadedCountRef = useRef(0);
+
+  useEffect(() => {
+    // Reconcile the paging offset with the list that actually rendered.
+    //
+    // `loadedCountRef` is advanced synchronously so an in-flight load cannot
+    // re-request a page, but LOCAL mutations (delete, bulk delete, rename
+    // filtering) also change the rendered length without going through
+    // `appendPage`/`applyLoadedWindow`. Left alone, deleting rows would leave
+    // the offset past the real end and silently skip sessions; a refresh that
+    // grows the list could leave it short and re-request a page we hold.
+    // Capping to the rendered length keeps the next request anchored to truth.
+    //
+    // Deliberately NOT lowering it below what a page request is in flight from:
+    // `loadNextPage` compares its captured offset against this ref and bails if
+    // it changed, so a legitimate re-anchor during an await is safe.
+    if (sessions.length < loadedCountRef.current) {
+      loadedCountRef.current = sessions.length;
+    }
+  }, [sessions]);
 
   useEffect(() => {
     sessionsRef.current = sessions;
@@ -649,6 +686,10 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
     ): void => {
       setHasMore(list.length > RECENT_SESSIONS_PAGE_SIZE);
       const next = normalizeRows(list);
+      // This is the page the list OPENS with, so it defines the first paging
+      // offset. Without this the offset stayed 0 and the first scroll
+      // re-requested the page already on screen.
+      loadedCountRef.current = next.length;
       // Skip the state update (and re-render) when nothing changed — the
       // common case for periodic refreshes.
       setSessions((prev) => (sameSessions(prev, next) ? prev : next));
@@ -670,6 +711,9 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
       );
       setHasMore(list.length > loadedLimit);
       const next = normalizeRows(list, loadedLimit);
+      // Advance the paging offset SYNCHRONOUSLY, so a load already in flight
+      // sees the new window rather than appending a stale one on top of it.
+      loadedCountRef.current = next.length;
       setSessions((prev) => (sameSessions(prev, next) ? prev : next));
     },
     [normalizeRows],
@@ -686,6 +730,15 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
       setHasMore(list.length > RECENT_SESSIONS_PAGE_SIZE);
       const page = normalizeRows(list);
       if (page.length === 0) return;
+      // Advance the offset by the number of rows the SERVER returned, not by how
+      // many were new to this list. A page can overlap what we already hold
+      // (dedupe below drops the duplicates); counting only the survivors would
+      // re-request the same window forever, because the offset would never reach
+      // past it. `hasMore` already told us the server had more at this offset.
+      loadedCountRef.current += Math.min(
+        list.length,
+        RECENT_SESSIONS_PAGE_SIZE,
+      );
       setSessions((prev) => {
         const seen = new Set(prev.map((s) => s.id));
         const next = [...prev];
@@ -755,7 +808,7 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
       // stutter). Recorded once and run when scrolling settles — a forced
       // refresh is deferred too, since the reason for it does not change
       // whether disturbing a gesture is acceptable.
-      if (!canApplyRefreshNow(!isScrollingRef.current)) {
+      if (!canApplyRefreshNow(isScrollingRef.current)) {
         deferredRefreshRef.current = () => void refresh(force);
         return;
       }
@@ -764,7 +817,7 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
         const synced = await window.hermesAPI.syncSessionCache();
         // Re-check: the list may have STARTED scrolling during the await, and
         // applying now would still move rows mid-gesture.
-        if (!canApplyRefreshNow(!isScrollingRef.current)) {
+        if (!canApplyRefreshNow(isScrollingRef.current)) {
           deferredRefreshRef.current = () => {
             lastRefreshRef.current = 0; // let the retry through the throttle
             void refresh(force);
@@ -788,11 +841,24 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
     if (!open || !hasMoreRef.current || loadingMoreRef.current) return;
     loadingMoreRef.current = true;
     setLoadingMore(true);
+    // Take the OFFSET from a ref advanced SYNCHRONOUSLY, not from
+    // `sessionsRef` (synced in a post-paint effect, so it can still hold the
+    // PREVIOUS length). A stale read re-requests the page already held:
+    // `appendPage` dedupes by id, so ZERO rows are added, `scrollHeight` does
+    // not grow, and the bottom threshold stays satisfied — a zero-progress
+    // re-fire. Fixed here regardless; this is NOT a confirmed repro of the
+    // reported oscillation (a component repro was attempted and did not fail
+    // against the original code).
+    const offset = loadedCountRef.current;
     try {
       const nextPage = await window.hermesAPI.listCachedSessions(
         RECENT_SESSIONS_PAGE_SIZE + 1,
-        sessionsRef.current.length,
+        offset,
       );
+      // Guard against a refresh that replaced the list while this page was in
+      // flight: the offset we asked from may no longer be valid, and appending
+      // would then splice an unrelated window onto the new list.
+      if (loadedCountRef.current !== offset) return;
       appendPage(nextPage);
       // Remember where the container was when this page landed. The rows just
       // grew, so the bottom-threshold test would otherwise fire again

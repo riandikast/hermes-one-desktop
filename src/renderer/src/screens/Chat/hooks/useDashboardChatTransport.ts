@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useActiveSubagents, type ActiveSubagent } from "./useActiveSubagents";
 import { LOCAL_PRESETS } from "../../../constants";
 import {
+  clearStaleTurnErrors,
   isBubbleMessage,
   markActiveTurnFailed,
   normalizeMessageText,
@@ -3350,7 +3351,7 @@ export function useDashboardChatTransport({
         role: "user",
         content: text,
       };
-      messagesRef.current = [...messagesRef.current, optimisticUser];
+      messagesRef.current = [...clearStaleTurnErrors(messagesRef.current), optimisticUser];
       setMessages(messagesRef.current);
       activeTurnRef.current = {
         turnId: `send-${Date.now()}`,
