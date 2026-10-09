@@ -139,3 +139,112 @@ describe("Appearance pane — auto-expand toggles", () => {
     expect(toggleFor("Auto-expand tool calls").checked).toBe(false);
   });
 });
+
+describe("Appearance pane — terminal shell row", () => {
+  // The row is USELESS if the main process has no preference IPC: `terminalShell`
+  // stays null and the row hides itself. So the tests supply the bridge.
+  function withTerminalApi(preference: "powershell" | "cmd") {
+    (window as unknown as { hermesAPI: Record<string, unknown> }).hermesAPI = {
+      ...((window as unknown as { hermesAPI: Record<string, unknown> }).hermesAPI ?? {}),
+      getTerminalPreference: vi.fn().mockResolvedValue(preference),
+      setTerminalPreference: vi.fn().mockResolvedValue(true),
+    };
+  }
+
+  /** The segmented control inside the row carrying `label`. */
+  function segButtonsFor(label: string): HTMLButtonElement[] {
+    const labelEl = [...document.querySelectorAll(".settings-row-label")].find(
+      (el) => el.textContent?.trim() === label,
+    );
+    if (!labelEl) throw new Error(`no settings row labelled "${label}"`);
+    return [
+      ...(labelEl
+        .closest(".settings-row")
+        ?.querySelectorAll<HTMLButtonElement>(".settings-seg-btn") ?? []),
+    ];
+  }
+
+  it("renders above the rounded-corners toggle", async () => {
+    withTerminalApi("powershell");
+    renderPane();
+    await waitFor(() =>
+      expect(segButtonsFor("Windows terminal shell")).toHaveLength(2),
+    );
+
+    // Order matters: the user asked for this row ABOVE rounded corners.
+    const group = document.querySelector(".settings-group");
+    const labels = [...(group?.querySelectorAll(".settings-row-label") ?? [])].map(
+      (el) => el.textContent?.trim(),
+    );
+    expect(labels.indexOf("Windows terminal shell")).toBe(0);
+    expect(labels.indexOf("Rounded corners")).toBe(1);
+  });
+
+  it("uses the shared segmented control, not a bare select", async () => {
+    withTerminalApi("powershell");
+    renderPane();
+    await waitFor(() =>
+      expect(segButtonsFor("Windows terminal shell")).toHaveLength(2),
+    );
+
+    // Consistency with the font / hardware-acceleration rows is the point: a
+    // raw <select> inherited none of the settings-group theming.
+    expect(document.querySelectorAll("select")).toHaveLength(0);
+    expect(segButtonsFor("Windows terminal shell").map((b) => b.textContent)).toEqual([
+      "PowerShell",
+      "Command Prompt",
+    ]);
+  });
+
+  it("marks the saved preference active", async () => {
+    withTerminalApi("cmd");
+    renderPane();
+    await waitFor(() =>
+      expect(segButtonsFor("Windows terminal shell")).toHaveLength(2),
+    );
+
+    const active = segButtonsFor("Windows terminal shell").filter((b) =>
+      b.classList.contains("active"),
+    );
+    expect(active.map((b) => b.textContent)).toEqual(["Command Prompt"]);
+  });
+
+  it("persists a change and reflects the new selection", async () => {
+    withTerminalApi("powershell");
+    renderPane();
+    await waitFor(() =>
+      expect(segButtonsFor("Windows terminal shell")).toHaveLength(2),
+    );
+
+    fireEvent.click(segButtonsFor("Windows terminal shell")[1]!);
+
+    await waitFor(() =>
+      expect(window.hermesAPI.setTerminalPreference).toHaveBeenCalledWith("cmd"),
+    );
+    await waitFor(() =>
+      expect(
+        segButtonsFor("Windows terminal shell")
+          .filter((b) => b.classList.contains("active"))
+          .map((b) => b.textContent),
+      ).toEqual(["Command Prompt"]),
+    );
+  });
+
+  it("hides the row when the preference bridge is unavailable", async () => {
+    // An older main process has no getter: showing a control that cannot save
+    // would be worse than showing nothing.
+    (window as unknown as { hermesAPI: Record<string, unknown> }).hermesAPI = {
+      getGpuStatus: vi.fn().mockResolvedValue({
+        preference: "auto",
+        bootPreference: "auto",
+        reason: "ok",
+      }),
+      setGpuPreference: vi.fn().mockResolvedValue(true),
+      listSystemFonts: vi.fn().mockResolvedValue([]),
+      relaunchApp: vi.fn(),
+    };
+    renderPane();
+    await waitFor(() => expect(screen.getByText("Rounded corners")).toBeDefined());
+    expect(() => segButtonsFor("Windows terminal shell")).toThrow();
+  });
+});

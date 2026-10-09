@@ -14,6 +14,19 @@ import type { GpuPreferenceMode, GpuStatus } from "../../../../shared/gpu";
 import ThemeEditor from "./ThemeEditor";
 
 const GPU_MODES: GpuPreferenceMode[] = ["auto", "on", "off"];
+
+/**
+ * Windows shell for the built-in terminal and the Commands page. Some managed
+ * machines refuse to run .ps1, so Command Prompt has to be selectable; labels
+ * stay literal (not i18n keys) because they are product names.
+ */
+const TERMINAL_SHELLS: ReadonlyArray<{
+  value: "powershell" | "cmd";
+  label: string;
+}> = [
+  { value: "powershell", label: "PowerShell" },
+  { value: "cmd", label: "Command Prompt" },
+];
 // Show two rows of the 4-col grid up front (7 themes + a "more" tile); the
 // rest stay one click away so the pane opens tidy.
 const THEME_PREVIEW_COUNT = 7;
@@ -123,25 +136,6 @@ export default function AppearancePane(): React.JSX.Element {
 
   return (
     <div className="settings-modal-pane">
-      {terminalShell !== null && (
-        <div className="settings-field">
-          <label className="settings-field-label" htmlFor="terminal-shell">{t("settings.terminalShell.label")}</label>
-          <select id="terminal-shell" value={terminalShell} onChange={async (event) => {
-            const shell = event.target.value;
-            if (shell !== "powershell" && shell !== "cmd") return;
-            setTerminalSaveError(false);
-            try {
-              if (await window.hermesAPI.setTerminalPreference(shell)) setTerminalShell(shell);
-              else setTerminalSaveError(true);
-            } catch { setTerminalSaveError(true); }
-          }}>
-            <option value="powershell">PowerShell</option>
-            <option value="cmd">Command Prompt (cmd.exe)</option>
-          </select>
-          <p className="settings-field-hint">{t("settings.terminalShell.hint")}</p>
-          {terminalSaveError && <p role="alert">{t("settings.terminalShell.error")}</p>}
-        </div>
-      )}
       <div className="settings-field">
         <label className="settings-field-label">
           {t("settings.theme.label")}
@@ -300,6 +294,46 @@ export default function AppearancePane(): React.JSX.Element {
 
       {/* Grouped preferences — one card, row dividers, control on the right. */}
       <div className="settings-group">
+        {terminalShell !== null && (
+          <div className="settings-row">
+            <div className="settings-row-text">
+              <div className="settings-row-label">
+                {t("settings.terminalShell.label")}
+              </div>
+              <div className="settings-row-hint">
+                {terminalSaveError
+                  ? t("settings.terminalShell.error")
+                  : t("settings.terminalShell.hint")}
+              </div>
+            </div>
+            <div className="settings-seg">
+              {TERMINAL_SHELLS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`settings-seg-btn ${terminalShell === opt.value ? "active" : ""}`}
+                  aria-pressed={terminalShell === opt.value}
+                  onClick={async () => {
+                    if (terminalShell === opt.value) return;
+                    setTerminalSaveError(false);
+                    try {
+                      if (await window.hermesAPI.setTerminalPreference(opt.value)) {
+                        setTerminalShell(opt.value);
+                      } else {
+                        setTerminalSaveError(true);
+                      }
+                    } catch {
+                      setTerminalSaveError(true);
+                    }
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="settings-row">
           <div className="settings-row-text">
             <div className="settings-row-label">
