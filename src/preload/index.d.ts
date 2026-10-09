@@ -1306,6 +1306,8 @@ interface HermesAPI {
   ) => Promise<{ ok: boolean; error?: string }>;
   openFileInEditor: (filePath: string) => Promise<boolean>;
   openTerminal: (dirPath: string) => Promise<boolean>;
+  getTerminalPreference: () => Promise<"powershell" | "cmd">;
+  setTerminalPreference: (shell: "powershell" | "cmd") => Promise<boolean>;
   gitRepoStatus: (dir: string) => Promise<GitStatusResult>;
   gitLog: (dir: string, opts?: { max?: number }) => Promise<GitLogResult>;
   gitCommitDiff: (dir: string, hash: string) => Promise<GitActionResult>;

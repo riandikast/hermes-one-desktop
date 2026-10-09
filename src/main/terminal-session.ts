@@ -18,8 +18,10 @@ export function resolveShellExecutable(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
   exists: (p: string) => boolean = existsSync,
+  preference: "powershell" | "cmd" = "powershell",
 ): string {
   if (platform === "win32") {
+    if (preference === "cmd") return join(env.SystemRoot || "C:\\Windows", "System32", "cmd.exe");
     const programFiles = env.ProgramFiles || "C:\\Program Files";
     const programFilesX86 = env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
     const pwshCandidates = [
@@ -41,11 +43,29 @@ export function shellKindFor(shell: string): ShellKind {
   return "sh";
 }
 
+/**
+ * cmd.exe cannot safely receive a script path containing quotes, percent
+ * expansion, exclamation marks (with delayed expansion) or control characters.
+ * Compared by char code so the check needs no control-character regex.
+ */
+export function isCmdScriptPathSafe(scriptPath: string): boolean {
+  for (const ch of scriptPath) {
+    const code = ch.charCodeAt(0);
+    if (code < 0x20 || code === 0x7f) return false;
+    if (ch === '"' || ch === "%" || ch === "!") return false;
+  }
+  return true;
+}
+
 /** Line fed to the PTY to run a temp script while keeping the shell alive. */
 export function buildFeedLine(scriptPath: string, kind: ShellKind): string {
-  if (kind === "pwsh") return `& '${scriptPath}'\r`;
-  if (kind === "cmd") return `call "${scriptPath}"\r`;
-  return `. '${scriptPath}'\r`;
+  const enter = String.fromCharCode(13);
+  if (kind === "pwsh") return `& '${scriptPath.replace(/'/g, "''")}'${enter}`;
+  if (kind === "cmd") {
+    if (!isCmdScriptPathSafe(scriptPath)) throw new Error("Unsupported cmd script path");
+    return `call "${scriptPath}"${enter}`;
+  }
+  return `. '${scriptPath}'${enter}`;
 }
 
 export function createTerminalSession(
@@ -58,7 +78,7 @@ export function createTerminalSession(
   ptyModule: typeof pty = pty,
 ): string {
   const id = `term-${nextSessionId++}`;
-  const child = ptyModule.spawn(shell, [], {
+  const child = ptyModule.spawn(shell, shellKindFor(shell) === "cmd" ? ["/d", "/v:off"] : [], {
     name: "xterm-256color",
     cols,
     rows,

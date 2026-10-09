@@ -54,6 +54,7 @@ import {
   mediaFileExists,
 } from "../media";
 import { openTerminalInDirectory } from "../terminal-launcher";
+import { getTerminalPreference, setTerminalPreference } from "../terminal-preference";
 import {
   gitRepoStatus,
   gitDiff,
@@ -3324,10 +3325,12 @@ export function registerIpcHandlers(context: IpcContext): void {
   });
 
   // ── Built-in terminal sessions ─────────────────────────────────────
+  ipcMain.handle("terminal:get-preference", () => getTerminalPreference());
+  ipcMain.handle("terminal:set-preference", (_event, shell: unknown) => setTerminalPreference(shell));
   ipcMain.handle(
     "terminal:create",
     async (_event, payload: { cwd: string; cols: number; rows: number }) => {
-      const shell = resolveShellExecutable();
+      const shell = resolveShellExecutable(process.platform, process.env, undefined, getTerminalPreference());
       const id = createTerminalSession(
         shell,
         payload.cwd || process.cwd(),
@@ -3379,7 +3382,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       _event,
       payload: { commandId: string; cwd: string; command: string },
     ) => {
-      const shell = resolveShellExecutable();
+      const shell = resolveShellExecutable(process.platform, process.env, undefined, getTerminalPreference());
       const kind = shellKindFor(shell);
       const scriptPath = await writeTempScript(payload.command, kind);
       scheduleScriptCleanup(scriptPath);

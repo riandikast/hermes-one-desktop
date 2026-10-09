@@ -1,4 +1,9 @@
 export default {
+  terminalShell: {
+    label: "Windows terminal shell",
+    hint: "Applies to new terminals and Commands. Existing terminals keep their shell. Command Prompt runs .cmd scripts without PowerShell; commands must use cmd syntax.",
+    error: "Could not save terminal preference.",
+  },
   title: "Settings",
   sections: {
     hermesAgent: "Hermes Agent",

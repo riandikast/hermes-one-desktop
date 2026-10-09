@@ -1854,6 +1854,8 @@ const hermesAPI = {
   deleteCommand: (id: string) => ipcRenderer.invoke("commands:delete", id),
   terminalCreate: (payload: { cwd: string; cols: number; rows: number }) =>
     ipcRenderer.invoke("terminal:create", payload),
+  getTerminalPreference: (): Promise<"powershell" | "cmd"> => ipcRenderer.invoke("terminal:get-preference"),
+  setTerminalPreference: (shell: "powershell" | "cmd"): Promise<boolean> => ipcRenderer.invoke("terminal:set-preference", shell),
   terminalWrite: (payload: { id: string; data: string; cwd?: string }) =>
     ipcRenderer.invoke("terminal:write", payload),
   terminalResize: (payload: { id: string; cols: number; rows: number }) =>

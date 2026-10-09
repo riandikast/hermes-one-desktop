@@ -25,6 +25,11 @@ export default function AppearancePane(): React.JSX.Element {
     useTheme();
   const { font, setFont } = useFont();
   const [showAllThemes, setShowAllThemes] = useState(false);
+  const [terminalShell, setTerminalShell] = useState<"powershell" | "cmd" | null>(null);
+  const [terminalSaveError, setTerminalSaveError] = useState(false);
+  useEffect(() => {
+    window.hermesAPI.getTerminalPreference?.().then(setTerminalShell).catch(() => {});
+  }, []);
   // Theme editor: id of the theme being edited (null = closed).
   const [editingThemeId, setEditingThemeId] = useState<string | null>(null);
   // Hardware acceleration is fixed pre-ready, so a changed preference only
@@ -118,6 +123,25 @@ export default function AppearancePane(): React.JSX.Element {
 
   return (
     <div className="settings-modal-pane">
+      {terminalShell !== null && (
+        <div className="settings-field">
+          <label className="settings-field-label" htmlFor="terminal-shell">{t("settings.terminalShell.label")}</label>
+          <select id="terminal-shell" value={terminalShell} onChange={async (event) => {
+            const shell = event.target.value;
+            if (shell !== "powershell" && shell !== "cmd") return;
+            setTerminalSaveError(false);
+            try {
+              if (await window.hermesAPI.setTerminalPreference(shell)) setTerminalShell(shell);
+              else setTerminalSaveError(true);
+            } catch { setTerminalSaveError(true); }
+          }}>
+            <option value="powershell">PowerShell</option>
+            <option value="cmd">Command Prompt (cmd.exe)</option>
+          </select>
+          <p className="settings-field-hint">{t("settings.terminalShell.hint")}</p>
+          {terminalSaveError && <p role="alert">{t("settings.terminalShell.error")}</p>}
+        </div>
+      )}
       <div className="settings-field">
         <label className="settings-field-label">
           {t("settings.theme.label")}

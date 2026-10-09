@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import { getTerminalPreference } from "./terminal-preference";
 import {
   accessSync,
   constants,
@@ -626,6 +627,16 @@ export async function openTerminalInDirectory(
   dirPath: string,
 ): Promise<boolean> {
   if (!existsSync(dirPath)) return false;
+
+  if (process.platform === "win32" && getTerminalPreference() === "cmd") {
+    return new Promise((resolve) => {
+      const child = spawn(win32.join(process.env.SystemRoot || "C:\\Windows", "System32", "cmd.exe"), ["/d", "/v:off"], {
+        cwd: dirPath, detached: true, stdio: "ignore", windowsHide: false,
+      });
+      child.once("error", () => resolve(false));
+      child.once("spawn", () => { child.unref(); resolve(true); });
+    });
+  }
 
   const terminal = await resolveTerminalCommandAsync(dirPath);
   if (!terminal) return false;

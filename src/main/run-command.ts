@@ -4,7 +4,8 @@ import { existsSync } from "fs";
 import { unlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import type { ShellKind } from "./terminal-session";
+import { isCmdScriptPathSafe, type ShellKind } from "./terminal-session";
+import { getTerminalPreference } from "./terminal-preference";
 
 export function scriptExtensionFor(kind: ShellKind): string {
   if (kind === "pwsh") return "ps1";
@@ -57,7 +58,7 @@ export async function runCommandInOsTerminal(
   command: string,
   cwd?: string,
 ): Promise<boolean> {
-  const kind: ShellKind = process.platform === "win32" ? "pwsh" : "sh";
+  const kind: ShellKind = process.platform === "win32" ? (getTerminalPreference() === "cmd" ? "cmd" : "pwsh") : "sh";
   const scriptPath = await writeTempScript(command, kind);
   // Keep the temp script alive well past the window's likely lifespan.
   scheduleScriptCleanup(scriptPath, 180_000);
@@ -72,6 +73,14 @@ export async function runCommandInOsTerminal(
   if (process.platform === "win32") {
     const systemRoot = process.env.SystemRoot || "C:\\Windows";
     const cmdExe = join(systemRoot, "System32", "cmd.exe");
+    if (kind === "cmd") {
+      if (!isCmdScriptPathSafe(scriptPath)) throw new Error("Unsupported cmd script path");
+      return new Promise((resolve) => {
+        const child = spawn(cmdExe, ["/d", "/v:off", "/s", "/k", `""${scriptPath}""`], { ...options, windowsVerbatimArguments: true });
+        child.once("error", () => resolve(false));
+        child.once("spawn", () => { child.unref(); resolve(true); });
+      });
+    }
     const psExe = join(
       systemRoot,
       "System32",
