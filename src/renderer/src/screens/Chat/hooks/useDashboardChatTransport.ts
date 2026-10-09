@@ -47,6 +47,7 @@ import {
   fallbackChainFor,
   loadFallbackModels,
   primaryKeyOf,
+  publishFallbackChainToConfig,
   type FallbackModel,
 } from "../fallbackModels";
 
@@ -3598,6 +3599,18 @@ export function useDashboardChatTransport({
             modelRef.current ?? "",
           ),
         );
+        // Publish the picker's chain so the BACKEND fails over to the models
+        // the user actually listed.
+        //
+        // The renderer chain (localStorage) and the backend chain
+        // (`config.yaml` `fallback_providers`) were independent: the picker
+        // edited one and the gateway read the other, so a failure could switch
+        // to a model the user never chose while the dialog showed their list.
+        // The picker is the source of truth, so it is mirrored into config here.
+        //
+        // Fire-and-forget: a send must not fail because this write did, and the
+        // renderer chain still recovers the turn on its own.
+        void publishFallbackChainToConfig(fallbackChainRef.current, profile);
         // Arm the stall watchdog: if the gateway never answers (provider
         // overload / dropped request), fail the turn instead of loading
         // forever. Any accepted stream event pushes the deadline out.

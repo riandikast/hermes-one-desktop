@@ -148,3 +148,48 @@ export function primaryKeyOf(
   if (!provider || !model) return null;
   return modelKeyOf(provider, baseUrl, model);
 }
+
+/**
+ * Mirror the picker's chain into `config.yaml` `fallback_providers`.
+ *
+ * The picker (this module, localStorage) and the backend chain were
+ * INDEPENDENT: the dialog edited one list while the gateway read another, so a
+ * failed turn could fail over to a model the user never listed — or not at all
+ * — with no way to see which from the UI. This makes the picker authoritative
+ * by publishing its list where the backend actually reads it.
+ *
+ * Only the fields the backend understands are sent: `provider` and `model`,
+ * plus `base_url` / `key_env` when the row carries them (a local-gateway chain
+ * must not be rewritten into bare provider/model pairs and re-routed to a
+ * public endpoint — the #89184 class of bug).
+ *
+ * Resolves to true when the write landed. Never throws: a failed publish must
+ * not break a send, and the renderer chain still recovers the turn on its own.
+ */
+export async function publishFallbackChainToConfig(
+  models: FallbackModel[],
+  profile?: string | null,
+): Promise<boolean> {
+  try {
+    const setConfig = window.hermesAPI?.setConfig;
+    if (typeof setConfig !== "function") return false;
+
+    const entries = models
+      .filter((m) => m.provider && m.model)
+      .map((m) => {
+        const entry: Record<string, string> = {
+          provider: m.provider,
+          model: m.model,
+        };
+        if (m.baseUrl) entry.base_url = m.baseUrl;
+        return entry;
+      });
+
+    // An empty chain is a real instruction: clear the key so a stale backend
+    // chain from an earlier session cannot outlive the picker's list.
+    await setConfig("fallback_providers", JSON.stringify(entries), profile ?? undefined);
+    return true;
+  } catch {
+    return false;
+  }
+}

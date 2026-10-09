@@ -560,6 +560,136 @@ export function getConfigValue(key: string, profile?: string): string | null {
   return getYamlPath(content, key);
 }
 
+/**
+ * Write a JSON array of OBJECTS as a YAML block list of mappings under `key`
+ * (e.g. `fallback_providers`). Returns false when the value is not a
+ * parseable JSON array of plain objects, so the caller falls through.
+ *
+ * `setConfigListValue` cannot serve this shape: it emits each item through
+ * `quoteYamlScalar`, so an object becomes the literal string
+ * `"{'provider': 'custom', ...}"`. The backend's `_iter_fallback_entries`
+ * then drops every entry (it requires dicts), the effective chain resolves to
+ * `[]`, and failover silently never fires while the UI still shows a
+ * configured chain. Hence a writer that emits real mappings.
+ *
+ * Only keys the agent understands are reproduced: `provider` and `model` are
+ * required, and the recognised routing keys ride along so a hand-written
+ * `base_url` / `key_env` / `api_mode` is preserved rather than rewritten into
+ * a bare provider/model pair (the #89184 class of bug).
+ */
+export function setConfigObjectListValue(
+  key: string,
+  value: string,
+  profile?: string,
+): boolean {
+  let items: unknown[];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return false;
+    items = parsed;
+  } catch {
+    return false;
+  }
+  // Every entry must be a mapping; a bare string/scalar would be dropped by
+  // the backend and silently shrink the chain.
+  if (items.some((item) => typeof item !== "object" || item === null || Array.isArray(item))) {
+    return false;
+  }
+
+  const { configFile } = profilePaths(profile);
+  if (!existsSync(configFile)) return false;
+
+  const content = readFileSync(configFile, "utf-8");
+  const segments = key.split(".").filter(Boolean);
+  if (segments.length === 0) return false;
+
+  const newline = content.includes(String.fromCharCode(13) + String.fromCharCode(10)) ? String.fromCharCode(13) + String.fromCharCode(10) : String.fromCharCode(10);
+  const keyName = segments[segments.length - 1]!;
+
+  // Render one entry as `- k: v` with the mapping keys aligned under it.
+  const renderEntry = (item: Record<string, unknown>, indent: string): string[] => {
+    const lines: string[] = [];
+    const entries = Object.entries(item).filter(
+      ([, v]) => v !== undefined && v !== null && v !== "",
+    );
+    entries.forEach(([k, v], index) => {
+      // Only scalars are supported: a nested object would need deeper
+      // indentation and is not part of the fallback entry shape.
+      const rendered = quoteYamlScalar(String(v));
+      lines.push(index === 0 ? `${indent}- ${k}: ${rendered}` : `${indent}  ${k}: ${rendered}`);
+    });
+    return lines;
+  };
+
+  const hit =
+    segments.length === 1
+      ? findTopLevelKey(content, keyName)
+      : findYamlPath(content, key);
+
+  const buildBlock = (indent: string): string => {
+    if (items.length === 0) {
+      return `${indent}${keyName}: []${newline}`;
+    }
+    const body = items
+      .map((item) => renderEntry(item as Record<string, unknown>, `${indent}  `).join(newline))
+      .join(newline);
+    return `${indent}${keyName}:${newline}${body}${newline}`;
+  };
+
+  if (!hit) {
+    // Append at the end as a top-level key. Deeper missing paths are left
+    // alone rather than guessed into a complex user-edited document.
+    if (segments.length !== 1) return false;
+    const sep = content.endsWith("\n") || content === "" ? "" : newline;
+    safeWriteFile(configFile, `${content}${sep}${buildBlock("")}`);
+    return true;
+  }
+
+  const lineStart = content.lastIndexOf("\n", hit.valueStart - 1) + 1;
+  const lineEnd = content.indexOf("\n", lineStart);
+  const lineEndExclusive = lineEnd === -1 ? content.length : lineEnd + 1;
+  const keyLine = content.slice(lineStart, lineEndExclusive);
+  const indentMatch = keyLine.match(/^(\s*)/);
+  const indent = indentMatch ? indentMatch[1] : "";
+
+  // Extend the replacement over the whole existing block: every following
+  // line indented deeper than the key (plus blank/comment lines leading into
+  // one) belongs to it, up to the next line at the key's own indent.
+  let blockEnd = lineEndExclusive;
+  let cursor = blockEnd;
+  while (cursor < content.length) {
+    const nextEnd = content.indexOf("\n", cursor);
+    const nextEndExclusive = nextEnd === -1 ? content.length : nextEnd + 1;
+    const line = content.slice(cursor, nextEndExclusive);
+    if (line.trim() === "" || line.trimStart().startsWith("#")) {
+      let peek = nextEndExclusive;
+      let nextIndent = -1;
+      while (peek < content.length) {
+        const peekEnd = content.indexOf("\n", peek);
+        const peekEndExclusive = peekEnd === -1 ? content.length : peekEnd + 1;
+        const peekLine = content.slice(peek, peekEndExclusive);
+        if (peekLine.trim() === "" || peekLine.trimStart().startsWith("#")) {
+          peek = peekEndExclusive;
+          continue;
+        }
+        nextIndent = peekLine.length - peekLine.trimStart().length;
+        break;
+      }
+      if (nextIndent === -1 || nextIndent <= indent.length) break;
+      cursor = nextEndExclusive;
+      blockEnd = cursor;
+      continue;
+    }
+    if (line.length - line.trimStart().length <= indent.length) break;
+    cursor = nextEndExclusive;
+    blockEnd = cursor;
+  }
+
+  const replacement = buildBlock(indent);
+  safeWriteFile(configFile, `${content.slice(0, lineStart)}${replacement}${content.slice(blockEnd)}`);
+  return true;
+}
+
 export function setConfigValue(
   key: string,
   value: string,
@@ -579,6 +709,15 @@ export function setConfigValue(
   }
   const { configFile } = profilePaths(profile);
   if (!existsSync(configFile)) return;
+
+  // Object lists must be written as real YAML mappings. This MUST run before
+  // the scalar-list branch: routing `fallback_providers` through
+  // `setConfigListValue` stringifies each entry, and the backend then drops
+  // the whole chain while the UI still shows it configured.
+  const trimmedValue = value.trim();
+  if (key === "fallback_providers" && trimmedValue.startsWith("[") && trimmedValue.endsWith("]")) {
+    if (setConfigObjectListValue(key, trimmedValue, profile)) return;
+  }
 
   // JSON-array values (e.g. `approvals.deny`, `command_allowlist`) are YAML
   // block lists. Route them through the list writer - the scalar splice below
