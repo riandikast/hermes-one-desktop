@@ -3367,6 +3367,22 @@ export function useDashboardChatTransport({
       setToolProgress(null);
       setIsLoading(true);
       resetStallTimer();
+      // Tell the sidebar a turn has started in this session.
+      //
+      // The sidebar's ordering reads each session's NEWEST message timestamp,
+      // which only moved for the sidebar when a session row was CREATED or a
+      // turn COMPLETED. So sending a prompt into a brand-new session left the
+      // new conversation invisible on the left until the 60s poll (or, per the
+      // report, an app restart): the user sent, got a reply, and still saw no
+      // new entry. Dispatching here closes the window between "user pressed
+      // send" and "session appears", and the completion dispatch already
+      // covers the ordering update afterwards.
+      //
+      // Cheap: the listener calls `refresh(true)`, which runs
+      // `syncSessionCache` — a full read of state.db measured at <5ms for
+      // 1000+ rows — and the existing throttle/scroll-deferral still applies,
+      // so a burst of sends cannot hammer the DB or move rows mid-gesture.
+      window.dispatchEvent(new Event("hermes-session-db-synced"));
       const dashboardText = dashboardPromptTextForAttachments(
         text,
         attachments,
@@ -3494,6 +3510,17 @@ export function useDashboardChatTransport({
         });
         runtimeSessionIdRef.current = runtimeSessionId;
         markSendStage("session-ready");
+        // A freshly created session now has its row in state.db, so the sidebar
+        // can list it. Dispatch AGAIN here (the earlier one at send-start fired
+        // before the row existed) so a new conversation appears the moment it is
+        // established rather than after the turn ends — the reported "send a
+        // chat, get a response, still nothing on the left until I reopen the
+        // app". Only meaningful when a create actually happened, but
+        // dispatching unconditionally is harmless: the listener is throttled and
+        // `syncSessionCache` is a <5ms full read.
+        if (lastRuntimeSessionWasCreatedRef.current) {
+          window.dispatchEvent(new Event("hermes-session-db-synced"));
+        }
         if (
           lastRuntimeSessionWasCreatedRef.current ||
           pendingRecoveredContinuationRef.current.length > 0

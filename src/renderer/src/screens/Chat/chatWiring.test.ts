@@ -632,4 +632,38 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
       /finalizeFileChanges\(\);\s*\n\s*\/\/[^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*window\.dispatchEvent\(new Event\("hermes-session-db-synced"\)\)/,
     );
   });
+
+  it("tells the sidebar to re-sync when a prompt is SENT", () => {
+    // Reported: sending a prompt in a NEW session showed nothing on the left
+    // until the app was reopened. The ordering signal only moved for the
+    // sidebar on session CREATE and turn COMPLETE, so the window between
+    // "user pressed send" and "session is listed" stayed empty.
+    //
+    // Two dispatches close it, at DIFFERENT points for a reason: send-start
+    // fires before the session row exists (so it cannot surface a brand-new
+    // session on its own), and session-ready fires once `ensureRuntimeSession`
+    // has created the row.
+    const sendStart = transportSource.indexOf(
+      "const optimisticUser: ChatMessage",
+    );
+    expect(sendStart).toBeGreaterThan(-1);
+    expect(transportSource.slice(sendStart, sendStart + 4000)).toContain(
+      "hermes-session-db-synced",
+    );
+
+    // session-ready must come AFTER ensureRuntimeSession resolves, because
+    // that call is what writes the new row to state.db.
+    const ensureIdx = transportSource.indexOf(
+      "await ensureRuntimeSession(client, {",
+    );
+    const readyIdx = transportSource.indexOf(
+      'markSendStage("session-ready")',
+      ensureIdx,
+    );
+    expect(ensureIdx).toBeGreaterThan(-1);
+    expect(readyIdx).toBeGreaterThan(ensureIdx);
+    expect(transportSource.slice(readyIdx, readyIdx + 900)).toContain(
+      "hermes-session-db-synced",
+    );
+  });
 });
