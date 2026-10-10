@@ -691,45 +691,49 @@ function Chat({
    * process, then attach it so a tab shows up.
    */
   const onFinishCreatingRef = useRef(false);
-  const handleNewOnFinishSession = useCallback((): void => {
-    if (onFinishCreatingRef.current) return;
-    onFinishCreatingRef.current = true;
-    void (async () => {
-      try {
-        // Spawn in the chat's project folder when it has one, so the terminal
-        // opens where the work actually is instead of the Hermes home dir.
-        // `contextFolders[0]` is the active context folder (see ContextFolderChip).
-        const cwd = (contextFolders[0] ?? "").trim();
-        const dock = onFinishDockRef.current;
-        // One terminal per directory: reuse an existing session already rooted
-        // in this project rather than piling up duplicates on every open.
-        if (cwd) {
-          const existing = dock?.findSessionByCwd(cwd);
-          if (existing) {
-            dock?.focusSession(existing);
-            return;
+  const handleNewOnFinishSession = useCallback(
+    (options?: { reuseExisting?: boolean }): void => {
+      if (onFinishCreatingRef.current) return;
+      onFinishCreatingRef.current = true;
+      void (async () => {
+        try {
+          // Spawn in the chat's project folder when it has one, so the terminal
+          // opens where the work actually is instead of the Hermes home dir.
+          // `contextFolders[0]` is the active context folder (see ContextFolderChip).
+          const cwd = (contextFolders[0] ?? "").trim();
+          const dock = onFinishDockRef.current;
+          // One terminal per directory ONLY for the automatic spawn: opening the
+          // dock should not pile up copies, but an explicit "+" must always give
+          // the user a new shell in the same project.
+          if (options?.reuseExisting && cwd) {
+            const existing = dock?.findSessionByCwd(cwd);
+            if (existing) {
+              dock?.focusSession(existing);
+              return;
+            }
           }
+          const { id } = await window.hermesAPI.terminalCreate({
+            cwd,
+            cols: 80,
+            rows: 24,
+          });
+          dock?.attachSession(
+            id,
+            cwd
+              ? cwd.split(/[\\/]/).filter(Boolean).pop() || "Terminal"
+              : "Terminal",
+            cwd || undefined,
+          );
+        } catch {
+          // Surface it: silently swallowing was how this button appeared broken.
+          toast.error("Failed to start terminal session.");
+        } finally {
+          onFinishCreatingRef.current = false;
         }
-        const { id } = await window.hermesAPI.terminalCreate({
-          cwd,
-          cols: 80,
-          rows: 24,
-        });
-        dock?.attachSession(
-          id,
-          cwd
-            ? cwd.split(/[\\/]/).filter(Boolean).pop() || "Terminal"
-            : "Terminal",
-          cwd || undefined,
-        );
-      } catch {
-        // Surface it: silently swallowing was how this button appeared broken.
-        toast.error("Failed to start terminal session.");
-      } finally {
-        onFinishCreatingRef.current = false;
-      }
-    })();
-  }, [contextFolders]);
+      })();
+    },
+    [contextFolders],
+  );
 
   // Refs so the finish effect can read the latest values WITHOUT adding them to
   // its deps: the effect must fire on the isLoading transition only, and

@@ -255,3 +255,61 @@ describe("terminal dock project-directory sessions", () => {
     expect(calls.__focusCalls.length).toBeGreaterThan(0);
   });
 });
+
+describe('terminal dock "+" vs automatic spawn — reuse is auto-only', () => {
+  // The bug: the auto-spawn reused an existing shell rooted in the same
+  // directory (good — opening the dock should not stack copies), but the "+"
+  // button went through the SAME handler, so it inherited that dedupe and a
+  // second terminal could never be opened in the same project.
+  //
+  // The contract: only the automatic spawn asks to reuse.
+
+  it('marks the automatic open as reuseExisting', () => {
+    const onNewSession = vi.fn();
+    const dock = (open: boolean) => (
+      <TerminalDock
+        ref={createRef<TerminalDockHandle>()}
+        open={open}
+        onNewSession={onNewSession}
+        onResizeStart={() => undefined}
+        onResizeMove={() => undefined}
+        onResizeEnd={() => undefined}
+      />
+    );
+    const view = render(dock(false));
+    view.rerender(dock(true));
+
+    expect(onNewSession).toHaveBeenCalledTimes(1);
+    expect(onNewSession).toHaveBeenCalledWith({ reuseExisting: true });
+  });
+
+  it('does NOT ask to reuse when the user clicks "+"', () => {
+    const onNewSession = vi.fn();
+    renderDock(onNewSession);
+
+    fireEvent.click(screen.getByLabelText("New terminal session"));
+
+    expect(onNewSession).toHaveBeenCalledTimes(1);
+    // An explicit request must be reusable-agnostic: the caller has to spawn.
+    // Passing an event object here would also be a bug (the handler reads
+    // `options.reuseExisting`).
+    expect(onNewSession).toHaveBeenCalledWith();
+    expect(onNewSession.mock.calls[0]![0]).toBeUndefined();
+  });
+
+  it('lets repeated "+" clicks each request a terminal', () => {
+    const onNewSession = vi.fn();
+    renderDock(onNewSession);
+
+    const plus = screen.getByLabelText("New terminal session");
+    fireEvent.click(plus);
+    fireEvent.click(plus);
+    fireEvent.click(plus);
+
+    // Three explicit requests, three spawns — never collapsed into one.
+    expect(onNewSession).toHaveBeenCalledTimes(3);
+    for (const call of onNewSession.mock.calls) {
+      expect(call[0]).toBeUndefined();
+    }
+  });
+});

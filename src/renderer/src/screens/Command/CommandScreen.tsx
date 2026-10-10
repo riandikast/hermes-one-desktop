@@ -267,7 +267,12 @@ export function CommandScreen(): React.JSX.Element {
     }
   };
 
-  const onNewSession = async (): Promise<void> => {
+  // Always spawns: the Commands screen has no project-scoped dedupe, so its
+  // "+" and the dock's auto-spawn both open a fresh shell. The options
+  // parameter exists only to satisfy the dock's callback contract.
+  const onNewSession = async (_options?: {
+    reuseExisting?: boolean;
+  }): Promise<void> => {
     try {
       const { id } = await window.hermesAPI.terminalCreate({
         cwd: "",

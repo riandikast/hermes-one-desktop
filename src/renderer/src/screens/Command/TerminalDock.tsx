@@ -75,7 +75,15 @@ interface DockSession {
 export const TerminalDock = forwardRef<
   TerminalDockHandle,
   {
-    onNewSession: () => void;
+    /**
+     * Ask the owner for a new terminal session.
+     *
+     * `reuseExisting` is set ONLY by the automatic spawn when the dock opens:
+     * opening a dock that already has a shell rooted in this project should
+     * focus that shell instead of stacking a duplicate. An explicit "+" omits
+     * it, because the user asking for another terminal must always get one.
+     */
+    onNewSession: (options?: { reuseExisting?: boolean }) => void;
     /**
      * Fixed dock height in px. OMIT to let CSS size the dock instead — the
      * On-Finish dialog does this so the panel controls the terminal's size
@@ -128,7 +136,11 @@ export const TerminalDock = forwardRef<
   useEffect(() => {
     const opening = open && !openedRef.current;
     openedRef.current = open;
-    if (opening && sessionsRef.current.size === 0) onNewSession();
+    // Automatic spawn: reuse a shell already rooted in this project so opening
+    // the dock does not pile up duplicates. The "+" button deliberately omits
+    // this, so an explicit request always yields a new terminal.
+    if (opening && sessionsRef.current.size === 0)
+      onNewSession({ reuseExisting: true });
     // Reopening an existing dock: put the caret back in the active terminal so
     // the user can keep typing without clicking the pane.
     if (opening) {
@@ -507,7 +519,10 @@ export const TerminalDock = forwardRef<
         <button
           type="button"
           className="terminal-dock-tab-new"
-          onClick={onNewSession}
+          // Explicit request: never reuse, so a second shell opens in the same
+          // project. Wrapped because onClick would otherwise pass the click
+          // event as the options object.
+          onClick={() => onNewSession()}
           aria-label="New terminal session"
           title="New terminal session"
         >
