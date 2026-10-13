@@ -2962,7 +2962,7 @@ export function useDashboardChatTransport({
           modelOptionsCacheRef.current = null;
         }
         const cached = modelOptionsCacheRef.current;
-        if (appliedModelRef.current === selectionKey(targetSessionId) &&
+        if (!identity && appliedModelRef.current === selectionKey(targetSessionId) &&
             cached?.key === appliedModelRef.current && cached.client === client &&
             Date.now() < cached.expiresAt) return targetSessionId;
         let before = await readOptions(targetSessionId);
@@ -2977,8 +2977,8 @@ export function useDashboardChatTransport({
         const resolvedCommand = dashboardModelCommand(dashboardProvider, selectedModel);
         if (!resolvedCommand) return targetSessionId;
         const key = selectionKey(targetSessionId);
-        // Fresh gateway state is authoritative, even before our first local send.
-        if (dashboardModelMatches(dashboardProvider, selectedModel, before)) {
+        // Catalog selection cannot override a contradictory live fallback runtime.
+        if (!identity && dashboardModelMatches(dashboardProvider, selectedModel, before)) {
           appliedModelRef.current = key;
           return targetSessionId;
         }
@@ -3924,6 +3924,7 @@ export function useDashboardChatTransport({
           // same broken setup.
           return;
         }
+        if (recoveryCancelledRef.current) return;
         recoveryChainIndexRef.current += 1;
         onRecoveryNotice?.({
           kind: "switched",
@@ -3999,18 +4000,15 @@ export function useDashboardChatTransport({
         if (!sessionId) {
           sessionId = await ensureRuntimeSession(client);
         }
-        await client.request("slash.exec", {
-          session_id: sessionId,
-          command,
-        });
+        await ensureSelectedModel(client, sessionId);
       } catch {
-        // Best-effort: ensureSelectedModel will retry on send if this fails.
+        // The next send verifies live identity again; never cache a failed switch.
       } finally {
         appliedModelRef.current = null;
         modelOptionsCacheRef.current = null;
       }
     },
-    [enabled, ensureClient, ensureRuntimeSession],
+    [enabled, ensureClient, ensureRuntimeSession, ensureSelectedModel],
   );
 
   return {

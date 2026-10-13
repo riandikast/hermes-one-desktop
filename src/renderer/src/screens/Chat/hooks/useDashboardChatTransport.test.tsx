@@ -201,6 +201,37 @@ describe("useDashboardChatTransport recovery", () => {
     });
   });
 
+  it("switches back after fallback despite a stale model.options selection", async () => {
+    let runtimeModel = "bad-model";
+    const outgoingModels: string[] = [];
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: `Model: ${runtimeModel} (bad-provider)` };
+      // Catalog remains on the selected primary while the runtime uses fallback.
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      if (method === "slash.exec") {
+        runtimeModel = params.command.match(/^\/model (\S+) --provider bad-provider$/)?.[1] ?? runtimeModel;
+        return { output: `Model switched to ${runtimeModel}` };
+      }
+      if (method === "prompt.submit") outgoingModels.push(runtimeModel);
+      return {};
+    });
+    const api: HarnessApi = {};
+    render(<Harness api={api} />);
+    await act(async () => { await api.send?.("primary"); });
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { content: "done" } });
+      runtimeModel = "fallback-model";
+      api.setModel?.("fallback-model");
+    });
+    await act(async () => { api.setModel?.("bad-model"); });
+    await act(async () => { await api.send?.("manual selection after fallback"); });
+    expect(outgoingModels).toEqual(["bad-model", "bad-model"]);
+    expect(dashboardMock.request).toHaveBeenCalledWith("slash.exec", {
+      session_id: "live", command: "/model bad-model --provider bad-provider",
+    }, expect.any(Number));
+  });
+
   it("records private stage timings and only the first accepted nonempty delta", async () => {
     window.__HERMES_SEND_TIMINGS__ = [];
     dashboardMock.request.mockImplementation(async (method) => {

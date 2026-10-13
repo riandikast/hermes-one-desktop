@@ -552,6 +552,7 @@ function Chat({
   }, [runId, messages, onTitleChange, initialTitle]);
 
   const [toolProgress, setToolProgress] = useState<string | null>(null);
+  const [modelPickerOpenRequest, setModelPickerOpenRequest] = useState(0);
 
   const [displayControlsOpen, setDisplayControlsOpen] = useState(false);
   const [showAllThoughts, setShowAllThoughts] = useState(false);
@@ -1790,6 +1791,9 @@ function Chat({
     // Auto-recovery: the transport decides WHEN, Chat owns the switch itself
     // (session-scoped, so the user's saved default model is not overwritten).
     onSwitchModel: async (provider, model, baseUrl) => {
+      const override = { provider, model, baseUrl };
+      sessionModelOverrideRef.current = override;
+      setSessionModelOverride(override);
       await modelConfig.selectModel(provider, model, baseUrl, {
         persist: false,
       });
@@ -2106,6 +2110,8 @@ function Chat({
           }
         : undefined;
 
+      // Explicit selection wins over any in-flight automatic fallback replay.
+      if (isLoading) dashboardTransport.abort();
       sessionModelOverrideRef.current = override;
 
       void modelConfig.selectModel(provider, model, baseUrl, {
@@ -2125,7 +2131,7 @@ function Chat({
       }
     },
 
-    [modelConfig.selectModel, dashboardTransport],
+    [modelConfig.selectModel, dashboardTransport, isLoading],
   );
 
   const handleSelectRecentFolder = useCallback((path: string) => {
@@ -2684,6 +2690,13 @@ function Chat({
         </button>
       </div>
 
+      {isLoading && dashboardTransport.enabled && (
+        <div role="status" className="chat-toolbar">
+          <span>{toolProgress || "Waiting on provider"}</span>
+          <button type="button" onClick={() => dashboardTransport.abort()}>Cancel</button>
+          <button type="button" onClick={() => setModelPickerOpenRequest((n) => n + 1)}>Switch model</button>
+        </div>
+      )}
       <div className="chat-body">
         <div className="chat-messages" ref={containerRef}>
           <div ref={contentRef}>
@@ -2862,6 +2875,7 @@ function Chat({
               toolbarExtras={
                 <>
                   <ModelPicker
+                    openRequest={modelPickerOpenRequest}
                     active={active}
                     currentModel={chatCurrentModel}
                     currentProvider={chatCurrentProvider}

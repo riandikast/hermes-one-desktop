@@ -32,6 +32,15 @@ vi.mock("../../components/common/BrandLogo", () => ({
 import { ModelPicker } from "./ModelPicker";
 import type { ModelGroup } from "./types";
 
+it("opens the picker from the live provider-wait switch action", async () => {
+  const onOpen = vi.fn();
+  const props = { currentModel: "m", currentProvider: "p", currentBaseUrl: "", modelGroups: [], displayModel: "m", onOpen, onSelectModel: vi.fn() };
+  const view = render(<ModelPicker {...props} openRequest={0} />);
+  view.rerender(<ModelPicker {...props} openRequest={1} />);
+  expect(onOpen).toHaveBeenCalledOnce();
+  expect(screen.getByPlaceholderText("chat.searchModels")).toBeInTheDocument();
+});
+
 const groups: ModelGroup[] = [
   {
     provider: "openrouter",

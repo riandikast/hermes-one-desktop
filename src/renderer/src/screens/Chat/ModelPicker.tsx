@@ -76,6 +76,7 @@ function FallbackOption({
 
 interface ModelPickerProps {
   active?: boolean;
+  openRequest?: number;
   currentModel: string;
   currentProvider: string;
   currentBaseUrl: string;
@@ -92,6 +93,7 @@ interface ModelPickerProps {
 
 export const ModelPicker = memo(function ModelPicker({
   active = true,
+  openRequest = 0,
   currentModel,
   currentProvider,
   currentBaseUrl,
@@ -103,6 +105,9 @@ export const ModelPicker = memo(function ModelPicker({
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
+  useEffect(() => {
+    if (openRequest > 0) { setIsOpen(true); onOpen(); }
+  }, [openRequest]);
   // Left-rail provider filter (brand id); null = "All models".
   const [selectedBrand, setSelectedBrand] = useState<string | null>(null);
   const [editingModel, setEditingModel] = useState<{ id: string; model: string } | null>(null);
