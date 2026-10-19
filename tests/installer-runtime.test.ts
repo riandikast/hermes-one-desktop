@@ -128,6 +128,38 @@ it.skipIf(process.platform !== "win32")(
   },
 );
 
+it("retries failed managed discovery when the install gate is checked again", async () => {
+  const { home, repo, touch } = fixture();
+  const launcher = join(repo, ".hermes", "bin", process.platform === "win32" ? "hermes.exe" : "hermes");
+  const python = join(home, "tools", "python.exe");
+  touch(launcher);
+  touch(python);
+  touch(join(repo, "hermes_cli", "main.py"));
+  childProcess.execFileSync.mockImplementationOnce(() => { throw new Error("runtime temporarily unavailable"); });
+  const installer = await import("../src/main/installer");
+  expect(installer.HERMES_PYTHON).toBe("");
+  childProcess.execFileSync.mockReturnValue(JSON.stringify([python, "-I", "-c", "bootstrap"]));
+  expect(installer.checkInstallStatus().installed).toBe(true);
+  expect(installer.HERMES_PYTHON).toBe(python);
+  expect(installer.HERMES_HOME).toBe(home);
+});
+
+it("keeps an explicit home when portable extraction and inherited venv point elsewhere", async () => {
+  const { home, repo, touch } = fixture();
+  vi.stubEnv("PORTABLE_EXECUTABLE_DIR", join(home, "portable"));
+  vi.stubEnv("PORTABLE_EXECUTABLE_FILE", join(home, "portable", "desktop.exe"));
+  vi.stubEnv("VIRTUAL_ENV", join(home, "unrelated-venv"));
+  const python = join(repo, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+  const script = process.platform === "win32" ? join(repo, ".venv", "Scripts/hermes.exe") : join(repo, "hermes");
+  touch(python);
+  touch(script);
+  const installer = await import("../src/main/installer");
+  expect(installer.HERMES_HOME).toBe(home);
+  expect(installer.HERMES_REPO).toBe(repo);
+  expect(installer.HERMES_PYTHON).toBe(python);
+  expect(installer.checkInstallStatus().installed).toBe(true);
+});
+
 it("bootstraps Python snippets with managed dependencies", async () => {
   const { home, repo, touch } = fixture();
   touch(

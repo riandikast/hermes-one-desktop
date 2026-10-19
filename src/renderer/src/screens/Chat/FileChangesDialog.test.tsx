@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { FileChangesDialog } from "./FileChangesDialog";
 
@@ -36,7 +36,9 @@ describe("FileChangesDialog", () => {
       />,
     );
     // The vague "diff unavailable" was replaced by the actual reason.
-    expect(screen.getAllByText("Changed — no previous version").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("Changed — no previous version").length,
+    ).toBeGreaterThan(0);
   });
 
   it("explains the lost-snapshot race when before equals after", () => {
@@ -53,7 +55,9 @@ describe("FileChangesDialog", () => {
         onClose={vi.fn()}
       />,
     );
-    expect(screen.getAllByText("Edited — full diff unavailable").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("Edited — full diff unavailable").length,
+    ).toBeGreaterThan(0);
   });
 
   it("renders a hunk diff when the payload carried old/new strings", () => {
@@ -84,7 +88,6 @@ describe("FileChangesDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-
   it("closes on Escape", () => {
     const onClose = vi.fn();
     render(<FileChangesDialog changes={changes} onClose={onClose} />);
@@ -92,12 +95,14 @@ describe("FileChangesDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("closes via overlay backdrop click", () => {
+  it("closes via portal overlay backdrop click", async () => {
     const onClose = vi.fn();
-    const { container } = render(
-      <FileChangesDialog changes={changes} onClose={onClose} />,
-    );
-    fireEvent.click(container.querySelector(".file-changes-overlay")!);
-    expect(onClose).toHaveBeenCalledTimes(1);
+    render(<FileChangesDialog changes={changes} onClose={onClose} />);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const overlay = document.querySelector(".app-modal-overlay")!;
+    fireEvent.pointerDown(overlay, { button: 0, pointerType: "mouse" });
+    fireEvent.pointerUp(overlay, { button: 0, pointerType: "mouse" });
+    fireEvent.click(overlay);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 });

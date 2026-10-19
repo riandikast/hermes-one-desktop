@@ -17,6 +17,7 @@ import {
   Terminal,
   Eye,
   FolderSearch,
+  History,
 } from "lucide-react";
 import { Spinner } from "../../assets/icons";
 
@@ -43,6 +44,7 @@ import { MessageList, PinnedMessagesBar, PinnedMessageReader } from "./MessageLi
 import type { MessageListModel } from "./MessageList";
 
 import { FileChangesDialog } from "./FileChangesDialog";
+import { FileChangeHistoryDialog } from "./FileChangeHistoryDialog";
 
 import { ModelPicker } from "./ModelPicker";
 
@@ -580,6 +582,7 @@ function Chat({
 
   // per-turn FileChangesRow chip only — the in-bubble badge was removed.
 
+  const [fileChangeHistoryOpen, setFileChangeHistoryOpen] = useState(false);
   const [fileChangesOpen, setFileChangesOpen] = useState<FileChange[] | null>(
     null,
   );
@@ -2659,6 +2662,22 @@ function Chat({
           </button>
         )}
 
+        <button
+          type="button"
+          className={`chat-display-controls-trigger${fileChangeHistoryOpen ? " is-active" : ""}`}
+          aria-label={t("chat.fileChangeHistory.title")}
+          title={t("chat.fileChangeHistory.title")}
+          aria-haspopup="dialog"
+          aria-expanded={fileChangeHistoryOpen}
+          onClick={() => {
+            setFileChangeHistoryOpen(true);
+            setDisplayControlsOpen(false);
+            setChatSearchOpen(false);
+          }}
+        >
+          <History size={15} />
+        </button>
+
         {/* Terminal: a floating icon in the SAME group as the search and
             display-controls icons. Always visible — it is a general terminal,
             not only the On-Finish runner, so it must not depend on a queue
@@ -2690,13 +2709,6 @@ function Chat({
         </button>
       </div>
 
-      {isLoading && dashboardTransport.enabled && (
-        <div role="status" className="chat-toolbar">
-          <span>{toolProgress || "Waiting on provider"}</span>
-          <button type="button" onClick={() => dashboardTransport.abort()}>Cancel</button>
-          <button type="button" onClick={() => setModelPickerOpenRequest((n) => n + 1)}>Switch model</button>
-        </div>
-      )}
       <div className="chat-body">
         <div className="chat-messages" ref={containerRef}>
           <div ref={contentRef}>
@@ -3010,6 +3022,15 @@ function Chat({
 
       {active && connectionModeLoaded && readiness.ok && <FollowUsModal />}
 
+      {fileChangeHistoryOpen && (
+        <FileChangeHistoryDialog
+          key={hermesSessionId ?? runId}
+          sessionId={hermesSessionId}
+          messages={messages}
+          onClose={() => setFileChangeHistoryOpen(false)}
+          cwd={contextFolders[0]}
+        />
+      )}
       {fileChangesOpen && (
         <FileChangesDialog
           changes={fileChangesOpen}

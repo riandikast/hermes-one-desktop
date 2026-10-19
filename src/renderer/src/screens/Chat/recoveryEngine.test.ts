@@ -342,14 +342,15 @@ describe("transport wiring (source guard)", () => {
     // The user can press stop during the async gap between deciding and sending.
     const runIdx = source.indexOf("const runRecovery = useCallback(");
     const body = source.slice(runIdx, runIdx + 3000);
-    const checks = body.match(/recoveryCancelledRef\.current/g) ?? [];
+    expect(body).toContain("generation !== sendGenerationRef.current");
+    const checks = body.match(/if \(cancelled\(\)\)/g) ?? [];
     // One at the top, one right before sendMessage.
     expect(checks.length).toBeGreaterThanOrEqual(2);
-    const sendIdx = body.indexOf("await sendMessage(buildRecoveryPrompt(original))");
+    const sendIdx = body.indexOf("await sendMessage(buildRecoveryPrompt(original), undefined, generation)");
     expect(sendIdx).toBeGreaterThan(-1);
     // A re-check exists between the model switch and the send.
     const beforeSend = body.slice(0, sendIdx);
-    expect(beforeSend.lastIndexOf("recoveryCancelledRef.current")).toBeGreaterThan(
+    expect(beforeSend.lastIndexOf("if (cancelled()) return")).toBeGreaterThan(
       beforeSend.indexOf("onRecoveryNotice"),
     );
   });

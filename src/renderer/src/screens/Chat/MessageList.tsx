@@ -186,24 +186,25 @@ function ContextCompactionRow(): React.JSX.Element {
 }
 
 /** Per-turn file-changes chip */
-const FileChangesRow = memo(function FileChangesRow({
+export const FileChangesRow = memo(function FileChangesRow({
   msg,
   onOpen,
 }: {
   msg: FileChangesMessage;
   onOpen?: (changes: FileChange[]) => void;
 }): React.JSX.Element {
+  const { t } = useI18n();
   const count = msg.changes.length;
   return (
     <button
       type="button"
       className="chat-file-changes-row"
       onClick={() => onOpen?.(msg.changes)}
-      title="View file changes"
+      title={t("chat.fileChangeHistory.view")}
     >
       <FilePlus2 size={13} />
       <span>
-        {count} file{count > 1 ? "s" : ""} changed
+        {t("chat.fileChangeHistory.files", { count })}
       </span>
       <span className="chat-file-changes-row-arrow">▸</span>
     </button>

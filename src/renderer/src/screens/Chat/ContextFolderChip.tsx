@@ -1,6 +1,7 @@
 import { memo, useState, useEffect, useRef } from "react";
 import { FolderOpen, X, Check, BookOpen } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
+import { projectDisplayName, useProjectAliases } from "../Layout/projectAliases";
 
 interface ContextFolderChipProps {
   /** Working folders bound to this conversation (issue #27). */
@@ -13,12 +14,6 @@ interface ContextFolderChipProps {
   onRemoveFolder: (path: string) => void;
   onToggleKnowledgeBundle?: (bundleName: string) => void;
   onSelectRecentFolder?: (path: string) => void;
-}
-
-/** Last path segment, for the compact chip label (handles \ and /). */
-function folderName(p: string): string {
-  const parts = p.split(/[\\/]/).filter(Boolean);
-  return parts[parts.length - 1] || p;
 }
 
 /**
@@ -36,6 +31,7 @@ export const ContextFolderChip = memo(function ContextFolderChip({
   onSelectRecentFolder,
 }: ContextFolderChipProps): React.JSX.Element | null {
   const { t } = useI18n();
+  useProjectAliases();
   const [isOpen, setIsOpen] = useState(false);
   const [isKnowledgeOpen, setIsKnowledgeOpen] = useState(false);
   const [recentFolders, setRecentFolders] = useState<string[]>([]);
@@ -187,7 +183,7 @@ export const ContextFolderChip = memo(function ContextFolderChip({
                 title={`${path} — click/right-click to remove`}
               >
                 <span className="chat-ctxfolder-dropdown-item-name">
-                  {folderName(path)}
+                  {projectDisplayName(path)}
                 </span>
                 <span
                   className="chat-ctxfolder-dropdown-item-check"
@@ -222,7 +218,7 @@ export const ContextFolderChip = memo(function ContextFolderChip({
                 title={path}
               >
                 <span className="chat-ctxfolder-dropdown-item-name">
-                  {folderName(path)}
+                  {projectDisplayName(path)}
                 </span>
                 {isSelected && (
                   <Check

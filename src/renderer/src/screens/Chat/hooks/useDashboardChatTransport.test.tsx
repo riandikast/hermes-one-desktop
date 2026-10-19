@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 import type { DashboardRpcEvent } from "../dashboardGatewayClient";
 import {
+  dashboardContinuationItemsFromTranscript,
   ensureDashboardRuntimeSession,
   isModelSwitchConfirmation,
   modelSwitchReportedSuccess,
@@ -56,6 +57,7 @@ interface HarnessApi {
   messages?: ChatMessage[];
   send?: (text: string) => Promise<boolean>;
   abort?: () => void;
+  applyModelOverride?: (provider: string, model: string) => Promise<void>;
   setConnectionMode?: Dispatch<SetStateAction<"local" | "remote" | "ssh">>;
   setMessages?: Dispatch<SetStateAction<ChatMessage[]>>;
   setModel?: Dispatch<SetStateAction<string>>;
@@ -91,6 +93,7 @@ function Harness({
   modelBaseUrl,
   profile,
   onDashboardUnavailable,
+  onSwitchModel,
   setUsage = vi.fn() as SetUsageMock,
 }: {
   active?: boolean;
@@ -102,6 +105,7 @@ function Harness({
   modelBaseUrl?: string;
   profile?: string;
   onDashboardUnavailable?: (reason: string) => void;
+  onSwitchModel?: (provider: string, model: string, baseUrl: string) => Promise<void>;
   setUsage?: SetUsageMock;
 }): null {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -145,6 +149,7 @@ function Harness({
     setToolProgress: vi.fn(),
     setUsage,
     onDashboardUnavailable,
+    onSwitchModel,
   });
 
   useEffect(() => {
@@ -157,6 +162,7 @@ function Harness({
       activeSubagents: transport.activeSubagents,
       send: transport.sendMessage,
       abort: transport.abort,
+      applyModelOverride: transport.applyModelOverride,
       setConnectionMode,
       setMessages,
       setModel,
@@ -199,6 +205,145 @@ describe("useDashboardChatTransport recovery", () => {
         getKnowledgeIndex: vi.fn(async () => "KNOWLEDGE-INDEX"),
       },
     });
+  });
+
+  it("does not reseed renderer-local or injected prompts into a recovered session", () => {
+    const items = dashboardContinuationItemsFromTranscript([
+      { id: "db-1", role: "user", content: "real prompt" } as ChatMessage,
+      { id: "local-1", role: "user", content: "Continue. Original prompt: old", localOnly: true } as ChatMessage,
+      { id: "auto-1", role: "user", content: "[System: model changed]" } as ChatMessage,
+      { id: "db-2", role: "agent", content: "answer" } as ChatMessage,
+    ]);
+    expect(items).toEqual([
+      { kind: "user", content: "real prompt" },
+      { kind: "assistant", content: "answer" },
+    ]);
+  });
+
+  it("manual model selection cancels delayed recovery and the next submit uses the selected identity", async () => {
+    localStorage.setItem("hermes.chat.fallbackModels.v1", JSON.stringify({ models: [{ key: "fallback", provider: "fallback-provider", model: "fallback-model", baseUrl: "", label: "fallback" }] }));
+    let releaseSwitch!: () => void;
+    const switchReady = new Promise<void>((resolve) => { releaseSwitch = resolve; });
+    const submitted: Array<{ text: string; model: string }> = [];
+    let liveModel = "bad-model";
+    const onSwitchModel = vi.fn(async () => switchReady);
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: `Model: ${liveModel} (bad-provider)` };
+      if (method === "model.options") return { model: liveModel, provider: "bad-provider" };
+      if (method === "slash.exec") {
+        liveModel = String(params.command).match(/^\/model\s+(\S+)/)?.[1] ?? liveModel;
+        return { output: `Model switched to ${liveModel}` };
+      }
+      if (method === "prompt.submit") {
+        submitted.push({ text: params.text, model: liveModel });
+        if (params.text !== "MANUAL") throw new Error("provider limit; retry after 300s");
+      }
+      return {};
+    });
+    const api: HarnessApi = {};
+    render(<Harness api={api} onSwitchModel={onSwitchModel} />);
+    try {
+      await act(async () => { await api.send?.("original"); });
+      await waitFor(() => expect(onSwitchModel).toHaveBeenCalledTimes(1));
+      const retriesBeforeManualSelection = submitted.filter(({ text }) => text.startsWith("Continue.")).length;
+
+      await act(async () => { api.setProvider?.("new-provider"); api.setModel?.("new-model"); });
+      await act(async () => { await api.applyModelOverride?.("new-provider", "new-model"); });
+      releaseSwitch();
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => { await api.send?.("MANUAL"); });
+
+      expect(submitted.at(-1)).toEqual({ text: "MANUAL", model: "new-model" });
+      expect(submitted.filter(({ text }) => text.startsWith("Continue.")).length).toBe(retriesBeforeManualSelection);
+      expect(api.messages?.some((message) => message.role === "user" && message.content.startsWith("Continue."))).toBe(false);
+    } finally {
+      localStorage.removeItem("hermes.chat.fallbackModels.v1");
+    }
+  });
+
+  it.each([false, true])("manual resend supersedes delayed recovery resume (interrupt=%s)", async (interrupt) => {
+    let release!: (value: unknown) => void;
+    const resumed = new Promise((resolve) => { release = resolve; });
+    let delayResume = false;
+    const submitted: string[] = [];
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.resume") return delayResume ? resumed : { session_id: "live" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      if (method === "prompt.submit") {
+        submitted.push(params.text);
+        if (params.text === "original") throw new Error("failed");
+        if (params.text.startsWith("Continue.")) {
+          delayResume = true;
+          throw new Error("session not found");
+        }
+      }
+      return {};
+    });
+    const api: HarnessApi = {};
+    render(<Harness api={api} />);
+    await act(async () => { await api.send?.("original"); });
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "error", session_id: "live", payload: { message: "failed" } });
+    });
+    expect(submitted).toEqual(["original", "Continue. Original prompt: original"]);
+    delayResume = false;
+    await act(async () => { if (interrupt) api.abort?.(); await api.send?.("MANUAL"); });
+    await act(async () => { release({ session_id: "late" }); });
+    expect(submitted).toEqual(["original", "Continue. Original prompt: original", "MANUAL"]);
+    expect(api.activeTurnRef?.current?.userId).toBe(api.messages?.filter((m) => m.role === "user").at(-1)?.id);
+  });
+
+  it.each([false, true])("late recovery switch cannot submit after interrupt/new prompt (stop again=%s); retries retain budget and original", async (stopAgain) => {
+    localStorage.setItem("hermes.chat.fallbackModels.v1", JSON.stringify({ models: [{ key: "fallback", provider: "bad-provider", model: "fallback", baseUrl: "", label: "fallback" }] }));
+    let release!: () => void;
+    const switched = new Promise<void>((resolve) => { release = resolve; });
+    const onSwitchModel = vi.fn(() => switched);
+    const submitted: string[] = [];
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      if (method === "prompt.submit") {
+        submitted.push(params.text);
+        if (params.text !== "MANUAL" && submitted.length <= 3) throw new Error("failed");
+      }
+      return {};
+    });
+    const api: HarnessApi = {};
+    render(<Harness api={api} onSwitchModel={onSwitchModel} />);
+    try {
+      await act(async () => { await api.send?.("original"); });
+      await act(async () => { await Promise.resolve(); });
+      expect(onSwitchModel).toHaveBeenCalledTimes(1);
+      expect(submitted).toEqual(["original", "Continue. Original prompt: original", "Continue. Original prompt: original"]);
+      await act(async () => { api.abort?.(); await api.send?.("MANUAL"); if (stopAgain) api.abort?.(); });
+      await act(async () => { release(); });
+      expect(submitted.at(-1)).toBe("MANUAL");
+      expect(submitted).toHaveLength(4);
+      if (stopAgain) expect(api.activeTurnRef?.current).toBeNull();
+      else expect(api.activeTurnRef?.current?.status).toBe("running");
+    } finally { localStorage.removeItem("hermes.chat.fallbackModels.v1"); }
+  });
+
+  it("bounds repeated submit failures to two recoveries per model and six total", async () => {
+    localStorage.setItem("hermes.chat.fallbackModels.v1", JSON.stringify({ models: [1, 2].map((i) => ({ key: `fallback-${i}`, provider: "bad-provider", model: `fallback-${i}`, baseUrl: "", label: `fallback-${i}` })) }));
+    const submitted: string[] = [];
+    const onSwitchModel = vi.fn(async (_provider: string, _model: string, _baseUrl: string) => undefined);
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      if (method === "prompt.submit") { submitted.push(params.text); throw new Error("failed"); }
+      return {};
+    });
+    const api: HarnessApi = {};
+    render(<Harness api={api} onSwitchModel={onSwitchModel} />);
+    try {
+      await act(async () => { await api.send?.("original"); });
+      expect(submitted).toEqual(["original", ...Array(6).fill("Continue. Original prompt: original")]);
+      expect(onSwitchModel.mock.calls.map((call) => call[1])).toEqual(["fallback-1", "fallback-2"]);
+      expect(api.activeTurnRef?.current).toBeNull();
+    } finally { localStorage.removeItem("hermes.chat.fallbackModels.v1"); }
   });
 
   it("switches back after fallback despite a stale model.options selection", async () => {

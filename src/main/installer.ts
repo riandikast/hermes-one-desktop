@@ -549,6 +549,10 @@ export function checkInstallStatus(): InstallStatus {
   // `python --version` check used to run here adds 1–10s of cold-start
   // latency, so it now lives in `verifyInstall()` and is invoked lazily
   // by the renderer after the main UI is mounted.
+  // A cold launcher failure must not pin Recheck to the module-load snapshot.
+  if (!existsSync(HERMES_PYTHON) || !existsSync(HERMES_SCRIPT)) {
+    refreshInstallBinaries();
+  }
   const installed = existsSync(HERMES_PYTHON) && existsSync(HERMES_SCRIPT);
   const envFile = activeEnvFile(activeProfile);
   const authFile = activeAuthFile(activeProfile);

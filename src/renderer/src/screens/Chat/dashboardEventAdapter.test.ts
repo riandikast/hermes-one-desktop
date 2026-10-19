@@ -7,6 +7,14 @@ import {
 } from "./dashboardEventAdapter";
 import type { ChatMessage } from "./types";
 
+it("preserves canonical reasoning.delta verbatim, including status-like words", () => {
+  let state: DashboardEventState = { messages: [], reasoningSegmentClosed: false };
+  for (const text of ["Thinking... ", "analyzing... ", "don't see any visible thinking", " done"]) {
+    state = applyDashboardStreamEvent(state, { type: "reasoning.delta", payload: { text } } as Parameters<typeof applyDashboardStreamEvent>[1]);
+  }
+  expect((state.messages[0] as { text: string }).text).toBe("Thinking... analyzing... don't see any visible thinking done");
+});
+
 describe("mergeStreamedWithFinal", () => {
   it("uses final when nothing was streamed (remote / suppressed-delta path)", () => {
     expect(mergeStreamedWithFinal("", "Final answer")).toBe("Final answer");

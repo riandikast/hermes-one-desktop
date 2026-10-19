@@ -800,7 +800,8 @@ export function applyDashboardStreamEvent(
       return {
         messages: appendReasoningDelta(
           state.messages,
-          thinkingTextFromPayload(event.payload, "text", "delta", "reasoning"),
+          // Canonical provider text is not the legacy thinking/status channel.
+          textFromPayload(event.payload, "text", "delta", "reasoning"),
           state.reasoningSegmentClosed,
           now,
         ),

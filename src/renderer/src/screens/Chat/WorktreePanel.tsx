@@ -26,6 +26,8 @@ interface FileEntry {
 interface WorktreePanelProps {
   /** All working folders bound to this conversation (issue #27). */
   folderPaths: string[];
+  /** Select only an existing immediate child of the navigation root. */
+  selectedPath?: string;
   /**
    * Fill the parent instead of sizing itself.
    *
@@ -58,6 +60,7 @@ type RowContextMenuHandler = (
 ) => void;
 
 interface TreeItemProps {
+  selectedPath?: string;
   entry: FileEntry;
   parentPath: string;
   depth: number;
@@ -90,13 +93,20 @@ function TreeItem({
   onFileClick,
   onRowContextMenu,
   refreshVersion,
+  selectedPath,
 }: TreeItemProps): React.JSX.Element {
   const { t } = useI18n();
   const [isExpanded, setIsExpanded] = useState(false);
   const [children, setChildren] = useState<FileEntry[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const fullPath = `${parentPath}/${entry.name}`;
+  const fullPath = `${parentPath.replace(/[\\/]+$/, "")}/${entry.name}`;
+  const selected = !!selectedPath && ( /^[A-Za-z]:|^\/\//.test(fullPath)
+    ? fullPath.toLowerCase() === selectedPath.toLowerCase() : fullPath === selectedPath);
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selected) rowRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [selected]);
 
   const [childrenVersion, setChildrenVersion] = useState(0);
 
@@ -147,7 +157,9 @@ function TreeItem({
   return (
     <div className="worktree-item">
       <div
-        className={`worktree-row ${!entry.isDirectory ? "worktree-row-file" : ""}`}
+        ref={rowRef}
+        aria-current={selected ? "true" : undefined}
+        className={`worktree-row ${!entry.isDirectory ? "worktree-row-file" : ""}${selected ? " is-selected" : ""}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         style={{ paddingLeft }}
@@ -208,6 +220,7 @@ function TreeItem({
 }
 
 interface RootSectionProps {
+  selectedPath?: string;
   folderPath: string;
   onFileClick: (filePath: string) => void;
   onRowContextMenu: (
@@ -345,6 +358,7 @@ function RootSection({
   onRowContextMenu,
   onOpenTerminal,
   refreshVersion,
+  selectedPath,
 }: RootSectionProps): React.JSX.Element {
   const { t } = useI18n();
   const [isExpanded, setIsExpanded] = useState(true);
@@ -356,9 +370,10 @@ function RootSection({
     let cancelled = false;
     setIsLoading(true);
     setError(null);
+    setEntries(null);
 
     const loadRoot = async (): Promise<void> => {
-      const result = await window.hermesAPI.readDirectory(folderPath);
+      const result = await window.hermesAPI.readDirectory(folderPath).catch(() => null);
       if (cancelled) return;
       if (result === null) {
         setError(t("chat.worktree.errorLoading"));
@@ -415,6 +430,10 @@ function RootSection({
           <SquareTerminal size={16} />
         </button>
       </div>
+      {selectedPath && !isLoading && entries && !entries.some((entry) => {
+        const path = `${folderPath.replace(/[\\/]+$/, "")}/${entry.name}`;
+        return /^[A-Za-z]:|^\/\//.test(path) ? path.toLowerCase() === selectedPath.toLowerCase() : path === selectedPath;
+      }) && <div className="worktree-error" role="status">{t("chat.worktree.errorLoading")}: {selectedPath}</div>}
       {isExpanded && (
         <div className="worktree-children">
           {isLoading ? (
@@ -431,6 +450,7 @@ function RootSection({
                 key={`${folderPath}/${entry.name}`}
                 entry={entry}
                 parentPath={folderPath}
+                selectedPath={selectedPath}
                 depth={0}
                 onFileClick={onFileClick}
                 onRowContextMenu={onRowContextMenu}
@@ -464,6 +484,7 @@ interface ContextMenuState {
 
 export const WorktreePanel = memo(function WorktreePanel({
   folderPaths,
+  selectedPath,
   embedded = false,
   open,
 }: WorktreePanelProps): React.JSX.Element {
@@ -748,6 +769,7 @@ export const WorktreePanel = memo(function WorktreePanel({
             <RootSection
               key={folder}
               folderPath={folder}
+              selectedPath={selectedPath}
               onFileClick={(path) => {
                 window.dispatchEvent(
                   new CustomEvent("hermes-open-file", { detail: path }),

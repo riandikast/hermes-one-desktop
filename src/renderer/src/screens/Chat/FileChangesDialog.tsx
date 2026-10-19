@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { AppModal, AppModalTitle } from "../../components/modal/AppModal";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -16,8 +17,12 @@ function diffStats(change: FileChange): React.JSX.Element {
   if (change.removed || change.added) {
     return (
       <span>
-        <span className="file-changes-stat-del">-{change.removed?.length ?? 0}</span>{" "}
-        <span className="file-changes-stat-add">+{change.added?.length ?? 0}</span>
+        <span className="file-changes-stat-del">
+          -{change.removed?.length ?? 0}
+        </span>{" "}
+        <span className="file-changes-stat-add">
+          +{change.added?.length ?? 0}
+        </span>
       </span>
     );
   }
@@ -25,11 +30,7 @@ function diffStats(change: FileChange): React.JSX.Element {
     // before === after with no hunk means the async snapshot lost the race with
     // the tool's write. The LCS would produce an all-"same" diff, which reads
     // as "no changes" — misleading. Report the real reason instead.
-    if (
-      change.before === change.after &&
-      !change.removed &&
-      !change.added
-    ) {
+    if (change.before === change.after && !change.removed && !change.added) {
       return <span>Edited — full diff unavailable</span>;
     }
     const computed = diffLines(change.before, change.after);
@@ -109,7 +110,9 @@ export function FileChangesDialog({
   changes: FileChange[];
   onClose: () => void;
 }): React.JSX.Element {
-  const [selectedPath, setSelectedPath] = useState<string>(changes[0]?.path ?? "");
+  const [selectedPath, setSelectedPath] = useState<string>(
+    changes[0]?.path ?? "",
+  );
   const selected = changes.find((c) => c.path === selectedPath) ?? changes[0];
 
   const fileName = useMemo(
@@ -117,84 +120,72 @@ export function FileChangesDialog({
     [selectedPath],
   );
 
-  const diff = useMemo(
-    () => (selected ? diffFor(selected) : null),
-    [selected],
-  );
-
-  // Close on Escape too (capture — nothing can swallow it). The dialog had
-  // no keyboard close; overlay click alone is easy to miss with a 96vw panel.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", onKey, true);
-    return () => document.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
+  const diff = useMemo(() => (selected ? diffFor(selected) : null), [selected]);
 
   return (
-    <div className="file-changes-overlay" onClick={onClose}>
-      <div className="file-changes-dialog" onClick={(e) => e.stopPropagation()}>
-        <div className="file-changes-header">
-          <span className="file-changes-title">File changes</span>
-          <button
-            type="button"
-            className="btn-ghost file-changes-close"
-            // Dual close path: mousedown fires even if some handler in the
-            // app swallows the synthesized click; onClick keeps normal
-            // semantics. setState(null) is idempotent, so both firing is
-            // harmless.
-            onMouseDown={(e) => {
-              e.stopPropagation();
-              onClose();
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onClose();
-            }}
-            aria-label="Close"
-          >
-            <X size={16} />
-          </button>
-        </div>
-        <div className="file-changes-body">
-          <div className="file-changes-list">
-            {changes.map((c) => (
-              <button
-                key={c.path}
-                type="button"
-                className={`file-changes-item ${c.path === selectedPath ? "active" : ""}`}
-                onClick={() => setSelectedPath(c.path)}
-                title={c.path}
-              >
-                <span className="file-changes-item-name">
-                  {c.path.split(/[\\/]/).pop() || c.path}
-                </span>
-                <span className="file-changes-item-stats">{diffStats(c)}</span>
-              </button>
-            ))}
-          </div>
-          {selected && (
-            <div className="file-changes-diff">
-              <div className="file-changes-diff-header">
-                <span className="file-changes-diff-file">{fileName}</span>
-                <span className="file-changes-diff-stats">{diffStats(selected)}</span>
-              </div>
-              {diff ? (
-                <DiffView lines={diff} />
-              ) : (
-                <div className="file-changes-after-only">
-                  <div className="file-changes-pane-title">After</div>
-                  <ReadOnlyCode content={selected.after ?? ""} />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+    <AppModal
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      className="file-changes-dialog"
+    >
+      <div className="file-changes-header">
+        <AppModalTitle className="file-changes-title">
+          File changes
+        </AppModalTitle>
+        <button
+          type="button"
+          className="btn-ghost file-changes-close"
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          aria-label="Close"
+        >
+          <X size={16} />
+        </button>
       </div>
-    </div>
+      <div className="file-changes-body">
+        <div className="file-changes-list">
+          {changes.map((c) => (
+            <button
+              key={c.path}
+              type="button"
+              className={`file-changes-item ${c.path === selectedPath ? "active" : ""}`}
+              onClick={() => setSelectedPath(c.path)}
+              title={c.path}
+            >
+              <span className="file-changes-item-name">
+                {c.path.split(/[\\/]/).pop() || c.path}
+              </span>
+              <span className="file-changes-item-stats">{diffStats(c)}</span>
+            </button>
+          ))}
+        </div>
+        {selected && (
+          <div className="file-changes-diff">
+            <div className="file-changes-diff-header">
+              <span className="file-changes-diff-file">{fileName}</span>
+              <span className="file-changes-diff-stats">
+                {diffStats(selected)}
+              </span>
+            </div>
+            {diff ? (
+              <DiffView lines={diff} />
+            ) : (
+              <div className="file-changes-after-only">
+                <div className="file-changes-pane-title">After</div>
+                <ReadOnlyCode content={selected.after ?? ""} />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </AppModal>
   );
 }

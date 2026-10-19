@@ -3,7 +3,6 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { CodeBlock } from "../../components/AgentMarkdown";
 import { Brain, ChevronRight, Wrench } from "../../assets/icons";
 import { OrbLoader } from "../../components/OrbLoader";
-import { TypeAnimation } from "../../components/TypeAnimation";
 import { useI18n } from "../../components/useI18n";
 import { AttachmentChip } from "../../components/AttachmentChip";
 import { ToolGlyph, humanizeToolName } from "../../components/toolMeta";
@@ -148,32 +147,11 @@ export const ReasoningRow = memo(function ReasoningRow({
   // doesn't pop open at full height either.
   const openRendered = useAccordionOpen(open, true);
 
-  // Typewriter state driven by TEXT GROWTH, not row position: interleaved
-  // thinking (deltas arriving while the answer bubble already streams below)
-  // must still type out its incoming text — the old trailing-row-only rule
-  // never fired in that case and the text pasted per chunk. The window
-  // expires ~5s after the last delta, snapping the row to full text (the
-  // paste catch-up when the next bubble arrives / thinking ends).
-  //
-  // On a LIVE (trailing `active`) row the mount IS the first growth: the
-  // typewriter starts from 0 (reveal incomplete) and markReasoningGrowth
-  // stamps a real time, so useReasoningGate holds the rows below until the
-  // thought has actually typed. Without this, the mount chunk showed
-  // full-instant (reveal "complete") with no growth stamp (stalled=MAX) and
-  // the gate opened immediately — tools/results appeared before the thought
-  // typewriter had started. History/non-trailing rows (active=false) keep
-  // prevTextRef = msg.text so they paste in whole and stamp no growth.
-  const [typing, setTyping] = useState(active && Boolean(msg.text));
   const prevTextRef = useRef(active ? "" : msg.text);
   useEffect(() => {
-    const grew = msg.text !== prevTextRef.current;
+    if (msg.text !== prevTextRef.current) markReasoningGrowth(msg.id);
     prevTextRef.current = msg.text;
-    if (grew) markReasoningGrowth(msg.id);
-    if (!grew) return;
-    setTyping(true);
-    const timer = setTimeout(() => setTyping(false), 5_000);
-    return () => clearTimeout(timer);
-  }, [msg.text]);
+  }, [msg.id, msg.text]);
 
   return (
     <div
@@ -224,37 +202,45 @@ export const ReasoningRow = memo(function ReasoningRow({
         >
           <div className="chat-tool-collapse-inner">
             <pre className="chat-history-pre chat-reasoning-pre">
-              <TypeAnimation
-                text={msg.text}
-                active={typing}
-                // 100 chars/s (5 chars per 50ms tick) keeps the reveal ahead
-                // of the ~50 chars/s stream so the thought finishes typing
-                // around the time the answer bubble starts. The duration cap
-                // bounds the reveal so a long thought still finishes fast,
-                // while staying visible — slightly calmer than the answer's
-                // 700ms so the response still reads as the faster one. The
-                // per-tick ceiling (18 chars ≈ 360 chars/s) stops a big
-                // burst delta from strobe-catching-up in ~100-char frames.
-                charsPerSecond={100}
-                maxDurationMs={900}
-                maxCharsPerTick={18}
-                className="chat-reasoning-text"
-              >
-                {(visible) => {
-                  // Report reveal progress so the turn's answer bubble can
-                  // hold its gate until this thought is FULLY on screen (its
-                  // deltas stopping isn't enough — a fast stream leaves the
-                  // typewriter behind for a while).
-                  markReasoningReveal(msg.id, visible.length, msg.text.length);
-                  return visible;
-                }}
-              </TypeAnimation>
+              <ReasoningText id={msg.id} text={msg.text} active={active} />
             </pre>
           </div>
         </div>
       </div>
     </div>
   );
+});
+
+// Publish the newest received snapshot, never a character-by-character backlog.
+// ponytail: 20 text updates/s; profile live rendering before adding more machinery.
+const ReasoningText = memo(function ReasoningText({ id, text, active }: {
+  id: string;
+  text: string;
+  active: boolean;
+}): React.JSX.Element {
+  const [shown, setShown] = useState(text);
+  const latest = useRef(text);
+  latest.current = text;
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!active) {
+      if (timer.current !== null) clearTimeout(timer.current);
+      timer.current = null;
+      setShown(text);
+    } else if (timer.current === null) {
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        setShown(latest.current);
+      }, 50);
+    }
+  }, [active, text]);
+  useEffect(() => () => {
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = null;
+  }, []);
+  const visible = active ? shown : text;
+  markReasoningReveal(id, visible.length, text.length);
+  return <span className="chat-reasoning-text">{visible}</span>;
 });
 
 /* ── Tool activity (grouped) ──────────────────────────────────────────────

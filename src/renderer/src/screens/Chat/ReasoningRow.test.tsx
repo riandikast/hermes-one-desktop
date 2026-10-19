@@ -32,15 +32,14 @@ function makeRow(over: Partial<ReasoningMessage> = {}): ReasoningMessage {
 }
 
 describe("ReasoningRow gate stamps", () => {
-  it("on a LIVE (active) mount, stamps growth and reports the reveal as incomplete so the gate holds rows below", () => {
+  it("on a LIVE mount, stamps growth and reports all received text as revealed", () => {
     const msg = makeRow();
     render(
       <ReasoningRow msg={msg} active showAvatar={false} />,
     );
-    // markReasoningGrowth stamped on mount (stalledMs is small, not MAX) and
-    // the typewriter starts from 0 (reveal incomplete) — the gate must wait.
+    // Growth still holds the settle gate; there is no cosmetic reveal backlog.
     expect(reasoningStalledMs(msg.id)).toBeLessThan(1000);
-    expect(reasoningRevealComplete(msg.id)).toBe(false);
+    expect(reasoningRevealComplete(msg.id)).toBe(true);
   });
 
   it("on a history (active=false) mount, stamps no growth and reports the reveal complete so the gate opens instantly", () => {

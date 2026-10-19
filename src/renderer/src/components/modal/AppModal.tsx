@@ -1,6 +1,15 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { AnimatePresence, motion } from "motion/react";
-import { memo, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  memo,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
+
+const ModalDepth = createContext(0);
 
 export interface AppModalProps {
   open: boolean;
@@ -40,6 +49,10 @@ function AppModalComponent({
   onExitComplete,
 }: AppModalProps): React.JSX.Element {
   const [present, setPresent] = useState(open);
+  const depth = useContext(ModalDepth);
+  // Match FloatingDialog's established chrome-clearing tier; each nested
+  // modal owns an overlay/content pair. Radix owns top-layer dismissal.
+  const layer = 1100 + depth * 2;
 
   useEffect(() => {
     if (open) setPresent(true);
@@ -61,6 +74,7 @@ function AppModalComponent({
                   <motion.div
                     key="overlay"
                     {...overlayMotion}
+                    style={{ zIndex: layer }}
                     className={`app-modal-overlay ${overlayClassName}`.trim()}
                   />
                 </Dialog.Overlay>
@@ -68,14 +82,17 @@ function AppModalComponent({
                   forceMount
                   asChild
                   aria-describedby={describedBy}
-                  aria-labelledby={labelledBy}
+                  {...(labelledBy ? { "aria-labelledby": labelledBy } : {})}
                 >
                   <motion.div
                     key="content"
                     {...contentMotion}
+                    style={{ zIndex: layer + 1 }}
                     className={`app-modal-content ${className} ${contentClassName}`.trim()}
                   >
-                    {children}
+                    <ModalDepth.Provider value={depth + 1}>
+                      {children}
+                    </ModalDepth.Provider>
                   </motion.div>
                 </Dialog.Content>
               </>

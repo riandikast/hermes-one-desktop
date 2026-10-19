@@ -11,3 +11,9 @@ The published command supplies store Python and the isolated bootstrap arguments
 [[src/main/installer.ts#hermesCliArgs]] preserves the published bootstrap. [[src/main/installer.ts#hermesPythonArgs]] bootstraps direct Python snippets before importing backend packages. Profile arguments follow the complete bootstrap prefix, not a fixed offset.
 
 Installer completion refreshes runtime paths before status checks, allowing an installation created during the current app session to be recognized. Regression coverage lives in `tests/installer-runtime.test.ts` and `src/main/skills.test.ts`.
+
+[[src/main/installer.ts#checkInstallStatus]] retries discovery when the selected interpreter or launcher is missing. Recheck can recover from a transient cold-launch failure without changing the selected home or borrowing PATH dependencies.
+
+## Context folder display names
+
+[[src/renderer/src/screens/Chat/ContextFolderChip.tsx#ContextFolderChip]] subscribes to the shared sidebar alias store. Selected and recent labels update on rename; callbacks and tooltips retain actual paths. `ContextFolderChip.test.tsx` covers rename, removal, selection and basename fallback.

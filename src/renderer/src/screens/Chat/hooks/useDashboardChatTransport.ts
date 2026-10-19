@@ -7,6 +7,7 @@ import {
   markActiveTurnFailed,
   normalizeMessageText,
 } from "../chatMessages";
+import { isAutoInjectedPrompt } from "../autoPrompts";
 import {
   applyDashboardStreamEvent,
   type DashboardStreamEvent,
@@ -310,6 +311,7 @@ export async function submitDashboardPromptWithRecovery(
   client: DashboardPromptClient,
   params: {
     onRecoveredSessionId?: (sessionId: string) => void;
+    cancelled?: () => boolean;
     sessionId: string;
     storedSessionId?: string | null;
     text: string;
@@ -325,6 +327,7 @@ export async function submitDashboardPromptWithRecovery(
       ? { profile: params.profile }
       : {};
   try {
+    if (params.cancelled?.()) return params.sessionId;
     await client.request("prompt.submit", {
       session_id: params.sessionId,
       text: params.text,
@@ -336,10 +339,12 @@ export async function submitDashboardPromptWithRecovery(
       throw err;
     }
 
+    if (params.cancelled?.()) return params.sessionId;
     const resumed = await client.request<SessionResponse>("session.resume", {
       session_id: params.storedSessionId,
       ...profileParam,
     });
+    if (params.cancelled?.()) return params.sessionId;
     const recoveredSessionId = resumed?.session_id;
     if (!recoveredSessionId) {
       throw err;
@@ -1047,6 +1052,7 @@ export function dashboardContinuationItemsFromTranscript(
 
       if (message.role === "user") {
         const content = message.content || "";
+        if (message.localOnly || isAutoInjectedPrompt(content)) continue;
         if (!normalizeMessageText(content) && !message.attachments?.length) {
           continue;
         }
@@ -3303,10 +3309,19 @@ export function useDashboardChatTransport({
   }, [active, enabled, ensureClient, setMessages, setIsLoading, setToolProgress]);
 
   const sendMessage = useCallback(
-    async (text: string, attachments?: Attachment[]): Promise<boolean> => {
+    async (text: string, attachments?: Attachment[], recoveryGeneration?: number): Promise<boolean> => {
       if (!enabled) return false;
-      const sendGeneration = ++sendGenerationRef.current;
-      recoveryCancelledRef.current = false;
+      const isRecovery = recoveryGeneration !== undefined;
+      if (isRecovery && (recoveryCancelledRef.current || recoveryGeneration !== sendGenerationRef.current)) return true;
+      const sendGeneration = isRecovery ? recoveryGeneration : ++sendGenerationRef.current;
+      if (!isRecovery) {
+        recoveryCancelledRef.current = false;
+        recoveryAttemptsRef.current = 0;
+        recoveryChainIndexRef.current = 0;
+        originalPromptRef.current = text;
+        fallbackChainRef.current = fallbackChainFor(loadFallbackModels(), primaryKeyOf(providerRef.current ?? "", modelBaseUrlRef.current ?? "", modelRef.current ?? ""));
+      }
+      if (!isRecovery) recoveryFiredForEpisodeRef.current = false;
       const cancelled = () => sendGeneration !== sendGenerationRef.current;
       sendTimingRef.current = { send: ++nextDiagnosticSend, started: performance.now(), submitted: false, firstDelta: false };
       markSendStage("send-start");
@@ -3333,12 +3348,14 @@ export function useDashboardChatTransport({
         pendingClarifyRequestIdRef.current = null;
         try {
           const client = await ensureClient();
+          if (cancelled()) return true;
           await client.request("clarify.respond", {
             request_id: pendingClarifyRequestId,
             answer: text,
           });
           return true;
         } catch (err) {
+          if (cancelled()) return true;
           pendingClarifyRequestIdRef.current = pendingClarifyRequestId;
           const message = err instanceof Error ? err.message : String(err);
           const activeTurn = activeTurnRef.current;
@@ -3364,23 +3381,26 @@ export function useDashboardChatTransport({
       // proceeds when the gateway answers. The DB reconcile dedupes by
       // role+content, so the echoed row replaces this one without a
       // duplicate bubble.
-      const optimisticUser: ChatMessage = {
-        id: `local-send-${Date.now()}`,
-        role: "user",
-        content: text,
-      };
-      messagesRef.current = [...clearStaleTurnErrors(messagesRef.current), optimisticUser];
-      setMessages(messagesRef.current);
+      const optimisticUser: ChatMessage | null = isRecovery
+        ? null
+        : {
+            id: `local-send-${Date.now()}`,
+            role: "user",
+            content: text,
+          };
+      if (optimisticUser) {
+        messagesRef.current = [
+          ...clearStaleTurnErrors(messagesRef.current),
+          optimisticUser,
+        ];
+        setMessages(messagesRef.current);
+      }
       activeTurnRef.current = {
         turnId: `send-${Date.now()}`,
-        // Adopt the optimistic row's id (f0b8b10 regressed this to ""): the
-        // failure path resolves the user text BY this id to persist the error
-        // overlay (recordSessionLocalError), and recovery re-seeding excludes
-        // the in-flight user row by it. Empty string made both no-ops — failed
-        // dashboard turns lost their error row on reopen and the user message
-        // was double-seeded after a provider failure.
-        userId: optimisticUser.id,
-        startIndex: messagesRef.current.length - 1,
+        userId: optimisticUser?.id ?? "",
+        startIndex: optimisticUser
+          ? messagesRef.current.length - 1
+          : messagesRef.current.length,
         status: "running",
       };
       setToolProgress(null);
@@ -3437,6 +3457,7 @@ export function useDashboardChatTransport({
           );
         }
       };
+      let submitted = false;
       const failActiveTurn = (message: string): true => {
         const activeTurn = activeTurnRef.current;
         if (activeTurn) activeTurn.status = "failed";
@@ -3470,7 +3491,7 @@ export function useDashboardChatTransport({
         // runRecovery (interrupt latch, one-per-episode, attempt cap), and a
         // no-op when no chain/switch callback is configured. Through a ref
         // because runRecovery is declared below (it needs sendMessage).
-        runRecoveryRef.current(false);
+        if (submitted) runRecoveryRef.current(false);
         return true;
       };
       if (dashboardText === null) {
@@ -3516,6 +3537,7 @@ export function useDashboardChatTransport({
               .request("session.close", { session_id: staleRuntimeSessionId })
               .catch(() => undefined);
           }
+          if (cancelled()) return true;
           runtimeSessionIdRef.current = null;
           reasoningSegmentClosedRef.current = false;
           appliedModelRef.current = null;
@@ -3529,6 +3551,7 @@ export function useDashboardChatTransport({
         const runtimeSessionId = await ensureRuntimeSession(client, {
           forceCreate: false,
         });
+        if (cancelled()) return true;
         runtimeSessionIdRef.current = runtimeSessionId;
         markSendStage("session-ready");
         // A freshly created session now has its row in state.db, so the sidebar
@@ -3563,11 +3586,13 @@ export function useDashboardChatTransport({
         // there is nothing pending to surface here — the send continues on the
         // model the switch actually landed on.
         await recordContinuationItems(mergePendingRecoveredContinuation([]));
+        if (cancelled()) return true;
         const syncedAttachments = await syncDashboardAttachments(
           client,
           selectedSessionId,
           attachments,
         );
+        if (cancelled()) return true;
         if (!syncedAttachments.handled) {
           if (fallbackOnUnavailable) return false;
           return failActiveTurn(
@@ -3579,19 +3604,15 @@ export function useDashboardChatTransport({
           syncedAttachments.refs,
         );
         // ── Auto-recovery: arm the episode ────────────────────────────────
-        // A NEW user turn clears the interrupt latch and the attempt counters.
-        // Without this reset, one earlier stop would permanently disable
-        // recovery for the rest of the session.
+        // Recovery attempts retain the original prompt and budget; manual sends reset them at entry.
         if (cancelled()) return true;
-        recoveryAttemptsRef.current = 0;
-        recoveryChainIndexRef.current = 0;
         recoveryFiredForEpisodeRef.current = false;
         subagentWatchRef.current = initialSubagentWatch();
         // Remember what to replay, and which chain this turn rides. Snapshotted
         // (not read live) so editing the picker mid-turn cannot change a
         // recovery already in flight.
-        originalPromptRef.current = promptText;
-        fallbackChainRef.current = fallbackChainFor(
+        if (!isRecovery) originalPromptRef.current = promptText;
+        if (!isRecovery) fallbackChainRef.current = fallbackChainFor(
           loadFallbackModels(),
           primaryKeyOf(
             providerRef.current ?? "",
@@ -3615,6 +3636,7 @@ export function useDashboardChatTransport({
         // overload / dropped request), fail the turn instead of loading
         // forever. Any accepted stream event pushes the deadline out.
         resetStallTimer();
+        submitted = true;
         if (sendTimingRef.current) sendTimingRef.current.submitted = true;
         markSendStage("submit");
         await submitDashboardPromptWithRecovery(client, {
@@ -3622,12 +3644,14 @@ export function useDashboardChatTransport({
           storedSessionId: storedSessionIdRef.current,
           text: submitText,
           profile,
+          cancelled,
           onRecoveredSessionId: (recoveredSessionId) => {
             runtimeSessionIdRef.current = recoveredSessionId;
             appliedModelRef.current = null;
             modelOptionsCacheRef.current = null;
           },
         });
+        if (cancelled()) return true;
         markSendStage("submit-ack");
         // The turn was accepted, so any recorded failure for THIS prompt is
         // resolved. Without this the stored error row (written when the prompt
@@ -3886,7 +3910,9 @@ export function useDashboardChatTransport({
       // Interrupt is absolute — re-checked at the moment of action, not just
       // when the trigger fired, because the user may have pressed stop during
       // the async gap.
-      if (recoveryCancelledRef.current) return;
+      const generation = sendGenerationRef.current;
+      const cancelled = () => recoveryCancelledRef.current || generation !== sendGenerationRef.current;
+      if (cancelled()) return;
       // One recovery per stuck episode.
       if (recoveryFiredForEpisodeRef.current) return;
       // Only recover a turn we actually started.
@@ -3924,7 +3950,7 @@ export function useDashboardChatTransport({
           // same broken setup.
           return;
         }
-        if (recoveryCancelledRef.current) return;
+        if (cancelled()) return;
         recoveryChainIndexRef.current += 1;
         onRecoveryNotice?.({
           kind: "switched",
@@ -3935,8 +3961,8 @@ export function useDashboardChatTransport({
       }
 
       // The action may have been decided a moment ago; re-check before sending.
-      if (recoveryCancelledRef.current) return;
-      await sendMessage(buildRecoveryPrompt(original));
+      if (cancelled()) return;
+      await sendMessage(buildRecoveryPrompt(original), undefined, generation);
     },
     [onRecoveryNotice, onSwitchModel, sendMessage],
   );
@@ -3990,6 +4016,9 @@ export function useDashboardChatTransport({
   const applyModelOverride = useCallback(
     async (provider: string, model: string): Promise<void> => {
       if (!enabled) return;
+      sendGenerationRef.current += 1;
+      recoveryCancelledRef.current = true;
+      recoveryFiredForEpisodeRef.current = true;
       const command = dashboardModelCommand(provider, model);
       if (!command) return;
       appliedModelRef.current = null;
