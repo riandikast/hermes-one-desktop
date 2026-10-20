@@ -1,4 +1,5 @@
 export default {
+  sourceControl: { stageAll: "Stage all changes" },
   providerRetry: {
     countdown: "Provider retry in {{seconds}}s",
     due: "Provider retry due, waiting for progress",

@@ -1,5 +1,7 @@
 # Knowledge bundle injection
 
+Knowledge indexes enter session context as system-role seed messages, not visible user text.
+
 When a chat attaches knowledge bundles, their content index is injected as a **system-role seed message** so the agent treats the files as context — the index is never prepended to the user's prompt text (which would leak the system prompt into the visible user bubble).
 
 ## How the index reaches the model
@@ -15,6 +17,8 @@ The instruction frames the files as the user's AUTHORITATIVE context and tells t
 Each file's hint is the first non-empty line, truncated to 140 chars. When that line is a short markdown heading (≤60 chars) the start of the next non-empty line is appended ("`# Title — subtitle`"), so relevance is recognizable without dumping contents. A long prose first line already carries meaning, so no second line is pulled — the hint stays a pointer, not a content dump, inside the index budget.
 
 ## Single-shot limitation
+
+Knowledge context is seeded at creation; later attachment changes cannot refresh a resumed session seed.
 
 On the dashboard transport the index is seeded only at `session.create`; resumed turns cannot carry a fresh seed. A RACE GUARD in [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#ensureDashboardRuntimeSession]] fetches the index inline (awaiting `getKnowledgeIndex`) when the async effect hasn't populated the ref yet — without it, toggling knowledge on and sending immediately could create the session with an EMPTY index ("toggle on but the model doesn't know the knowledge files"). The injected intro now carries a SNAPSHOT warning: the model must list the knowledge directory with its file tools and read the current content before writing, and must write to the EXACT absolute path in the index (never guess a path/filename) — this corrects stale-index wrong-file writes mid-session. Short-heading hints append the next line so files are more distinguishable.
 

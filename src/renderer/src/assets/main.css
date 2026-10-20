@@ -23253,6 +23253,11 @@ body:has(.shell-vibrant),
   border-bottom: 1px solid var(--border);
 }
 .source-control-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px;
   padding: 5px 12px;
   font-size: 11px;
   font-weight: 700;

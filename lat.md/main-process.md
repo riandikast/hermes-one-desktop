@@ -103,4 +103,6 @@ The dashboard's `/api/*` routes (and its `/api/ws` chat WS) reject the api_serve
 
 ## Config list values (security settings)
 
+Security lists round-trip as JSON through IPC and persist as YAML block lists.
+
 The Settings Security pane ([[src/renderer/src/components/settings/SecurityPane.tsx]]) round-trips list-valued keys — `approvals.deny`, `command_allowlist` — through the `get-config`/`set-config` IPC as JSON array strings. The main-process writer detects the `[...]` shape and stores a YAML block list instead of a quoted scalar: [[src/main/config.ts#setConfigValue]] routes it to [[src/main/config.ts#setConfigListValue]], which replaces the key line plus its indented block in place, appends flat keys at top level, and creates missing nested parents (items always sit one level deeper than the key so the reader can collect them). Reads use [[src/main/yaml-path.ts#getYamlPath]]'s block-list collection, returning `["a","b"]` so the pane JSON.parses it like any scalar. The SSH path mirrors both sides ([[src/main/ssh-remote.ts#sshGetConfigValue]] reads via getYamlPath; [[src/main/ssh-remote.ts#sshSetConfigValue]] routes arrays through [[src/main/ssh-remote.ts#buildYamlListContent]] before the illegal-character guard — JSON always contains quotes, which the scalar path would reject).

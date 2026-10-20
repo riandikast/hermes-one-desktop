@@ -69,14 +69,16 @@ function Shell({ children }: { children: React.ReactNode }): React.JSX.Element {
 
 function Section({
   title,
+  action,
   children,
 }: {
   title: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
     <div className="source-control-section">
-      <div className="source-control-section-title">{title}</div>
+      <div className="source-control-section-title">{title}{action}</div>
       {children}
     </div>
   );
@@ -173,6 +175,7 @@ export function SourceControlDialog({
   const { t } = useI18n();
   const [status, setStatus] = useState<GitStatusResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const actionInFlight = useRef(false);
   const [selected, setSelected] = useState<{
     path: string;
     staged: boolean;
@@ -281,6 +284,8 @@ export function SourceControlDialog({
 
   const run = useCallback(
     async (fn: () => Promise<GitActionResult>, label: string) => {
+      if (actionInFlight.current) return;
+      actionInFlight.current = true;
       setBusy(true);
       setError("");
       setOutput("");
@@ -308,8 +313,14 @@ export function SourceControlDialog({
       } catch (err) {
         setError(String(err));
       } finally {
-        setBusy(false);
-        await refresh();
+        try {
+          await refresh();
+        } catch (err) {
+          setError(String(err));
+        } finally {
+          actionInFlight.current = false;
+          setBusy(false);
+        }
       }
     },
     [refresh],
@@ -555,7 +566,24 @@ export function SourceControlDialog({
                   )}
                 </Section>
                 <Section
-                  title={`Changes (${(status.unstaged.length ?? 0) + (status.untracked.length ?? 0)})`}
+                  title={`Changes (${changeCount})`}
+                  action={
+                    <button
+                      type="button"
+                      className="btn-ghost btn-sm source-control-stage-all"
+                      disabled={busy || changeCount === 0}
+                      aria-busy={busy}
+                      onClick={() => void run(
+                        () => window.hermesAPI.gitStage(dir, [...new Set([
+                          ...status.unstaged.map((file) => file.path),
+                          ...status.untracked,
+                        ])]),
+                        t("chat.sourceControl.stageAll"),
+                      )}
+                    >
+                      {t("chat.sourceControl.stageAll")}
+                    </button>
+                  }
                 >
                   {status.unstaged.length === 0 &&
                   status.untracked.length === 0 ? (

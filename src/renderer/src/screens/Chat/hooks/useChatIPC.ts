@@ -180,7 +180,7 @@ export function useChatIPC({
     const cleanupChunk = window.hermesAPI.onChatChunk((eventRunId, chunk) => {
       if (!eventMatchesRun(eventRunId, runId)) return;
       if (!activeTurnRef.current) return;
-      // @lat: [[chat-commands#Delta chunks merge into the last same-kind row]]
+      // @lat: [[chat-commands#Slash command execution#Reasoning & tool activity rows#Delta chunks merge into the last same-kind row]]
       setMessages((prev) => {
         if (!chunk) return prev;
         // Merge into the LAST assistant bubble of the current turn, wherever

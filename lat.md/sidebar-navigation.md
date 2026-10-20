@@ -154,9 +154,13 @@ When the sidebar is collapsed, those footer actions stay in a single centered ic
 
 ## Capabilities entry
 
+Capabilities combines skills, toolsets, MCP, and hub destinations in one screen.
+
 The sidebar's single **Capabilities** entry (pinned section, Compass icon, label from `navigation.tools`) replaces the former Discover, Tools, and Skills views — one master-detail screen with Skills | Toolsets | MCP | Hub tabs (see [[capabilities#Capabilities screen]]). [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] mounts [[src/renderer/src/screens/Capabilities/Capabilities.tsx#Capabilities]] with the active profile and a `visible` flag; the old screens and their CSS were deleted.
 
 ## Skills discovery
+
+Skill discovery supports flat and categorized installation directories per profile.
 
 Installed skills are discovered by walking the profile's skills directory, and the count badge on the Capabilities **Skills** tab is the number of installed skills. [[src/main/skills.ts#listInstalledSkills]] supports BOTH folder layouts: `skills/<skill>/SKILL.md` (flat — CLI installs) and `skills/<category>/<skill>/SKILL.md` (hub/registry installs). Previously only the two-level layout was read, so flat-installed skills (the real ones on disk) never showed as installed anywhere. Note the model never sees desktop skills: skills reach the model only through the GATEWAY's own skill mechanism; the desktop UI list and the gateway's list are unrelated (a remote gateway has its own home).
 

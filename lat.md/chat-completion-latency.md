@@ -1,5 +1,7 @@
 # Turn-completion latency: tail read + tail reconcile
 
+Cursor reads and tail reconciliation avoid rebuilding settled transcript history when a turn finishes.
+
 Finishing a turn must not lock the UI. The completion path used to re-read the WHOLE session from state.db and re-reconcile the WHOLE transcript, which on a long conversation is a ~1.5 s stall. The fix reads and reconciles only the rows newer than the highest id the renderer already holds.
 
 ## The measured stall (real session, read-only)
@@ -18,6 +20,8 @@ So the lock is BOTH halves: the blocking main-process read (~235 ms) AND the ren
 
 ## The fix: an id cursor for the read, a tail window for the reconcile
 
+A database-id cursor bounds completion reads; reconciliation retains the settled prefix by identity.
+
 [[src/main/sessions.ts#buildSessionMessagesQuery]] builds the `getSessionMessages` SELECT. A positive `afterId` adds `id > ?` and keeps the canonical `ORDER BY timestamp, id`; `0`/negative keeps the full-history read (resume / reopen still need it). `id > ?` rides `idx_messages_session_id` and returns **0.0 ms** when nothing is new.
 
 [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts]] holds `lastSyncedDbIdRef` — the highest state.db id known to be canonical in `messagesRef`. The `message.complete` sync, the foreign-turn poller, and the quiet-finalize re-baseline all keep it current; it resets to `0` on any session / connection / profile change.
@@ -28,11 +32,15 @@ So the lock is BOTH halves: the blocking main-process read (~235 ms) AND the ren
 
 ## Two traps the tail path must handle
 
+Negative overlay ids and late writes require explicit handling in the cursor path.
+
 **Persisted overlays carry synthetic NEGATIVE ids.** Session-continuation history and local error rows are persisted in their own tables and re-emitted by [[src/main/sessions.ts#applySessionLocalOverlays]] on EVERY read — including a cursor-scoped tail read. They use negative ids out of the store's synthetic ranges (`-900_000_000`, `-800_000_000`). `messageDbId` therefore returns their (negative) value rather than `0`, so `isCanonicalPrefix` accepts them; treating them as renderer-only would make every session with continuation history fall back to the full reconcile forever.
 
 **Overlays are re-prepended, so `db` must be filtered to the tail.** Because they reappear in a tail read, [[src/renderer/src/screens/Chat/sessionHistory.ts#reconcileTailAfterDbRefresh]] filters `db` down to real ids newer than the cursor before merging. Otherwise the merge sees overlay rows in `db` that are absent from `tailCurrent` and re-appends them to the tail — duplicating the whole continuation block. Both traps are pinned in `turn-completion-tail-reconcile.test.ts`.
 
 ## Why the prefix splice is safe, and when it defers
+
+Only settled rows survive the prefix splice; pending or local-only rows force a full reconciliation.
 
 Reconciliation is per-turn: the merge can only add, drop, or reorder rows WITHIN the active turn. That turn's user row is always inside the tail window, so the tail reconcile sees every row its decisions can touch. Everything before it is a settled state.db row — carrying it over by identity is exactly what the previous reconcile would have produced, minus the work.
 
@@ -42,9 +50,13 @@ The backward walk that finds the tail boundary stops at the first canonical pref
 
 ## The quiet-finalize path deliberately keeps the full read
 
+Quiet-finalize needs full user-message counts to prove that persisted history caught up.
+
 [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts]]'s quiet-finalize recovery (~10 s of gateway silence) compares WHOLE-session user counts against the live transcript to decide whether state.db has caught up — a tail read would break that catch-up guard. It keeps its full read and full reconcile, and only re-baselines `lastSyncedDbIdRef` afterwards so the NEXT completion is fast again. It is a rare recovery path, not the hot one.
 
 ## Result (same real session, same code path)
+
+Measured completion timings compare full-history and cursor-scoped paths on the same session.
 
 - main-process read: **290.9 ms → 0.0 ms**
 - renderer reconcile: **~705 ms → ~9 ms** (78×)

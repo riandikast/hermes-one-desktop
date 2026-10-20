@@ -89,6 +89,61 @@ beforeEach(() => {
 });
 
 describe("SourceControlDialog", () => {
+  // @lat: [[source-control#Source Control (git)#Stage all changes]]
+  it("stages tracked, deleted, and untracked paths once, excludes conflicts, and refreshes before unlocking", async () => {
+    const initial = await gitRepoStatus();
+    gitRepoStatus.mockClear();
+    const paths = ["a.ts", "deleted file.ts", "new file.ts"];
+    gitRepoStatus.mockResolvedValueOnce({ ...initial,
+      unstaged: [
+        { index: " ", worktree: "M", path: paths[0] },
+        { index: " ", worktree: "D", path: paths[1] },
+      ],
+      untracked: [paths[2]],
+      conflicted: [{ index: "U", worktree: "U", path: "conflict.ts" }],
+    });
+    let finishStage!: (value: { ok: boolean }) => void;
+    let finishRefresh!: (value: typeof initial) => void;
+    vi.mocked(window.hermesAPI.gitStage).mockImplementation(() => new Promise((resolve) => { finishStage = resolve; }));
+    gitRepoStatus.mockImplementationOnce(() => new Promise((resolve) => { finishRefresh = resolve; }));
+    renderDialog("/repo");
+    const button = await screen.findByRole("button", { name: "Stage all changes" });
+    await act(async () => { button.click(); button.click(); });
+    expect(window.hermesAPI.gitStage).toHaveBeenCalledWith("/repo", paths);
+    expect(button).toBeDisabled();
+    await act(async () => finishStage({ ok: true }));
+    expect(button).toBeDisabled();
+    await act(async () => finishRefresh({ ...initial,
+      staged: paths.map((path) => ({ index: "M", worktree: " ", path })),
+      unstaged: [], untracked: [],
+    }));
+    expect(await screen.findByText("Staged (3)")).toBeTruthy();
+    expect(button).toBeDisabled();
+    expect(window.hermesAPI.gitStage).toHaveBeenCalledTimes(1);
+    expect(window.hermesAPI.gitPush).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("surfaces stage-all failures and permits retry (throw=%s)", async (throws) => {
+    vi.mocked(window.hermesAPI.gitStage).mockImplementationOnce(async () => {
+      if (throws) throw new Error("index locked");
+      return { ok: false, error: "index locked" };
+    });
+    renderDialog("/repo");
+    const button = await screen.findByRole("button", { name: "Stage all changes" });
+    await act(async () => button.click());
+    expect(await screen.findByText(/index locked/)).toBeTruthy();
+    expect(button).not.toBeDisabled();
+    expect(gitRepoStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces a refresh failure without leaving staging busy", async () => {
+    gitRepoStatus.mockResolvedValueOnce(await gitRepoStatus()).mockRejectedValueOnce(new Error("refresh failed"));
+    renderDialog("/repo");
+    const button = await screen.findByRole("button", { name: "Stage all changes" });
+    await act(async () => button.click());
+    expect(await screen.findByText(/refresh failed/)).toBeTruthy();
+    expect(button).not.toBeDisabled();
+  });
   it("renders as a full-page panel portaled to <body> (not a nested modal)", async () => {
     renderDialog("/repo");
     await waitFor(() => expect(gitRepoStatus).toHaveBeenCalled());
