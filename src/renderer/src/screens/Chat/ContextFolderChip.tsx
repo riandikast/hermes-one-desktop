@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useRef } from "react";
-import { FolderOpen, X, Check, BookOpen } from "lucide-react";
+import { FolderOpen, X, Check, BookOpen, Terminal } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import { projectDisplayName, useProjectAliases } from "../Layout/projectAliases";
 
@@ -14,6 +14,7 @@ interface ContextFolderChipProps {
   onRemoveFolder: (path: string) => void;
   onToggleKnowledgeBundle?: (bundleName: string) => void;
   onSelectRecentFolder?: (path: string) => void;
+  onSetBaseFolder?: (path: string) => void;
 }
 
 /**
@@ -29,6 +30,7 @@ export const ContextFolderChip = memo(function ContextFolderChip({
   onRemoveFolder,
   onToggleKnowledgeBundle,
   onSelectRecentFolder,
+  onSetBaseFolder,
 }: ContextFolderChipProps): React.JSX.Element | null {
   const { t } = useI18n();
   useProjectAliases();
@@ -165,34 +167,40 @@ export const ContextFolderChip = memo(function ContextFolderChip({
       {contextFolders.length > 0 && (
         <>
           <div className="chat-ctxfolder-dropdown-header">Selected</div>
-          <div className="chat-ctxfolder-dropdown-list">
-            {contextFolders.map((path) => (
-              <button
-                key={path}
-                type="button"
-                className="chat-ctxfolder-dropdown-item chat-ctxfolder-dropdown-item--active"
-                onClick={() => {
-                  // Click toggles (removes) the selected folder.
-                  onRemoveFolder(path);
-                }}
-                onContextMenu={(e) => {
-                  // Right-click deletes it from the selection/options.
-                  e.preventDefault();
-                  onRemoveFolder(path);
-                }}
-                title={`${path} — click/right-click to remove`}
-              >
-                <span className="chat-ctxfolder-dropdown-item-name">
-                  {projectDisplayName(path)}
-                </span>
-                <span
-                  className="chat-ctxfolder-dropdown-item-check"
-                  style={{ display: "inline-flex", alignItems: "center" }}
+          <div className="chat-ctxfolder-dropdown-list chat-ctxfolder-selected-list">
+            {contextFolders.map((path, index) => {
+              const isBase = index === 0;
+              return (
+                <button
+                  key={path}
+                  type="button"
+                  className={`chat-ctxfolder-dropdown-item chat-ctxfolder-dropdown-item--active${
+                    isBase ? " chat-ctxfolder-dropdown-item--base" : ""
+                  }`}
+                  onClick={() => onRemoveFolder(path)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    onSetBaseFolder?.(path);
+                  }}
+                  title={
+                    isBase
+                      ? `${path} — base folder for the terminal; click to remove`
+                      : `${path} — click to remove; right-click to use as terminal base folder`
+                  }
                 >
-                  <X size={12} />
-                </span>
-              </button>
-            ))}
+                  <span className="chat-ctxfolder-dropdown-item-name">
+                    {projectDisplayName(path)}
+                    {isBase && (
+                      <span className="chat-ctxfolder-base-label">Base</span>
+                    )}
+                  </span>
+                  <span className="chat-ctxfolder-dropdown-item-actions">
+                    {isBase && <Terminal size={12} aria-label="Terminal base folder" />}
+                    <X size={12} aria-label="Remove folder" />
+                  </span>
+                </button>
+              );
+            })}
           </div>
           <div className="chat-ctxfolder-dropdown-divider" />
         </>

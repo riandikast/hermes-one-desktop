@@ -125,6 +125,7 @@ import { useUsageTracker } from "./hooks/useUsageTracker";
 
 import { QueuedMessages } from "./QueuedMessages";
 
+import { ProviderRetryStatus } from "./ProviderRetryStatus";
 import { ChatTurnStatus } from "./ChatTurnStatus";
 import { ChatSubagentPanel } from "./ChatSubagentPanel";
 import { ChatSearch } from "./ChatSearch";
@@ -2087,6 +2088,13 @@ function Chat({
     setContextFolders((prev) => prev.filter((p) => p !== path));
   }, []);
 
+  const handleSetBaseFolder = useCallback((path: string) => {
+    setContextFolders((prev) => {
+      if (!prev.includes(path) || prev[0] === path) return prev;
+      return [path, ...prev.filter((folder) => folder !== path)];
+    });
+  }, []);
+
   // Stable toolbar callbacks so the memoized ModelPicker / ContextFolderChip
 
   // don't re-render on every streaming chunk (each chunk re-renders <Chat>).
@@ -2842,6 +2850,9 @@ function Chat({
       </div>
 
       <div className="chat-input-area">
+        <ProviderRetryStatus wait={dashboardTransport.providerWait}
+          canSwitch={dashboardTransport.canSwitchProvider}
+          onSwitch={dashboardTransport.switchProviderNow} />
         <ChatTurnStatus
           isLoading={isLoading}
           messages={messages}
@@ -2920,6 +2931,7 @@ function Chat({
                     show
                     onPickFolder={handlePickFolder}
                     onRemoveFolder={handleRemoveFolder}
+                    onSetBaseFolder={handleSetBaseFolder}
                     onToggleKnowledgeBundle={handleToggleKnowledgeBundle}
                     onSelectRecentFolder={handleSelectRecentFolder}
                   />

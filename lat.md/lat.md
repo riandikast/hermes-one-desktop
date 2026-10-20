@@ -2,6 +2,11 @@ This directory defines the high-level concepts, business logic, and architecture
 
 > **Hermes One** is a community-maintained project. This desktop app is a wrapper around **Hermes Agent** — it is **not affiliated with, endorsed by, or supported by Nous Research**. "Hermes One" is the name of this community project; "Hermes"/"Hermes Agent" refer to the upstream agent it builds on.
 
+- [[desktop-pending-reliability]] - guarded recovery, serialized model changes, GitHub settings authentication.
+- [[chat-manual-tools]] - manual terminal actions and history refresh.
+- [[knowledge-injection]] - knowledge bundle context injection.
+- [[resource-budget]] - shared resource queue and bounded tests.
+- [[source-control]] - git status, staging, commit, and synchronization.
 - [[chat-commands]] — how typed slash commands are routed through the gateway's `slash.exec`/`command.dispatch` pipeline instead of being sent as prompt text.
 - [[chat-performance]] — how chat rendering stays responsive through contained transcript rows, batched textarea resizing, and fixed-row slash-command virtualization.
 - [[chat-completion-latency]] — the id-cursor tail read and tail reconcile that keep finishing a turn O(tail) instead of re-reading and re-reconciling the whole session.

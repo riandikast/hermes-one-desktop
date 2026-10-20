@@ -19,6 +19,9 @@ import {
   useDashboardChatTransport,
 } from "./useDashboardChatTransport";
 import type { ActiveTurn, ChatMessage, UsageState } from "../types";
+import { FileChangeHistoryDialog } from "../FileChangeHistoryDialog";
+import { renderWithI18n } from "../../../test/renderWithI18n";
+import { screen, fireEvent } from "@testing-library/react";
 
 type SetUsageMock = Mock<(value: SetStateAction<UsageState | null>) => void>;
 
@@ -45,7 +48,8 @@ vi.mock("../dashboardGatewayClient", () => ({
     constructor(
       options: { onEvent?: (event: DashboardRpcEvent) => void } = {},
     ) {
-      dashboardMock.onEvent = options.onEvent ?? null;
+      // Control model connections must not replace the streaming event sink.
+      if ("onClose" in options) dashboardMock.onEvent = options.onEvent ?? null;
       dashboardMock.instances.push(this);
     }
   },
@@ -56,6 +60,8 @@ interface HarnessApi {
   activeTurnRef?: MutableRefObject<ActiveTurn | null>;
   messages?: ChatMessage[];
   send?: (text: string) => Promise<boolean>;
+  providerWait?: { deadline: number | null } | null;
+  switchProviderNow?: () => Promise<void>;
   abort?: () => void;
   applyModelOverride?: (provider: string, model: string) => Promise<void>;
   setConnectionMode?: Dispatch<SetStateAction<"local" | "remote" | "ssh">>;
@@ -85,6 +91,7 @@ const activeRecoveryTurn: ActiveTurn = {
 
 function Harness({
   active = true,
+  history = false,
   api,
   initialKnowledgeBundles = [],
   fallbackOnUnavailable = false,
@@ -97,6 +104,7 @@ function Harness({
   setUsage = vi.fn() as SetUsageMock,
 }: {
   active?: boolean;
+  history?: boolean;
   api: HarnessApi;
   initialKnowledgeBundles?: string[];
   fallbackOnUnavailable?: boolean;
@@ -107,7 +115,7 @@ function Harness({
   onDashboardUnavailable?: (reason: string) => void;
   onSwitchModel?: (provider: string, model: string, baseUrl: string) => Promise<void>;
   setUsage?: SetUsageMock;
-}): null {
+}): React.JSX.Element | null {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "u-bad",
@@ -162,6 +170,8 @@ function Harness({
       activeSubagents: transport.activeSubagents,
       send: transport.sendMessage,
       abort: transport.abort,
+      providerWait: transport.providerWait,
+      switchProviderNow: transport.switchProviderNow,
       applyModelOverride: transport.applyModelOverride,
       setConnectionMode,
       setMessages,
@@ -177,12 +187,16 @@ function Harness({
     messages,
     setConnectionMode,
     setMessages,
+    transport.providerWait,
+    transport.switchProviderNow,
     transport.activeSubagents,
     transport.sendMessage,
   ]);
 
-  return null;
+  return history ? <FileChangeHistoryDialog sessionId={null} messages={messages} onClose={() => {}} /> : null;
 }
+
+const payloadRejection = 'Provider said: HTTP 422: [422]: {"error":{"code":"VALIDATION_ERROR","message":"Input exceeds proxy payload limit.","request_id":"req_test"}}';
 
 describe("useDashboardChatTransport recovery", () => {
   beforeEach(() => {
@@ -205,6 +219,170 @@ describe("useDashboardChatTransport recovery", () => {
         getKnowledgeIndex: vi.fn(async () => "KNOWLEDGE-INDEX"),
       },
     });
+  });
+
+  it.each(["confirm", "stop", "new prompt", "model"])("Switch now waits for cancellation before resend (%s)", async (steer) => {
+    localStorage.setItem("hermes.chat.fallbackModels.v1", JSON.stringify({ models: [{ key: "fallback", provider: "bad-provider", model: "fallback", baseUrl: "", label: "fallback" }] }));
+    let release!: (value: unknown) => void;
+    const ack = new Promise((resolve) => { release = resolve; });
+    const sends: string[] = [];
+    const onSwitchModel = vi.fn(async () => undefined);
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      if (method === "session.interrupt") return ack;
+      if (method === "session.active_list") return { sessions: [{ id: "live", status: "idle" }] };
+      if (method === "subagent.list") return { subagents: [] };
+      if (method === "prompt.submit") sends.push(params.text);
+      return {};
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} onSwitchModel={onSwitchModel} />);
+    try {
+      await act(async () => { await api.send?.("original"); });
+      await act(async () => { dashboardMock.onEvent?.({ type: "thinking.delta", session_id: "live", payload: { text: "⏳ waiting on provider — retrying in 300s (attempt 1/3)" } }); });
+      let switching!: Promise<void>;
+      await act(async () => { switching = api.switchProviderNow!(); await Promise.resolve(); });
+      expect(sends).toEqual(["original"]);
+      expect(onSwitchModel).not.toHaveBeenCalled();
+      if (steer === "stop") await act(async () => { api.abort?.(); });
+      if (steer === "new prompt") await act(async () => { await api.send?.("MANUAL"); });
+      if (steer === "model") await act(async () => { await api.applyModelOverride?.("bad-provider", "chosen"); });
+      await act(async () => { release({ status: "interrupted" }); await switching; });
+      expect(onSwitchModel).toHaveBeenCalledTimes(steer === "confirm" ? 1 : 0);
+      expect(sends).toEqual(steer === "confirm" ? ["original", "Continue. Original prompt: original"] : steer === "new prompt" ? ["original", "MANUAL"] : ["original"]);
+    } finally { view.unmount(); localStorage.removeItem("hermes.chat.fallbackModels.v1"); }
+  });
+
+  it("explicit quota failure chooses fallback without same-model retries", async () => {
+    localStorage.setItem("hermes.chat.fallbackModels.v1", JSON.stringify({ models: [{ key: "fallback", provider: "bad-provider", model: "fallback", baseUrl: "", label: "fallback" }] }));
+    const sends: string[] = [];
+    const onSwitchModel = vi.fn(async () => undefined);
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      if (method === "session.active_list") return { sessions: [{ id: "live", status: "idle" }] };
+      if (method === "subagent.list") return { subagents: [] };
+      if (method === "prompt.submit") sends.push(params.text);
+      return {};
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} onSwitchModel={onSwitchModel} />);
+    try {
+      await act(async () => { await api.send?.("original"); });
+      await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { error: "insufficient_quota" } }); });
+      expect(onSwitchModel).toHaveBeenCalledTimes(1);
+      expect(sends).toEqual(["original", "Continue. Original prompt: original"]);
+    } finally { view.unmount(); localStorage.removeItem("hermes.chat.fallbackModels.v1"); }
+  });
+
+  it.each(["working", "unknown"])("silent %s never automatically resends; real diagnostics clear on progress and stop", async (status) => {
+    vi.useFakeTimers();
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      if (method === "session.active_list") return { sessions: [{ id: "live", status }] };
+      return {};
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} />);
+    try {
+      await act(async () => { await api.send?.("original"); });
+      expect(api.providerWait).toBeNull();
+      await act(async () => { await vi.advanceTimersByTimeAsync(120000); });
+      expect(dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit")).toHaveLength(1);
+      expect(api.activeTurnRef?.current?.status).toBe("running");
+      await act(async () => { dashboardMock.onEvent?.({ type: "thinking.delta", session_id: "live", payload: { text: "⏳ waiting on provider — retrying in 300s (attempt 1/3)" } }); });
+      expect(api.providerWait?.deadline).toBe(Date.now() + 300000);
+      await act(async () => { dashboardMock.onEvent?.({ type: "message.delta", session_id: "live", payload: { text: "progress" } }); });
+      expect(api.providerWait).toBeNull();
+      await act(async () => { api.abort?.(); });
+      expect(api.providerWait).toBeNull();
+    } finally { view.unmount(); vi.useRealTimers(); }
+  });
+
+  it.each(["submit", "complete", "text"])("compacts payload rejection before resend, once per manual prompt (%s)", async (seam) => {
+    const calls: string[] = [];
+    let release!: (value: unknown) => void;
+    const compact = new Promise((resolve) => { release = resolve; });
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      if (method === "session.compress") { calls.push("compact"); return compact; }
+      if (method === "prompt.submit") { calls.push(params.text); if (seam === "submit") throw new Error(payloadRejection); }
+      return {};
+    });
+    const api: HarnessApi = {};
+    render(<Harness api={api} />);
+    await act(async () => { await api.send?.("original"); });
+    if (seam !== "submit") await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: seam === "text" ? { text: payloadRejection } : { error: payloadRejection } }); });
+    expect(calls).toEqual(["original", "compact"]);
+    await act(async () => { release({ status: "compressed" }); });
+    expect(calls.slice(0, 3)).toEqual(["original", "compact", "Continue. Original prompt: original"]);
+    if (seam !== "submit") await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: seam === "text" ? { text: payloadRejection } : { error: payloadRejection } }); });
+    expect(calls.filter((x) => x === "compact")).toHaveLength(1);
+    expect(JSON.stringify(vi.mocked(window.hermesAPI.recordSessionContinuation).mock.calls)).not.toContain("Continue.");
+    expect(api.messages?.filter((m) => m.role === "user" && m.content === "original")).toHaveLength(1);
+    expect(api.messages?.some((m) => m.role === "user" && m.content.startsWith("Continue."))).toBe(false);
+  });
+
+  it.each(["interrupt", "prompt", "model", "aborted", "pending", "reject", "unrelated"])("payload compaction respects %s", async (action) => {
+    let release!: (value: unknown) => void;
+    let reject!: (error: Error) => void;
+    const compact = new Promise((resolve, fail) => { release = resolve; reject = fail; });
+    const submitted: string[] = [];
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      if (method === "session.compress") return compact;
+      if (method === "prompt.submit") {
+        submitted.push(params.text);
+        if (params.text === "original") throw new Error(action === "unrelated" ? 'HTTP 422 VALIDATION_ERROR: invalid API key' : payloadRejection);
+      }
+      return {};
+    });
+    const api: HarnessApi = {};
+    render(<Harness api={api} />);
+    await act(async () => { await api.send?.("original"); });
+    if (action === "unrelated") {
+      expect(dashboardMock.request.mock.calls.some(([method]) => method === "session.compress")).toBe(false);
+      return;
+    }
+    await act(async () => {
+      if (action === "interrupt") api.abort?.();
+      if (action === "prompt") await api.send?.("MANUAL");
+      if (action === "model") await api.applyModelOverride?.("bad-provider", "bad-model");
+      if (action === "reject") reject(new Error("compression failed"));
+      else release({ status: action === "aborted" || action === "pending" ? action : "compressed" });
+    });
+    expect(submitted).toEqual(action === "prompt" ? ["original", "MANUAL"] : ["original"]);
+  });
+
+  it("open history receives live snapshots and counts without reopen", async () => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      return {};
+    });
+    Object.assign(window.hermesAPI, { readFile: vi.fn(async () => ({ content: "after" })), recordSessionFileChanges: vi.fn(async () => true) });
+    const api: HarnessApi = {};
+    renderWithI18n(<Harness api={api} history />);
+    await act(async () => { await api.send?.("original"); });
+    expect(screen.getByText("No recorded file changes in this session.")).toBeTruthy();
+    for (const path of ["C:/repo/a.ts", "C:/repo/b.ts"]) {
+      await act(async () => {
+        dashboardMock.onEvent?.({ type: "tool.start", session_id: "live", payload: { name: "patch", tool_id: path, args: { path, old_string: "before", new_string: "after" } } });
+        dashboardMock.onEvent?.({ type: "tool.complete", session_id: "live", payload: { name: "patch", tool_id: path, result: "{}", args: { path, old_string: "before", new_string: "after" } } });
+      });
+      expect(document.querySelector(".file-change-history-count")?.textContent).toContain(path.endsWith("a.ts") ? "1" : "2");
+    }
+    fireEvent.click(screen.getByText("original").closest("summary")!);
+    expect(document.querySelector(".file-change-history-count")?.textContent).toContain("2");
+    fireEvent.click(screen.getByRole("button", { name: "C:/repo/a.ts" }));
+    expect([...document.querySelectorAll(".file-changes-diff-line")].map((line) => line.textContent)).toEqual(["-before", "+after"]);
+    await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text: "done" } }); });
+    expect(document.querySelector(".file-change-history-count")?.textContent).toContain("2");
+    expect(api.messages?.filter((row) => row.kind === "file_changes")).toHaveLength(1);
   });
 
   it("does not reseed renderer-local or injected prompts into a recovered session", () => {
@@ -239,6 +417,8 @@ describe("useDashboardChatTransport recovery", () => {
         submitted.push({ text: params.text, model: liveModel });
         if (params.text !== "MANUAL") throw new Error("provider limit; retry after 300s");
       }
+      if (method === "session.active_list") return { sessions: [{ id: "live", status: "idle" }] };
+      if (method === "subagent.list") return { subagents: [] };
       return {};
     });
     const api: HarnessApi = {};
@@ -279,6 +459,8 @@ describe("useDashboardChatTransport recovery", () => {
           throw new Error("session not found");
         }
       }
+      if (method === "session.active_list") return { sessions: [{ id: "live", status: "idle" }] };
+      if (method === "subagent.list") return { subagents: [] };
       return {};
     });
     const api: HarnessApi = {};
@@ -308,6 +490,8 @@ describe("useDashboardChatTransport recovery", () => {
         submitted.push(params.text);
         if (params.text !== "MANUAL" && submitted.length <= 3) throw new Error("failed");
       }
+      if (method === "session.active_list") return { sessions: [{ id: "live", status: "idle" }] };
+      if (method === "subagent.list") return { subagents: [] };
       return {};
     });
     const api: HarnessApi = {};
@@ -334,6 +518,8 @@ describe("useDashboardChatTransport recovery", () => {
       if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
       if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
       if (method === "prompt.submit") { submitted.push(params.text); throw new Error("failed"); }
+      if (method === "session.active_list") return { sessions: [{ id: "live", status: "idle" }] };
+      if (method === "subagent.list") return { subagents: [] };
       return {};
     });
     const api: HarnessApi = {};
@@ -548,7 +734,7 @@ describe("useDashboardChatTransport recovery", () => {
       await api.send?.("hello");
     });
 
-    expect(window.hermesAPI.freshDashboardWsUrl).toHaveBeenCalledTimes(1);
+    expect(window.hermesAPI.freshDashboardWsUrl).toHaveBeenCalledTimes(2);
     expect(dashboardMock.connect).toHaveBeenCalledWith("ws://fresh-dashboard");
   });
 

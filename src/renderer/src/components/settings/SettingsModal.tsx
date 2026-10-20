@@ -24,6 +24,7 @@ import DataPane from "./DataPane";
 import AboutPane from "./AboutPane";
 import CommunityPane from "./CommunityPane";
 import LogsPane from "./LogsPane";
+import GitHubPane from "./GitHubPane";
 
 export type SettingsSection =
   | "appearance"
@@ -31,6 +32,7 @@ export type SettingsSection =
   | "security"
   | "privacy"
   | "connection"
+  | "github"
   | "data"
   | "about"
   | "community"
@@ -45,6 +47,7 @@ const SETTINGS_NAV: ReadonlyArray<{
   labelKey: string;
   Icon: React.ComponentType<{ size?: number }>;
 }> = [
+  { group: "general", id: "github", labelKey: "settings.nav.github", Icon: Plug },
   {
     group: "general",
     id: "appearance",
@@ -206,6 +209,7 @@ export default function SettingsModal({
             {section === "security" && <SecurityPane />}
             {section === "privacy" && <PrivacyPane />}
             {section === "connection" && <ConnectionPane />}
+            {section === "github" && <GitHubPane />}
             {section === "data" && <DataPane />}
             {section === "about" && <AboutPane />}
             {section === "community" && <CommunityPane />}

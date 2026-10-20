@@ -280,6 +280,9 @@ interface KanbanCreateTaskInput {
 }
 
 interface HermesAPI {
+  githubAuthStatus: () => Promise<import("../shared/github-auth").GitHubAuthStatus>;
+  githubAuthSignIn: () => Promise<import("../shared/github-auth").GitHubAuthStatus>;
+  githubAuthCancel: () => Promise<void>;
   // Installation
   checkInstall: () => Promise<InstallStatus>;
   verifyInstall: () => Promise<boolean>;

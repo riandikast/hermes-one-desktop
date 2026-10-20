@@ -11,6 +11,7 @@ import {
   safeStorage,
 } from "electron";
 import { extname, join } from "path";
+import { GitHubAuth } from "../github-auth";
 import { randomUUID } from "crypto";
 import { readdir, readFile, stat, writeFile } from "fs/promises";
 import { watch } from "fs";
@@ -743,6 +744,22 @@ function resolveLibraryModelEntry(
 }
 
 export function registerIpcHandlers(context: IpcContext): void {
+  const githubAuth = new GitHubAuth();
+  const trustedGitHubSender = (event: Electron.IpcMainInvokeEvent): boolean =>
+    event.sender === context.getMainWindow()?.webContents &&
+    event.senderFrame === event.sender.mainFrame;
+  ipcMain.handle("github-auth:status", (event) => {
+    if (!trustedGitHubSender(event)) throw new Error("Unauthorized GitHub settings request");
+    return githubAuth.status();
+  });
+  ipcMain.handle("github-auth:signin", (event) => {
+    if (!trustedGitHubSender(event)) throw new Error("Unauthorized GitHub settings request");
+    return githubAuth.signIn();
+  });
+  ipcMain.handle("github-auth:cancel", (event) => {
+    if (!trustedGitHubSender(event)) throw new Error("Unauthorized GitHub settings request");
+    return githubAuth.cancel();
+  });
   const {
     activeRuns,
     getMainWindow,

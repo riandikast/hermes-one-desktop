@@ -8,6 +8,32 @@ vi.mock("../../components/useI18n", () => ({
 }));
 afterEach(() => { cleanup(); localStorage.clear(); });
 
+it("counts every selected folder and makes a right-clicked folder the terminal base", async () => {
+  const first = "C:/work/first";
+  const second = "C:/work/second";
+  window.hermesAPI = {
+    listRecentSessionContextFolders: vi.fn().mockResolvedValue([]),
+  } as unknown as typeof window.hermesAPI;
+  const setBase = vi.fn();
+  render(
+    <ContextFolderChip
+      contextFolders={[first, second]}
+      show
+      onPickFolder={vi.fn()}
+      onRemoveFolder={vi.fn()}
+      onSetBaseFolder={setBase}
+    />,
+  );
+
+  expect(screen.getByText("Folder (2)")).toBeTruthy();
+  fireEvent.click(screen.getByTitle("chat.setContextFolder"));
+  const secondRow = screen.getByTitle(
+    `${second} — click to remove; right-click to use as terminal base folder`,
+  );
+  fireEvent.contextMenu(secondRow);
+  expect(setBase).toHaveBeenCalledWith(second);
+});
+
 it("uses live sidebar aliases in selected and recent folders, preserving callback paths", async () => {
   const selected = "C:/work/actual-folder";
   const recent = "C:/work/another-folder";

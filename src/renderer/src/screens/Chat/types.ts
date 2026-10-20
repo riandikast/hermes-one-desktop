@@ -80,6 +80,7 @@ export interface ToolResultMessage {
   name: string;
   content: string;
   attachments?: Attachment[];
+  fileChanges?: FileChange[];
 }
 
 /**

@@ -1,4 +1,27 @@
 export default {
+  github: {
+    scope: "Local machine only. HTTPS Git commands using this user account and Git configuration can reuse native credentials. SSH, remote agents and repository overrides are separate.",
+    installed: "Installed",
+    missing: "Not installed",
+    helper: "GitHub credential helper",
+    configured: "Native manager configured",
+    notConfigured: "Not configured for native manager",
+    connection: "GitHub identity",
+    authenticated: "Verified with GitHub",
+    unauthenticated: "Not authenticated",
+    unknown: "Not verified",
+    checking: "Checking local Git and GitHub identity…",
+    signingIn: "Complete sign-in in the native browser window…",
+    consent: "Sign in opens Git Credential Manager browser OAuth, then configures this user's GitHub HTTPS helper globally. Secrets stay in the native credential manager. Verification checks GitHub identity, not repository push permission. Existing app-specific PAT overrides remain separate.",
+    installHint: "Install Git with Git Credential Manager using your platform's installer, then verify again. No credentials are stored by this settings page.",
+    signIn: "Sign in with browser",
+    verify: "Verify connection",
+    unavailable: "Native Git Credential Manager is unavailable.",
+    failed: "Sign-in or configuration failed. Verify connection before retrying.",
+    cancelled: "Sign-in cancelled. An already opened browser tab may remain open.",
+    timeout: "Sign-in timed out. Verify connection before retrying.",
+    busy: "Another sign-in is already in progress.",
+  },
   terminalShell: {
     label: "Windows terminal shell",
     hint: "For newly opened terminals and Commands. Command Prompt avoids PowerShell scripts.",
@@ -12,6 +35,7 @@ export default {
     credentialPool: "Credential Pool",
   },
   nav: {
+    github: "GitHub",
     groups: {
       general: "General",
       hermes: "Hermes One",

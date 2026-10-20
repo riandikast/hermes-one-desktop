@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { cancelTurn, explicitModelLimit, probeTurn, providerRetry, type ProviderRetry } from "../providerRetry";
 import { useActiveSubagents, type ActiveSubagent } from "./useActiveSubagents";
 import { LOCAL_PRESETS } from "../../../constants";
 import {
@@ -63,6 +64,10 @@ function payloadText(
     if (typeof value === "string" && value) return value;
   }
   return "";
+}
+
+function isPayloadOverflow(message: string): boolean {
+  return /input exceeds proxy payload limit\b|\bcontext_length_exceeded\b|\bmaximum context length\b|\bcontext window exceeded\b|\brequest (?:body|payload) too large\b/i.test(message);
 }
 
 interface SessionResponse {
@@ -218,6 +223,9 @@ interface UseDashboardChatTransportArgs {
 }
 
 interface UseDashboardChatTransportResult {
+  canSwitchProvider: boolean;
+  providerWait: ProviderRetry | null;
+  switchProviderNow: () => Promise<void>;
   activeSubagents: ActiveSubagent[];
   abort: () => void;
   enabled: boolean;
@@ -965,7 +973,7 @@ export function completionFailed(payload: unknown): boolean {
   if (typeof row.error === "string" && row.error.trim()) return true;
   if (row.ok === false || row.success === false) return true;
   const text = String(row.text || row.rendered || "").trim();
-  return /^(error:\s*)?(error code:\s*\d+|api call failed after \d+ retries|hermes dashboard did not switch\b)/i.test(
+  return (/^(?:Provider said:\s*)?(?:HTTP\s+\d+:|\[\d+\]:)/i.test(text) && isPayloadOverflow(text)) || /^(error:\s*)?(error code:\s*\d+|api call failed after \d+ retries|hermes dashboard did not switch\b)/i.test(
     text,
   );
 }
@@ -1232,7 +1240,17 @@ export function useDashboardChatTransport({
    * ordering knot: the trigger sites only need "something to call", and the
    * real implementation is assigned once it is defined.
    */
-  const runRecoveryRef = useRef<(fromWedge: boolean) => void>(() => undefined);
+  const runRecoveryRef = useRef<(fromWedge: boolean, error?: string) => void>(() => undefined);
+  const compactAttemptedRef = useRef(false);
+  const recoveryInFlightRef = useRef(false);
+  const streamRevisionRef = useRef(0);
+  const [providerWait, setProviderWait] = useState<ProviderRetry | null>(null);
+  const providerWaitRef = useRef<ProviderRetry | null>(null);
+  const switchingProviderRef = useRef(false);
+  const clearProviderWait = useCallback(() => {
+    providerWaitRef.current = null;
+    setProviderWait(null);
+  }, []);
   const beginChildTurn = useCallback((): void => {
     if (!activeTurnRef.current) {
       activeTurnRef.current = {
@@ -1408,6 +1426,7 @@ export function useDashboardChatTransport({
 
   useEffect(() => {
     if (hermesSessionId === storedSessionIdRef.current) return;
+    clearProviderWait();
     storedSessionIdRef.current = hermesSessionId;
     runtimeSessionIdRef.current = null;
     runtimeSessionPromiseRef.current = null;
@@ -1426,9 +1445,10 @@ export function useDashboardChatTransport({
   }, [hermesSessionId]);
 
   useEffect(() => {
+    clearProviderWait();
     appliedModelRef.current = null;
     modelOptionsCacheRef.current = null;
-  }, [model, provider, modelBaseUrl]);
+  }, [model, provider, modelBaseUrl, clearProviderWait]);
 
   useEffect(() => {
     clientGenerationRef.current += 1;
@@ -1481,7 +1501,7 @@ export function useDashboardChatTransport({
 
   const resetStallTimer = useCallback((): void => {
     clearStallTimer();
-    stallTimerRef.current = setTimeout(() => {
+    stallTimerRef.current = setTimeout(async () => {
       stallTimerRef.current = null;
       const activeTurn = activeTurnRef.current;
       // Watch runs can legitimately be silent; only their completion ends them.
@@ -1496,9 +1516,22 @@ export function useDashboardChatTransport({
         resetStallTimer();
         return;
       }
-      const message =
-        "No response from the model for 2 minutes — the provider may be " +
-        "overloaded or the request was dropped. Send again to retry.";
+      const generation = sendGenerationRef.current;
+      const revision = streamRevisionRef.current;
+      const sessionId = runtimeSessionIdRef.current;
+      const client = clientRef.current;
+      const verdict = client && sessionId
+        ? await probeTurn(client.request.bind(client), sessionId) : "unknown";
+      if (revision !== streamRevisionRef.current || generation !== sendGenerationRef.current || activeTurnRef.current !== activeTurn ||
+          hasUnresolvedTool(messagesRef.current) || activeTurn === childTurnRef.current) return;
+      if (verdict !== "failed") {
+        // Silence is not a failure, even when the backend reports idle.
+        // Keep Stop available; user may explicitly cancel and switch.
+        if (!providerWaitRef.current) setProviderWait({ deadline: null });
+        resetStallTimer();
+        return;
+      }
+      const message = "The backend confirmed the turn failed.";
       activeTurn.status = "failed";
       const failedMessages = markActiveTurnFailed(
         messagesRef.current,
@@ -1513,7 +1546,7 @@ export function useDashboardChatTransport({
       lastLocalActivityAtRef.current = Date.now();
       // A stalled turn is a failure like any other — same recovery rules.
       // Called through a ref: runRecovery is defined later (it needs sendMessage).
-      runRecoveryRef.current(false);
+      runRecoveryRef.current(false, message);
     }, TURN_STALL_TIMEOUT_MS);
   }, [clearStallTimer, setMessages, setToolProgress, setIsLoading]);
 
@@ -1591,6 +1624,9 @@ export function useDashboardChatTransport({
       return;
     }
     fileChangesFinalizingRef.current = true;
+    const generation = sendGenerationRef.current;
+    const turnMessages = messagesRef.current;
+    const storedSessionId = storedSessionIdRef.current;
     const captured = Array.from(fileChangesRef.current.values());
     console.info("[file-changes] captured", {
       toolPaths: captured.map((c) => c.path),
@@ -1642,14 +1678,14 @@ export function useDashboardChatTransport({
           ? folder
           : (lastSyncedCwdRef.current?.trim() || null);
       let lastUserIdx = -1;
-      for (let i = messagesRef.current.length - 1; i >= 0; i--) {
-        if (messagesRef.current[i].role === "user") {
+      for (let i = turnMessages.length - 1; i >= 0; i--) {
+        if (turnMessages[i].role === "user") {
           lastUserIdx = i;
           break;
         }
       }
       const transcriptPaths = changedFilesFromToolRows(
-        messagesRef.current,
+        turnMessages,
         lastUserIdx + 1,
         transcriptBaseDir,
       );
@@ -1677,6 +1713,7 @@ export function useDashboardChatTransport({
       const changes = Array.from(byPath.values()).filter(
         (c) => c.after !== null || c.before !== null,
       );
+      if (generation !== sendGenerationRef.current) return;
       if (changes.length === 0) {
         // Nothing to report: leave the turn un-emitted so a later finalize
         // (e.g. after a late tool event) can still produce the chip.
@@ -1696,7 +1733,6 @@ export function useDashboardChatTransport({
       // further finalize for this turn must not add a second one.
       fileChangesEmittedRef.current = true;
       fileChangesFinalizingRef.current = false;
-      const storedSessionId = storedSessionIdRef.current;
       const record = window.hermesAPI.recordSessionFileChanges;
       if (
         dashboardShouldPersistLocalOverlays(connectionMode) &&
@@ -1708,7 +1744,7 @@ export function useDashboardChatTransport({
     })().catch(() => {
       // A failed body must not wedge the guard, or the turn could never
       // report changes again.
-      fileChangesFinalizingRef.current = false;
+      if (generation === sendGenerationRef.current) fileChangesFinalizingRef.current = false;
     });
   }, [connectionMode, contextFolder, setMessages]);
 
@@ -1719,7 +1755,7 @@ export function useDashboardChatTransport({
       const activeTurn = activeTurnRef.current;
       const storedSessionId = storedSessionIdRef.current;
       // A stable DB tail can be interim commentary while the child still runs.
-      if (!activeTurn || activeTurn === childTurnRef.current || !storedSessionId) return;
+      if (!activeTurn || activeTurn === childTurnRef.current || !storedSessionId || providerWaitRef.current) return;
       void (async () => {
         try {
           console.info("[quiet-finalize] firing", {
@@ -1803,6 +1839,7 @@ export function useDashboardChatTransport({
           setToolProgress(null);
           setIsLoading(false);
           lastLocalActivityAtRef.current = Date.now();
+          clearProviderWait();
           // A successful settle clears the failure streak.
           quietFinalizeErrorsRef.current = 0;
               // FILE-CHANGES: emit the summary chip (lost message.complete must
@@ -1887,6 +1924,16 @@ export function useDashboardChatTransport({
         }
       }
       logDashboardEvent(event, "accepted", runtimeSessionId);
+      streamRevisionRef.current++;
+      if (activeTurnRef.current && event.session_id === runtimeSessionIdRef.current && !recoveryCancelledRef.current) {
+        const retry = providerRetry(event, Date.now());
+        if (retry) {
+          providerWaitRef.current = retry;
+          setProviderWait(retry);
+        } else if (["message.delta", "reasoning.delta", "tool.start", "tool.progress", "tool.complete", "message.complete"].includes(event.type)) {
+          clearProviderWait();
+        }
+      }
       const timing = sendTimingRef.current;
       if (timing?.submitted && !timing.firstDelta && activeTurnRef.current &&
           event.session_id === runtimeSessionIdRef.current &&
@@ -2210,11 +2257,13 @@ export function useDashboardChatTransport({
         }
 
         const capturePath = (path: string): void => {
+          const capture = fileChangesRef.current;
           const existing = fileChangesRef.current.get(path);
           if (existing) {
             if (removed || added) {
               fileChangesRef.current.set(path, {
                 ...existing,
+                after: newString ?? existing.after,
                 removed,
                 added,
               });
@@ -2251,12 +2300,20 @@ export function useDashboardChatTransport({
               // already exists. Only fills `after` when the payload had no hunk,
               // so a real hunk is never overwritten by the whole file.
               const current = fileChangesRef.current.get(path);
+              if (capture !== fileChangesRef.current) return;
               if (!current) return;
               if (current.removed || current.added) return;
               fileChangesRef.current.set(path, {
                 ...current,
                 after: res?.content ?? null,
               });
+              const index = messagesRef.current.findLastIndex((row) => row.kind === "tool_result");
+              if (index >= 0) {
+                const updated = messagesRef.current.map((row, i) => i === index
+                  ? { ...row, fileChanges: Array.from(capture.values()) } : row);
+                messagesRef.current = updated;
+                setMessages(updated);
+              }
             })
             .catch(() => undefined);
         };
@@ -2310,13 +2367,19 @@ export function useDashboardChatTransport({
         },
       );
       reasoningSegmentClosedRef.current = next.reasoningSegmentClosed;
-      const nextMessages = failed
+      let nextMessages = failed
         ? markActiveTurnFailed(
             next.messages,
             completionErrorMessage(event.payload),
             activeTurnRef.current,
           )
         : next.messages;
+      // Publish captured diffs with completed tools, not only at turn end.
+      if (event.type === "tool.complete" && fileChangesRef.current.size) {
+        const index = nextMessages.findLastIndex((row) => row.kind === "tool_result");
+        if (index >= 0) nextMessages = nextMessages.map((row, i) => i === index
+          ? { ...row, fileChanges: Array.from(fileChangesRef.current.values()) } : row);
+      }
       messagesRef.current = nextMessages;
       setMessages(nextMessages);
 
@@ -2356,7 +2419,7 @@ export function useDashboardChatTransport({
         if (failed) {
           appliedModelRef.current = null;
           modelOptionsCacheRef.current = null;
-          recreateRuntimeSessionRef.current = true;
+          recreateRuntimeSessionRef.current = !isPayloadOverflow(completionErrorMessage(event.payload));
           const storedSessionId = storedSessionIdRef.current;
           const userContent = userContentById(
             messagesRef.current,
@@ -2387,6 +2450,10 @@ export function useDashboardChatTransport({
         lastLocalActivityAtRef.current = Date.now();
           // FILE-CHANGES: emit the per-turn summary chip row (git + tool merge).
         finalizeFileChanges();
+        clearProviderWait();
+        if (failed) {
+          runRecoveryRef.current(false, completionErrorMessage(event.payload));
+        }
         // The sidebar's "last updated" ordering reads each session's newest
         // message timestamp. A turn that finishes in an EXISTING session
         // changed that timestamp but told the sidebar nothing — the only
@@ -2840,7 +2907,8 @@ export function useDashboardChatTransport({
     [ensureRuntimeSessionUnlocked],
   );
 
-  const ensureSelectedModel = useCallback(
+  const modelApplicationRef = useRef<Promise<unknown>>(Promise.resolve());
+  const applySelectedModel = useCallback(
     async (
       client: DashboardGatewayClient,
       sessionId: string,
@@ -2991,19 +3059,24 @@ export function useDashboardChatTransport({
         appliedModelRef.current = null;
         modelOptionsCacheRef.current = null;
         checkCancelled();
-        const selectModel = () => client.request<SlashExecResponse>(
-          "slash.exec",
-          {
-            session_id: targetSessionId,
-            command: resolvedCommand,
-          },
-          // Same long budget as the user-typed slash path (slashExec.ts):
-          // a model switch shells out to `/model <provider>/<model>` and
-          // on a slow/remote gateway it legitimately runs past the 30s
-          // client default. Timing out here reported a scary popup while
-          // the gateway kept executing the switch anyway.
-          SLASH_COMMAND_TIMEOUT_MS,
-        );
+        const selectModel = async (): Promise<SlashExecResponse> => {
+          // Interrupt closes the streaming socket and rejects its pending RPCs,
+          // not the backend worker. Keep model writes on a control connection so
+          // the application queue waits for the actual acknowledgement.
+          const control = new DashboardGatewayClient({ onEvent: () => undefined });
+          try {
+            const url = await window.hermesAPI.freshDashboardWsUrl(profile);
+            checkCancelled();
+            await control.connect(url);
+            checkCancelled();
+            return await control.request<SlashExecResponse>("slash.exec", {
+              session_id: targetSessionId,
+              command: resolvedCommand,
+            }, SLASH_COMMAND_TIMEOUT_MS);
+          } finally {
+            control.close();
+          }
+        };
         // Only replay our idempotent selection, never a prompt or arbitrary slash.
         const slashResponse = await selectModel().catch((err: unknown) => {
           checkCancelled();
@@ -3144,6 +3217,22 @@ export function useDashboardChatTransport({
       }
     },
     [ensureRuntimeSession, profile],
+  );
+
+  // A sent /model RPC cannot be cancelled by a renderer generation change.
+  // Serialize all model applications so an older completion cannot land after
+  // a newer pick. Resolve identity only when this application owns the queue.
+  const ensureSelectedModel = useCallback(
+    (client: DashboardGatewayClient, sessionId: string): Promise<string> => {
+      const generation = sendGenerationRef.current;
+      const application = modelApplicationRef.current.catch(() => undefined).then(() => {
+        if (generation !== sendGenerationRef.current) throw new Error("Send cancelled");
+        return applySelectedModel(client, sessionId);
+      });
+      modelApplicationRef.current = application;
+      return application;
+    },
+    [applySelectedModel],
   );
 
   const syncDashboardAttachments = useCallback(
@@ -3314,7 +3403,9 @@ export function useDashboardChatTransport({
       const isRecovery = recoveryGeneration !== undefined;
       if (isRecovery && (recoveryCancelledRef.current || recoveryGeneration !== sendGenerationRef.current)) return true;
       const sendGeneration = isRecovery ? recoveryGeneration : ++sendGenerationRef.current;
+      clearProviderWait();
       if (!isRecovery) {
+        compactAttemptedRef.current = false;
         recoveryCancelledRef.current = false;
         recoveryAttemptsRef.current = 0;
         recoveryChainIndexRef.current = 0;
@@ -3457,6 +3548,7 @@ export function useDashboardChatTransport({
           );
         }
       };
+
       let submitted = false;
       const failActiveTurn = (message: string): true => {
         const activeTurn = activeTurnRef.current;
@@ -3491,7 +3583,7 @@ export function useDashboardChatTransport({
         // runRecovery (interrupt latch, one-per-episode, attempt cap), and a
         // no-op when no chain/switch callback is configured. Through a ref
         // because runRecovery is declared below (it needs sendMessage).
-        if (submitted) runRecoveryRef.current(false);
+        if (submitted || explicitModelLimit(message) || isPayloadOverflow(message)) runRecoveryRef.current(false, message);
         return true;
       };
       if (dashboardText === null) {
@@ -3611,7 +3703,7 @@ export function useDashboardChatTransport({
         // Remember what to replay, and which chain this turn rides. Snapshotted
         // (not read live) so editing the picker mid-turn cannot change a
         // recovery already in flight.
-        if (!isRecovery) originalPromptRef.current = promptText;
+        // Keep the exact manual prompt, not attachment/context-expanded transport text.
         if (!isRecovery) fallbackChainRef.current = fallbackChainFor(
           loadFallbackModels(),
           primaryKeyOf(
@@ -3636,6 +3728,7 @@ export function useDashboardChatTransport({
         // overload / dropped request), fail the turn instead of loading
         // forever. Any accepted stream event pushes the deadline out.
         resetStallTimer();
+
         submitted = true;
         if (sendTimingRef.current) sendTimingRef.current.submitted = true;
         markSendStage("submit");
@@ -3680,8 +3773,8 @@ export function useDashboardChatTransport({
         clearStallTimer();
         appliedModelRef.current = null;
         modelOptionsCacheRef.current = null;
-        recreateRuntimeSessionRef.current = true;
         const message = err instanceof Error ? err.message : String(err);
+        recreateRuntimeSessionRef.current = !isPayloadOverflow(message);
         return failActiveTurn(message);
       }
     },
@@ -3845,6 +3938,8 @@ export function useDashboardChatTransport({
 
   const abort = useCallback(() => {
     if (!enabled) return;
+    clearProviderWait();
+    clearStallTimer();
     sendGenerationRef.current++;
     // THE interrupt guarantee: latch recovery OFF before anything else. A
     // failure that lands after this must never trigger an automatic
@@ -3906,7 +4001,7 @@ export function useDashboardChatTransport({
    * be wrong (interrupted, already fired this episode, nothing to send).
    */
   const runRecovery = useCallback(
-    async (fromWedge: boolean): Promise<void> => {
+    async (fromWedge: boolean, error?: string): Promise<void> => {
       // Interrupt is absolute — re-checked at the moment of action, not just
       // when the trigger fired, because the user may have pressed stop during
       // the async gap.
@@ -3914,11 +4009,50 @@ export function useDashboardChatTransport({
       const cancelled = () => recoveryCancelledRef.current || generation !== sendGenerationRef.current;
       if (cancelled()) return;
       // One recovery per stuck episode.
-      if (recoveryFiredForEpisodeRef.current) return;
+      if (recoveryFiredForEpisodeRef.current || recoveryInFlightRef.current) return;
       // Only recover a turn we actually started.
       const original = originalPromptRef.current;
       if (!original) return;
 
+      if (error && isPayloadOverflow(error)) {
+        if (compactAttemptedRef.current) return;
+        compactAttemptedRef.current = true;
+        recoveryFiredForEpisodeRef.current = true;
+        clearStallTimer();
+        clearQuietFinalize();
+        try {
+          const client = await ensureClient();
+          if (cancelled()) return;
+          const sessionId = runtimeSessionIdRef.current;
+          if (!sessionId) return;
+          // Official desktop compression action: replay only after committed success.
+          const result = await client.request<{ status?: string; summary?: { aborted?: boolean } }>(
+            "session.compress", { session_id: sessionId }, 660_000,
+          );
+          if (cancelled()) return;
+          if (result?.status !== "compressed" || result.summary?.aborted) return;
+          recreateRuntimeSessionRef.current = false;
+          await sendMessage(buildRecoveryPrompt(original), undefined, generation);
+        } catch {
+          // Keep the original failure visible; failed compression must not resend.
+        }
+        return;
+      }
+
+      if (!fromWedge && (hasUnresolvedTool(messagesRef.current) || activeSubagents.length || childTurnRef.current === activeTurnRef.current && activeTurnRef.current)) return;
+      recoveryInFlightRef.current = true;
+      try {
+      if (!fromWedge) {
+        const client = await ensureClient();
+        if (cancelled()) return;
+        const sessionId = runtimeSessionIdRef.current;
+        const verdict = sessionId ? await probeTurn(client.request.bind(client), sessionId) : "unknown";
+        if (cancelled()) return;
+        if (verdict !== "idle" && verdict !== "failed") {
+          setProviderWait({ deadline: null });
+          return;
+        }
+      }
       const action = nextRecoveryAction({
         state: {
           attempts: recoveryAttemptsRef.current,
@@ -3927,7 +4061,7 @@ export function useDashboardChatTransport({
           firedForEpisode: recoveryFiredForEpisodeRef.current,
         },
         chain: fallbackChainRef.current,
-        fromWedge,
+        fromWedge: fromWedge || explicitModelLimit(error ?? ""),
       });
       if (action.kind === "give-up") return;
       recoveryFiredForEpisodeRef.current = true;
@@ -3962,16 +4096,48 @@ export function useDashboardChatTransport({
 
       // The action may have been decided a moment ago; re-check before sending.
       if (cancelled()) return;
+      recoveryInFlightRef.current = false;
       await sendMessage(buildRecoveryPrompt(original), undefined, generation);
+      } finally { recoveryInFlightRef.current = false; }
     },
-    [onRecoveryNotice, onSwitchModel, sendMessage],
+    [onRecoveryNotice, onSwitchModel, sendMessage, ensureClient, clearStallTimer, clearQuietFinalize, activeSubagents],
   );
+
+  const switchProviderNow = useCallback(async (): Promise<void> => {
+    if (switchingProviderRef.current || !providerWait || !originalPromptRef.current ||
+        !onSwitchModel || !fallbackChainRef.current[recoveryChainIndexRef.current]) return;
+    switchingProviderRef.current = true;
+    const generation = ++sendGenerationRef.current;
+    recoveryCancelledRef.current = true;
+    const cancelled = () => generation !== sendGenerationRef.current;
+    clearStallTimer();
+    clearQuietFinalize();
+    try {
+      const client = await ensureClient();
+      if (cancelled()) return;
+      const sessionId = runtimeSessionIdRef.current;
+      if (!sessionId || !await cancelTurn(client.request.bind(client), sessionId, cancelled)) return;
+      if (cancelled()) return;
+      childTurnRef.current = null;
+      activeTurnRef.current = null;
+      clearProviderWait();
+      setIsLoading(false);
+      setToolProgress(null);
+      recoveryCancelledRef.current = false;
+      recoveryFiredForEpisodeRef.current = false;
+      await runRecovery(true);
+    } catch {
+      // Keep the recovery control visible; no confirmation means no replacement.
+    } finally {
+      switchingProviderRef.current = false;
+    }
+  }, [providerWait, onSwitchModel, ensureClient, clearStallTimer, clearQuietFinalize, clearProviderWait, runRecovery, setIsLoading, setToolProgress]);
 
   // Publish the implementation for the trigger sites declared earlier (the
   // stall watchdog and the fail path), which cannot reference it directly.
   useEffect(() => {
-    runRecoveryRef.current = (fromWedge: boolean): void => {
-      void runRecovery(fromWedge);
+    runRecoveryRef.current = (fromWedge: boolean, error?: string): void => {
+      void runRecovery(fromWedge, error);
     };
   }, [runRecovery]);
 
@@ -4000,8 +4166,9 @@ export function useDashboardChatTransport({
       })),
       Date.now(),
     );
-    if (wedged) void runRecovery(true);
-  }, [active, activeSubagents, enabled, runRecovery]);
+    // No-progress heuristics cannot authorize replay while children may still work.
+    if (wedged && !providerWait && !recoveryCancelledRef.current) setProviderWait({ deadline: null });
+  }, [active, activeSubagents, enabled, providerWait]);
 
   useEffect(
     () => () => {
@@ -4016,6 +4183,7 @@ export function useDashboardChatTransport({
   const applyModelOverride = useCallback(
     async (provider: string, model: string): Promise<void> => {
       if (!enabled) return;
+      clearProviderWait();
       sendGenerationRef.current += 1;
       recoveryCancelledRef.current = true;
       recoveryFiredForEpisodeRef.current = true;
@@ -4041,6 +4209,9 @@ export function useDashboardChatTransport({
   );
 
   return {
+    canSwitchProvider: !!onSwitchModel && !!fallbackChainRef.current[recoveryChainIndexRef.current],
+    providerWait,
+    switchProviderNow,
     activeSubagents,
     abort,
     enabled,

@@ -356,20 +356,20 @@ describe("transport wiring (source guard)", () => {
   });
 
   it("fires recovery from both the failure path and the stall watchdog", () => {
-    expect(source).toContain("runRecoveryRef.current(false)");
+    expect(source).toContain("runRecoveryRef.current(false, message)");
     // The stall watchdog triggers through the ref (ordering-safe). Anchor on the
     // stall message text, which is unique to that block.
-    const stallIdx = source.indexOf("No response from the model for 2 minutes");
+    const stallIdx = source.indexOf("The backend confirmed the turn failed.");
     expect(stallIdx).toBeGreaterThan(-1);
     const after = source.slice(stallIdx, stallIdx + 900);
-    expect(after).toContain("runRecoveryRef.current(false)");
+    expect(after).toContain("runRecoveryRef.current(false, message)");
   });
 
   it("drives recovery through a ref so ordering cannot break it", () => {
     // sendMessage is declared AFTER the stall watchdog; a direct reference
     // would be a TDZ error at runtime.
-    expect(source).toContain("const runRecoveryRef = useRef<(fromWedge: boolean) => void>");
-    expect(source).toContain("runRecoveryRef.current = (fromWedge: boolean)");
+    expect(source).toContain("const runRecoveryRef = useRef<(fromWedge: boolean, error?: string) => void>");
+    expect(source).toContain("runRecoveryRef.current = (fromWedge: boolean, error?: string)");
     const sendIdx = source.indexOf("const sendMessage = useCallback(");
     const stallIdx = source.indexOf("const resetStallTimer = useCallback(");
     expect(sendIdx).toBeGreaterThan(stallIdx);

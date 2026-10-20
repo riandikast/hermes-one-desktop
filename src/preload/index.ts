@@ -119,6 +119,9 @@ const electronAPI = {
 };
 
 const hermesAPI = {
+  githubAuthStatus: (): Promise<import("../shared/github-auth").GitHubAuthStatus> => ipcRenderer.invoke("github-auth:status"),
+  githubAuthSignIn: (): Promise<import("../shared/github-auth").GitHubAuthStatus> => ipcRenderer.invoke("github-auth:signin"),
+  githubAuthCancel: (): Promise<void> => ipcRenderer.invoke("github-auth:cancel"),
   // Installation
   checkInstall: (): Promise<{
     installed: boolean;

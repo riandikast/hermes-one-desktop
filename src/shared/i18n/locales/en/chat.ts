@@ -1,4 +1,12 @@
 export default {
+  providerRetry: {
+    countdown: "Provider retry in {{seconds}}s",
+    due: "Provider retry due, waiting for progress",
+    silent: "No recent progress. Request may still be running.",
+    switch: "Switch now",
+    stopping: "Confirming stop...",
+    unconfirmed: "Stop not confirmed. No replacement sent.",
+  },
   fileChangeHistory: {
     copyPath: "Copy path",
     copied: "Path copied.",

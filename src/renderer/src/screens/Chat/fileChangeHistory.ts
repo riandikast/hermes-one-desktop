@@ -40,9 +40,7 @@ export function groupFileChangeHistory(
       const snapshots =
         row.kind === "file_changes"
           ? row.changes
-          : isBubbleMessage(row)
-            ? row.fileChanges
-            : undefined;
+          : "fileChanges" in row ? row.fileChanges : undefined;
       for (const change of snapshots ?? [])
         keepRichest(changes, change);
     }

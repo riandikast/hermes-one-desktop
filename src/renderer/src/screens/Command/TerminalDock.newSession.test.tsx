@@ -8,6 +8,7 @@
 // the handler AND that the handler the app supplies creates a session.
 
 import { createRef } from "react";
+import { Terminal } from "@xterm/xterm";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TerminalDock, type TerminalDockHandle } from "./TerminalDock";
@@ -17,6 +18,7 @@ vi.mock("@xterm/xterm", () => ({
     cols = 80;
     rows = 24;
     open(): void {}
+    getSelection(): string { return ""; }
     focus(): void {
       const store = (globalThis as unknown as { __focusCalls?: number[] });
       (store.__focusCalls ??= []).push(Date.now());
@@ -76,6 +78,27 @@ function renderDock(onNewSession: () => void): {
   );
   return { ref, container };
 }
+
+describe("terminal right-click copy", () => {
+  it.each(["  selected\r\ntext  ", ""])("copies only a nonempty selection: %j", async (selection) => {
+    const getSelection = vi.spyOn(Terminal.prototype, "getSelection").mockReturnValue(selection);
+    const copy = vi.fn().mockResolvedValue(undefined);
+    window.hermesAPI.copyToClipboard = copy;
+    const view = renderDock(vi.fn());
+    try {
+      act(() => view.ref.current?.attachSession("copy-terminal", "Terminal"));
+      const pane = view.container.querySelector(".terminal-dock-pane")!;
+      const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+      fireEvent(pane, event);
+      expect(copy).toHaveBeenCalledTimes(selection ? 1 : 0);
+      if (selection) expect(copy).toHaveBeenCalledWith(selection);
+      expect(event.defaultPrevented).toBe(!!selection);
+      expect(window.hermesAPI.terminalWrite).not.toHaveBeenCalled();
+    } finally {
+      getSelection.mockRestore();
+    }
+  });
+});
 
 describe('terminal dock "+" button', () => {
   it("creates only on empty opening, preserves sessions on reopen, stays lazy closed", () => {

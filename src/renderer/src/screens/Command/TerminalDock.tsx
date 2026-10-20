@@ -230,10 +230,21 @@ export const TerminalDock = forwardRef<
         // forward. See handleTerminalInput.
         onInputRef.current(id, data);
       });
+      const copySelection = (event: MouseEvent): void => {
+        const selection = dock.term.getSelection();
+        if (!selection) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void window.hermesAPI.copyToClipboard(selection).catch((error: unknown) => {
+          console.warn("Failed to copy terminal selection", error);
+        });
+      };
+      dock.pane.addEventListener("contextmenu", copySelection, true);
       const prevCleanup = cleanup;
       dock.cleanup = () => {
         prevCleanup();
         dataSub.dispose();
+        dock.pane.removeEventListener("contextmenu", copySelection, true);
       };
       setSessions((prev) => [...prev, dock.state]);
       setActiveId(id);
