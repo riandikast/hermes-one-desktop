@@ -97,7 +97,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          if ! npx @electron/rebuild -f -w better-sqlite3 2>&1 | tee ci-rebuild.log; then
+          if ! npx @electron/rebuild -f -o better-sqlite3 2>&1 | tee ci-rebuild.log; then
             tail -n 12 ci-rebuild.log | sed 's/^/::error::/'
             exit 1
           fi
