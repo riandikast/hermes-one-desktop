@@ -89,16 +89,19 @@ jobs:
           fi
 
       # electron-builder's config sets npmRebuild:false, so native modules for
-      # Electron must be prepared here. Kept separate from `npm ci` so a rebuild
-      # failure is distinguishable from a dependency/lockfile failure.
-      - name: Rebuild native modules
+      # Electron must be prepared here. node-pty 1.1 ships N-API prebuilds
+      # (node_modules/node-pty/prebuilds/win32-x64) that already load in
+      # Electron; forcing a node-gyp rebuild of it fails on the runner. Only
+      # better-sqlite3 needs a real Electron-ABI build.
+      - name: Rebuild better-sqlite3 for Electron
         shell: bash
         run: |
           set -o pipefail
-          if ! npx electron-builder install-app-deps 2>&1 | tee ci-rebuild.log; then
-            tail -n 8 ci-rebuild.log | sed 's/^/::error::/'
+          if ! npx @electron/rebuild -f -w better-sqlite3 2>&1 | tee ci-rebuild.log; then
+            tail -n 12 ci-rebuild.log | sed 's/^/::error::/'
             exit 1
           fi
+          ls -l node_modules/better-sqlite3/build/Release/*.node
 
       - name: Stamp build version
         env:
