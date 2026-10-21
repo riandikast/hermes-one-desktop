@@ -100,11 +100,6 @@ interface ModelOptionProvider {
   slug: string;
 }
 
-interface SlashExecResponse {
-  output?: string;
-  warning?: string;
-}
-
 interface ImageAttachBytesResponse {
   attached?: boolean;
   message?: string;
@@ -929,24 +924,7 @@ export function estimateContextTokens(
   return Math.max(Math.round((totalChars - lastAssistantBubbleChars) / 4), 0);
 }
 
-/**
- * How many times to send `/approve` when answering the large-context switch
- * guard. The approve is a slash command and can be dropped on a busy gateway;
- * one silent failure used to fail the send (and, under auto-recovery, burn a
- * chain attempt) for a switch the user had already asked for.
- */
-const APPROVE_ATTEMPTS = 3;
-/**
- * Bounded budget for ONE model-switch `/model` call.
- *
- * A switch runs through the gateway's slash worker, which is restarted around
- * model/prompt boundaries and can drop a reply entirely. This used to be 600s
- * to avoid a scary timeout popup; that was tolerable while a failed switch was
- * re-tried on the next send. Once model applications were serialized it became
- * a trap: one unanswered call blocked EVERY later pick for ten minutes — the
- * picker showed the new model, no `/model` was sent, and the backend kept
- * serving the old one. 20s is ample for a healthy switch (1-3s measured).
- */
+/** Bounded budget for a session-scoped model config.set call. */
 export const MODEL_SWITCH_TIMEOUT_MS = 20_000;
 /** Bounded budget for one queued model application: connect + one switch call. */
 export const MODEL_APPLICATION_CEILING_MS = MODEL_SWITCH_TIMEOUT_MS * 2 + 5_000;
@@ -980,11 +958,7 @@ export function isModelSwitchConfirmation(response: {
 /**
  * Did `/model` itself report the switch as APPLIED?
  *
- * The live-identity read and the slash result come from different places and
- * can disagree for a moment after a confirmed switch. When the backend says
- * "Model switched", treating it as a failure produced the false
- * "did not switch" popup for a switch that HAD applied — so a confirmed
- * success is trusted over a lagging identity probe.
+ * Legacy text parser only; never authorizes a model mutation or prompt submit.
  */
 export function modelSwitchReportedSuccess(response: {
   output?: string;
@@ -2940,15 +2914,13 @@ export function useDashboardChatTransport({
    * that supersedes it). A queued switch is stale only when a NEWER selection
    * exists — never merely because the user pressed Stop or because recovery
    * bumped the send generation. Conflating the two cancelled the user's own
-   * pending `/model` on interrupt, so the runtime stayed on the old model while
+   * pending model application on interrupt, so the runtime stayed on the old model while
    * the picker showed the new one.
    */
   const modelSelectionEpochRef = useRef(0);
   /**
-   * Control sockets owned by in-flight `/model` calls. They deliberately
-   * survive the streaming socket, so interrupt must close them too — otherwise
-   * a dropped reply holds the serialized application queue for its whole
-   * timeout and every later pick waits behind it.
+   * Model writes survive streaming interrupts so the queue awaits the setter.
+   * Only the application ceiling closes these owned control connections.
    */
   const modelControlClientsRef = useRef<Set<DashboardGatewayClient>>(new Set());
   const closeModelControlClients = useCallback((): void => {
@@ -2965,7 +2937,7 @@ export function useDashboardChatTransport({
     async (
       client: DashboardGatewayClient,
       sessionId: string,
-      options: { cancelOnSendAbort?: boolean; epoch?: number } = {},
+      options: { cancelOnSendAbort?: boolean; epoch?: number; expired?: () => boolean } = {},
     ): Promise<string> => {
       const cancelOnSendAbort = options.cancelOnSendAbort ?? true;
       const selectionEpoch = options.epoch ?? modelSelectionEpochRef.current;
@@ -2973,6 +2945,7 @@ export function useDashboardChatTransport({
       // application stale, and the newest selection re-applies after it.
       const sendGeneration = sendGenerationRef.current;
       const checkCancelled = (): void => {
+        if (options.expired?.()) throw new Error("Model switch timed out");
         if (selectionEpoch !== modelSelectionEpochRef.current) {
           throw new Error("Model selection superseded");
         }
@@ -2986,21 +2959,6 @@ export function useDashboardChatTransport({
       const selectedBaseUrl = liveOverride?.baseUrl ?? modelBaseUrlRef.current;
       const command = dashboardModelCommand(selectedProvider, selectedModel);
       if (!command) return sessionId;
-      const resetRuntimeSession = async (
-        targetSessionId: string,
-      ): Promise<string> => {
-        const storedSessionId = storedSessionIdRef.current;
-        await client
-          .request("session.close", { session_id: targetSessionId })
-          .catch(() => undefined);
-        runtimeSessionIdRef.current = null;
-        storedSessionIdRef.current = storedSessionId;
-        reasoningSegmentClosedRef.current = false;
-        appliedModelRef.current = null;
-        modelOptionsCacheRef.current = null;
-        return ensureRuntimeSession(client);
-      };
-
       const selectionKey = (id: string): string => JSON.stringify([
         id, selectedProvider, selectedModel, selectedBaseUrl ?? "", profile ?? "default",
       ]);
@@ -3023,12 +2981,7 @@ export function useDashboardChatTransport({
         return value;
       };
       /**
-       * Live model identity from `session.status` (the `Model: X (Y)` line).
-       *
-       * This is the source the PRE-switch check trusts, and unlike
-       * `model.options` it reflects a `/model` switch immediately — verifying a
-       * confirmed switch against `model.options` reported the OLD model and
-       * threw "did not switch" for a switch the backend had already confirmed.
+       * Live runtime identity, unlike the potentially stale catalog selection.
        */
       const readLiveIdentity = async (
         id: string,
@@ -3098,12 +3051,8 @@ export function useDashboardChatTransport({
           appliedModelRef.current = null;
           modelOptionsCacheRef.current = null;
         }
-        const cached = modelOptionsCacheRef.current;
-        if (!identity && appliedModelRef.current === selectionKey(targetSessionId) &&
-            cached?.key === appliedModelRef.current && cached.client === client &&
-            Date.now() < cached.expiresAt) return targetSessionId;
-        let before = await readOptions(targetSessionId);
-        let dashboardProvider = resolveDashboardProviderForModel(
+        const before = await readOptions(targetSessionId);
+        const dashboardProvider = resolveDashboardProviderForModel(
           selectedProvider,
           selectedModel,
           selectedBaseUrl,
@@ -3114,187 +3063,72 @@ export function useDashboardChatTransport({
         const resolvedCommand = dashboardModelCommand(dashboardProvider, selectedModel);
         if (!resolvedCommand) return targetSessionId;
         const key = selectionKey(targetSessionId);
-        // Catalog selection cannot override a contradictory live fallback runtime.
-        if (!identity && dashboardModelMatches(dashboardProvider, selectedModel, before)) {
-          appliedModelRef.current = key;
-          return targetSessionId;
-        }
         appliedModelRef.current = null;
         modelOptionsCacheRef.current = null;
         checkCancelled();
-        const selectModel = async (): Promise<SlashExecResponse> => {
-          // Interrupt closes the streaming socket and rejects its pending RPCs,
-          // not the backend worker. Keep model writes on a control connection so
-          // the application queue waits for the actual acknowledgement — but
-          // track it, so interrupt/timeout can close it (a control socket that
-          // outlives the interrupt is what used to wedge the queue).
-          const control = new DashboardGatewayClient({ onEvent: () => undefined });
-          modelControlClientsRef.current.add(control);
-          try {
-            const url = await window.hermesAPI.freshDashboardWsUrl(profile);
-            checkCancelled();
-            await control.connect(url);
-            checkCancelled();
-            return await control.request<SlashExecResponse>("slash.exec", {
-              session_id: targetSessionId,
-              command: resolvedCommand,
-            }, MODEL_SWITCH_BUDGET.callMs);
-          } finally {
-            modelControlClientsRef.current.delete(control);
-            control.close();
-          }
-        };
-        // Only replay our idempotent selection, never a prompt or arbitrary slash.
-        const slashResponse = await selectModel().catch((err: unknown) => {
+        // Keep the write alive across a streaming-socket interrupt. Serialization
+        // waits for the live setter, not an isolated CLI worker's acknowledgement.
+        const control = new DashboardGatewayClient({ onEvent: () => undefined });
+        modelControlClientsRef.current.add(control);
+        try {
+          const url = await window.hermesAPI.freshDashboardWsUrl(profile);
           checkCancelled();
-          if (!(err instanceof Error) || err.message !== "slash worker closed pipe") throw err;
-          return selectModel();
-        });
-        checkCancelled();
-
-        // The backend refused nothing — it ASKED. A switch above
-        // model.switch_context_confirm_tokens returns a confirm request and
-        // applies nothing yet. The desktop has no surface to answer that
-        // prompt, so leaving it pending parked the session FOREVER (the turn
-        // never landed and only an app restart cleared it). Auto-accept
-        // instead: re-issue the switch, which is the same thing the "once"
-        // button does, and continue once the live model matches.
-        if (isModelSwitchConfirmation(slashResponse)) {
-          // Auto-approve: the desktop has no surface to answer the guard, so
-          // answering it (the gateway's "/approve" = the "once" button) is the
-          // only way the prompt proceeds. The user asked for the switch; the
-          // guard is a cost warning, not a decision to hand back.
-          let liveOnConfirm = await readLiveIdentity(targetSessionId).catch(
-            () => null,
+          await control.connect(url);
+          checkCancelled();
+          const params = {
+            session_id: targetSessionId,
+            key: "model",
+            value: `${resolvedCommand.slice("/model ".length)} --session`,
+            ...(profile ? { profile } : {}),
+          };
+          type ModelSetResponse = {
+            key?: string; scope?: string; warning?: string;
+            confirm_required?: boolean; confirm_message?: string; deferred?: boolean;
+          };
+          let result = await control.request<ModelSetResponse>(
+            "config.set", params, MODEL_SWITCH_BUDGET.callMs,
           );
-          if (
-            !liveOnConfirm ||
-            !dashboardModelMatches(dashboardProvider, selectedModel, {
-              provider: liveOnConfirm.provider,
-              model: liveOnConfirm.model,
-            } as ModelOptionsResponse)
-          ) {
-            // The pending confirm is answered with the gateway's confirm
-            // command ("/approve"), NOT by re-sending /model — re-issuing would
-            // just raise a second guard prompt, which is exactly the loop the
-            // old code sat in.
-            //
-            // Bounded retries: the approve runs as a slash command and can be
-            // dropped on a busy/slow gateway. One silent failure used to mean a
-            // failed send (and, under auto-recovery, a burned chain attempt)
-            // for a switch the user had already asked for.
-            for (let approveTry = 0; approveTry < APPROVE_ATTEMPTS; approveTry++) {
-              checkCancelled();
-              await client
-                .request(
-                  "slash.exec",
-                  {
-                    session_id: targetSessionId,
-                    command: "/approve",
-                  },
-                  MODEL_SWITCH_BUDGET.callMs,
-                )
-                .catch(() => undefined);
-              liveOnConfirm = await readLiveIdentity(targetSessionId).catch(
-                () => null,
-              );
-              if (
-                liveOnConfirm &&
-                dashboardModelMatches(dashboardProvider, selectedModel, {
-                  provider: liveOnConfirm.provider,
-                  model: liveOnConfirm.model,
-                } as ModelOptionsResponse)
-              ) {
-                break;
-              }
-            }
+          checkCancelled();
+          // The user authorized the pick, including the existing cost guard.
+          // Confirm against the SAME live setter once, never /approve or recursion.
+          if (result.confirm_required) {
+            result = await control.request<ModelSetResponse>("config.set", {
+              ...params, confirm_expensive_model: true,
+            }, MODEL_SWITCH_BUDGET.callMs);
+            checkCancelled();
           }
-          if (
-            (liveOnConfirm &&
-              dashboardModelMatches(dashboardProvider, selectedModel, {
-                provider: liveOnConfirm.provider,
-                model: liveOnConfirm.model,
-              } as ModelOptionsResponse)) ||
-            modelSwitchReportedSuccess(slashResponse)
-          ) {
-            // Confirmed by live identity OR by the backend's own success line.
-            // The latter matters because the two are read from different
-            // places and can disagree for a moment — and a switch the gateway
-            // says it applied must not be reported as a failure.
-            appliedModelRef.current = key;
-            return targetSessionId;
+          if (result.key !== "model" || result.scope !== "session" || result.confirm_required || result.deferred) {
+            throw new Error(`Hermes dashboard model switch was not applied: ${result.confirm_message || result.warning || "unsupported or deferred config.set response"}`);
           }
-          // The confirm did not take (older backend, or the model genuinely
-          // cannot be served). Fall through to the normal validation below so
-          // the user sees the real reason rather than a silent hang.
-          appliedModelRef.current = null;
-          modelOptionsCacheRef.current = null;
+        } finally {
+          modelControlClientsRef.current.delete(control);
+          control.close();
         }
-
-        // Never validate a switch against the pre-switch inventory. Prefer the
-        // live `session.status` identity (immediate) over `model.options`
-        // (lagging), and never fail a switch the backend already confirmed.
-        const liveIdentity = await readLiveIdentity(targetSessionId).catch(
-          () => null,
-        );
-        const matchesLive =
-          liveIdentity !== null &&
-          dashboardModelMatches(dashboardProvider, selectedModel, {
-            provider: liveIdentity.provider,
-            model: liveIdentity.model,
-          } as ModelOptionsResponse);
-        if (!matchesLive && !modelSwitchReportedSuccess(slashResponse)) {
-          const live = await readOptions(targetSessionId, true).catch(
-            () => null,
-          );
-          // Last chance: the catalog read may disagree while `session.status`
-          // agrees (or vice versa). Only when BOTH say the wrong model is the
-          // switch a real failure.
-          if (
-            live &&
-            dashboardModelMatches(dashboardProvider, selectedModel, live)
-          ) {
-            appliedModelRef.current = key;
-            return targetSessionId;
-          }
-          appliedModelRef.current = null;
-          modelOptionsCacheRef.current = null;
-          const warning = slashResponse?.warning
-            ? `; /model warning: ${slashResponse.warning}`
-            : "";
-          const output = slashResponse?.output
-            ? `; /model output: ${slashResponse.output}`
-            : "";
+        // No worker text or stale catalog may overrule the live runtime.
+        const liveIdentity = await readLiveIdentity(targetSessionId);
+        checkCancelled();
+        if (!dashboardModelMatches(dashboardProvider, selectedModel, liveIdentity)) {
           throw new Error(
-            `Hermes dashboard did not switch to ${dashboardProvider}/${selectedModel}; live model is ${live?.provider || liveIdentity?.provider || "unknown"}/${live?.model || liveIdentity?.model || "unknown"}${warning}${output}; custom inventory: ${modelOptionsSummary(before)}`,
+            `Hermes dashboard did not switch to ${dashboardProvider}/${selectedModel}; live model is ${liveIdentity?.provider || "unknown"}/${liveIdentity?.model || "unknown"}; custom inventory: ${modelOptionsSummary(before)}`,
           );
         }
         appliedModelRef.current = key;
         return targetSessionId;
       };
 
-      try {
-        return await switchAndValidate(sessionId);
-      } catch (err) {
-        if (!isDashboardSlashWorkerExitError(err)) throw err;
-        appliedModelRef.current = null;
-        modelOptionsCacheRef.current = null;
-        const freshSessionId = await resetRuntimeSession(sessionId);
-        return switchAndValidate(freshSessionId);
-      }
+      return switchAndValidate(sessionId);
     },
-    [ensureRuntimeSession, profile],
+    [profile],
   );
 
   /**
-   * Serialize model applications so an older `/model` completion can never land
+   * Serialize model applications so an older config.set completion cannot land
    * after a newer pick. Two rules keep that ordering from becoming a trap:
    *   - a queued application is stale only when a NEWER selection was made, so
    *     pressing Stop (or recovery bumping the send generation) can no longer
    *     discard the selection the user made;
-   *   - every entry has a hard ceiling, so one unanswered `/model` (the slash
-   *     worker is restarted around switches and can drop a reply) releases the
-   *     queue instead of blocking every later pick.
+   *   - every entry has a hard ceiling; expired continuations cannot mutate
+   *     or validate a later selection.
    */
   const ensureSelectedModel = useCallback(
     (
@@ -3303,6 +3137,7 @@ export function useDashboardChatTransport({
       options: { cancelOnSendAbort?: boolean } = {},
     ): Promise<string> => {
       const epoch = modelSelectionEpochRef.current;
+      let expired = false;
       const chained = modelApplicationRef.current
         .catch(() => undefined)
         .then(() => {
@@ -3312,14 +3147,16 @@ export function useDashboardChatTransport({
           return applySelectedModel(client, sessionId, {
             cancelOnSendAbort: options.cancelOnSendAbort ?? true,
             epoch,
+            expired: () => expired,
           });
         });
-      // Ceiling > connect (10s) + one switch call (20s). On expiry the queue
-      // advances instead of holding every later pick hostage.
+      // Bound the application, including optional confirmation. Late continuations
+      // are invalidated before the queue advances.
       const application = Promise.race([
         chained,
         new Promise<never>((_, reject) => {
           const timer = setTimeout(() => {
+            expired = true;
             closeModelControlClients();
             reject(new Error("Model switch timed out"));
           }, MODEL_SWITCH_BUDGET.ceilingMs);
@@ -4311,13 +4148,6 @@ export function useDashboardChatTransport({
           // A newer pick owns the outcome; its own application reports failures.
           if (attemptEpoch !== modelSelectionEpochRef.current) return;
           const reason = err instanceof Error ? err.message : String(err);
-          // One bounded re-apply when the queue ceiling expired: the abandoned
-          // call may have been a dropped reply rather than a refused switch, so
-          // the selection is worth re-sending once before telling the user.
-          if (/timed out/i.test(reason)) {
-            await attempt(++modelSelectionEpochRef.current);
-            return;
-          }
           onModelApplyError?.(`Could not switch to ${provider}/${model}: ${reason}`);
         } finally {
           appliedModelRef.current = null;

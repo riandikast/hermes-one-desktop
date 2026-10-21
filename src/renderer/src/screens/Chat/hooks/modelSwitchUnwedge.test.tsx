@@ -103,8 +103,8 @@ it("a dropped /model reply cannot wedge the next model pick", async () => {
     }
     if (method === "session.status") return { output: `Model: ${live} (9r)` };
     if (method === "model.options") return { model: live, provider: "9r" };
-    if (method === "slash.exec") {
-      const target = params.command.match(/^\/model\s+(\S+)/)?.[1];
+    if (method === "config.set" && params.key === "model") {
+      const target = params.value.split(" ")[0];
       if (target === "first-target") {
         // The reply is dropped: the promise never settles.
         return new Promise(() => undefined);
@@ -113,7 +113,7 @@ it("a dropped /model reply cannot wedge the next model pick", async () => {
         live = target;
         applied.push(target);
       }
-      return { output: `Model switched to ${live}` };
+      return { key: "model", value: live, scope: "session", confirm_required: false };
     }
     return {};
   });

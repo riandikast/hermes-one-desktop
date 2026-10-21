@@ -34,7 +34,7 @@ The selected model/provider is saved in a desktop-owned table keyed by session i
 
 Text-only legacy turns can use the CLI fallback when a session override changes provider or base URL away from `config.yaml`.
 
-The upstream desktop model applies the session switch on the active gateway session with `/model <model> --provider <provider>`, then attaches media and submits on that same session. Hermes Desktop's dashboard transport follows that path; [[src/main/hermes.ts#shouldForceCliForSessionOverride]] keeps the CLI escape hatch only for text-only legacy fallback, where it can pass `-m <model>` and `--provider` without dropping attachments. Same-provider model swaps stay on the gateway/API path, where the new `model` string is sufficient. Remote (SSH) mode has no local CLI transport, so it remains limited to the model string.
+The dashboard transport applies the session switch with `config.set` (`key:model`, `value:<model> --provider <provider> --session`), verifies `session.status`, then attaches media and submits on that session; [[src/main/hermes.ts#shouldForceCliForSessionOverride]] keeps the CLI escape hatch only for text-only legacy fallback, where it can pass `-m <model>` and `--provider` without dropping attachments. Same-provider model swaps stay on the gateway/API path, where the new `model` string is sufficient. Remote (SSH) mode has no local CLI transport, so it remains limited to the model string.
 
 ## Attachment turns stay on session transport
 
@@ -44,17 +44,27 @@ Attachment turns must not be forced through the CLI override fallback because th
 
 ## Non-blocking switch validation
 
-The dashboard transport applies the session override with `/model <model> --provider <provider>` on the gateway session and then cross-checks `model.options` — but a mismatch must not block the turn.
+The dashboard transport requires live `session.status` identity to match before submission; stale catalog selection or isolated slash-worker success cannot override it.
 
-Two real-world cases fail that check even though the send works: a **resumed (old) session** keeps reporting its creation model in `model.options` after a session-only `/model` switch (the slash output says `✓ Model switched`, yet `live model is custom/…`), and a **custom provider model absent from the gateway's auto-detected inventory** never appears in `model.options` even though the custom endpoint accepts the request. `ensureSelectedModel` in [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#useDashboardChatTransport]] treats a mismatch after an accepted slash response as a warning (`console.warn` with the slash output and custom inventory) and proceeds with the send on that session, instead of throwing and failing the turn. The applied-model key is not cached on mismatch, so the next send retries the switch until the gateway reports it. A slash that throws (or a slash-worker exit) still fails or recovers as before.
+`config.set` mutates the live session with explicit provider and `--session`; existing catalog resolution preserves custom-provider/baseURL mapping. A `confirm_required` result repeats the identical call once with `confirm_expensive_model:true`, honoring the previously authorized pick. A second confirmation, deferred result, unsupported/malformed response, missing status, or contradictory live identity fails visibly without a prompt. No `/approve`, worker retry, or healthy-session reset is used.
+
+## Ordinary manual switch architecture probe
+
+The offline regression probe separates isolated slash-worker output from the live agent's model; worker success is not proof that the next prompt uses that model.
+
+[[src/renderer/src/screens/Chat/hooks/modelSelection.integration.test.tsx]] executes the real Chat selection callback and transport after a completed first prompt. `scripts/probe-manual-model-switch.py` extracts installed backend definitions without importing server/config, accessing user state, or calling providers. It executes the real model mirror, `_apply_model_switch` decision, context-cache guard, installed `_set_model` config handler, and non-fallback turn-start restore; provider resolution and successful commit mechanics remain fixtures.
+
+Before the fix, the 99,999-token control passed while the 100,000-token case submitted on `primary` despite worker success. Both now pass through the live config setter, including its one confirmation round-trip. This proves a bounded architectural defect, not that the user's actual session crossed that threshold. The mirror discards `confirm_required`; its direct return creates no pending confirmation for `/approve`. A renderer success regex then outweighs contradictory `session.status`. The regression checks runtime at prompt submission, not just the picker; negative fixtures cover unsupported setters, repeated confirmation, missing/contradictory status, malformed replies, and timeout.
+
+Run `npm test -- src/renderer/src/screens/Chat/hooks/modelSelection.integration.test.tsx -t 'ordinary pick' --maxWorkers=1`. The backend source root defaults to the installed checkout and can be passed explicitly to the Python probe. This is not a full server or paid provider integration.
 
 ## Serialized switch queue with a bounded application
 
-Model applications are serialized so an older `/model` cannot land after a newer pick, but each queued entry is bounded and only a newer selection supersedes it.
+Model applications are serialized so an older `config.set` cannot land after a newer pick, but each queued entry is bounded and only a newer selection supersedes it.
 
-`modelApplicationRef` in [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#useDashboardChatTransport]] chains `/model` applications. Two rules keep the ordering from becoming a trap:
+`modelApplicationRef` in [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#useDashboardChatTransport]] chains `config.set` applications. Two rules keep the ordering from becoming a trap:
 
 - **Supersession is per selection, not per send.** `modelSelectionEpochRef` increments on each explicit pick. A queued application is skipped only when a newer selection exists — never because the user pressed Stop or recovery bumped the send generation. Conflating the two cancelled the user's own pending switch on interrupt, so the picker moved while the backend kept the previous model.
-- **Every entry has a ceiling.** `MODEL_SWITCH_BUDGET` bounds one `/model` call (20s; the gateway's slash worker is restarted around switches and can drop the reply entirely) and the whole application (45s). Before this, one unanswered call held the queue for the 600s slash budget and every later pick waited behind it — the reported "manual switch does not even fire" symptom. On expiry the queue advances and the selection is re-applied once.
+- **Every entry has a ceiling.** `MODEL_SWITCH_BUDGET` bounds each config call (20s) and the application (45s). Expiry prevents late async continuations from starting a mutation or validating success. There is no recursive timeout re-apply; failure is visible and a later explicit pick/send can retry.
 
 The control socket used for a switch is tracked in `modelControlClientsRef` so the ceiling can release it. Interrupt deliberately does *not* close it: closing only rejects the renderer promise while the gateway still executes the switch, which let a stale model land after the new pick. A selection the backend does not confirm now surfaces through `onModelApplyError` instead of silently leaving the old model running. Regression: [[src/renderer/src/screens/Chat/hooks/modelSwitchUnwedge.test.tsx]].

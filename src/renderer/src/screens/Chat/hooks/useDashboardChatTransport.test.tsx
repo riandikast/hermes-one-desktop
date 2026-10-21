@@ -229,6 +229,7 @@ describe("useDashboardChatTransport recovery", () => {
     const onSwitchModel = vi.fn(async () => undefined);
     dashboardMock.request.mockImplementation(async (method, params) => {
       if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
       if (method === "session.interrupt") return ack;
       if (method === "session.active_list") return { sessions: [{ id: "live", status: "idle" }] };
@@ -260,6 +261,7 @@ describe("useDashboardChatTransport recovery", () => {
     const onSwitchModel = vi.fn(async () => undefined);
     dashboardMock.request.mockImplementation(async (method, params) => {
       if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
       if (method === "session.active_list") return { sessions: [{ id: "live", status: "idle" }] };
       if (method === "subagent.list") return { subagents: [] };
@@ -280,6 +282,7 @@ describe("useDashboardChatTransport recovery", () => {
     vi.useFakeTimers();
     dashboardMock.request.mockImplementation(async (method) => {
       if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
       if (method === "session.active_list") return { sessions: [{ id: "live", status }] };
       return {};
@@ -307,6 +310,7 @@ describe("useDashboardChatTransport recovery", () => {
     const compact = new Promise((resolve) => { release = resolve; });
     dashboardMock.request.mockImplementation(async (method, params) => {
       if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
       if (method === "session.compress") { calls.push("compact"); return compact; }
       if (method === "prompt.submit") { calls.push(params.text); if (seam === "submit") throw new Error(payloadRejection); }
@@ -333,6 +337,7 @@ describe("useDashboardChatTransport recovery", () => {
     const submitted: string[] = [];
     dashboardMock.request.mockImplementation(async (method, params) => {
       if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
       if (method === "session.compress") return compact;
       if (method === "prompt.submit") {
@@ -361,6 +366,7 @@ describe("useDashboardChatTransport recovery", () => {
   it("open history receives live snapshots and counts without reopen", async () => {
     dashboardMock.request.mockImplementation(async (method) => {
       if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
       return {};
     });
@@ -404,14 +410,16 @@ describe("useDashboardChatTransport recovery", () => {
     const switchReady = new Promise<void>((resolve) => { releaseSwitch = resolve; });
     const submitted: Array<{ text: string; model: string }> = [];
     let liveModel = "bad-model";
+    let liveProvider = "bad-provider";
     const onSwitchModel = vi.fn(async () => switchReady);
     dashboardMock.request.mockImplementation(async (method, params) => {
       if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
-      if (method === "session.status") return { output: `Model: ${liveModel} (bad-provider)` };
+      if (method === "session.status") return { output: `Model: ${liveModel} (${liveProvider})` };
       if (method === "model.options") return { model: liveModel, provider: "bad-provider" };
-      if (method === "slash.exec") {
-        liveModel = String(params.command).match(/^\/model\s+(\S+)/)?.[1] ?? liveModel;
-        return { output: `Model switched to ${liveModel}` };
+      if (method === "config.set") {
+        liveModel = String(params.value).match(/^(\S+)/)?.[1] ?? liveModel;
+        liveProvider = String(params.value).match(/--provider (\S+)/)?.[1] ?? liveProvider;
+        return { key: "model", scope: "session", value: liveModel };
       }
       if (method === "prompt.submit") {
         submitted.push({ text: params.text, model: liveModel });
@@ -450,6 +458,7 @@ describe("useDashboardChatTransport recovery", () => {
     dashboardMock.request.mockImplementation(async (method, params) => {
       if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
       if (method === "session.resume") return delayResume ? resumed : { session_id: "live" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
       if (method === "prompt.submit") {
         submitted.push(params.text);
@@ -485,6 +494,7 @@ describe("useDashboardChatTransport recovery", () => {
     const submitted: string[] = [];
     dashboardMock.request.mockImplementation(async (method, params) => {
       if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
       if (method === "prompt.submit") {
         submitted.push(params.text);
@@ -516,6 +526,7 @@ describe("useDashboardChatTransport recovery", () => {
     const onSwitchModel = vi.fn(async (_provider: string, _model: string, _baseUrl: string) => undefined);
     dashboardMock.request.mockImplementation(async (method, params) => {
       if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
       if (method === "prompt.submit") { submitted.push(params.text); throw new Error("failed"); }
       if (method === "session.active_list") return { sessions: [{ id: "live", status: "idle" }] };
@@ -539,10 +550,11 @@ describe("useDashboardChatTransport recovery", () => {
       if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
       if (method === "session.status") return { output: `Model: ${runtimeModel} (bad-provider)` };
       // Catalog remains on the selected primary while the runtime uses fallback.
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
-      if (method === "slash.exec") {
-        runtimeModel = params.command.match(/^\/model (\S+) --provider bad-provider$/)?.[1] ?? runtimeModel;
-        return { output: `Model switched to ${runtimeModel}` };
+      if (method === "config.set") {
+        runtimeModel = params.value.match(/^(\S+) --provider bad-provider --session$/)?.[1] ?? runtimeModel;
+        return { key: "model", scope: "session", value: runtimeModel };
       }
       if (method === "prompt.submit") outgoingModels.push(runtimeModel);
       return {};
@@ -558,8 +570,8 @@ describe("useDashboardChatTransport recovery", () => {
     await act(async () => { api.setModel?.("bad-model"); });
     await act(async () => { await api.send?.("manual selection after fallback"); });
     expect(outgoingModels).toEqual(["bad-model", "bad-model"]);
-    expect(dashboardMock.request).toHaveBeenCalledWith("slash.exec", {
-      session_id: "live", command: "/model bad-model --provider bad-provider",
+    expect(dashboardMock.request).toHaveBeenCalledWith("config.set", {
+      session_id: "live", key: "model", value: "bad-model --provider bad-provider --session",
     }, expect.any(Number));
   });
 
@@ -567,6 +579,7 @@ describe("useDashboardChatTransport recovery", () => {
     window.__HERMES_SEND_TIMINGS__ = [];
     dashboardMock.request.mockImplementation(async (method) => {
       if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
       return {};
     });
@@ -595,6 +608,7 @@ describe("useDashboardChatTransport recovery", () => {
   it("retains the parent child roster after message.complete", async () => {
     dashboardMock.request.mockImplementation(async (method) => {
       if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") return { model: "bad-model", provider: "bad-provider", providers: [] };
       return {};
     });
@@ -617,7 +631,8 @@ describe("useDashboardChatTransport recovery", () => {
         if (method === "session.create") {
           return { session_id: "live", stored_session_id: "stored" };
         }
-        if (method === "model.options") {
+        if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      if (method === "model.options") {
           // Match the harness model, or ensureSelectedModel resets the runtime
           // session (close + resume) and the poller never re-arms. Regression
           // guard: this mock line went missing and silently killed this test
@@ -678,7 +693,8 @@ describe("useDashboardChatTransport recovery", () => {
         if (method === "session.create") {
           return { session_id: "live", stored_session_id: "stored" };
         }
-        if (method === "model.options") {
+        if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      if (method === "model.options") {
           return { model: "bad-model", provider: "bad-provider", providers: [] };
         }
         if (method === "session.active_list") {
@@ -777,16 +793,16 @@ describe("useDashboardChatTransport recovery", () => {
     vi.clearAllMocks();
   });
 
-  it.each([false, true])("closed-pipe selection retry respects interrupt=%s", async (interrupt) => {
+  it.each([false, true])("failed live setter never retries or submits (interrupt=%s)", async (interrupt) => {
     let rejectSwitch!: (error: Error) => void;
     let calls = 0;
     dashboardMock.request.mockImplementation(async (method) => {
       if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
       if (method === "session.status") return { output: "Model: old (bad-provider)" };
       if (method === "model.options") return { model: "old", provider: "bad-provider" };
-      if (method === "slash.exec") {
+      if (method === "config.set") {
         if (++calls === 1) return new Promise((_resolve, reject) => { rejectSwitch = reject; });
-        return { output: "Model switched" };
+        return { key: "model", scope: "session" };
       }
       return {};
     });
@@ -799,8 +815,8 @@ describe("useDashboardChatTransport recovery", () => {
       expect(dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit")).toHaveLength(0);
       if (interrupt) act(() => api.abort!());
       await act(async () => { rejectSwitch(new Error("slash worker closed pipe")); await sent; });
-      expect(calls).toBe(interrupt ? 1 : 2);
-      expect(dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit")).toHaveLength(interrupt ? 0 : 1);
+      expect(calls).toBe(1);
+      expect(dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit")).toHaveLength(0);
     } finally { view.unmount(); }
   });
 
@@ -816,7 +832,7 @@ describe("useDashboardChatTransport recovery", () => {
         return { output: `Hermes TUI Status\nModel: ${liveModel} (bad-provider)\nTokens: 0` };
       if (method === "model.options")
         return { model: liveModel, provider: "bad-provider", providers: [] };
-      if (method === "slash.exec") {
+      if (method === "config.set") {
         if (switching) {
           // The transport replays ONLY this idempotent selection, so the first
           // attempt awaits and is rejected by the test; the retry (attempt 2)
@@ -825,8 +841,8 @@ describe("useDashboardChatTransport recovery", () => {
           if (selectionAttempts > 1) throw new Error("slash worker closed pipe");
           return new Promise((_resolve, reject) => { rejectSwitch = reject; });
         }
-        liveModel = String(params.command).split(" ")[1];
-        return { output: "Model switched" };
+        liveModel = String(params.value).split(" ")[0];
+        return { key: "model", scope: "session" };
       }
       return {};
     });
@@ -840,7 +856,7 @@ describe("useDashboardChatTransport recovery", () => {
       expect(dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit")).toHaveLength(0);
       await act(async () => { rejectSwitch(new Error("slash worker closed pipe")); await first; });
       expect(api.messages?.some((m) => "error" in m && m.error === "slash worker closed pipe")).toBe(true);
-      expect(dashboardMock.request.mock.calls.filter(([m]) => m === "slash.exec")).toHaveLength(2);
+      expect(dashboardMock.request.mock.calls.filter(([m]) => m === "config.set")).toHaveLength(1);
       expect(dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit")).toHaveLength(0);
       switching = false;
       await act(async () => { await api.send?.("hello"); });
@@ -861,7 +877,7 @@ describe("useDashboardChatTransport recovery", () => {
       if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
       if (method === "session.status") return { output: `Hermes TUI Status\nModel: ${liveModel} (bad-provider)\nTokens: 0` };
       if (method === "model.options") { now += 5_900; return { model: liveModel, provider: "bad-provider", providers: [] }; }
-      if (method === "slash.exec") liveModel = String(params.command).split(" ")[1];
+      if (method === "config.set") { liveModel = String(params.value).split(" ")[0]; return { key: "model", scope: "session" }; }
       return {};
     });
     const api: HarnessApi = {};
@@ -881,12 +897,13 @@ describe("useDashboardChatTransport recovery", () => {
     } finally { view.unmount(); clock.mockRestore(); }
   });
 
-  it("reuses validated model options across sends (no re-probe per message)", async () => {
+  it("uses live status across sends without catalog probes", async () => {
     let now = 100_000;
     const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
     dashboardMock.request.mockImplementation(async (method) => {
       if (method === "session.create" || method === "session.resume")
         return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options")
         return { model: "bad-model", provider: "bad-provider", providers: [] };
       return {};
@@ -898,7 +915,7 @@ describe("useDashboardChatTransport recovery", () => {
       await act(async () => { await api.send?.("first"); });
       const initial = optionsCount();
       // One probe to learn the live inventory (the switch is then attempted).
-      expect(initial).toBeGreaterThanOrEqual(1);
+      expect(initial).toBe(0);
       // A later send with the same selection must NOT re-probe the provider
       // catalog. This was the per-message delay: an uncached `model.options`
       // re-probes the custom provider's /v1/models (2.7-4.6 s measured).
@@ -929,7 +946,7 @@ describe("useDashboardChatTransport recovery", () => {
         return { output: `Model: ${liveModel} (bad-provider)\nTokens: 0` };
       if (method === "model.options")
         return { model: liveModel, provider: "bad-provider", providers: [] };
-      if (method === "slash.exec") liveModel = String(params.command).split(" ")[1];
+      if (method === "config.set") { liveModel = String(params.value).split(" ")[0]; return { key: "model", scope: "session" }; }
       return {};
     });
     const api: HarnessApi = {};
@@ -959,7 +976,7 @@ describe("useDashboardChatTransport recovery", () => {
       // The fixture never applies a provider switch: fail closed, not on the old provider.
       expect(calls.some(([method]) => method === "prompt.submit")).toBe(reason !== "provider");
       if (reason === "model" || reason === "foreign") {
-        const switchIndex = calls.findIndex(([method]) => method === "slash.exec");
+        const switchIndex = calls.findIndex(([method]) => method === "config.set");
         expect(switchIndex).toBeGreaterThanOrEqual(0);
         // Verification prefers `session.status` (immediate) over the lagging
         // `model.options` catalog read.
@@ -981,29 +998,11 @@ describe("useDashboardChatTransport recovery", () => {
         return { output: `Model: ${liveModel} (${liveProvider})\nTokens: 0` };
       if (method === "model.options")
         return { model: liveModel, provider: liveProvider, providers: [] };
-      if (method === "slash.exec") {
-        const command =
-          params && typeof params === "object" && "command" in params
-            ? String(params.command)
-            : "";
-        slashCommands.push(command);
-        const match = command.match(/^\/model\s+(.+?)\s+--provider\s+(.+)$/);
-        if (match) {
-          // The guard ask applies NOTHING; the gateway confirm reply (/approve)
-          // is what actually lands the switch.
-          return {
-            warning:
-              "!!! LARGE CONTEXT MODEL SWITCH !!!\n\nThis session holds ~144,295 tokens of context.\n" +
-              "Threshold: model.switch_context_confirm_tokens (currently 100,000; 0 disables this check).\n" +
-              "Confirm only if you intend to switch now.",
-            output: "",
-          };
-        }
-        if (command === "/approve") {
-          liveModel = "cbai/deepseek-v4.1-flash";
-          return { output: "Model switched", warning: "" };
-        }
-        return {};
+      if (method === "config.set") {
+        slashCommands.push(String(params.confirm_expensive_model));
+        if (!params.confirm_expensive_model) return { key: "model", scope: "session", confirm_required: true, confirm_message: "LARGE CONTEXT MODEL SWITCH" };
+        liveModel = "cbai/deepseek-v4.1-flash";
+        return { key: "model", scope: "session", confirm_required: false };
       }
       if (method === "prompt.submit") submitted = true;
       return {};
@@ -1019,7 +1018,7 @@ describe("useDashboardChatTransport recovery", () => {
       // rather than parking on a prompt the desktop cannot render.
       expect(submitted).toBe(true);
       expect(liveModel).toBe("cbai/deepseek-v4.1-flash");
-      expect(slashCommands).toContain("/approve");
+      expect(slashCommands).toEqual(["undefined", "true"]);
     } finally { view.unmount(); }
   });
 
@@ -1035,18 +1034,20 @@ describe("useDashboardChatTransport recovery", () => {
       if (method === "session.resume") {
         return { session_id: "live-recovery", resumed: "stored-chat" };
       }
-      if (method === "slash.exec") {
+      if (method === "session.status") return { output: `Model: ${liveModel} (${liveProvider})` };
+      if (method === "config.set") {
         const command =
-          params && typeof params === "object" && "command" in params
-            ? String(params.command)
+          params && typeof params === "object" && "value" in params
+            ? String(params.value)
             : "";
-        const match = command.match(/^\/model\s+(.+?)\s+--provider\s+(.+)$/);
+        const match = command.match(/^(.+?)\s+--provider\s+(.+?) --session$/);
         if (match) {
           liveModel = match[1];
           liveProvider = match[2];
         }
-        return {};
+        return { key: "model", scope: "session" };
       }
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") {
         return { model: liveModel, provider: liveProvider, providers: [] };
       }
@@ -1154,13 +1155,14 @@ describe("useDashboardChatTransport recovery", () => {
       if (method === "session.resume") {
         return { session_id: "live-stale", resumed: "stored-stale" };
       }
-      if (method === "slash.exec") {
+      if (method === "config.set") {
         // A GENUINE failure: no success line, so there is nothing to trust.
         return { output: "Unknown provider 'good-provider'" };
       }
       if (method === "session.status") {
         return { output: "Model: old-model (old-provider)\nTokens: 0" };
       }
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") {
         return { model: "old-model", provider: "custom", providers: [] };
       }
@@ -1184,9 +1186,9 @@ describe("useDashboardChatTransport recovery", () => {
 
     expect(handled).toBe(true);
     expect(requests).toContainEqual({
-      method: "slash.exec",
+      method: "config.set",
       params: {
-        command: "/model good-model --provider good-provider",
+        key: "model", value: "good-model --provider good-provider --session",
         session_id: "live-stale",
       },
     });
@@ -1195,7 +1197,7 @@ describe("useDashboardChatTransport recovery", () => {
     );
   });
 
-  it("does NOT block a switch the gateway already confirmed", async () => {
+  it("blocks even a successful setter when live identity contradicts the selection", async () => {
     // THE reported bug: /model returned "✓ Model switched", the switch HAD
     // applied, but verification read a lagging identity and threw "did not
     // switch" — blocking a send the user had explicitly asked for. A confirmed
@@ -1209,14 +1211,15 @@ describe("useDashboardChatTransport recovery", () => {
       if (method === "session.resume") {
         return { session_id: "live-stale", resumed: "stored-stale" };
       }
-      if (method === "slash.exec") {
+      if (method === "config.set") {
         // Confirmed success — even though every identity probe below still
         // reports the OLD model (the lag that caused the false failure).
-        return { output: "✓ Model switched: good-model\n    Provider: good-provider" };
+        return { key: "model", scope: "session", value: "good-model" };
       }
       if (method === "session.status") {
         return { output: "Model: old-model (old-provider)\nTokens: 0" };
       }
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") {
         return { model: "old-model", provider: "custom", providers: [] };
       }
@@ -1239,7 +1242,7 @@ describe("useDashboardChatTransport recovery", () => {
 
     // The prompt goes through despite the stale identity reads.
     expect(requests.some((request) => request.method === "prompt.submit")).toBe(
-      true,
+      false,
     );
   });
 
@@ -1260,6 +1263,7 @@ describe("useDashboardChatTransport recovery", () => {
       if (method === "session.create") {
         return { session_id: "live-new", stored_session_id: "stored-new" };
       }
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") {
         return { model: "bad-model", provider: "bad-provider", providers: [] };
       }
@@ -2220,6 +2224,7 @@ describe("mid-session knowledge toggle", () => {
       if (method === "session.resume") {
         return { session_id: "live-2", resumed: "stored-1" };
       }
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") {
         return { model: "bad-model", provider: "bad-provider", providers: [] };
       }
@@ -2282,6 +2287,7 @@ describe("mid-session knowledge toggle", () => {
       if (method === "session.resume") {
         return { session_id: "live-2", resumed: "stored-1" };
       }
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") {
         return { model: "bad-model", provider: "bad-provider", providers: [] };
       }
@@ -2320,6 +2326,7 @@ describe("mid-session knowledge toggle", () => {
       if (method === "session.create") {
         return { session_id: "live-1", stored_session_id: "stored-1" };
       }
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
       if (method === "model.options") {
         return { model: "bad-model", provider: "bad-provider", providers: [] };
       }

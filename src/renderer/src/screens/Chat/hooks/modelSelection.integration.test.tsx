@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import chatSource from "../Chat.tsx?raw";
 import ts from "typescript";
 import { act } from "@testing-library/react";
@@ -38,6 +39,7 @@ function callback(name: string): string {
 const manualSource = callback("handleSelectModel");
 const automaticSource = callback("onSwitchModel");
 const api: any = {};
+const modelErrors: string[] = [];
 function Harness(): null {
   const [sessionModelOverride, setSessionModelOverride] = useState<SessionModelOverride>();
   const sessionModelOverrideRef = useRef<SessionModelOverride | undefined>(undefined);
@@ -57,11 +59,100 @@ function Harness(): null {
     messages, sessionModelOverrideRef, model: chatCurrentModel,
     provider: chatCurrentProvider, modelBaseUrl: chatCurrentBaseUrl,
     setMessages, setIsLoading, setHermesSessionId: () => {}, setToolProgress: () => {}, setUsage: () => {}, onSwitchModel,
+    onModelApplyError: (message) => modelErrors.push(message),
   });
   Object.assign(api, { ...dashboardTransport, select: bind(manualSource, dashboardTransport), shown: sessionModelOverride, sessionModelOverrideRef });
   return null;
 }
-afterEach(() => { localStorage.clear(); });
+afterEach(() => { localStorage.clear(); modelErrors.length = 0; });
+
+it.each(["unsupported", "malformed", "confirmation", "contradictory", "missing-status", "timeout"])("fails visibly without submitting the wrong model: %s", async (failure) => {
+  Object.defineProperty(window, "hermesAPI", { configurable: true, value: {
+    getModelConfig: async () => ({ model: "primary", provider: "9r", baseUrl: "" }),
+    listModels: async () => [], getEnv: async () => ({}),
+    onConnectionConfigChanged: () => () => {}, onModelLibraryChanged: () => () => {},
+    discoverProviderModels: async () => ({ models: [], status: "ok", cached: false }),
+    startDashboard: async () => ({ connection: { wsUrl: "ws://fixture" }, running: true }),
+    freshDashboardWsUrl: async () => "ws://fixture", getSessionMessages: async () => [],
+  } });
+  let mutations = 0;
+  wire.request.mockReset().mockImplementation(async (method: string) => {
+    if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+    if (method === "session.status") return failure === "missing-status" ? {} : { output: "Model: primary (9r)" };
+    if (method === "model.options") return { model: "cx/gpt-6.1-sol", provider: "9r" };
+    if (method === "config.set") {
+      mutations++;
+      if (failure === "unsupported") throw new Error("Unknown method config.set");
+      if (failure === "timeout") throw new Error("config.set timed out");
+      if (failure === "malformed") return {};
+      return { key: "model", scope: "session", confirm_required: failure === "confirmation", output: "Model switched" };
+    }
+    return {};
+  });
+  const view = renderWithI18n(<Harness />);
+  try {
+    await act(async () => {});
+    api.sessionModelOverrideRef.current = { provider: "9r", model: "cx/gpt-6.1-sol", baseUrl: "" };
+    await act(async () => { await api.applyModelOverride("9r", "cx/gpt-6.1-sol"); });
+    expect(modelErrors).toHaveLength(1);
+    expect(mutations).toBe(failure === "confirmation" ? 2 : 1);
+    await act(async () => { await api.sendMessage("must not submit"); });
+    expect(wire.request.mock.calls.some(([method]) => method === "prompt.submit")).toBe(false);
+    expect(wire.request.mock.calls.some(([method]) => method === "slash.exec")).toBe(false);
+  } finally { view.unmount(); }
+});
+
+// @lat: [[model-selection#Ordinary manual switch architecture probe]]
+it.each(["belowThreshold", "atThreshold"] as const)("ordinary pick after completed first prompt uses selected runtime (%s)", async (scenario) => {
+  const probe = JSON.parse(execFileSync("python", ["scripts/probe-manual-model-switch.py"], { encoding: "utf8" }));
+  const trace = probe[scenario];
+  Object.defineProperty(window, "hermesAPI", { configurable: true, value: {
+    getModelConfig: async () => ({ model: "primary", provider: "9r", baseUrl: "" }),
+    listModels: async () => [], getEnv: async () => ({}),
+    onConnectionConfigChanged: () => () => {}, onModelLibraryChanged: () => () => {},
+    discoverProviderModels: async () => ({ models: [], status: "ok", cached: false }),
+    startDashboard: async () => ({ connection: { wsUrl: "ws://fixture" }, running: true }),
+    freshDashboardWsUrl: async () => "ws://fixture", getSessionMessages: async () => [],
+  } });
+  let runtime = "primary";
+  const submitted: string[] = [];
+  wire.request.mockReset().mockImplementation(async (method: string, params: any) => {
+    if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+    if (method === "session.status") return { output: `Model: ${runtime} (9r)` };
+    if (method === "model.options") return { model: runtime, provider: "9r" };
+    if (method === "session.active_list") return { sessions: [{ id: "live", status: "idle" }] };
+    if (method === "subagent.list") return { subagents: [] };
+    if (method === "slash.exec" && params.command.startsWith("/model")) {
+      runtime = trace.nextTurnRuntime;
+      return trace.slash;
+    }
+    if (method === "config.set" && params.key === "model") {
+      expect(params.session_id).toBe("live");
+      expect(params.value).toBe("cx/gpt-6.1-sol --provider 9r --session");
+      const confirmed = params.confirm_expensive_model === true;
+      runtime = confirmed ? trace.config.confirmedRuntime : trace.config.initialRuntime;
+      return confirmed ? trace.config.confirmed : trace.config.initial;
+    }
+    // /approve cannot confirm a mirror-only return: no pending confirmation was installed.
+    if (method === "prompt.submit") submitted.push(runtime);
+    return {};
+  });
+  const view = renderWithI18n(<Harness />);
+  try {
+    await act(async () => {});
+    await act(async () => { await api.sendMessage("first"); });
+    await act(async () => { wire.event({ type: "message.complete", session_id: "live", payload: { content: "done" } }); });
+    await act(async () => { api.select("9r", "cx/gpt-6.1-sol", ""); });
+    expect(api.shown?.model).toBe("cx/gpt-6.1-sol");
+    await act(async () => { await api.sendMessage("second"); });
+    console.info(JSON.stringify({ scenario, status: trace.status, slash: trace.slash, submitted }));
+    expect(submitted).toEqual(["primary", "cx/gpt-6.1-sol"]);
+    const sets = wire.request.mock.calls.filter(([method]) => method === "config.set");
+    expect(sets).toHaveLength(scenario === "atThreshold" ? 2 : 1);
+    if (scenario === "atThreshold") expect(sets[1][1].confirm_expensive_model).toBe(true);
+    expect(wire.request.mock.calls.some(([method]) => method === "slash.exec")).toBe(false);
+  } finally { view.unmount(); }
+});
 
 it.each([false, true])("retry, Switch now, interrupt, manual pick preserves routing (delayed fallback: %s)", async (delayFallback) => {
   Object.defineProperty(window, "hermesAPI", { configurable: true, value: {
@@ -88,10 +179,14 @@ it.each([false, true])("retry, Switch now, interrupt, manual pick preserves rout
     if (method === "subagent.list") return { subagents: [] };
     if (method === "slash.exec") {
       if (params.command === "status") slashRuntime.push(live);
-      const target = params.command.match(/^\/model\s+(\S+)/)?.[1];
+      return { output: `Model: ${live} (9r)` };
+    }
+    if (method === "config.set" && params.key === "model") {
+      const target = params.value.split(" ")[0];
       if (target === "fallback" && delayFallback) await delayed;
-      if (target) { live = target; applied.push(target); }
-      return { output: `Model switched to ${live}` };
+      live = target;
+      applied.push(target);
+      return { key: "model", value: target, scope: "session", confirm_required: false };
     }
     if (method === "prompt.submit") submitted.push({ text: params.text, model: live });
     return {};
@@ -104,7 +199,7 @@ it.each([false, true])("retry, Switch now, interrupt, manual pick preserves rout
     expect(api.providerWait).toBeTruthy();
     let switching!: Promise<void>;
     await act(async () => { switching = api.switchProviderNow(); });
-    expect(wire.request.mock.calls.some(([m, p]) => m === "slash.exec" && p.command.includes("fallback"))).toBe(true);
+    expect(wire.request.mock.calls.some(([m, p]) => m === "config.set" && p.value.includes("fallback"))).toBe(true);
     if (!delayFallback) {
       await act(async () => { await switching; });
       expect(live).toBe("fallback");
@@ -120,7 +215,7 @@ it.each([false, true])("retry, Switch now, interrupt, manual pick preserves rout
     expect(submitted).toEqual(delayFallback ? [{ text: "original", model: "primary" }] : [{ text: "original", model: "primary" }, { text: "Continue. Original prompt: original", model: "fallback" }]);
     await act(async () => { await api.execSlash("/status", () => {}); await api.sendMessage("MANUAL"); });
     expect(slashRuntime).toEqual(["cx/gpt-6.1-sol"]);
-    expect(wire.request.mock.calls.filter(([method, params]) => method === "slash.exec" && params.command.startsWith("/model")).at(-1)?.[1].command).toBe("/model cx/gpt-6.1-sol --provider 9r");
+    expect(wire.request.mock.calls.filter(([method, params]) => method === "config.set" && params.key === "model").at(-1)?.[1].value).toBe("cx/gpt-6.1-sol --provider 9r --session");
     expect(submitted.at(-1)).toEqual({ text: "MANUAL", model: "cx/gpt-6.1-sol" });
     expect(api.shown).toEqual({ provider: "9r", providerLabel: undefined, model: "cx/gpt-6.1-sol", baseUrl: "" });
     expect(api.sessionModelOverrideRef.current).toEqual(api.shown);
