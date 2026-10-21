@@ -1405,6 +1405,10 @@ interface HermesAPI {
     sourceFolderPath: string,
     bundleName: string,
   ) => Promise<{ name: string; path: string }>;
+  exportCommand: (payload: { id: string; destination: string }) => Promise<{
+    path: string;
+    shell: "cmd" | "powershell";
+  }>;
   listCommands: () => Promise<
     {
       id: string;

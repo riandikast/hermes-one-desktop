@@ -58,6 +58,7 @@ import {
 } from "../media";
 import { openTerminalInDirectory } from "../terminal-launcher";
 import { getTerminalPreference, setTerminalPreference } from "../terminal-preference";
+import { exportCommand } from "../command-export";
 import {
   gitRepoStatus,
   gitDiff,
@@ -3347,6 +3348,10 @@ export function registerIpcHandlers(context: IpcContext): void {
   });
 
   // ── Commands store ─────────────────────────────────────────────────
+  ipcMain.handle("commands:export", async (_event, payload: unknown) => {
+    if (process.platform !== "win32") throw new Error("Windows launcher export is only available on Windows");
+    return exportCommand(payload, getTerminalPreference());
+  });
   ipcMain.handle("commands:list", async () => {
     return listCommands();
   });

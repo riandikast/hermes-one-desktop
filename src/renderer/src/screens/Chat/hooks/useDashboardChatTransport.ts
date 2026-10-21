@@ -220,6 +220,11 @@ interface UseDashboardChatTransportArgs {
     attempt?: number;
     model?: string;
   }) => void;
+  /**
+   * A model selection the backend did not confirm. Without this the picker
+   * showed the new model while the runtime silently kept the old one.
+   */
+  onModelApplyError?: (message: string) => void;
 }
 
 interface UseDashboardChatTransportResult {
@@ -931,6 +936,29 @@ export function estimateContextTokens(
  * chain attempt) for a switch the user had already asked for.
  */
 const APPROVE_ATTEMPTS = 3;
+/**
+ * Bounded budget for ONE model-switch `/model` call.
+ *
+ * A switch runs through the gateway's slash worker, which is restarted around
+ * model/prompt boundaries and can drop a reply entirely. This used to be 600s
+ * to avoid a scary timeout popup; that was tolerable while a failed switch was
+ * re-tried on the next send. Once model applications were serialized it became
+ * a trap: one unanswered call blocked EVERY later pick for ten minutes — the
+ * picker showed the new model, no `/model` was sent, and the backend kept
+ * serving the old one. 20s is ample for a healthy switch (1-3s measured).
+ */
+export const MODEL_SWITCH_TIMEOUT_MS = 20_000;
+/** Bounded budget for one queued model application: connect + one switch call. */
+export const MODEL_APPLICATION_CEILING_MS = MODEL_SWITCH_TIMEOUT_MS * 2 + 5_000;
+/**
+ * Timing seam for tests only: a hung `/model` call would otherwise need fake
+ * timers (or 45 real seconds) to prove the queue advances. Production code
+ * never mutates this.
+ */
+export const MODEL_SWITCH_BUDGET = {
+  callMs: MODEL_SWITCH_TIMEOUT_MS,
+  ceilingMs: MODEL_APPLICATION_CEILING_MS,
+};
 
 /** The backend's selection-guard ask: a model switch above
  *  `model.switch_context_confirm_tokens` (default 100k tokens) returns a confirm
@@ -1156,6 +1184,7 @@ export function useDashboardChatTransport({
   onDashboardUnavailable,
   onSwitchModel,
   onRecoveryNotice,
+  onModelApplyError,
   onKnowledgeChanged,
 }: UseDashboardChatTransportArgs): UseDashboardChatTransportResult {
   const sendTimingRef = useRef<{ send: number; started: number; submitted: boolean; firstDelta: boolean } | null>(null);
@@ -1480,8 +1509,6 @@ export function useDashboardChatTransport({
   // resets the timer; firing fails the turn with a clear error.
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const TURN_STALL_TIMEOUT_MS = 120_000;
-  /** Long budget for model-switch `/model` slash work (mirrors slashExec.ts). */
-  const SLASH_COMMAND_TIMEOUT_MS = 600_000;
   /**
    * How long a successful `model.options` result is reused before the catalog
    * is probed again. The catalog only changes on a connection / profile / model
@@ -2908,14 +2935,50 @@ export function useDashboardChatTransport({
   );
 
   const modelApplicationRef = useRef<Promise<unknown>>(Promise.resolve());
+  /**
+   * Increments on every EXPLICIT model selection (manual pick, or a decision
+   * that supersedes it). A queued switch is stale only when a NEWER selection
+   * exists — never merely because the user pressed Stop or because recovery
+   * bumped the send generation. Conflating the two cancelled the user's own
+   * pending `/model` on interrupt, so the runtime stayed on the old model while
+   * the picker showed the new one.
+   */
+  const modelSelectionEpochRef = useRef(0);
+  /**
+   * Control sockets owned by in-flight `/model` calls. They deliberately
+   * survive the streaming socket, so interrupt must close them too — otherwise
+   * a dropped reply holds the serialized application queue for its whole
+   * timeout and every later pick waits behind it.
+   */
+  const modelControlClientsRef = useRef<Set<DashboardGatewayClient>>(new Set());
+  const closeModelControlClients = useCallback((): void => {
+    for (const control of modelControlClientsRef.current) {
+      try {
+        control.close();
+      } catch {
+        /* already closed */
+      }
+    }
+    modelControlClientsRef.current.clear();
+  }, []);
   const applySelectedModel = useCallback(
     async (
       client: DashboardGatewayClient,
       sessionId: string,
+      options: { cancelOnSendAbort?: boolean; epoch?: number } = {},
     ): Promise<string> => {
-      const generation = sendGenerationRef.current;
+      const cancelOnSendAbort = options.cancelOnSendAbort ?? true;
+      const selectionEpoch = options.epoch ?? modelSelectionEpochRef.current;
+      // Captured once: a later explicit pick (not an abort) is what makes this
+      // application stale, and the newest selection re-applies after it.
+      const sendGeneration = sendGenerationRef.current;
       const checkCancelled = (): void => {
-        if (generation !== sendGenerationRef.current) throw new Error("Send cancelled");
+        if (selectionEpoch !== modelSelectionEpochRef.current) {
+          throw new Error("Model selection superseded");
+        }
+        if (cancelOnSendAbort && sendGeneration !== sendGenerationRef.current) {
+          throw new Error("Send cancelled");
+        }
       };
       const liveOverride = sessionModelOverrideRef?.current;
       const selectedModel = liveOverride?.model ?? modelRef.current;
@@ -3062,8 +3125,11 @@ export function useDashboardChatTransport({
         const selectModel = async (): Promise<SlashExecResponse> => {
           // Interrupt closes the streaming socket and rejects its pending RPCs,
           // not the backend worker. Keep model writes on a control connection so
-          // the application queue waits for the actual acknowledgement.
+          // the application queue waits for the actual acknowledgement — but
+          // track it, so interrupt/timeout can close it (a control socket that
+          // outlives the interrupt is what used to wedge the queue).
           const control = new DashboardGatewayClient({ onEvent: () => undefined });
+          modelControlClientsRef.current.add(control);
           try {
             const url = await window.hermesAPI.freshDashboardWsUrl(profile);
             checkCancelled();
@@ -3072,8 +3138,9 @@ export function useDashboardChatTransport({
             return await control.request<SlashExecResponse>("slash.exec", {
               session_id: targetSessionId,
               command: resolvedCommand,
-            }, SLASH_COMMAND_TIMEOUT_MS);
+            }, MODEL_SWITCH_BUDGET.callMs);
           } finally {
+            modelControlClientsRef.current.delete(control);
             control.close();
           }
         };
@@ -3125,7 +3192,7 @@ export function useDashboardChatTransport({
                     session_id: targetSessionId,
                     command: "/approve",
                   },
-                  SLASH_COMMAND_TIMEOUT_MS,
+                  MODEL_SWITCH_BUDGET.callMs,
                 )
                 .catch(() => undefined);
               liveOnConfirm = await readLiveIdentity(targetSessionId).catch(
@@ -3219,20 +3286,52 @@ export function useDashboardChatTransport({
     [ensureRuntimeSession, profile],
   );
 
-  // A sent /model RPC cannot be cancelled by a renderer generation change.
-  // Serialize all model applications so an older completion cannot land after
-  // a newer pick. Resolve identity only when this application owns the queue.
+  /**
+   * Serialize model applications so an older `/model` completion can never land
+   * after a newer pick. Two rules keep that ordering from becoming a trap:
+   *   - a queued application is stale only when a NEWER selection was made, so
+   *     pressing Stop (or recovery bumping the send generation) can no longer
+   *     discard the selection the user made;
+   *   - every entry has a hard ceiling, so one unanswered `/model` (the slash
+   *     worker is restarted around switches and can drop a reply) releases the
+   *     queue instead of blocking every later pick.
+   */
   const ensureSelectedModel = useCallback(
-    (client: DashboardGatewayClient, sessionId: string): Promise<string> => {
-      const generation = sendGenerationRef.current;
-      const application = modelApplicationRef.current.catch(() => undefined).then(() => {
-        if (generation !== sendGenerationRef.current) throw new Error("Send cancelled");
-        return applySelectedModel(client, sessionId);
-      });
-      modelApplicationRef.current = application;
+    (
+      client: DashboardGatewayClient,
+      sessionId: string,
+      options: { cancelOnSendAbort?: boolean } = {},
+    ): Promise<string> => {
+      const epoch = modelSelectionEpochRef.current;
+      const chained = modelApplicationRef.current
+        .catch(() => undefined)
+        .then(() => {
+          // A newer explicit selection is already queued behind us: let it own
+          // the outcome instead of applying an outdated model first.
+          if (epoch !== modelSelectionEpochRef.current) return sessionId;
+          return applySelectedModel(client, sessionId, {
+            cancelOnSendAbort: options.cancelOnSendAbort ?? true,
+            epoch,
+          });
+        });
+      // Ceiling > connect (10s) + one switch call (20s). On expiry the queue
+      // advances instead of holding every later pick hostage.
+      const application = Promise.race([
+        chained,
+        new Promise<never>((_, reject) => {
+          const timer = setTimeout(() => {
+            closeModelControlClients();
+            reject(new Error("Model switch timed out"));
+          }, MODEL_SWITCH_BUDGET.ceilingMs);
+          void chained.finally(() => clearTimeout(timer)).catch(() => undefined);
+        }),
+      ]);
+      // Store a swallowed copy: the chain must survive a rejection, and a
+      // superseded application's rejection is not an unhandled one.
+      modelApplicationRef.current = application.catch(() => undefined);
       return application;
     },
-    [applySelectedModel],
+    [applySelectedModel, closeModelControlClients],
   );
 
   const syncDashboardAttachments = useCallback(
@@ -3941,6 +4040,11 @@ export function useDashboardChatTransport({
     clearProviderWait();
     clearStallTimer();
     sendGenerationRef.current++;
+    // NOTE: do NOT close the `/model` control socket here. Closing it only
+    // rejects OUR promise — the gateway still executes the switch, so the old
+    // model could land AFTER the pick the user just made. The serialized queue
+    // waits for that acknowledgement (bounded), then applies the newest
+    // selection last, which is what keeps the manual pick authoritative.
     // THE interrupt guarantee: latch recovery OFF before anything else. A
     // failure that lands after this must never trigger an automatic
     // switch-and-resend — the app typing on the user's behalf after they
@@ -3990,7 +4094,7 @@ export function useDashboardChatTransport({
     setIsLoading(false);
     lastLocalActivityAtRef.current = Date.now();
     setToolProgress(null);
-  }, [clearQuietFinalize, enabled, ensureClient, profile, setIsLoading, setToolProgress]);
+  }, [clearProviderWait, clearQuietFinalize, enabled, ensureClient, profile, setIsLoading, setToolProgress]);
 
   /**
    * Run ONE recovery step: decide from the engine, switch the model if the
@@ -4189,23 +4293,40 @@ export function useDashboardChatTransport({
       recoveryFiredForEpisodeRef.current = true;
       const command = dashboardModelCommand(provider, model);
       if (!command) return;
+      // This pick supersedes anything already queued. The epoch — not the send
+      // generation — is what a queued application is checked against, so
+      // interrupting a retrying turn cannot silently discard this selection.
+      const epoch = ++modelSelectionEpochRef.current;
       appliedModelRef.current = null;
       modelOptionsCacheRef.current = null;
-      try {
-        const client = await ensureClient();
-        let sessionId = runtimeSessionIdRef.current;
-        if (!sessionId) {
-          sessionId = await ensureRuntimeSession(client);
+      const attempt = async (attemptEpoch: number): Promise<void> => {
+        try {
+          const client = await ensureClient();
+          let sessionId = runtimeSessionIdRef.current;
+          if (!sessionId) {
+            sessionId = await ensureRuntimeSession(client);
+          }
+          await ensureSelectedModel(client, sessionId, { cancelOnSendAbort: false });
+        } catch (err) {
+          // A newer pick owns the outcome; its own application reports failures.
+          if (attemptEpoch !== modelSelectionEpochRef.current) return;
+          const reason = err instanceof Error ? err.message : String(err);
+          // One bounded re-apply when the queue ceiling expired: the abandoned
+          // call may have been a dropped reply rather than a refused switch, so
+          // the selection is worth re-sending once before telling the user.
+          if (/timed out/i.test(reason)) {
+            await attempt(++modelSelectionEpochRef.current);
+            return;
+          }
+          onModelApplyError?.(`Could not switch to ${provider}/${model}: ${reason}`);
+        } finally {
+          appliedModelRef.current = null;
+          modelOptionsCacheRef.current = null;
         }
-        await ensureSelectedModel(client, sessionId);
-      } catch {
-        // The next send verifies live identity again; never cache a failed switch.
-      } finally {
-        appliedModelRef.current = null;
-        modelOptionsCacheRef.current = null;
-      }
+      };
+      await attempt(epoch);
     },
-    [enabled, ensureClient, ensureRuntimeSession, ensureSelectedModel],
+    [enabled, ensureClient, ensureRuntimeSession, ensureSelectedModel, onModelApplyError],
   );
 
   return {

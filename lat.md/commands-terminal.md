@@ -49,6 +49,20 @@ creates a session and auto-executes the command. Each row also has Edit,
 Duplicate (pre-fills the editor form from an existing command under a fresh
 id, so it saves as a new entry without re-typing the fields), and Delete.
 
+## Windows launcher export
+
+Each row exports a runnable launcher to the folder chosen in the native folder picker, using the saved terminal-shell preference without running the template.
+
+[[src/main/command-export.ts#exportCommand]] looks up the saved template by ID, validates the export request and working directory, sanitizes Windows filenames, and uses exclusive file creation with numbered collisions. Existing files are never overwritten.
+
+CMD exports contain the original command text in a UTF-8 `.cmd`, disable delayed expansion, select UTF-8, and use quoted `pushd` for the saved working directory. No PowerShell is involved. Output pauses at completion unless the command itself exits or transfers control.
+
+PowerShell exports are explicitly named `.powershell.cmd` plus a UTF-8 BOM `.powershell.ps1` companion. Keep both together. The launcher invokes Windows PowerShell without execution-policy overrides; office policy may block it. Syntax is never translated between shells.
+
+The row reuses the existing themed OS-terminal button style and a download icon to distinguish file export from execution. Accessible names identify the template; busy, cancellation, success, and failure states are handled. No antivirus acceptance is promised. Export writes executable text, so users must review templates before opening them.
+
+[[src/main/command-export.test.ts]] covers harmless CMD execution with Unicode and shell metacharacters in cwd, unchanged command text, PowerShell dependencies, collisions, traversal, invalid requests, and write failures. [[src/renderer/src/screens/Command/CommandScreen.export.test.tsx]] verifies button-to-folder flow, cancellation, failure recovery, dependency notice, and no execution on export.
+
 ## Note on native modules
 
 `node-pty` needs the Electron rebuild, like better-sqlite3.

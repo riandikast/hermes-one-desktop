@@ -267,9 +267,18 @@ export default function AboutPane(): React.JSX.Element {
               {t("settings.version", { version: appVersion })}{" "}
               <span
                 className="rian-fork-badge"
-                title="This build updates from riandikast/hermes-one-desktop (Rian Fork), not the upstream repository."
+                title="This build updates from GitHub Releases on riandikast/hermes-one-desktop (custom branch), not the upstream repository."
               >
                 Rian Fork
+              </span>
+            </Meta>
+            <Meta
+              label={t("settings.updateSource")}
+              icon={<RefreshCw size={13} />}
+            >
+              riandikast/hermes-one-desktop{" "}
+              <span className="rian-fork-badge">
+                {t("settings.updateSourceCustom")}
               </span>
             </Meta>
           </div>

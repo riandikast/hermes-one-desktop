@@ -1807,6 +1807,9 @@ function Chat({
       // the model on its own.
       addAgentMessage(recoveryNoticeMessage(notice));
     },
+    // A pick the backend never confirmed used to fail silently: the picker
+    // showed the new model while requests kept using the old one.
+    onModelApplyError: (message) => addAgentMessage(message),
   });
 
   const [agentCommandCatalog, setAgentCommandCatalog] =

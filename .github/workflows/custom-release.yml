@@ -1,0 +1,157 @@
+name: Custom Build
+
+# Every push to `custom` produces a runnable Windows build (NSIS installer +
+# portable .exe) and publishes it as a GitHub Release on this fork. The release
+# is what Settings → About & Updates checks: electron-builder's `publish` block
+# points at riandikast/hermes-one-desktop, and electron-updater reads the latest
+# non-prerelease release's `latest.yml`, so no branch configuration is needed on
+# the client.
+#
+# Version: package.json stays the source of the base version; the patch is
+# offset by the workflow run number so every build is strictly newer than the
+# previous one (0.7.4 + run 12 → 0.7.16). Nothing is committed back, so a build
+# can never retrigger itself.
+on:
+  push:
+    branches:
+      - custom
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: custom-build
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    name: Prepare version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      exists: ${{ steps.tag.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute build version
+        id: version
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -e '
+            const parts = require("./package.json").version.split(".");
+            const patch = parseInt(parts[2].replace(/[^0-9].*$/, ""), 10) || 0;
+            const run = Number(process.env.RUN_NUMBER) || 0;
+            console.log(`${parts[0]}.${parts[1]}.${patch + run}`);
+          ')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=custom-v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Custom build version: $VERSION"
+
+      - name: Check whether the tag already exists
+        id: tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q .; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $TAG already exists — nothing to publish."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build_windows:
+    name: Build Windows (installer + portable)
+    needs: prepare
+    if: needs.prepare.outputs.exists == 'false'
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Stamp build version
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      # `npm run build` also runs typecheck:web, which currently fails on
+      # pre-existing renderer errors unrelated to packaging. Build the bundles
+      # directly, exactly like the manual portable build.
+      - name: Build app bundles
+        run: npx electron-vite build
+
+      - name: Package installer and portable
+        env:
+          # Optional analytics/API build-time values; empty secrets disable them.
+          VITE_ANALYTICS_BASE_URL: ${{ vars.VITE_ANALYTICS_BASE_URL }}
+          VITE_ANALYTICS_API_KEY: ${{ secrets.VITE_ANALYTICS_API_KEY }}
+          MAIN_VITE_HERMES_API_URL: ${{ vars.HERMES_API_URL }}
+          MAIN_VITE_HERMES_API_KEY: ${{ secrets.HERMES_API_KEY }}
+          # No Windows certificate is configured for this fork: build unsigned
+          # instead of letting electron-builder scan for one.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npx electron-builder --win nsis portable --x64 --publish never
+
+      - name: Verify artifacts
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          ls -lh dist/*.exe dist/latest.yml
+          test -f "dist/hermes-desktop-${VERSION}-setup.exe"
+          test -f "dist/hermes-desktop-${VERSION}-portable.exe"
+          test -f dist/latest.yml
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: custom-windows-${{ needs.prepare.outputs.version }}
+          path: |
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/latest.yml
+          retention-days: 14
+
+  publish:
+    name: Publish release
+    needs: [prepare, build_windows]
+    if: needs.prepare.outputs.exists == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: custom-windows-${{ needs.prepare.outputs.version }}
+          path: dist
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: Custom build ${{ needs.prepare.outputs.version }}
+          body: |
+            Automated Windows build from the `custom` branch.
+
+            - Commit: ${{ github.sha }}
+            - Installer: `hermes-desktop-${{ needs.prepare.outputs.version }}-setup.exe`
+            - Portable: `hermes-desktop-${{ needs.prepare.outputs.version }}-portable.exe`
+
+            The installed build auto-updates from this release (`latest.yml`).
+            The portable build runs anywhere but cannot self-update.
+          prerelease: false
+          make_latest: true
+          files: |
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/latest.yml

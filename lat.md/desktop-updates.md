@@ -15,3 +15,13 @@ Two GitHub Actions workflows publish builds; only the stable channel reaches end
 `release.yml` (stable) runs on a push to the `release` branch: it tags `v<version>` from `package.json`, builds all platforms, and publishes a normal GitHub Release carrying the `latest*.yml` update feed. `beta-release.yml` runs on a push to `beta` (or manual dispatch): it stamps a prerelease version `v<version>-beta.<run>` via `scripts/set-version.mjs`, builds the same signed/notarized artifacts, and publishes a **GitHub prerelease** carrying a `beta*.yml` feed.
 
 The isolation is structural: the updater ([[src/main/app/updater.ts#setupUpdater]]) leaves `allowPrerelease` off, so electron-updater's GitHub provider only ever resolves the latest **non-prerelease** release's `latest.yml`. A beta prerelease is therefore invisible to stable clients — testers download the beta installer manually from the prerelease. The beta workflow skips winget + the landing-page rebuild and uses a separate `beta-release` concurrency group so it never cancels a stable release. Cutting a beta for the _next_ version requires bumping `package.json` first (a beta of an already-released version sorts lower than its stable tag).
+
+## Custom-fork builds from the `custom` branch
+
+Pushing `custom` builds a Windows installer and portable exe and publishes them as a GitHub Release on this fork, which the About pane names as the update source.
+
+`.github/workflows/custom-release.yml` runs on every push to `custom` (or manual dispatch). It computes the version from `package.json` plus `github.run_number` on the patch field (`0.7.4` + run 12 → `0.7.16`), so each build is strictly newer than the previous one without committing a version bump back — a build can never retrigger itself. It then runs `electron-vite build` (not `npm run build`, whose web typecheck currently has unrelated failures), packages `nsis` + `portable` for x64 unsigned, and publishes tag `custom-v<version>` as a normal (non-prerelease) release marked latest, with `latest.yml` attached.
+
+The client side needs no branch awareness: `electron-builder.yml` already declares `publish.owner: riandikast` / `repo: hermes-one-desktop`, which becomes `app-update.yml` at package time, and [[src/main/app/updater.ts#setupUpdater]] reads the latest non-prerelease feed with `allowPrerelease` off. [[src/renderer/src/components/settings/AboutPane.tsx#AboutPane]] shows the update source next to the version so a build can be traced to the fork rather than upstream.
+
+Portable builds cannot self-update: `setupUpdater` returns early when `PORTABLE_EXECUTABLE_DIR` is set, so the update action is inert there and the portable exe must be replaced manually. Auto-update applies to the NSIS-installed build only.

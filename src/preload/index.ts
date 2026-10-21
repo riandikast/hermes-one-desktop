@@ -1852,6 +1852,8 @@ const hermesAPI = {
     ipcRenderer.invoke("delete-knowledge-file", bundleName, fileName),
   importKnowledgeFolder: (sourceFolderPath: string, bundleName: string) =>
     ipcRenderer.invoke("import-knowledge-folder", sourceFolderPath, bundleName),
+  exportCommand: (payload: { id: string; destination: string }) =>
+    ipcRenderer.invoke("commands:export", payload),
   listCommands: () => ipcRenderer.invoke("commands:list"),
   saveCommand: (record: {
     id: string;

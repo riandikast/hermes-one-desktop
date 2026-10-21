@@ -103,6 +103,8 @@ export default {
   downloadUpdate: "Download update",
   retry: "Retry",
   onLatestVersion: "You're on the latest version.",
+  updateSource: "Update source",
+  updateSourceCustom: "custom branch builds",
   theme: {
     label: "Theme",
     system: "System",

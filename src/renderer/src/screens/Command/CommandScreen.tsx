@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Search,
   Copy,
+  Download,
   Terminal,
 } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
@@ -240,6 +241,24 @@ export function CommandScreen(): React.JSX.Element {
     setPendingDelete(cmd);
   };
 
+  const [exporting, setExporting] = useState(false);
+  const [exportNotice, setExportNotice] = useState("");
+  const exportLauncher = async (cmd: CommandItem): Promise<void> => {
+    setExporting(true);
+    setError(null);
+    setExportNotice("");
+    try {
+      const destination = await window.hermesAPI.selectFolder();
+      if (!destination) return;
+      const result = await window.hermesAPI.exportCommand({ id: cmd.id, destination });
+      setExportNotice(`Exported ${result.path}.${result.shell === "powershell" ? " Keep the companion .ps1 beside it. Requires PowerShell and script permission." : " CMD only, no PowerShell required."} Windows security software or office policy may block launchers. Export does not run the command.`);
+    } catch {
+      setError("Failed to export launcher. Check folder permissions and the template working directory.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const runOs = async (cmd: CommandItem): Promise<void> => {
     try {
       const res = await window.hermesAPI.commandRunOs({
@@ -429,6 +448,7 @@ export function CommandScreen(): React.JSX.Element {
           </div>
         )}
 
+        {exportNotice && <p role="status">{exportNotice}</p>}
         {commands.length === 0 ? (
           <div className="command-empty">
             <p>No commands saved yet.</p>
@@ -505,6 +525,16 @@ export function CommandScreen(): React.JSX.Element {
                             aria-label={`Run ${cmd.name} in OS terminal`}
                           >
                             <Terminal size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            className="command-row-run-os"
+                            onClick={() => void exportLauncher(cmd)}
+                            disabled={exporting}
+                            title={`Export ${cmd.name} as Windows launcher (uses selected terminal shell)`}
+                            aria-label={`Export ${cmd.name} as Windows launcher`}
+                          >
+                            <Download size={13} />
                           </button>
                           <div className="command-row-body">
                             <div className="command-row-title">{cmd.name}</div>
