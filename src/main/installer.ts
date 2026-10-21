@@ -117,7 +117,7 @@ export function setHermesHomeOverride(home: string): void {
     }
     writeFileSync(
       file,
-      JSON.stringify({ hermesHome: home.trim() }, null, 2),
+      JSON.stringify({ hermesHome: normalizeHermesHome(home) }, null, 2),
       "utf-8",
     );
   } catch {
@@ -125,10 +125,23 @@ export function setHermesHomeOverride(home: string): void {
   }
 }
 
-export const HERMES_HOME =
+/** Accept either the Hermes data home or its backend checkout, never desktop roots. */
+export function normalizeHermesHome(dir: string): string {
+  const selected = dir.trim();
+  if (!selected) return "";
+  const absolute = resolve(selected);
+  return existsSync(join(absolute, "hermes_cli", "main.py")) &&
+    dirname(absolute) !== absolute &&
+    resolve(dirname(absolute), "hermes-agent") === absolute
+    ? dirname(absolute)
+    : absolute;
+}
+
+export const HERMES_HOME = normalizeHermesHome(
   process.env.HERMES_HOME?.trim() ||
   readHermesHomeOverride() ||
-  defaultHermesHome();
+  defaultHermesHome(),
+);
 export const HERMES_REPO = join(HERMES_HOME, "hermes-agent");
 let installBinaries = installBinariesFor(HERMES_HOME);
 export let HERMES_VENV = installBinaries.venv;
@@ -190,7 +203,12 @@ function installBinariesFor(home: string): {
           managed: true,
         };
       }
-    } catch {
+    } catch (error) {
+      // Do not log command output: launchers can inherit credential-bearing env.
+      console.warn("[installer] Managed runtime discovery failed", {
+        home, repo, launcher,
+        code: (error as NodeJS.ErrnoException).code ?? "invalid-runtime-command",
+      });
       // A broken published runtime must not fall back to stale in-tree dependencies.
     }
     return { venv, python: "", script: launcher, args: [], managed: true };
@@ -524,7 +542,7 @@ export function inspectInstallTarget(): InstallTargetInfo {
  *  desktop expects. A hand-rolled install with a different layout fails here
  *  rather than being silently adopted into a broken state (issue #272). */
 export function validateHermesHome(dir: string): boolean {
-  const home = dir?.trim();
+  const home = normalizeHermesHome(dir || "");
   if (!home || !existsSync(home)) return false;
   const { python, script } = installBinariesFor(home);
   return existsSync(python) && existsSync(script);
@@ -616,8 +634,17 @@ export async function verifyInstall(): Promise<boolean> {
         timeout: 15000,
         ...HIDDEN_SUBPROCESS_OPTIONS,
       },
-      (error) => {
+      (error, _stdout, stderr) => {
         const ok = !error;
+        if (error) {
+          console.warn("[installer] Python CLI verification failed", {
+            home: HERMES_HOME,
+            repo: HERMES_REPO,
+            python: HERMES_PYTHON,
+            code: error.code,
+            missingModule: /ModuleNotFoundError: No module named ['"]([\w.]+)['"]/.exec(String(stderr))?.[1],
+          });
+        }
         _verifyCache = { ok, ts: Date.now() };
         resolve(ok);
       },
@@ -963,7 +990,15 @@ export async function runInstall(
   emit("Running official Hermes install script...\n");
 
   if (IS_WINDOWS) {
-    return runInstallWindows(emit);
+    await runInstallWindows(emit);
+    emit("\nValidating installed Hermes runtime...\n");
+    if (!(await verifyInstall())) {
+      throw new Error(
+        "Installer finished, but the Hermes runtime could not be validated. Check the installation logs, then retry.",
+      );
+    }
+    emit("\nHermes runtime validated.\n");
+    return;
   }
 
   // Ask for the sudo password ONCE upfront and warm sudo's credential cache
@@ -1091,9 +1126,8 @@ function resolvePowerShellExe(): string {
 }
 
 async function runInstallWindows(emit: (t: string) => void): Promise<void> {
-  // We can't `irm | iex` and pass parameters, and we want to override the
-  // upstream defaults (which install to %LOCALAPPDATA%\hermes) so the
-  // desktop app's HERMES_HOME == ~\.hermes convention keeps working.
+  // Pass the selected data home and checkout explicitly; fresh Windows
+  // installs default to %LOCALAPPDATA%\hermes, matching upstream.
   // Strategy: write a small wrapper .ps1 to %TEMP%, run it with -File.
   const home = homedir();
   const hermesHome = HERMES_HOME;

@@ -1,0 +1,23 @@
+.settings-soul-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.settings-soul-pane h2,
+.settings-soul-pane p {
+  margin: 0;
+}
+.settings-soul-path {
+  overflow-wrap: anywhere;
+}
+.settings-soul-editor {
+  flex: none;
+  width: 100%;
+  min-height: 320px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.settings-soul-editor:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

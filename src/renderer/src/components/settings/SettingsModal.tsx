@@ -25,8 +25,10 @@ import AboutPane from "./AboutPane";
 import CommunityPane from "./CommunityPane";
 import LogsPane from "./LogsPane";
 import GitHubPane from "./GitHubPane";
+import SoulPane from "./SoulPane";
 
 export type SettingsSection =
+  | "soul"
   | "appearance"
   | "language"
   | "security"
@@ -47,7 +49,18 @@ const SETTINGS_NAV: ReadonlyArray<{
   labelKey: string;
   Icon: React.ComponentType<{ size?: number }>;
 }> = [
-  { group: "general", id: "github", labelKey: "settings.nav.github", Icon: Plug },
+  {
+    group: "general",
+    id: "soul",
+    labelKey: "soul.settingsTitle",
+    Icon: FileText,
+  },
+  {
+    group: "general",
+    id: "github",
+    labelKey: "settings.nav.github",
+    Icon: Plug,
+  },
   {
     group: "general",
     id: "appearance",
@@ -136,6 +149,12 @@ export default function SettingsModal({
 }: SettingsModalProps): React.JSX.Element {
   const { t } = useI18n();
   const data = useSettingsData(profile);
+  const [soulDirty, setSoulDirty] = useState(false);
+  const canLeave = (): boolean =>
+    !soulDirty || window.confirm(t("soul.discardConfirm"));
+  const close = (): void => {
+    if (canLeave()) onClose();
+  };
   const [section, setSection] = useState<SettingsSection>(() =>
     resolveSection(initialSection),
   );
@@ -150,7 +169,7 @@ export default function SettingsModal({
     <AppModal
       open={open}
       onOpenChange={(nextOpen) => {
-        if (!nextOpen) onClose();
+        if (!nextOpen) close();
       }}
       onExitComplete={onExited}
       className="settings-modal"
@@ -179,7 +198,12 @@ export default function SettingsModal({
                   className={`settings-modal-nav-item ${
                     section === s.id ? "active" : ""
                   }`}
-                  onClick={() => setSection(s.id)}
+                  onClick={() => {
+                    if (s.id !== section && canLeave()) {
+                      setSoulDirty(false);
+                      setSection(s.id);
+                    }
+                  }}
                 >
                   <s.Icon size={16} />
                   {t(s.labelKey)}
@@ -195,7 +219,7 @@ export default function SettingsModal({
           <button
             type="button"
             className="settings-modal-close"
-            onClick={onClose}
+            onClick={close}
             aria-label={t("common.cancel")}
           >
             <X size={18} />
@@ -204,6 +228,13 @@ export default function SettingsModal({
 
         <div className="settings-modal-content">
           <SettingsDataContext.Provider value={data}>
+            {section === "soul" && (
+              <SoulPane
+                key={profile}
+                profile={profile}
+                onDirtyChange={setSoulDirty}
+              />
+            )}
             {section === "appearance" && <AppearancePane />}
             {section === "language" && <LanguagePane />}
             {section === "security" && <SecurityPane />}

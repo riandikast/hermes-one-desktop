@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "fs";
+import { readFileSync } from "fs";
 import { join } from "path";
 import { profileHome, safeWriteFile } from "./utils";
 
@@ -11,12 +11,11 @@ You strive to be helpful while being safe and responsible. You respect the user'
 
 export function readSoul(profile?: string): string {
   const soulFile = join(profileHome(profile), "SOUL.md");
-  if (!existsSync(soulFile)) return "";
-
   try {
     return readFileSync(soulFile, "utf-8");
-  } catch {
-    return "";
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
+    throw error;
   }
 }
 

@@ -121,12 +121,101 @@ it.skipIf(process.platform !== "win32")(
     childProcess.execFileSync.mockReturnValue(
       JSON.stringify([python, "-I", "-c", "bootstrap"]),
     );
+    childProcess.execFile.mockImplementation((_python, _args, _options, callback) => callback(null, "Hermes test", ""));
     child.emit("close", 0);
     await installing;
     expect(installer.checkInstallStatus().installed).toBe(true);
     expect(installer.HERMES_PYTHON).toBe(python);
   },
 );
+
+// @lat: [[backend-installation#Fresh Windows bootstrap]]
+it.skipIf(process.platform !== "win32")("validates a fresh bootstrap with no tools on PATH and recovers after failure", async () => {
+  const { home, repo, touch } = fixture();
+  vi.stubEnv("PATH", "");
+  vi.stubEnv("TEMP", home);
+  vi.stubEnv("TMP", home);
+  const installer = await import("../src/main/installer");
+  expect(installer.checkInstallStatus().installed).toBe(false);
+  const child = () => Object.assign(new EventEmitter(), {
+    stdout: new EventEmitter(), stderr: new EventEmitter(),
+  });
+  const failedChild = child();
+  childProcess.spawn.mockReturnValue(failedChild);
+  const first = installer.runInstall(() => {});
+  const rejected = expect(first).rejects.toThrow("Installation failed");
+  failedChild.emit("close", 1);
+  await rejected;
+  expect(installer.checkInstallStatus().installed).toBe(false);
+
+  const nextChild = child();
+  childProcess.spawn.mockReturnValue(nextChild);
+  const progress: string[] = [];
+  const next = installer.runInstall((p) => progress.push(p.log));
+  const [exe, args, options] = childProcess.spawn.mock.calls.at(-1)!;
+  expect(exe).toMatch(/(?:powershell|pwsh)\.exe$/);
+  expect(args).toContain("-NonInteractive");
+  const { readFileSync, existsSync } = await import("fs");
+  const wrapper = args[args.indexOf("-File") + 1];
+  const script = readFileSync(wrapper, "utf8");
+  expect(script).toContain("-NonInteractive -HermesHome $hermesHome -InstallDir $installDir");
+  expect(script).toContain(home.replace(/'/g, "''"));
+  expect(script).toContain("UTF8Encoding $true");
+  expect(options.env.HERMES_HOME).toBe(home);
+  expect(options.stdio[0]).toBe("ignore");
+  expect(options.windowsHide).toBe(true);
+  const python = join(home, "managed-python", "python.exe");
+  touch(python);
+  touch(join(repo, "hermes_cli", "main.py"));
+  touch(join(repo, ".hermes", "bin", "hermes.exe"));
+  childProcess.execFileSync.mockReturnValue(JSON.stringify([python, "-I", "-c", "bootstrap"]));
+  childProcess.execFile.mockImplementation((_python, _args, _options, callback) => callback(null, "Hermes test", ""));
+  nextChild.emit("close", 0);
+  await next;
+  expect(existsSync(wrapper)).toBe(false);
+  expect(installer.checkInstallStatus().installed).toBe(true);
+  expect(childProcess.execFile).toHaveBeenCalledWith(python, ["-I", "-c", "bootstrap", "--version"], expect.objectContaining({ env: expect.objectContaining({ HERMES_HOME: home }) }), expect.any(Function));
+  expect(progress.at(-1)).toContain("Hermes runtime validated");
+});
+
+it.skipIf(process.platform !== "win32")("rejects broken CLI imports after bootstrap then validates a repaired retry", async () => {
+  const { home, repo, touch } = fixture();
+  vi.stubEnv("TEMP", home);
+  vi.stubEnv("TMP", home);
+  const installer = await import("../src/main/installer");
+  const python = join(home, "managed-python", "python.exe");
+  touch(python);
+  touch(join(repo, "hermes_cli", "main.py"));
+  touch(join(repo, ".hermes", "bin", "hermes.exe"));
+  childProcess.execFileSync.mockReturnValue(JSON.stringify([python, "-I", "-c", "bootstrap"]));
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    for (const broken of [true, false]) {
+      const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter() });
+      childProcess.spawn.mockReturnValue(child);
+      childProcess.execFile.mockImplementation((_python, _args, _options, callback) => callback(broken ? new Error("missing dependencies") : null, "", ""));
+      const installing = installer.runInstall(() => {});
+      const result = broken ? expect(installing).rejects.toThrow("runtime could not be validated") : expect(installing).resolves.toBeUndefined();
+      child.emit("close", 0);
+      await result;
+    }
+  } finally {
+    warn.mockRestore();
+  }
+});
+
+it.skipIf(process.platform !== "win32")("rejects a zero-exit fresh installer that produced no backend", async () => {
+  const { home } = fixture();
+  vi.stubEnv("TEMP", home);
+  vi.stubEnv("TMP", home);
+  const installer = await import("../src/main/installer");
+  const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter() });
+  childProcess.spawn.mockReturnValue(child);
+  const installing = installer.runInstall(() => {});
+  const rejected = expect(installing).rejects.toThrow("runtime could not be validated");
+  child.emit("close", 0);
+  await rejected;
+});
 
 it("retries failed managed discovery when the install gate is checked again", async () => {
   const { home, repo, touch } = fixture();
@@ -158,6 +247,58 @@ it("keeps an explicit home when portable extraction and inherited venv point els
   expect(installer.HERMES_REPO).toBe(repo);
   expect(installer.HERMES_PYTHON).toBe(python);
   expect(installer.checkInstallStatus().installed).toBe(true);
+});
+
+it.each(["portable", "installed"])("accepts the selected backend checkout in a %s app", async (kind) => {
+  const { home, repo, touch } = fixture();
+  vi.stubEnv("HERMES_HOME", repo);
+  vi.stubEnv("PORTABLE_EXECUTABLE_DIR", kind === "portable" ? join(home, "portable") : "");
+  const python = join(home, "tools", "python.exe");
+  touch(python);
+  touch(join(repo, "hermes_cli", "main.py"));
+  touch(join(repo, ".hermes", "bin", process.platform === "win32" ? "hermes.exe" : "hermes"));
+  childProcess.execFileSync.mockReturnValue(JSON.stringify([python, "-I", "-c", "bootstrap"]));
+  const installer = await import("../src/main/installer");
+  expect(installer.HERMES_HOME).toBe(home);
+  expect(installer.HERMES_REPO).toBe(repo);
+  expect(installer.validateHermesHome(repo)).toBe(true);
+  expect(installer.validateHermesHome(home)).toBe(true);
+  expect(installer.checkInstallStatus().installed).toBe(true);
+});
+
+it.skipIf(process.platform !== "win32").each(["portable", "installed"])("discovers the default home from a %s app without shell overrides", async (kind) => {
+  const { home, touch } = fixture();
+  vi.stubEnv("HERMES_HOME", "");
+  vi.stubEnv("LOCALAPPDATA", home);
+  vi.stubEnv("PORTABLE_EXECUTABLE_DIR", kind === "portable" ? join(home, "portable") : "");
+  const selectedHome = join(home, "hermes");
+  const repo = join(selectedHome, "hermes-agent");
+  const python = join(selectedHome, "tools", "python.exe");
+  touch(python);
+  touch(join(repo, "hermes_cli", "main.py"));
+  touch(join(repo, ".hermes", "bin", "hermes.exe"));
+  childProcess.execFileSync.mockReturnValue(JSON.stringify([python, "-I", "-c", "bootstrap"]));
+  const installer = await import("../src/main/installer");
+  expect(installer.HERMES_HOME).toBe(selectedHome);
+  expect(installer.checkInstallStatus().installed).toBe(true);
+  expect(installer.validateHermesHome(selectedHome)).toBe(true);
+  expect(installer.validateHermesHome(repo)).toBe(true);
+});
+
+it("reports Python import failures without logging arbitrary subprocess output", async () => {
+  const { repo, touch } = fixture();
+  touch(join(repo, "hermes_cli", "main.py"));
+  touch(join(repo, "venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python"));
+  touch(process.platform === "win32" ? join(repo, "venv", "Scripts/hermes.exe") : join(repo, "hermes"));
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  childProcess.execFile.mockImplementation((_python, _args, _options, callback) => {
+    callback(Object.assign(new Error("failed"), { code: 1 }), "private stdout", "private stderr\nModuleNotFoundError: No module named 'yaml'\n");
+  });
+  const installer = await import("../src/main/installer");
+  expect(await installer.verifyInstall()).toBe(false);
+  expect(warn).toHaveBeenCalledWith("[installer] Python CLI verification failed", expect.objectContaining({ code: 1, missingModule: "yaml" }));
+  expect(JSON.stringify(warn.mock.calls)).not.toContain("private");
+  warn.mockRestore();
 });
 
 it("bootstraps Python snippets with managed dependencies", async () => {
