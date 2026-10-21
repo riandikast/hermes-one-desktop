@@ -80,7 +80,25 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! npm ci --ignore-scripts --no-audit --no-fund 2>&1 | tee ci-install.log; then
+            tail -n 8 ci-install.log | sed 's/^/::error::/'
+            exit 1
+          fi
+
+      # electron-builder's config sets npmRebuild:false, so native modules for
+      # Electron must be prepared here. Kept separate from `npm ci` so a rebuild
+      # failure is distinguishable from a dependency/lockfile failure.
+      - name: Rebuild native modules
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! npx electron-builder install-app-deps 2>&1 | tee ci-rebuild.log; then
+            tail -n 8 ci-rebuild.log | sed 's/^/::error::/'
+            exit 1
+          fi
 
       - name: Stamp build version
         env:
