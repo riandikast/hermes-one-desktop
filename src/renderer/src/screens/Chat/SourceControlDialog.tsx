@@ -7,10 +7,12 @@ import {
   RefreshCw,
   GitCommitHorizontal,
   FileDiff,
+  EyeOff,
 } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import { DiffViewer } from "./DiffViewer";
 import { CommitGraph } from "./CommitGraph";
+import { IgnoredFiles } from "./IgnoredFiles";
 import type { GraphCommit } from "./gitGraph";
 
 interface GitFileEntry {
@@ -77,10 +79,10 @@ function Section({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <div className="source-control-section">
-      <div className="source-control-section-title">{title}{action}</div>
+    <details className="source-control-section" open>
+      <summary className="source-control-section-title">{title}{action}</summary>
       {children}
-    </div>
+    </details>
   );
 }
 
@@ -99,6 +101,7 @@ function FileRow({
   onShowDiff,
   onToggleStaged,
   onResolveConflict,
+  onIgnore,
 }: {
   path: string;
   entry?: { index: string; worktree: string };
@@ -109,6 +112,7 @@ function FileRow({
   onShowDiff: (path: string, staged: boolean) => void;
   onToggleStaged: (path: string, staged: boolean) => void;
   onResolveConflict: (path: string, side: "ours" | "theirs") => void;
+  onIgnore: (path: string) => void;
 }): React.JSX.Element {
   return (
     <div className={`source-control-file${active ? " active" : ""}`}>
@@ -117,16 +121,15 @@ function FileRow({
         className="source-control-file-main"
         onClick={() => onShowDiff(path, staged)}
       >
-        <span
-          className={`source-control-file-code ${isConflict ? "conflict" : ""}`}
-        >
-          {isConflict ? "U" : entry ? statusCode(entry) : "?"}
-        </span>
         <span className="source-control-file-name" title={path}>
           {fileLabel(path)}
         </span>
+        <span className="source-control-file-code">{isConflict ? "U" : entry ? statusCode(entry) : "?"}</span>
       </button>
       <div className="source-control-file-actions">
+        {!isConflict && <button type="button" className="source-control-stage-btn" disabled={busy || !!entry || staged}
+          aria-label={`Ignore ${path}`} title={entry || staged ? "Tracked files cannot be ignored; no files will be untracked" : "Add literal path to .gitignore"}
+          onClick={() => onIgnore(path)}><EyeOff size={14} /></button>}
         {isConflict && (
           <>
             <button
@@ -173,6 +176,11 @@ export function SourceControlDialog({
   onClose: () => void;
 }): React.JSX.Element {
   const { t } = useI18n();
+  useEffect(() => {
+    const close = (event: KeyboardEvent): void => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [onClose]);
   const [status, setStatus] = useState<GitStatusResult | null>(null);
   const [busy, setBusy] = useState(false);
   const actionInFlight = useRef(false);
@@ -191,6 +199,7 @@ export function SourceControlDialog({
   const [view, setView] = useState<"changes" | "graph">("changes");
   const [commits, setCommits] = useState<GraphCommit[]>([]);
   const [graphLoading, setGraphLoading] = useState(false);
+  const [graphError, setGraphError] = useState("");
   const [selectedCommit, setSelectedCommit] = useState<GraphCommit | null>(
     null,
   );
@@ -248,10 +257,13 @@ export function SourceControlDialog({
   const loadGraph = useCallback(
     async (max = 60) => {
       setGraphLoading(true);
+      setGraphError("");
       try {
         const res = await window.hermesAPI.gitLog(dir, { max });
         setCommits(res.ok ? res.commits : []);
-      } catch {
+        if (!res.ok) setGraphError(res.error ?? "History unavailable");
+      } catch (err) {
+        setGraphError(String(err));
         setCommits([]);
       } finally {
         setGraphLoading(false);
@@ -367,6 +379,7 @@ export function SourceControlDialog({
   // the row stays a module-scope component with a stable identity.
   const fileRowHandlers = {
     busy,
+    onIgnore: (path: string) => void run(() => window.hermesAPI.gitIgnoreAdd(dir, path), "Ignored"),
     onShowDiff: (path: string, staged: boolean) => void showDiff(path, staged),
     onToggleStaged: (path: string, staged: boolean) =>
       void toggleStaged(path, staged),
@@ -526,6 +539,10 @@ export function SourceControlDialog({
           {view === "changes" ? (
             <>
               <div className="source-control-sidebar">
+                <div className="source-control-footer">
+                  <textarea className="source-control-commit-input" aria-label="Commit message" value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} placeholder="Commit message (Ctrl+Enter to commit)" rows={2} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !busy && stagedCount > 0) void commit(); }} />
+                  <button type="button" className="btn btn-primary btn-sm" disabled={busy || !stagedCount || !commitMessage.trim()} onClick={() => void commit()}>Commit</button>
+                </div>
                 <Section title={`Conflicts (${status.conflicted.length})`}>
                   {status.conflicted.length === 0 ? (
                     <div className="source-control-empty">No conflicts</div>
@@ -617,6 +634,15 @@ export function SourceControlDialog({
                     </>
                   )}
                 </Section>
+                <IgnoredFiles dir={dir} refresh={refresh} />
+                <details className="source-control-section" onToggle={(event) => { if (event.currentTarget.open && !graphLoadedRef.current) { graphLoadedRef.current = true; void loadGraph(); } }}>
+                  <summary className="source-control-section-title">Graph</summary>
+                  <p className="source-control-empty">Local history. No GitHub login required.</p>
+                  {graphLoading && <p role="status">Loading history…</p>}
+                  {graphError && <p role="alert">{graphError}</p>}
+                  <button type="button" disabled={graphLoading} onClick={() => void loadGraph()}>Refresh history</button>
+                  <CommitGraph commits={commits} selectedHash={selectedCommit?.hash ?? null} onSelect={(c) => { void showCommit(c); setView("graph"); }} />
+                </details>
               </div>
               <div className="source-control-diff">
                 <DiffViewer
@@ -629,6 +655,9 @@ export function SourceControlDialog({
           ) : (
             <div className="source-control-graph-pane">
               <div className="source-control-graph-list">
+                {graphLoading && <p role="status">Loading history…</p>}
+                {graphError && <p role="alert">{graphError}</p>}
+                <button type="button" disabled={graphLoading} onClick={() => void loadGraph()}>Refresh history</button>
                 <CommitGraph
                   commits={commits}
                   selectedHash={selectedCommit?.hash ?? null}
@@ -651,29 +680,7 @@ export function SourceControlDialog({
           )}
         </div>
 
-        {view === "changes" && (
-          <div className="source-control-footer">
-            <textarea
-              className="source-control-commit-input"
-              value={commitMessage}
-              onChange={(e) => setCommitMessage(e.target.value)}
-              placeholder={`Commit message (${stagedCount} file${stagedCount === 1 ? "" : "s"} staged)`}
-              rows={2}
-              onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === "Enter")
-                  void commit();
-              }}
-            />
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              disabled={busy || stagedCount === 0 || !commitMessage.trim()}
-              onClick={() => void commit()}
-            >
-              Commit
-            </button>
-          </div>
-        )}
+
         {remoteHost && (
           <div className="source-control-token-row">
             <span className="source-control-token-label" title={remoteHost}>

@@ -53,7 +53,7 @@ interface RunResult {
   stderr: string;
 }
 
-function runGit(
+export function runGit(
   dir: string,
   args: string[],
   timeoutMs = 60_000,
@@ -74,6 +74,10 @@ function runGit(
     let stderr = "";
     child.stdout.on("data", (d: Buffer) => {
       stdout += d.toString();
+      if (stdout.length > 8 * 1024 * 1024) {
+        stderr = "Git output exceeded 8 MiB; narrow the repository scope.";
+        child.kill("SIGKILL");
+      }
     });
     child.stderr.on("data", (d: Buffer) => {
       stderr += d.toString();
@@ -388,12 +392,15 @@ export async function gitLog(
   dir: string,
   opts: { max?: number; path?: string } = {},
 ): Promise<{ ok: boolean; commits: GitCommitEntry[]; error?: string }> {
+  if (!opts || (opts.max !== undefined && (!Number.isInteger(opts.max) || !Number.isFinite(opts.max)))) return { ok: false, commits: [], error: "Invalid history limit" };
   const max = Math.min(Math.max(opts.max ?? 50, 1), 200);
   const args = [
     "-c",
     "core.quotepath=false",
     "log",
     "--topo-order",
+    "--all",
+    "--decorate=short",
     "--date=iso-strict",
     `--max-count=${max}`,
     // %H hash, %h short, %P parents, %D ref names, %an author, %aI date, %s subject
@@ -424,12 +431,11 @@ export async function gitLog(
       hash,
       shortHash: shortHash ?? hash.slice(0, 7),
       parents: (parentList ?? "").trim() ? parentList.trim().split(/\s+/) : [],
-      // Decorations look like `HEAD -> main, origin/main, tag: v1.0`; keep the
-      // local branch names (drop HEAD/tags/remotes) for compact chips.
+      // Preserve HEAD, local/remote branches and tags for the graph's ref chips.
       refs: (refNames ?? "")
         .split(",")
-        .map((r) => r.trim().replace(/^HEAD -> /, ""))
-        .filter((r) => r && !r.startsWith("tag:") && !r.includes("/")),
+        .map((r) => r.trim())
+        .filter(Boolean),
       author: author ?? "",
       date: date ?? "",
       subject: (rest.join(LOG_FIELD_SEP) || "").trim(),

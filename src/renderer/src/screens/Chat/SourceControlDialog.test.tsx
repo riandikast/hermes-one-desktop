@@ -89,6 +89,32 @@ beforeEach(() => {
 });
 
 describe("SourceControlDialog", () => {
+  it("ignores only untracked rows and refreshes status without staging or deleting", async () => {
+    const initial = await gitRepoStatus();
+    gitRepoStatus.mockResolvedValue({ ...initial, untracked: ["new.txt"] });
+    window.hermesAPI.gitIgnoreAdd = vi.fn().mockResolvedValue({ ok: true });
+    renderDialog("/repo");
+    const ignore = await screen.findByRole("button", { name: "Ignore new.txt" });
+    expect(screen.getByRole("button", { name: "Ignore a.ts" })).toBeDisabled();
+    await act(async () => ignore.click());
+    expect(window.hermesAPI.gitIgnoreAdd).toHaveBeenCalledWith("/repo", "new.txt");
+    expect(window.hermesAPI.gitStage).not.toHaveBeenCalled();
+    expect(gitRepoStatus).toHaveBeenCalledTimes(3);
+  });
+
+  it("lists root rules separately and removes a selected rule with confirmation and version", async () => {
+    window.hermesAPI.gitIgnoreList = vi.fn().mockResolvedValue({ ok: true, rules: [{ line: 2, pattern: "*.cache" }], files: ["node_modules/"], version: "version", hasMore: false });
+    window.hermesAPI.gitIgnoreRemove = vi.fn().mockResolvedValue({ ok: true });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderDialog("/repo");
+    await screen.findByText("Ignored");
+    await act(async () => { screen.getByText("Ignored").click(); });
+    expect(await screen.findByText("node_modules/")).toBeTruthy();
+    await act(async () => screen.getByRole("button", { name: "Remove from ignore" }).click());
+    expect(window.hermesAPI.gitIgnoreRemove).toHaveBeenCalledWith("/repo", 2, "*.cache", "version");
+    expect(window.confirm).toHaveBeenCalled();
+    vi.mocked(window.confirm).mockRestore();
+  });
   // @lat: [[source-control#Source Control (git)#Stage all changes]]
   it("stages tracked, deleted, and untracked paths once, excludes conflicts, and refreshes before unlocking", async () => {
     const initial = await gitRepoStatus();
@@ -172,7 +198,7 @@ describe("SourceControlDialog", () => {
     await waitFor(() => expect(gitRepoStatus).toHaveBeenCalled());
 
     await act(async () => {
-      screen.getByText("Graph").click();
+      screen.getByRole("button", { name: "Graph" }).click();
     });
 
     await waitFor(() =>
@@ -195,7 +221,7 @@ describe("SourceControlDialog", () => {
     await waitFor(() => expect(gitRepoStatus).toHaveBeenCalled());
 
     await act(async () => {
-      screen.getByText("Graph").click();
+      screen.getByRole("button", { name: "Graph" }).click();
     });
     const row = await screen.findByText("solo commit");
     await act(async () => {

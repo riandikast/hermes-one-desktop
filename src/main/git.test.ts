@@ -221,7 +221,7 @@ describe("git source control", () => {
       expect(res.commits).toHaveLength(2);
       // Newest first, and the tip carries the branch ref.
       expect(res.commits[0].subject).toBe("second commit");
-      expect(res.commits[0].refs).toContain("main");
+      expect(res.commits[0].refs).toContain("HEAD -> main");
       // The root commit has no parents; the tip has exactly one.
       expect(res.commits[0].parents).toHaveLength(1);
       expect(res.commits[1].parents).toHaveLength(0);

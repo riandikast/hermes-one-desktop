@@ -28,6 +28,16 @@ The Changes heading stages displayed tracked edits, deletions, and untracked fil
 
 The native themed button is disabled when empty or busy. A synchronous action lock prevents duplicate requests and stays held through status refresh; staging and refresh errors remain visible. No commit or push occurs. Mocked regression: [[src/renderer/src/screens/Chat/SourceControlDialog.test.tsx]].
 
+## Ignore management and local graph
+
+The compact sidebar places commit controls first, collapsible change groups next, then lazy Ignored and Graph sections, matching the requested VS Code workflow.
+
+[[src/main/git-ignore.ts#gitIgnoreEdit]] edits only root .gitignore after explicit clicks, escapes literal anchored paths, rejects traversal and tracked paths, preserves line endings, and removes a selected rule only against its content version. No files are deleted or untracked. Existing broad rules require confirmation; nested, global and info/exclude rules are not edited. [[src/renderer/src/screens/Chat/IgnoredFiles.tsx#IgnoredFiles]] separates root rules from ignored paths, paging 100 paths with ignored directories collapsed. Git status has a 10-second timeout and shared Git output has an 8 MiB ceiling; pagination bounds returned paths, not the underlying status walk. Fixtures: [[src/main/git-ignore.test.ts]].
+
+[[src/main/git.ts#gitLog]] reads all local refs in topological order, defaults to 60 commits in the UI and caps at 200. HEAD, branches, tags and remote-tracking refs stay visible. Existing [[src/renderer/src/screens/Chat/CommitGraph.tsx#CommitGraph]] lanes and commit diffs are reused; no login or network request is needed. Loading, failure and retry controls are explicit. Mocked regression: [[src/renderer/src/screens/Chat/SourceControlDialog.test.tsx]].
+
+Design direction: requested VS Code familiarity, ENERGY 1 / RHYTHM 1 / MOTION 1. Existing theme tokens preserve app identity; compact rows and right-aligned status aid scanning, the eye-off icon means ignore, monospace is reserved for paths and history. Native details provide keyboard collapse; narrow layouts stack the sidebar and diff. Live visual verification remains manual because this task forbids launch/build/browser actions.
+
 ## Design notes
 
 File selection, staging, and conflict resolution remain explicit.
