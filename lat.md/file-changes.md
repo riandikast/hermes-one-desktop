@@ -31,3 +31,11 @@ live or reopened.
 
 Capture is dashboard-transport only — the legacy transport's progress strings
 don't carry reliable paths. Reads are best-effort; failures are swallowed.
+
+## Copy current file content
+
+The history dialog's Copy content action reads the entire current local file, not its stored diff, and preserves whitespace, newlines, and empty files when copying to the clipboard.
+
+[[src/renderer/src/screens/Chat/FileChangeHistoryDialog.tsx#FileChangeHistoryDialog]] resolves relative paths against the session working folder and requests an uncapped `readFile` using `Number.MAX_SAFE_INTEGER`. Pending copies disable content buttons and report progress through the existing status region. Missing/unreadable files, truncated reads, binary controls or replacement characters, and clipboard errors report explicit feedback without a diff fallback. Remote/SSH mode reports unavailable because the existing `read-file` IPC only reads local files; it never falls back to a matching local path. The button reuses themed 44px history actions beside Copy path; narrow layouts retain three action columns.
+
+[[src/renderer/src/screens/Chat/FileChangeHistoryDialog.test.tsx]] exercises the actual button with deterministic whole-file/empty fixtures, pending feedback, path resolution, read/clipboard errors, truncation, binary data, and remote refusal.

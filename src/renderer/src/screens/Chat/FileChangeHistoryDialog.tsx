@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Copy, FolderSearch, History, X } from "lucide-react";
+import { ChevronDown, Copy, FileText, FolderSearch, History, X } from "lucide-react";
 import { AppModal, AppModalTitle } from "../../components/modal/AppModal";
 import { useI18n } from "../../components/useI18n";
 import {
@@ -34,6 +34,39 @@ export function FileChangeHistoryDialog({
   const [attempt, setAttempt] = useState(0);
   const [selected, setSelected] = useState<FileChange[] | null>(null);
   const [actionStatus, setActionStatus] = useState("");
+  const [copyingContent, setCopyingContent] = useState(false);
+  const copyContent = async (path: string): Promise<void> => {
+    setCopyingContent(true);
+    setActionStatus(t("chat.fileChangeHistory.copyingContent"));
+    try {
+      const target = resolveHistoryExplorerTarget(path, cwd);
+      if (!target) {
+        setActionStatus(t("chat.fileChangeHistory.noCwd"));
+        return;
+      }
+      // readFile is local-only; never read a coincidentally matching local path
+      // for a remote/SSH session. No remote whole-file API exists yet.
+      if (await window.hermesAPI.isRemoteMode()) {
+        setActionStatus(t("chat.fileChangeHistory.remoteContentUnavailable"));
+        return;
+      }
+      const result = await window.hermesAPI.readFile(target.path, Number.MAX_SAFE_INTEGER);
+      if (result === null) {
+        setActionStatus(t("chat.fileChangeHistory.contentUnavailable"));
+      } else if (result.truncated !== false) {
+        setActionStatus(t("chat.fileChangeHistory.contentTruncated"));
+      } else if (/[\u0000-\u0008\u000e-\u001f\ufffd]/.test(result.content)) {
+        setActionStatus(t("chat.fileChangeHistory.contentBinary"));
+      } else {
+        await window.hermesAPI.copyToClipboard(result.content);
+        setActionStatus(t("chat.fileChangeHistory.contentCopied"));
+      }
+    } catch {
+      setActionStatus(t("chat.fileChangeHistory.copyContentFailed"));
+    } finally {
+      setCopyingContent(false);
+    }
+  };
   const [explorer, setExplorer] = useState<ReturnType<typeof resolveHistoryExplorerTarget>>(null);
   useEffect(() => {
     let cancelled = false;
@@ -157,6 +190,16 @@ export function FileChangeHistoryDialog({
                         }}
                       >
                         <Copy size={16} aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        className="file-change-history-action"
+                        disabled={copyingContent}
+                        aria-label={`${t("chat.fileChangeHistory.copyContent")}: ${change.path}`}
+                        title={t("chat.fileChangeHistory.copyContent")}
+                        onClick={() => void copyContent(change.path)}
+                      >
+                        <FileText size={16} aria-hidden />
                       </button>
                       <button
                         type="button"

@@ -190,6 +190,52 @@ describe("file change history dialog", () => {
     expect(readDirectory).toHaveBeenCalledWith("C:/repo/src");
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
   });
+  // @lat: [[file-changes#Copy current file content]]
+  it.each(["\ufeff  unchanged\r\n\tcurrent content\n\n", ""])("copies the entire current file verbatim, including empty files (%j)", async (content) => {
+    let finishRead!: (value: { content: string; truncated: boolean }) => void;
+    const readFile = vi.fn(() => new Promise<{ content: string; truncated: boolean }>((resolve) => { finishRead = resolve; }));
+    const copyToClipboard = vi.fn().mockResolvedValue(undefined);
+    window.hermesAPI = { isRemoteMode: vi.fn().mockResolvedValue(false), readFile, copyToClipboard } as unknown as typeof window.hermesAPI;
+    renderWithI18n(<FileChangeHistoryDialog sessionId={null} messages={messages} cwd="C:/repo" onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Manual prompt").closest("summary")!);
+    const button = screen.getByRole("button", { name: `Copy content: ${change.path}` });
+    expect(screen.getByRole("button", { name: `Copy path: ${change.path}` }).nextElementSibling).toBe(button);
+    fireEvent.click(button);
+    expect(button).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Copying file content...");
+    await waitFor(() => expect(readFile).toHaveBeenCalledExactlyOnceWith("C:/repo/src/long path.ts", Number.MAX_SAFE_INTEGER));
+    expect(copyToClipboard).not.toHaveBeenCalled();
+    finishRead({ content, truncated: false });
+    await screen.findByText("File content copied.");
+    expect(copyToClipboard).toHaveBeenCalledExactlyOnceWith(content);
+    expect(button).not.toBeDisabled();
+  });
+  it.each([
+    ["missing", "Could not read the current file"],
+    ["truncated", "The file read was incomplete"],
+    ["binary", "binary or unsupported text"],
+    ["invalid UTF-8", "binary or unsupported text"],
+    ["read failure", "Could not copy file content"],
+    ["clipboard failure", "Could not copy file content"],
+    ["remote", "unavailable for remote files"],
+    ["no cwd", "Attach a working folder"],
+  ])("reports %s without silently copying partial/diff/path content", async (failure, feedback) => {
+    const readFile = failure === "read failure" ? vi.fn().mockRejectedValue(new Error("denied")) : vi.fn().mockResolvedValue(
+      failure === "missing" ? null : { content: failure === "binary" ? "text\u0000data" : failure === "invalid UTF-8" ? "text\ufffddata" : "whole file", truncated: failure === "truncated" },
+    );
+    const copyToClipboard = failure === "clipboard failure" ? vi.fn().mockRejectedValue(new Error("denied")) : vi.fn().mockResolvedValue(undefined);
+    window.hermesAPI = { isRemoteMode: vi.fn().mockResolvedValue(failure === "remote"), readFile, copyToClipboard } as unknown as typeof window.hermesAPI;
+    renderWithI18n(<FileChangeHistoryDialog sessionId={null} messages={messages} cwd={failure === "no cwd" ? undefined : "C:/repo"} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText("Manual prompt").closest("summary")!);
+    const button = screen.getByRole("button", { name: `Copy content: ${change.path}` });
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(feedback));
+    expect(screen.queryByText("File content copied.")).not.toBeInTheDocument();
+    if (failure === "clipboard failure") expect(copyToClipboard).toHaveBeenCalledExactlyOnceWith("whole file");
+    else expect(copyToClipboard).not.toHaveBeenCalled();
+    if (failure === "remote" || failure === "no cwd") expect(readFile).not.toHaveBeenCalled();
+    expect(button).not.toBeDisabled();
+  });
   it("does not open unresolved relative paths without cwd", () => {
     renderWithI18n(
       <FileChangeHistoryDialog
