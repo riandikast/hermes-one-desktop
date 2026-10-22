@@ -72,15 +72,18 @@ function Shell({ children }: { children: React.ReactNode }): React.JSX.Element {
 function Section({
   title,
   action,
+  toolbar,
   children,
 }: {
   title: string;
   action?: React.ReactNode;
+  toolbar?: React.ReactNode;
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
     <details className="source-control-section" open>
       <summary className="source-control-section-title">{title}{action}</summary>
+      {toolbar && <div className="source-control-section-toolbar">{toolbar}</div>}
       {children}
     </details>
   );
@@ -97,8 +100,10 @@ function FileRow({
   staged,
   isConflict,
   active,
+  selectedForBatch,
   busy,
   onShowDiff,
+  onSelectForBatch,
   onToggleStaged,
   onResolveConflict,
   onIgnore,
@@ -108,18 +113,38 @@ function FileRow({
   staged: boolean;
   isConflict?: boolean;
   active: boolean;
+  selectedForBatch: boolean;
   busy: boolean;
   onShowDiff: (path: string, staged: boolean) => void;
+  onSelectForBatch: (path: string, staged: boolean, shift: boolean) => void;
   onToggleStaged: (path: string, staged: boolean) => void;
   onResolveConflict: (path: string, side: "ours" | "theirs") => void;
   onIgnore: (path: string) => void;
 }): React.JSX.Element {
   return (
-    <div className={`source-control-file${active ? " active" : ""}`}>
+    <div className={`source-control-file${active ? " active" : ""}${selectedForBatch ? " selected" : ""}`}>
+      {!isConflict && (
+        <input
+          type="checkbox"
+          className="source-control-file-select"
+          aria-label={`Select ${path}`}
+          checked={selectedForBatch}
+          disabled={busy}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => onSelectForBatch(path, staged, (event.nativeEvent as MouseEvent).shiftKey)}
+        />
+      )}
       <button
         type="button"
         className="source-control-file-main"
-        onClick={() => onShowDiff(path, staged)}
+        onClick={(event) => {
+          if (event.shiftKey && !isConflict) {
+            event.preventDefault();
+            onSelectForBatch(path, staged, true);
+            return;
+          }
+          onShowDiff(path, staged);
+        }}
       >
         <span className="source-control-file-name" title={path}>
           {fileLabel(path)}
@@ -188,6 +213,9 @@ export function SourceControlDialog({
     path: string;
     staged: boolean;
   } | null>(null);
+  // Ordered list: selection order is preserved for deterministic batch actions.
+  const [batchSelection, setBatchSelection] = useState<string[]>([]);
+  const selectionAnchorRef = useRef<{ path: string; staged: boolean } | null>(null);
   const [diff, setDiff] = useState<string>("");
   const [commitMessage, setCommitMessage] = useState("");
   const [output, setOutput] = useState<string>("");
@@ -230,6 +258,15 @@ export function SourceControlDialog({
   const refresh = useCallback(async () => {
     const next = await window.hermesAPI.gitRepoStatus(dir);
     setStatus(next);
+    const selectable = new Set([
+      ...next.staged.map((file) => `staged:${file.path}`),
+      ...next.unstaged.map((file) => `changes:${file.path}`),
+      ...next.untracked.map((path) => `changes:${path}`),
+    ]);
+    setBatchSelection((previous) => previous.filter((key) => selectable.has(key)));
+    if (selectionAnchorRef.current && !selectable.has(`${selectionAnchorRef.current.staged ? "staged" : "changes"}:${selectionAnchorRef.current.path}`)) {
+      selectionAnchorRef.current = null;
+    }
     setSelected((prev) => {
       if (!prev) return prev;
       const still =
@@ -349,6 +386,48 @@ export function SourceControlDialog({
     [dir, run],
   );
 
+  const selectForBatch = useCallback((path: string, staged: boolean, shift: boolean) => {
+    const group = staged
+      ? (status?.staged.map((file) => file.path) ?? [])
+      : [
+          ...(status?.unstaged.map((file) => file.path) ?? []),
+          ...(status?.untracked ?? []),
+        ];
+    const key = `${staged ? "staged" : "changes"}:${path}`;
+    const anchor = selectionAnchorRef.current;
+    const canRange = shift && anchor?.staged === staged;
+    const anchorIndex = canRange ? group.indexOf(anchor.path) : -1;
+    const targetIndex = group.indexOf(path);
+    setBatchSelection((previous) => {
+      if (anchorIndex >= 0 && targetIndex >= 0) {
+        const range = group.slice(Math.min(anchorIndex, targetIndex), Math.max(anchorIndex, targetIndex) + 1)
+          .map((item) => `${staged ? "staged" : "changes"}:${item}`);
+        return [...previous.filter((item) => !range.includes(item)), ...range];
+      }
+      return previous.includes(key)
+        ? previous.filter((item) => item !== key)
+        : [...previous, key];
+    });
+    if (!shift || anchorIndex < 0) selectionAnchorRef.current = { path, staged };
+  }, [status]);
+
+  const selectedPaths = useCallback((staged: boolean): string[] =>
+    batchSelection
+      .filter((key) => key.startsWith(staged ? "staged:" : "changes:"))
+      .map((key) => key.slice(key.indexOf(":") + 1)),
+  [batchSelection]);
+
+  /**
+   * Only untracked paths can be ignored — git ignores nothing it already
+   * tracks. A range selection usually mixes modified (tracked) and untracked
+   * rows, so the batch must act on the untracked part instead of refusing
+   * everything.
+   */
+  const ignorablePaths = useCallback((): string[] => {
+    const untracked = new Set(status?.untracked ?? []);
+    return selectedPaths(false).filter((path) => untracked.has(path));
+  }, [selectedPaths, status]);
+
   const commit = useCallback(async () => {
     const message = commitMessage.trim();
     if (!message) return;
@@ -381,6 +460,8 @@ export function SourceControlDialog({
     busy,
     onIgnore: (path: string) => void run(() => window.hermesAPI.gitIgnoreAdd(dir, path), "Ignored"),
     onShowDiff: (path: string, staged: boolean) => void showDiff(path, staged),
+    onSelectForBatch: (path: string, staged: boolean, shift: boolean) =>
+      selectForBatch(path, staged, shift),
     onToggleStaged: (path: string, staged: boolean) =>
       void toggleStaged(path, staged),
     onResolveConflict: (path: string, side: "ours" | "theirs") =>
@@ -555,6 +636,7 @@ export function SourceControlDialog({
                         staged={false}
                         isConflict
                         {...fileRowHandlers}
+                        selectedForBatch={false}
                         active={
                           selected?.path === f.path && selected.staged === false
                         }
@@ -562,7 +644,35 @@ export function SourceControlDialog({
                     ))
                   )}
                 </Section>
-                <Section title={`Staged (${stagedCount})`}>
+                <Section
+                  title={`Staged (${stagedCount})`}
+                  toolbar={selectedPaths(true).length > 0 ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm"
+                        disabled={busy}
+                        onClick={() => void run(
+                          () => window.hermesAPI.gitUnstage(dir, selectedPaths(true)),
+                          "Unstaged selected",
+                        )}
+                      >
+                        Unstage selected ({selectedPaths(true).length})
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm"
+                        disabled={busy}
+                        onClick={() => {
+                          setBatchSelection([]);
+                          selectionAnchorRef.current = null;
+                        }}
+                      >
+                        Clear selection
+                      </button>
+                    </>
+                  ) : undefined}
+                >
                   {stagedCount === 0 ? (
                     <div className="source-control-empty">
                       No staged changes
@@ -575,6 +685,7 @@ export function SourceControlDialog({
                         entry={f}
                         staged
                         {...fileRowHandlers}
+                        selectedForBatch={batchSelection.includes(`staged:${f.path}`)}
                         active={
                           selected?.path === f.path && selected.staged === true
                         }
@@ -584,22 +695,66 @@ export function SourceControlDialog({
                 </Section>
                 <Section
                   title={`Changes (${changeCount})`}
+                  toolbar={
+                    selectedPaths(false).length > 0 ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn-ghost btn-sm source-control-stage-all"
+                          disabled={busy}
+                          onClick={() => void run(
+                            () => window.hermesAPI.gitStage(dir, selectedPaths(false)),
+                            "Staged selected",
+                          )}
+                        >
+                          Stage selected ({selectedPaths(false).length})
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost btn-sm"
+                          disabled={busy || ignorablePaths().length === 0}
+                          onClick={() => void run(
+                            () => window.hermesAPI.gitIgnoreAddMany(dir, ignorablePaths()),
+                            "Ignored selected",
+                          )}
+                          title={ignorablePaths().length === 0
+                            ? "Only untracked files can be ignored. Tracked files must be removed from the index first."
+                            : `Add ${ignorablePaths().length} untracked path${ignorablePaths().length === 1 ? "" : "s"} to the root .gitignore. Tracked files in the selection are skipped. No files are deleted.`}
+                        >
+                          Ignore selected ({ignorablePaths().length})
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost btn-sm"
+                          disabled={busy}
+                          onClick={() => {
+                            setBatchSelection([]);
+                            selectionAnchorRef.current = null;
+                          }}
+                        >
+                          Clear selection
+                        </button>
+                      </>
+                    ) : undefined
+                  }
                   action={
-                    <button
-                      type="button"
-                      className="btn-ghost btn-sm source-control-stage-all"
-                      disabled={busy || changeCount === 0}
-                      aria-busy={busy}
-                      onClick={() => void run(
-                        () => window.hermesAPI.gitStage(dir, [...new Set([
-                          ...status.unstaged.map((file) => file.path),
-                          ...status.untracked,
-                        ])]),
-                        t("chat.sourceControl.stageAll"),
-                      )}
-                    >
-                      {t("chat.sourceControl.stageAll")}
-                    </button>
+                    changeCount > 0 ? (
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm source-control-stage-all"
+                        disabled={busy}
+                        aria-busy={busy}
+                        onClick={() => void run(
+                          () => window.hermesAPI.gitStage(dir, [
+                            ...status.unstaged.map((file) => file.path),
+                            ...status.untracked,
+                          ]),
+                          t("chat.sourceControl.stageAll"),
+                        )}
+                      >
+                        {t("chat.sourceControl.stageAll")}
+                      </button>
+                    ) : undefined
                   }
                 >
                   {status.unstaged.length === 0 &&
@@ -614,6 +769,7 @@ export function SourceControlDialog({
                           entry={f}
                           staged={false}
                           {...fileRowHandlers}
+                          selectedForBatch={batchSelection.includes(`changes:${f.path}`)}
                           active={
                             selected?.path === f.path &&
                             selected.staged === false
@@ -626,6 +782,7 @@ export function SourceControlDialog({
                           path={p}
                           staged={false}
                           {...fileRowHandlers}
+                          selectedForBatch={batchSelection.includes(`changes:${p}`)}
                           active={
                             selected?.path === p && selected.staged === false
                           }

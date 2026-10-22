@@ -46,3 +46,11 @@ File selection, staging, and conflict resolution remain explicit.
 - Resolving a conflict moves the file to Staged (the `git add` marks it resolved) so a follow-up commit includes it.
 - Pull uses `--no-edit` so an interactive merge-message editor can't hang inside the app.
 - Covered by [[src/main/git.test.ts]] (real git repos created in temp dirs: status parsing, stage/unstage, commit, diff, conflict resolution, non-repo detection).
+
+## Multi-selection and batch ignore
+
+File rows carry a checkbox; a plain row click still opens the diff. Shift-clicking a checkbox or a row selects the contiguous range within the same visible group (Staged or Changes), anchored on the last plain selection.
+
+Selection is an ordered `string[]` keyed `staged:<path>` / `changes:<path>`, pruned on every status refresh so a vanished file cannot be acted on, and never spans groups. A selection swaps the section action from "Stage all changes" to "Stage selected (n)" plus "Ignore selected (n)"; the Staged section offers "Unstage selected (n)".
+
+Batch ignore goes through [[src/main/git-ignore.ts#gitIgnoreAddMany]] — one validated `.gitignore` write for the whole selection rather than one rewrite per row. Git can never ignore a path it already tracks, and a range selection normally mixes modified rows with untracked ones, so tracked paths are **skipped and reported** while the untracked part is written; the batch is refused only when every selected path is already tracked. Rules already present are skipped, and existing content and line endings are preserved. Regressions: [[src/main/git-ignore.test.ts]] and [[src/renderer/src/screens/Chat/SourceControlDialog.test.tsx]].

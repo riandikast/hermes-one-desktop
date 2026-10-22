@@ -3,6 +3,7 @@ import {
   Database,
   FileText,
   Info,
+  KeyRound,
   Languages,
   Lock,
   Palette,
@@ -30,6 +31,7 @@ import SoulPane from "./SoulPane";
 export type SettingsSection =
   | "soul"
   | "appearance"
+  | "provider"
   | "language"
   | "security"
   | "privacy"
@@ -48,12 +50,26 @@ const SETTINGS_NAV: ReadonlyArray<{
   id: SettingsSection;
   labelKey: string;
   Icon: React.ComponentType<{ size?: number }>;
+  /**
+   * Opens an existing top-level view instead of rendering a pane here. The
+   * Providers screen is a full page with its own state (key cards, discovery,
+   * OAuth), so settings only needs to be a doorway to it — duplicating it as a
+   * pane would fork the credential UI.
+   */
+  navigateTo?: "providers";
 }> = [
   {
     group: "general",
-    id: "soul",
-    labelKey: "soul.settingsTitle",
-    Icon: FileText,
+    id: "appearance",
+    labelKey: "settings.nav.appearance",
+    Icon: Palette,
+  },
+  {
+    group: "general",
+    id: "provider",
+    labelKey: "settings.nav.provider",
+    Icon: KeyRound,
+    navigateTo: "providers",
   },
   {
     group: "general",
@@ -63,9 +79,9 @@ const SETTINGS_NAV: ReadonlyArray<{
   },
   {
     group: "general",
-    id: "appearance",
-    labelKey: "settings.nav.appearance",
-    Icon: Palette,
+    id: "soul",
+    labelKey: "soul.settingsTitle",
+    Icon: FileText,
   },
   {
     group: "general",
@@ -123,6 +139,8 @@ function resolveSection(name?: string): SettingsSection {
   if (key === "hermesagent") return "about";
   // Network merged into Connection — keep the old `/settings network` working.
   if (key === "network") return "connection";
+  // The Providers page predates this nav item; accept both spellings.
+  if (key === "providers") return "provider";
   const match = SETTINGS_NAV.find((s) => s.id === key);
   return match ? match.id : "appearance";
 }
@@ -162,8 +180,20 @@ export default function SettingsModal({
   // Re-seed the active pane each time the modal is (re)opened or targeted at a
   // different section via the slash command.
   useEffect(() => {
-    if (open) setSection(resolveSection(initialSection));
-  }, [open, initialSection]);
+    if (!open) return;
+    const next = resolveSection(initialSection);
+    const doorway = SETTINGS_NAV.find((s) => s.id === next)?.navigateTo;
+    // `/settings provider` should land on the real Providers page, not an empty
+    // settings pane: close and route, exactly like clicking the nav item.
+    if (doorway) {
+      onClose();
+      window.dispatchEvent(
+        new CustomEvent("navigation:goto", { detail: doorway }),
+      );
+      return;
+    }
+    setSection(next);
+  }, [open, initialSection, onClose]);
 
   return (
     <AppModal
@@ -199,10 +229,19 @@ export default function SettingsModal({
                     section === s.id ? "active" : ""
                   }`}
                   onClick={() => {
-                    if (s.id !== section && canLeave()) {
-                      setSoulDirty(false);
-                      setSection(s.id);
+                    if (!canLeave()) return;
+                    setSoulDirty(false);
+                    // A doorway item leaves settings and opens the real page.
+                    if (s.navigateTo) {
+                      onClose();
+                      window.dispatchEvent(
+                        new CustomEvent("navigation:goto", {
+                          detail: s.navigateTo,
+                        }),
+                      );
+                      return;
                     }
+                    if (s.id !== section) setSection(s.id);
                   }}
                 >
                   <s.Icon size={16} />

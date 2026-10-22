@@ -1773,6 +1773,7 @@ const hermesAPI = {
     ipcRenderer.invoke("open-terminal", dirPath),
   gitIgnoreList: (dir: string, offset = 0) => ipcRenderer.invoke("git-ignore-list", dir, offset),
   gitIgnoreAdd: (dir: string, path: string) => ipcRenderer.invoke("git-ignore-add", dir, path),
+  gitIgnoreAddMany: (dir: string, paths: string[]) => ipcRenderer.invoke("git-ignore-add-many", dir, paths),
   gitIgnoreRemove: (dir: string, line: number, pattern: string, version: string) => ipcRenderer.invoke("git-ignore-remove", dir, line, pattern, version),
   gitRepoStatus: (dir: string) => ipcRenderer.invoke("git-repo-status", dir),
   gitLog: (dir: string, opts?: { max?: number }) =>

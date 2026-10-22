@@ -41,6 +41,7 @@ export default {
       hermes: "Hermes One",
     },
     appearance: "Appearance",
+    provider: "Providers",
     language: "Language",
     security: "Security",
     privacy: "Privacy",

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import { I18nProvider } from "../../components/I18nProvider";
 import { SourceControlDialog } from "./SourceControlDialog";
 
@@ -79,6 +79,8 @@ beforeEach(() => {
     gitGetToken: vi.fn().mockResolvedValue(null),
     gitSetToken: vi.fn().mockResolvedValue(true),
     gitStage: vi.fn().mockResolvedValue({ ok: true }),
+    gitIgnoreAdd: vi.fn().mockResolvedValue({ ok: true }),
+    gitIgnoreAddMany: vi.fn().mockResolvedValue({ ok: true }),
     gitUnstage: vi.fn().mockResolvedValue({ ok: true }),
     gitCommit: vi.fn().mockResolvedValue({ ok: true }),
     gitPull: vi.fn().mockResolvedValue({ ok: true }),
@@ -170,6 +172,94 @@ describe("SourceControlDialog", () => {
     expect(await screen.findByText(/refresh failed/)).toBeTruthy();
     expect(button).not.toBeDisabled();
   });
+  it("selects an ordered shift range without opening diffs, then stages only that range", async () => {
+    gitRepoStatus.mockResolvedValue({
+      repo: true, root: "/repo", branch: "main", upstream: null, ahead: 0, behind: 0,
+      conflicted: [], staged: [],
+      unstaged: [
+        { index: " ", worktree: "M", path: "one.ts" },
+        { index: " ", worktree: "M", path: "two.ts" },
+        { index: " ", worktree: "M", path: "three.ts" },
+      ],
+      untracked: ["four.ts"],
+    });
+    renderDialog("/repo");
+    const one = await screen.findByRole("checkbox", { name: "Select one.ts" });
+    const three = screen.getByRole("checkbox", { name: "Select three.ts" });
+    fireEvent.click(one);
+    fireEvent.click(three, { shiftKey: true });
+    expect(one).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Select two.ts" })).toBeChecked();
+    expect(three).toBeChecked();
+    expect(gitDiff).not.toHaveBeenCalled();
+    await act(async () => screen.getByRole("button", { name: "Stage selected (3)" }).click());
+    expect(window.hermesAPI.gitStage).toHaveBeenCalledWith("/repo", ["one.ts", "two.ts", "three.ts"]);
+  });
+
+  it("keeps normal file clicks opening the diff", async () => {
+    renderDialog("/repo");
+    await screen.findByText("a.ts");
+    await act(async () => screen.getByText("a.ts").click());
+    expect(gitDiff).toHaveBeenCalledWith("/repo", "a.ts", false);
+  });
+
+  it("offers stage and ignore together for the same selection", async () => {
+    gitRepoStatus.mockResolvedValue({
+      repo: true, root: "/repo", branch: "main", upstream: null, ahead: 0, behind: 0,
+      conflicted: [], staged: [],
+      unstaged: [{ index: " ", worktree: "M", path: "edited.ts" }],
+      untracked: ["one.log", "two.log"],
+    });
+    renderDialog("/repo");
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select one.log" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select two.log" }), { shiftKey: true });
+    // Both batch actions must exist simultaneously — one must not replace the other.
+    expect(screen.getByRole("button", { name: "Stage selected (2)" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ignore selected (2)" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Clear selection" })).toBeTruthy();
+    await act(async () => screen.getByRole("button", { name: "Clear selection" }).click());
+    expect(screen.queryByRole("button", { name: "Stage selected (2)" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Stage all changes" })).toBeTruthy();
+  });
+
+  it("counts only untracked rows as ignorable in a mixed selection", async () => {
+    gitRepoStatus.mockResolvedValue({
+      repo: true, root: "/repo", branch: "main", upstream: null, ahead: 0, behind: 0,
+      conflicted: [], staged: [],
+      unstaged: [
+        { index: " ", worktree: "M", path: "edited.ts" },
+        { index: " ", worktree: "M", path: "other.ts" },
+      ],
+      untracked: ["new.log"],
+    });
+    renderDialog("/repo");
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select edited.ts" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select new.log" }), { shiftKey: true });
+    // Tracked rows are staged; only the untracked one can be ignored.
+    expect(screen.getByRole("button", { name: "Stage selected (3)" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ignore selected (1)" })).toBeTruthy();
+    await act(async () => screen.getByRole("button", { name: "Ignore selected (1)" }).click());
+    expect(window.hermesAPI.gitIgnoreAddMany).toHaveBeenCalledWith("/repo", ["new.log"]);
+  });
+
+  it("ignores the whole multi-selection in one call, not one rule per row", async () => {
+    gitRepoStatus.mockResolvedValue({
+      repo: true, root: "/repo", branch: "main", upstream: null, ahead: 0, behind: 0,
+      conflicted: [], staged: [], unstaged: [],
+      untracked: ["one.log", "two.log", "three.log"],
+    });
+    window.hermesAPI.gitIgnoreAddMany = vi.fn().mockResolvedValue({ ok: true });
+    renderDialog("/repo");
+    const one = await screen.findByRole("checkbox", { name: "Select one.log" });
+    const three = screen.getByRole("checkbox", { name: "Select three.log" });
+    fireEvent.click(one);
+    fireEvent.click(three, { shiftKey: true });
+    await act(async () => screen.getByRole("button", { name: "Ignore selected (3)" }).click());
+    expect(window.hermesAPI.gitIgnoreAddMany).toHaveBeenCalledWith("/repo", ["one.log", "two.log", "three.log"]);
+    expect(window.hermesAPI.gitIgnoreAdd).not.toHaveBeenCalled();
+    expect(window.hermesAPI.gitStage).not.toHaveBeenCalled();
+  });
+
   it("renders as a full-page panel portaled to <body> (not a nested modal)", async () => {
     renderDialog("/repo");
     await waitFor(() => expect(gitRepoStatus).toHaveBeenCalled());

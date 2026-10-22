@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile, readFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { execFileSync } from "child_process";
-import { gitIgnoreEdit, gitIgnoreList } from "./git-ignore";
+import { gitIgnoreEdit, gitIgnoreList, gitIgnoreAddMany } from "./git-ignore";
 let repo: string;
 const git = (...args: string[]): string => execFileSync("git", args, { cwd: repo, encoding: "utf8", windowsHide: true });
 beforeEach(async () => { repo = await mkdtemp(join(process.env.TMPDIR || tmpdir(), "ignore-test-")); git("init", "-q"); });
@@ -43,4 +43,46 @@ it("shows ignored directories collapsed and keeps external rules effective after
   expect(list.files).toContain("x.cache");
   expect((await gitIgnoreEdit(repo, { ...list.rules[0], version: list.version })).ok).toBe(true);
   expect((await gitIgnoreList(repo)).files).toContain("x.cache");
+});
+it("adds a multi-selection in one write and skips duplicates", async () => {
+  await writeFile(join(repo, ".gitignore"), "*.cache\n");
+  const paths = ["one.txt", "two words.txt", "!bang.txt", "one.txt"];
+  for (const path of paths.slice(0, 3)) await writeFile(join(repo, path), "keep");
+  const result = await gitIgnoreAddMany(repo, paths);
+  expect(result.ok).toBe(true);
+  expect(result.added).toBe(3);
+  const text = await readFile(join(repo, ".gitignore"), "utf8");
+  expect(text.startsWith("*.cache\n")).toBe(true);
+  expect(text.match(/one\.txt/g)).toHaveLength(1);
+  for (const path of ["one.txt", "two words.txt", "!bang.txt"]) {
+    expect(git("check-ignore", "--", path).replace(/\r?\n$/, "")).toBe(path);
+    expect(await readFile(join(repo, path), "utf8")).toBe("keep");
+  }
+  // Second identical batch changes nothing and reports skips.
+  const again = await gitIgnoreAddMany(repo, ["one.txt", "two words.txt"]);
+  expect(again.ok).toBe(true);
+  expect(again.added).toBe(0);
+  expect(await readFile(join(repo, ".gitignore"), "utf8")).toBe(text);
+});
+it("skips tracked paths in a mixed batch and still ignores the untracked ones", async () => {
+  await writeFile(join(repo, "tracked.txt"), "keep");
+  await writeFile(join(repo, "loose.txt"), "keep");
+  git("add", "tracked.txt");
+  const result = await gitIgnoreAddMany(repo, ["loose.txt", "tracked.txt"]);
+  expect(result.ok).toBe(true);
+  expect(result.added).toBe(1);
+  expect(result.output).toMatch(/Skipped 1 tracked path/);
+  expect(git("check-ignore", "--", "loose.txt").replace(/\r?\n$/, "")).toBe("loose.txt");
+  // The tracked file stays tracked and gains no rule.
+  expect(git("ls-files").trim()).toBe("tracked.txt");
+  expect(await readFile(join(repo, ".gitignore"), "utf8")).not.toContain("tracked.txt");
+});
+it("refuses only when every selected path is already tracked", async () => {
+  await writeFile(join(repo, "tracked.txt"), "keep");
+  git("add", "tracked.txt");
+  const result = await gitIgnoreAddMany(repo, ["tracked.txt"]);
+  expect(result.ok).toBe(false);
+  expect(result.error).toMatch(/Only untracked files can be ignored/);
+  expect(await readFile(join(repo, ".gitignore"), "utf8").catch(() => "")).toBe("");
+  expect(git("ls-files").trim()).toBe("tracked.txt");
 });

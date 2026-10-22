@@ -23285,6 +23285,16 @@ body:has(.shell-vibrant),
   letter-spacing: 0.04em;
   color: var(--text-muted);
 }
+.source-control-section-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 12px 6px;
+}
+.source-control-section-toolbar .btn-sm {
+  font-size: 11px;
+}
 .source-control-empty {
   padding: 4px 12px 8px;
   font-size: 12px;
@@ -23303,6 +23313,18 @@ body:has(.shell-vibrant),
 .source-control-file.active {
   background: rgba(255, 255, 255, 0.08);
 }
+.source-control-file.selected {
+  background: color-mix(in srgb, var(--accent, #7aa2f7) 18%, transparent);
+}
+.source-control-file-select {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent, #7aa2f7);
+  cursor: pointer;
+}
+.source-control-file-select:disabled { cursor: not-allowed; }
 .source-control-file-main {
   display: flex;
   align-items: center;
