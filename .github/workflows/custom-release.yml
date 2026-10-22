@@ -7,10 +7,13 @@ name: Custom Build
 # non-prerelease release's `latest.yml`, so no branch configuration is needed on
 # the client.
 #
-# Version: package.json stays the source of the base version; the patch is
-# offset by the workflow run number so every build is strictly newer than the
-# previous one (0.7.4 + run 12 → 0.7.16). Nothing is committed back, so a build
-# can never retrigger itself.
+# Version: the next version is `max(package.json, highest existing release
+# tag) + 1` on the patch field, so it always increments by one and can never
+# reuse a published tag. After publishing, the same version is committed back
+# to package.json — that is what Settings → About & Updates reads through
+# `app.getVersion()`, so the version shown there always matches the latest
+# release. The write-back commit carries `[skip ci]` so it cannot retrigger
+# this workflow (an unbounded bump loop).
 on:
   push:
     branches:
@@ -34,22 +37,26 @@ jobs:
       exists: ${{ steps.tag.outputs.exists }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Tags drive the "next version" computation.
+          fetch-depth: 0
 
-      - name: Compute build version
+      - name: Compute next version
         id: version
-        env:
-          RUN_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
-          VERSION=$(node -e '
-            const parts = require("./package.json").version.split(".");
-            const patch = parseInt(parts[2].replace(/[^0-9].*$/, ""), 10) || 0;
-            const run = Number(process.env.RUN_NUMBER) || 0;
-            console.log(`${parts[0]}.${parts[1]}.${patch + run}`);
-          ')
+          BASE=$(node -p 'require("./package.json").version.split(".").slice(0,2).join(".")')
+          PKG_PATCH=$(node -p 'parseInt(require("./package.json").version.split(".")[2].replace(/[^0-9].*$/,""),10)||0')
+          # Highest already-published custom tag for this major.minor, if any.
+          TAG_PATCH=$(git tag --list "custom-v${BASE}.*" \
+            | sed -E "s|^custom-v${BASE//./\\.}\.([0-9]+)$|\1|" \
+            | grep -E '^[0-9]+$' | sort -n | tail -1 || true)
+          TAG_PATCH=${TAG_PATCH:-0}
+          HIGHEST=$(( PKG_PATCH > TAG_PATCH ? PKG_PATCH : TAG_PATCH ))
+          VERSION="${BASE}.$(( HIGHEST + 1 ))"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=custom-v$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Custom build version: $VERSION"
+          echo "Next version: $VERSION (package.json patch $PKG_PATCH, highest tag patch $TAG_PATCH)"
 
       - name: Check whether the tag already exists
         id: tag
@@ -176,3 +183,52 @@ jobs:
             dist/*.exe
             dist/*.exe.blockmap
             dist/latest.yml
+
+  # Write the released version back to package.json so Settings → About &
+  # Updates (which reads app.getVersion()) matches the latest release. Runs
+  # last, after the tag exists, so a failed publish never advances the number.
+  stamp_version:
+    name: Stamp released version
+    needs: [prepare, publish]
+    if: needs.prepare.outputs.exists == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: custom
+          # A workflow token push does not retrigger workflows by default; this
+          # is belt-and-braces so the bump can never loop.
+          persist-credentials: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Bump package.json to the released version
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          node scripts/set-version.mjs "$VERSION"
+          node -e '
+            const pkg = require("./package.json");
+            if (pkg.version !== process.env.VERSION) {
+              console.error(`package.json is ${pkg.version}, expected ${process.env.VERSION}`);
+              process.exit(1);
+            }
+          '
+
+      - name: Commit and push the bump
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          if git diff --cached --quiet; then
+            echo "package.json already at $VERSION — nothing to commit."
+            exit 0
+          fi
+          git commit -m "chore(release): $VERSION [skip ci]"
+          git push origin HEAD:custom
