@@ -216,6 +216,40 @@ describe("useDashboardChatTransport recovery", () => {
     expect(explicitModelLimit('assistant says model is now recommended-model')).toBe(false);
   });
   // @lat: [[model-selection#Backend runtime transitions]]
+  it("reads the backend fallback announcement even when status collapses the provider to custom", async () => {
+    // Reported case: opencode/mimo-v2.5-free returned HTTP410 ModelDeprecated,
+    // the backend switched to cbai/deepseek-v4.1-flash and announced
+    // "using <model> via <provider>". session.status on this backend reports
+    // provider `custom`, so polling alone never named the route.
+    const runtime = vi.fn();
+    const notice = vi.fn();
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: deepseek-v4.1-flash (custom)" };
+      if (method === "session.active_list") return { sessions: [] };
+      return {};
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} onRuntimeModel={runtime} onRecoveryNotice={notice} />);
+    const announce = async (text: string) => { await act(async () => {
+      dashboardMock.onEvent?.({ type: "status.update", session_id: "live", payload: { kind: "lifecycle", text } });
+      await Promise.resolve();
+    }); };
+    try {
+      await act(async () => { await api.send?.("original"); });
+      await announce("⚠️ Model fallback: mimo-v2.5-free via opencode unavailable (model deprecated); using deepseek-v4.1-flash via cbai.");
+      expect(runtime).toHaveBeenLastCalledWith({ provider: "cbai", model: "deepseek-v4.1-flash" });
+      expect(notice).toHaveBeenCalledExactlyOnceWith({ kind: "switched", observed: true, model: "cbai/deepseek-v4.1-flash" });
+      // A repeated frame for the SAME switch must not re-notify.
+      await announce("⚠️ Model fallback: mimo-v2.5-free via opencode unavailable (model deprecated); using deepseek-v4.1-flash via cbai.");
+      expect(notice).toHaveBeenCalledTimes(1);
+      // Ordinary status chatter must not be mistaken for a switch.
+      await announce("Retrying in 30s (attempt 1/3)");
+      expect(notice).toHaveBeenCalledTimes(1);
+      expect(runtime).toHaveBeenLastCalledWith({ provider: "cbai", model: "deepseek-v4.1-flash" });
+    } finally { view.unmount(); }
+  });
+
   it("observes backend fallback without onSwitchModel, deduplicates status, never forces primary on next send", async () => {
     let output = "Model: bad-model (bad-provider)";
     const runtime = vi.fn();

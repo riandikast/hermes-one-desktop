@@ -1937,6 +1937,29 @@ export function useDashboardChatTransport({
         }
       }
       logDashboardEvent(event, "accepted", runtimeSessionId);
+      if (event.type === "status.update") {
+        // The backend announces an automatic fallback with the only
+        // authoritative route it has: "⚠️ Model fallback: <old> via <old_provider>
+        // unavailable (...); using <new> via <new_provider>." Polling
+        // session.status cannot see this on backends that collapse a named
+        // custom provider to bare `custom`, so read the announcement itself.
+        const text = String((event.payload as { text?: unknown } | undefined)?.text ?? "");
+        const fallback = text.match(/using\s+(\S+)\s+via\s+([^\s.]+)/);
+        if (fallback && /fallback/i.test(text)) {
+          const announced = `${fallback[2]}/${fallback[1]}`;
+          // The same switch is announced once per activation; a duplicate frame
+          // must not re-notify. A later switch to a DIFFERENT route still does.
+          if (announcedFallbackRef.current !== announced) {
+            announcedFallbackRef.current = announced;
+            runtimeCallbacksRef.current.onRuntimeModel?.({ provider: fallback[2], model: fallback[1] });
+            runtimeCallbacksRef.current.onRecoveryNotice?.({
+              kind: "switched",
+              observed: true,
+              model: announced,
+            });
+          }
+        }
+      }
       if (["status.update", "message.complete"].includes(event.type)) refreshRuntimeRef.current();
       streamRevisionRef.current++;
       if (activeTurnRef.current && event.session_id === runtimeSessionIdRef.current && !recoveryCancelledRef.current) {
@@ -2932,6 +2955,7 @@ export function useDashboardChatTransport({
    */
   const modelSelectionEpochRef = useRef(0);
   const observedRuntimeRef = useRef<{ sessionId: string; selection: string; provider: string; model: string } | null>(null);
+  const announcedFallbackRef = useRef<string>("");
   const applyingManualModelRef = useRef(false);
   const runtimeCallbacksRef = useRef({ onRuntimeModel, onRecoveryNotice });
   runtimeCallbacksRef.current = { onRuntimeModel, onRecoveryNotice };
@@ -2957,20 +2981,41 @@ export function useDashboardChatTransport({
         const match = status.output?.match(/^Model: (.+) \(([^\n]+)\)\s*$/m);
         if (!match) return;
         const identity = { model: match[1], provider: match[2] };
-        // Bare custom carries no route identity. Never invent a configured slug.
-        if (["custom", "unknown", "(unknown)"].includes(identity.provider) || ["unknown", "(unknown)"].includes(identity.model)) return;
+        // Backend runtime reports a NAMED custom provider as bare `custom`
+        // (billing-class collapse), so the model line alone cannot name the
+        // route. Recover the display name only from the CONFIGURED routes: the
+        // model's own `<slug>/<model>` prefix must match a configured provider
+        // slug. Never invent a slug, and never do this for a truly custom
+        // endpoint whose model has no such prefix.
+        let displayIdentity = identity;
+        if (["custom", "unknown", "(unknown)"].includes(identity.provider)) {
+          const prefix = identity.model.includes("/") ? identity.model.slice(0, identity.model.indexOf("/")) : "";
+          if (!prefix) return;
+          const routes = await (
+            window.hermesAPI.listAgentProviderRoutes?.(profile) ?? Promise.resolve([])
+          ).catch(() => []);
+          const configured = (routes ?? []).some(
+            (route) => route.slug?.toLowerCase() === prefix.toLowerCase(),
+          );
+          if (!configured) return;
+          displayIdentity = { model: identity.model, provider: prefix };
+        }
+        if (["unknown", "(unknown)"].includes(identity.model)) return;
         const previous = observedRuntimeRef.current;
         const same = previous?.sessionId === sessionId && previous.selection === selection &&
-          previous.model === identity.model && previous.provider === identity.provider;
+          previous.model === displayIdentity.model && previous.provider === displayIdentity.provider;
         if (same) return;
-        observedRuntimeRef.current = { ...identity, sessionId, selection };
-        runtimeCallbacksRef.current.onRuntimeModel?.(identity);
-        if (!dashboardModelMatches(providerRef.current, modelRef.current, identity) &&
+        observedRuntimeRef.current = { ...displayIdentity, sessionId, selection };
+        runtimeCallbacksRef.current.onRuntimeModel?.(displayIdentity);
+        const alreadyAnnounced =
+          announcedFallbackRef.current === `${displayIdentity.provider}/${displayIdentity.model}`;
+        if (alreadyAnnounced) return;
+        if (!dashboardModelMatches(providerRef.current, modelRef.current, displayIdentity) &&
             (activeTurnRef.current || previous?.sessionId === sessionId)) {
-          runtimeCallbacksRef.current.onRecoveryNotice?.({ kind: "switched", observed: true, model: `${identity.provider}/${identity.model}` });
+          runtimeCallbacksRef.current.onRecoveryNotice?.({ kind: "switched", observed: true, model: `${displayIdentity.provider}/${displayIdentity.model}` });
         } else if (previous?.sessionId === sessionId && previous.selection === selection &&
-            (previous.model !== identity.model || previous.provider !== identity.provider)) {
-          runtimeCallbacksRef.current.onRecoveryNotice?.({ kind: "switched", observed: true, model: `${identity.provider}/${identity.model}` });
+            (previous.model !== displayIdentity.model || previous.provider !== displayIdentity.provider)) {
+          runtimeCallbacksRef.current.onRecoveryNotice?.({ kind: "switched", observed: true, model: `${displayIdentity.provider}/${displayIdentity.model}` });
         }
       } catch { /* Older gateways may not expose runtime identity. Never guess. */ }
       finally { busy = false; }

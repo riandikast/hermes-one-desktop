@@ -213,12 +213,18 @@ export const ModelPicker = memo(function ModelPicker({
         .filter((group) => group.models.length > 0)
     : modelGroups;
 
+  // A generic bucket's display text is not a provider NAME. Treating "Custom"
+  // as one wrote `providerLabel: "Custom"` into the library, which then grew a
+  // phantom provider holding a single model.
+  const GENERIC_PROVIDER_LABELS = new Set(["custom", "openai compatible / local"]);
+  const isRealProviderLabel = (label?: string): boolean =>
+    !!label && !GENERIC_PROVIDER_LABELS.has(label.trim().toLowerCase());
+
   function groupKeyOf(g: { provider: string; providerLabel: string }): string {
     // Custom-named providers (e.g. 9router) share provider "custom" but must get
     // distinct rail entries. Use the label as the key for those; otherwise the
     // brand is the key.
-    const genericCustomLabel = "OpenAI Compatible / Local";
-    if (g.provider === "custom" && g.providerLabel && g.providerLabel !== genericCustomLabel) {
+    if (g.provider === "custom" && isRealProviderLabel(g.providerLabel)) {
       return `label:${g.providerLabel}`;
     }
     return `brand:${g.provider}`;
@@ -230,10 +236,7 @@ export const ModelPicker = memo(function ModelPicker({
     providerLabel?: string;
   } {
     const sample = g.models[0];
-    const isCustomNamed =
-      g.provider === "custom" &&
-      g.providerLabel &&
-      g.providerLabel !== "OpenAI Compatible / Local";
+    const isCustomNamed = g.provider === "custom" && isRealProviderLabel(g.providerLabel);
 
     let provider = sample?.provider;
     if (!provider) {
@@ -246,11 +249,13 @@ export const ModelPicker = memo(function ModelPicker({
       baseUrl = OPENAI_COMPATIBLE_BASE_URLS[g.provider] || "";
     }
 
+    // Prefer the row's own real label (a named custom provider); never fall back
+    // to the group's display text, which may just be "Custom".
     const providerLabel = isCustomNamed
-      ? g.providerLabel
-      : sample?.provider === "custom" && isCustomNamed
-        ? g.providerLabel
-        : undefined;
+      ? isRealProviderLabel(sample?.providerLabel)
+        ? sample?.providerLabel
+        : g.providerLabel
+      : undefined;
 
     return {
       provider,

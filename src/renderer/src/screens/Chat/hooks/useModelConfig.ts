@@ -96,10 +96,19 @@ interface UseModelConfigResult {
 // hosts), which becomes an unbounded list. Grouping by label gives each named
 // provider its own rail entry + heading. Empty label + unknown host stays on
 // the generic bucket.
-function groupModelsByProvider(
+export function groupModelsByProvider(
   models: (SavedModelForPicker & { providerLabel?: string })[],
 ): ModelGroup[] {
   const groupMap = new Map<string, ModelGroup>();
+  // A generic display label is NOT a provider name. Older writes stored the
+  // picker's display text ("Custom", "OpenAI Compatible / Local") as
+  // `providerLabel`, which then made the model dialog grow a phantom provider
+  // holding a single model. Treat those as unlabelled so they merge by URL.
+  const GENERIC_LABELS = new Set(["custom", "openai compatible / local"]);
+  const realLabel = (label?: string): string => {
+    const trimmed = (label || "").trim();
+    return GENERIC_LABELS.has(trimmed.toLowerCase()) ? "" : trimmed;
+  };
   // One bucket per provider, like the Providers page: an unlabelled custom row
   // whose base URL belongs to a named provider merges into that provider's
   // group instead of spawning a duplicate "OpenAI Compatible / Local" bucket.
@@ -122,17 +131,20 @@ function groupModelsByProvider(
       model: m.model,
       label: m.name,
       baseUrl: m.baseUrl || "",
+      // Carry the REAL custom provider name so callers never have to guess it
+      // from the group's display label.
+      ...(realLabel(m.providerLabel) ? { providerLabel: realLabel(m.providerLabel) } : {}),
     });
   };
 
   // Pass 1: named custom providers get their own group.
   for (const m of models) {
-    if (m.provider !== "custom" || !m.providerLabel) continue;
-    const mapKey = `label:${m.providerLabel}`;
+    if (m.provider !== "custom" || !realLabel(m.providerLabel)) continue;
+    const mapKey = `label:${realLabel(m.providerLabel)}`;
     if (!groupMap.has(mapKey)) {
       groupMap.set(mapKey, {
         provider: "custom",
-        providerLabel: m.providerLabel,
+        providerLabel: realLabel(m.providerLabel),
         models: [],
       });
       const b = normUrl(m.baseUrl || "");
@@ -144,7 +156,7 @@ function groupModelsByProvider(
   // Pass 2: everything else groups by brand; unlabelled custom rows whose
   // base URL belongs to a named provider merge into that provider's group.
   for (const m of models) {
-    if (m.provider === "custom" && m.providerLabel) continue;
+    if (m.provider === "custom" && realLabel(m.providerLabel)) continue;
     if (m.provider === "custom") {
       const labelKey = labelGroupByBaseUrl.get(normUrl(m.baseUrl || ""));
       if (labelKey) {
