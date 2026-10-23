@@ -24737,3 +24737,73 @@ body:has(.shell-vibrant),
 
 .file-change-history-explorer { width: min(960px, calc(100vw - 24px)); height: min(760px, calc(100dvh - 48px)); display: flex; flex-direction: column; overflow: hidden; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-lg); }
 .worktree-row.is-selected { background: var(--bg-hover); outline: 1px solid var(--accent); outline-offset: -1px; }
+
+/* ── GitHub settings pane ────────────────────────────────────────────────
+   The rows previously squeezed label and state into one flex line, so long
+   state text collided with the label, and the account <select> inherited
+   system colours (light-on-light / dark-on-dark depending on OS theme).
+   Every colour is bound to a theme token so it stays readable in both. */
+.github-pane { display: flex; flex-direction: column; gap: 10px; }
+.github-card { margin-top: 2px; }
+.github-health { display: flex; flex-direction: column; border-radius: var(--radius-md); overflow: hidden; background: color-mix(in srgb, var(--text-primary) 4%, transparent); }
+.github-health-row { padding: 10px 12px; }
+.github-health-row + .github-health-row { border-top: 1px solid var(--border); }
+.github-pill {
+  flex-shrink: 0;
+  max-width: 55%;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: right;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+.github-pill.is-ok { color: var(--text-primary); background: color-mix(in srgb, #3fb950 18%, transparent); }
+.github-pill.is-bad { color: var(--text-primary); background: color-mix(in srgb, #d9534f 22%, transparent); }
+.github-pill.is-neutral { color: var(--text-muted); }
+
+.github-account { display: flex; flex-direction: column; gap: 6px; }
+/* Explicit colours: without these the control falls back to UA styling and
+   the selected value can render invisible against the pane background. */
+.github-select {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color-scheme: light dark;
+}
+.github-select:hover:not(:disabled) { border-color: color-mix(in srgb, var(--text-primary) 22%, var(--border)); }
+.github-select:focus-visible { outline: 2px solid var(--accent, #4c8dff); outline-offset: 1px; }
+.github-select:disabled { opacity: 0.6; cursor: not-allowed; }
+.github-select option { color: var(--text-primary); background: var(--bg-secondary); }
+
+.github-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.github-inline-busy { font-size: 12px; color: var(--text-muted); }
+.github-alert {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: color-mix(in srgb, #d9534f 18%, transparent);
+  border-radius: var(--radius-md);
+}
+
+/* Loading skeleton while the first status check runs. */
+.github-skeleton-line,
+.github-skeleton-dot {
+  border-radius: var(--radius-sm, 4px);
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  animation: github-skeleton-pulse 1.4s ease-in-out infinite;
+}
+.github-skeleton-line { height: 12px; margin: 5px 0; }
+.github-skeleton-line:first-child { margin-top: 0; }
+@keyframes github-skeleton-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.85; } }
+@media (prefers-reduced-motion: reduce) {
+  .github-skeleton-line, .github-skeleton-dot { animation: none; }
+}

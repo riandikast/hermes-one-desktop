@@ -12,6 +12,7 @@ export default {
     authenticated: "Verified with GitHub",
     unauthenticated: "Not authenticated",
     unknown: "Not verified",
+    unverified: "Unverified",
     checking: "Checking local Git and GitHub identity…",
     signingIn: "Complete sign-in in the native browser window…",
     consent: "Sign in opens Git Credential Manager browser OAuth. Selecting an account configures this OS user's global GitHub HTTPS helper and default username. Secrets stay in the native credential manager. Verification checks GitHub identity, not repository push permission. Existing app-specific PAT overrides remain separate.",
