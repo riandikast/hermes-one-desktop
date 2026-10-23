@@ -64,6 +64,50 @@ export class GitHubAuth {
     return this.change(true);
   }
 
+  /**
+   * Remove ONE stored account from the native credential manager.
+   *
+   * `account` is required on purpose: the renderer must name the account the
+   * user confirmed. Silently unlinking "whichever account is pinned" would
+   * delete the wrong credential on a machine with several accounts. When the
+   * removed account is the pinned one (or it was the last), the global HTTPS
+   * username pin is cleared so Git stops demanding a credential that is gone.
+   */
+  async disconnect(username: unknown): Promise<GitHubAuthStatus> {
+    if (this.active) return { git: true, manager: true, helper: false, auth: "unknown", error: "busy" };
+    const controller = new AbortController();
+    this.active = controller;
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 60_000);
+    try {
+      const before = await this.status(controller.signal);
+      if (!before.manager) return { ...before, error: "unavailable" };
+      if (!validAccount(username)) return { ...before, error: "failed" };
+      if (!before.accounts?.some((account) => sameAccount(account, username))) return { ...before, error: "failed" };
+      const removed = await run(
+        ["credential-manager", "github", "logout", username as string, "--url", "https://github.com", "--no-ui"],
+        controller.signal,
+      );
+      if (controller.signal.aborted) return { ...before, error: timedOut ? "timeout" : "cancelled" };
+      if (!removed.ok) return { ...before, error: "failed" };
+      const remaining = (before.accounts ?? []).filter((account) => !sameAccount(account, username));
+      // Only drop the pin when it names the account we just removed; another
+      // pinned account must keep working untouched.
+      if (before.selectedAccount && sameAccount(before.selectedAccount, username)) {
+        const cleared = await run(
+          ["config", "--global", "--unset-all", "credential.https://github.com.username"],
+          controller.signal,
+        );
+        // `--unset-all` exits non-zero when the key is absent; that is not a failure.
+        if (controller.signal.aborted) return { ...before, error: timedOut ? "timeout" : "cancelled" };
+        if (!cleared.ok && remaining.length === 0) return { ...before, error: "failed" };
+      }
+      const after = await this.status(controller.signal);
+      if (controller.signal.aborted) return { ...before, error: timedOut ? "timeout" : "cancelled" };
+      return after;
+    } finally { clearTimeout(timeout); this.active = undefined; }
+  }
+
   private async change(loginRequested: boolean, username?: unknown): Promise<GitHubAuthStatus> {
     if (this.active) return { git: true, manager: true, helper: false, auth: "unknown", error: "busy" };
     const controller = new AbortController();

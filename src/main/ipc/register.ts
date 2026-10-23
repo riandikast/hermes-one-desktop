@@ -766,6 +766,10 @@ export function registerIpcHandlers(context: IpcContext): void {
     if (!trustedGitHubSender(event)) throw new Error("Unauthorized GitHub settings request");
     return githubAuth.selectAccount(username);
   });
+  ipcMain.handle("github-auth:disconnect", (event, username: unknown) => {
+    if (!trustedGitHubSender(event)) throw new Error("Unauthorized GitHub settings request");
+    return githubAuth.disconnect(username);
+  });
   ipcMain.handle("github-auth:cancel", (event) => {
     if (!trustedGitHubSender(event)) throw new Error("Unauthorized GitHub settings request");
     return githubAuth.cancel();

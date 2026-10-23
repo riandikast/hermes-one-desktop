@@ -64,4 +64,40 @@ describe("native GitHub auth", () => {
     expect(calls.some((a) => a.includes("--global"))).toBe(false);
     expect(JSON.stringify(result)).not.toContain(secret);
   });
+  it("removes only the requested account and clears its pin", async () => {
+    const result = await new GitHubAuth().disconnect("octocat");
+    // Native removal targets the named account against the GitHub host only.
+    expect(calls).toContainEqual([
+      "credential-manager", "github", "logout", "octocat", "--url", "https://github.com", "--no-ui",
+    ]);
+    expect(calls).toContainEqual(["config", "--global", "--unset-all", "credential.https://github.com.username"]);
+    expect(result.error).toBeUndefined();
+    expect(JSON.stringify(result)).not.toContain(secret);
+  });
+  it("refuses to disconnect an account that is not signed in", async () => {
+    const result = await new GitHubAuth().disconnect("someone-else");
+    expect(result.error).toBe("failed");
+    expect(calls.some((a) => a.includes("logout"))).toBe(false);
+    // Never touch global config when nothing was removed.
+    expect(calls.some((a) => a.includes("--unset-all"))).toBe(false);
+  });
+  it("rejects a malformed account name instead of passing it to Git", async () => {
+    for (const bad of ["--help", "", "a b", "x;rm -rf /", null]) {
+      const result = await new GitHubAuth().disconnect(bad);
+      expect(result.error).toBe("failed");
+    }
+    expect(calls.some((a) => a.includes("logout"))).toBe(false);
+  });
+  it("reports a failed native removal without claiming the account is gone", async () => {
+    const original = execFile.getMockImplementation()!;
+    execFile.mockImplementation((file, args, opts, cb) =>
+      args.includes("logout")
+        ? (queueMicrotask(() => cb(new Error(secret), "")), { stdin: { end: vi.fn() } })
+        : original(file, args, opts, cb));
+    const result = await new GitHubAuth().disconnect("octocat");
+    expect(result.error).toBe("failed");
+    // The pin must survive a failed removal, or Git loses its account for nothing.
+    expect(calls.some((a) => a.includes("--unset-all"))).toBe(false);
+    expect(JSON.stringify(result)).not.toContain(secret);
+  });
 });

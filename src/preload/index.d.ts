@@ -283,6 +283,7 @@ interface HermesAPI {
   githubAuthStatus: () => Promise<import("../shared/github-auth").GitHubAuthStatus>;
   githubAuthSignIn: () => Promise<import("../shared/github-auth").GitHubAuthStatus>;
   githubAuthSelectAccount: (username: string) => Promise<import("../shared/github-auth").GitHubAuthStatus>;
+  githubAuthDisconnect: (username: string) => Promise<import("../shared/github-auth").GitHubAuthStatus>;
   githubAuthCancel: () => Promise<void>;
   // Installation
   checkInstall: () => Promise<InstallStatus>;

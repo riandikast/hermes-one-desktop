@@ -17,6 +17,8 @@ export default {
     signingIn: "Complete sign-in in the native browser window…",
     consent: "Sign in opens Git Credential Manager browser OAuth. Selecting an account configures this OS user's global GitHub HTTPS helper and default username. Secrets stay in the native credential manager. Verification checks GitHub identity, not repository push permission. Existing app-specific PAT overrides remain separate.",
     installHint: "Install Git with Git Credential Manager using your platform's installer, then verify again. No credentials are stored by this settings page.",
+    confirming: "Disconnect “{{account}}”? This removes the saved credential from Git Credential Manager. Git will ask you to sign in again.",
+    disconnect: "Disconnect",
     signIn: "Sign in with browser",
     verify: "Verify connection",
     unavailable: "Native Git Credential Manager is unavailable.",

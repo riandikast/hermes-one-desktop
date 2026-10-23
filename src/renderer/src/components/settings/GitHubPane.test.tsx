@@ -60,6 +60,35 @@ it("renders the error inside the status card, not as bare text", async () => {
   expect(alert).toHaveTextContent("settings.github.timeout");
   expect(alert.className).toContain("github-alert");
 });
+it("disconnects only after an explicit confirmation", async () => {
+  vi.mocked(window.hermesAPI.githubAuthStatus).mockResolvedValue({
+    ...status, accounts: ["first", "second"], selectedAccount: "second", account: "second", auth: "authenticated",
+  });
+  Object.assign(window.hermesAPI, {
+    githubAuthDisconnect: vi.fn().mockResolvedValue({ ...status, accounts: ["first"], selectedAccount: undefined, auth: "unknown" }),
+  });
+  render(<GitHubPane />);
+  await screen.findByText("settings.github.authenticated");
+  // Clicking Disconnect must ask first — this deletes a stored credential.
+  fireEvent.click(screen.getByText("settings.github.disconnect"));
+  expect(window.hermesAPI.githubAuthDisconnect).not.toHaveBeenCalled();
+  expect(screen.getByRole("alertdialog")).toHaveTextContent("settings.github.confirming");
+
+  // Cancelling leaves the account alone.
+  fireEvent.click(screen.getByText("common.cancel"));
+  expect(window.hermesAPI.githubAuthDisconnect).not.toHaveBeenCalled();
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+
+  fireEvent.click(screen.getByText("settings.github.disconnect"));
+  fireEvent.click(screen.getByRole("alertdialog").querySelector(".github-disconnect")!);
+  await waitFor(() => expect(window.hermesAPI.githubAuthDisconnect).toHaveBeenCalledWith("second"));
+  expect(window.hermesAPI.githubAuthDisconnect).toHaveBeenCalledTimes(1);
+});
+it("offers no disconnect control when no account is selected", async () => {
+  render(<GitHubPane />);
+  await screen.findByText("settings.github.unknown");
+  expect(screen.queryByText("settings.github.disconnect")).toBeNull();
+});
 it("cancels pending sign-in and cleans up when leaving settings", async () => {
   let finish!: (value: typeof status) => void;
   vi.mocked(window.hermesAPI.githubAuthSignIn).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));

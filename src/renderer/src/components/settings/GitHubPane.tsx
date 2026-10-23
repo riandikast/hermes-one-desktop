@@ -51,7 +51,26 @@ export default function GitHubPane(): React.JSX.Element {
   const [status, setStatus] = useState<GitHubAuthStatus>();
   const [busy, setBusy] = useState<Busy>("status");
   const [error, setError] = useState(false);
+  // Disconnecting deletes a stored credential, so it is a two-step action
+  // rather than a single click on a button next to "Sign in".
+  const [confirming, setConfirming] = useState<string | null>(null);
   const mounted = useRef(true);
+
+  async function disconnect(account: string): Promise<void> {
+    setBusy("status");
+    setError(false);
+    try {
+      const next = await window.hermesAPI.githubAuthDisconnect(account);
+      if (mounted.current) {
+        setStatus(next);
+        setConfirming(null);
+      }
+    } catch {
+      if (mounted.current) setError(true);
+    } finally {
+      if (mounted.current) setBusy(null);
+    }
+  }
   async function check(signIn = false, username?: string): Promise<void> {
     setBusy(signIn ? "signin" : "status");
     setError(false);
@@ -148,6 +167,43 @@ export default function GitHubPane(): React.JSX.Element {
                         </option>
                       ))}
                     </select>
+                    {status.selectedAccount && confirming !== status.selectedAccount && (
+                      <div className="github-account-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary github-disconnect"
+                          disabled={busy !== null}
+                          onClick={() => setConfirming(status.selectedAccount ?? null)}
+                        >
+                          {t("settings.github.disconnect")}
+                        </button>
+                      </div>
+                    )}
+                    {confirming && confirming === status.selectedAccount && (
+                      <div className="github-confirm" role="alertdialog" aria-live="polite">
+                        <p className="github-confirm-text">
+                          {t("settings.github.confirming", { account: confirming })}
+                        </p>
+                        <div className="github-account-actions">
+                          <button
+                            type="button"
+                            className="btn github-disconnect"
+                            disabled={busy !== null}
+                            onClick={() => void disconnect(confirming)}
+                          >
+                            {t("settings.github.disconnect")}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            disabled={busy !== null}
+                            onClick={() => setConfirming(null)}
+                          >
+                            {t("common.cancel")}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <p className="settings-field-hint">{t("settings.github.consent")}</p>
                   </div>
                 )}

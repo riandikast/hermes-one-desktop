@@ -24807,3 +24807,19 @@ body:has(.shell-vibrant),
 @media (prefers-reduced-motion: reduce) {
   .github-skeleton-line, .github-skeleton-dot { animation: none; }
 }
+
+/* Disconnect is destructive, so it is visually distinct from Sign in / Verify
+   and always guarded by an inline confirmation. */
+.github-account-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.github-disconnect { color: #d9534f; border-color: color-mix(in srgb, #d9534f 45%, var(--border)); }
+.github-disconnect:hover:not(:disabled) { background: color-mix(in srgb, #d9534f 14%, transparent); }
+.github-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, #d9534f 10%, transparent);
+  border: 1px solid color-mix(in srgb, #d9534f 35%, transparent);
+}
+.github-confirm-text { margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-primary); }
