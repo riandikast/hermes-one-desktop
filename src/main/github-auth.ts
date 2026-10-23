@@ -3,6 +3,11 @@ import { homedir } from "node:os";
 import type { GitHubAuthStatus } from "../shared/github-auth";
 
 const validAccount = (value: unknown): value is string => typeof value === "string" && /^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(value);
+// GitHub tokens are opaque, but every form (ghp_, gho_, ghu_, ghs_, github_pat_)
+// is a single line of ASCII with no whitespace — reject anything that could
+// break the credential protocol or smuggle extra lines.
+const validToken = (value: unknown): value is string =>
+  typeof value === "string" && /^[\x21-\x7e]{20,255}$/.test(value.trim()) && !/\s/.test(value.trim());
 const sameAccount = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
 
 // No process output or exception text crosses IPC: credential protocols contain secrets.
@@ -62,6 +67,72 @@ export class GitHubAuth {
 
   async signIn(): Promise<GitHubAuthStatus> {
     return this.change(true);
+  }
+
+  /**
+   * Store a personal access token as the GitHub HTTPS credential.
+   *
+   * The token goes to the SAME native store Git already uses, so nothing is kept
+   * by this app: we write `protocol/host/username/password` on stdin to
+   * `git-credential-manager store`, then read it back through the normal
+   * `credential fill` path. The identity is resolved from the token itself via
+   * /user, never from user input, and the token never leaves this function —
+   * errors are reduced to our own enum so no secret can cross IPC.
+   */
+  async signInWithToken(token: unknown): Promise<GitHubAuthStatus> {
+    if (this.active) return { git: true, manager: true, helper: false, auth: "unknown", error: "busy" };
+    const controller = new AbortController();
+    this.active = controller;
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 60_000);
+    try {
+      // Validate BEFORE anything else: a malformed value must not trigger a
+      // status probe (which hits the network to verify the stored credential).
+      if (!validToken(token)) return { git: true, manager: true, helper: false, auth: "unknown", error: "invalidToken" };
+      const before = await this.status(controller.signal);
+      if (!before.manager) return { ...before, error: "unavailable" };
+      const identity = await this.identify(token, controller.signal);
+      if (controller.signal.aborted) return { ...before, error: timedOut ? "timeout" : "cancelled" };
+      if (!identity) return { ...before, error: "invalidToken" };
+      const stored = await run(
+        ["credential-manager", "store"],
+        controller.signal,
+        `protocol=https\nhost=github.com\nusername=${identity.login}\npassword=${token}\n\n`,
+      );
+      if (controller.signal.aborted) return { ...before, error: timedOut ? "timeout" : "cancelled" };
+      if (!stored.ok) return { ...before, error: "failed" };
+      // Prove the write through git's own read path (not the token we were given).
+      const verified = await this.verify({ ...before, auth: "unknown", account: undefined }, identity.login, controller.signal);
+      if (controller.signal.aborted) return { ...before, error: timedOut ? "timeout" : "cancelled" };
+      if (verified.auth !== "authenticated") return { ...before, error: "failed" };
+      for (const args of [
+        ["config", "--global", "--replace-all", "credential.https://github.com.helper", ""],
+        ["config", "--global", "--add", "credential.https://github.com.helper", "manager"],
+        ["config", "--global", "--replace-all", "credential.https://github.com.username", verified.account!],
+      ]) {
+        if (controller.signal.aborted || !(await run(args, controller.signal)).ok) return { ...before, error: timedOut ? "timeout" : "cancelled" };
+      }
+      const after = await this.status(controller.signal);
+      return after.auth === "authenticated" && after.selectedAccount && sameAccount(after.selectedAccount, identity.login) ? after : { ...after, error: "failed" };
+    } finally { clearTimeout(timeout); this.active = undefined; }
+  }
+
+  /** Which account does this token belong to? Null when GitHub rejects it. */
+  private async identify(token: string, signal?: AbortSignal): Promise<{ login: string } | null> {
+    try {
+      const response = await fetch("https://api.github.com/user", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "User-Agent": "Hermes-One",
+        },
+        redirect: "error",
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) return null;
+      const user = await response.json() as { login?: unknown };
+      return validAccount(user.login) ? { login: user.login } : null;
+    } catch { return null; }
   }
 
   /**

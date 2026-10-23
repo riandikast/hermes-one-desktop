@@ -24823,3 +24823,23 @@ body:has(.shell-vibrant),
   border: 1px solid color-mix(in srgb, #d9534f 35%, transparent);
 }
 .github-confirm-text { margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-primary); }
+
+/* Personal access token entry — same token set as .github-select so the masked
+   input is readable in light and dark themes. */
+.github-token { display: flex; flex-direction: column; gap: 6px; }
+.github-token-row { display: flex; gap: 8px; align-items: stretch; }
+.github-token-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color-scheme: light dark;
+}
+.github-token-input::placeholder { color: var(--text-muted); }
+.github-token-input:focus-visible { outline: 2px solid var(--accent, #4c8dff); outline-offset: 1px; }
+.github-token-input:disabled { opacity: 0.6; }

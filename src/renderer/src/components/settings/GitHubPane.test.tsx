@@ -84,6 +84,39 @@ it("disconnects only after an explicit confirmation", async () => {
   await waitFor(() => expect(window.hermesAPI.githubAuthDisconnect).toHaveBeenCalledWith("second"));
   expect(window.hermesAPI.githubAuthDisconnect).toHaveBeenCalledTimes(1);
 });
+it("signs in with a token and never keeps it on screen", async () => {
+  Object.assign(window.hermesAPI, {
+    githubAuthSignInWithToken: vi.fn().mockResolvedValue({ ...status, auth: "authenticated", account: "octocat" }),
+  });
+  render(<GitHubPane />);
+  await screen.findByText("settings.github.unknown");
+  const input = screen.getByLabelText("settings.github.tokenLabel");
+  // Masked: the token must not be readable over someone's shoulder.
+  expect(input).toHaveAttribute("type", "password");
+  // Submit is inert until something is typed.
+  expect(screen.getByText("settings.github.tokenSubmit")).toBeDisabled();
+
+  fireEvent.change(input, { target: { value: "  ghp_exampletoken  " } });
+  fireEvent.click(screen.getByText("settings.github.tokenSubmit"));
+  await waitFor(() =>
+    expect(window.hermesAPI.githubAuthSignInWithToken).toHaveBeenCalledWith("ghp_exampletoken"),
+  );
+  // Cleared after submit, so a rejected token never lingers in the field.
+  await waitFor(() => expect(screen.getByLabelText("settings.github.tokenLabel")).toHaveValue(""));
+  await screen.findByText("octocat");
+});
+it("clears the token field even when GitHub rejects it", async () => {
+  Object.assign(window.hermesAPI, {
+    githubAuthSignInWithToken: vi.fn().mockResolvedValue({ ...status, error: "invalidToken" }),
+  });
+  render(<GitHubPane />);
+  await screen.findByText("settings.github.unknown");
+  const input = screen.getByLabelText("settings.github.tokenLabel");
+  fireEvent.change(input, { target: { value: "ghp_badtoken" } });
+  fireEvent.click(screen.getByText("settings.github.tokenSubmit"));
+  await waitFor(() => expect(screen.getByLabelText("settings.github.tokenLabel")).toHaveValue(""));
+  expect(await screen.findByText("settings.github.invalidToken")).toBeInTheDocument();
+});
 it("offers no disconnect control when no account is selected", async () => {
   render(<GitHubPane />);
   await screen.findByText("settings.github.unknown");

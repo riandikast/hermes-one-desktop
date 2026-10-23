@@ -100,4 +100,48 @@ describe("native GitHub auth", () => {
     expect(calls.some((a) => a.includes("--unset-all"))).toBe(false);
     expect(JSON.stringify(result)).not.toContain(secret);
   });
+  it("stores a token in the native store and reads the account from it", async () => {
+    const token = "ghp_" + "a".repeat(36);
+    // The store call must receive the token on stdin, keyed to the resolved account.
+    const stdin: string[] = [];
+    const original = execFile.getMockImplementation()!;
+    execFile.mockImplementation((file, args, opts, cb) => {
+      const built = original(file, args, opts, cb);
+      if (args.includes("store")) {
+        return { stdin: { end: (data?: string) => { stdin.push(data ?? ""); } } };
+      }
+      return built;
+    });
+    const result = await new GitHubAuth().signInWithToken(token);
+    expect(result.error).toBeUndefined();
+    expect(result.auth).toBe("authenticated");
+    // Username comes from the API identity, never from whatever the user typed.
+    expect(stdin[0]).toBe(`protocol=https\nhost=github.com\nusername=octocat\npassword=${token}\n\n`);
+    expect(calls).toContainEqual(["credential-manager", "store"]);
+    // Identity is resolved with the token as a Bearer credential.
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.github.com/user",
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: `Bearer ${token}` }) }),
+    );
+    expect(calls.some((a) => a.includes("login"))).toBe(false);
+    // Nothing secret may be returned to the renderer.
+    expect(JSON.stringify(result)).not.toContain(token);
+    expect(JSON.stringify(result)).not.toContain("ghp_");
+  });
+  it("rejects a token GitHub refuses without storing anything", async () => {
+    vi.mocked(fetch).mockResolvedValue({ ok: false, status: 401 } as Response);
+    const result = await new GitHubAuth().signInWithToken("ghp_" + "b".repeat(36));
+    expect(result.error).toBe("invalidToken");
+    expect(calls.some((a) => a.includes("store"))).toBe(false);
+    expect(calls.some((a) => a.includes("--global"))).toBe(false);
+  });
+  it("rejects malformed tokens before any process or network call", async () => {
+    for (const bad of ["", "   ", "abc", "has spaces ghp_x", "line1\nline2", "x".repeat(300), null, 42]) {
+      const result = await new GitHubAuth().signInWithToken(bad);
+      expect(result.error).toBe("invalidToken");
+    }
+    expect(calls.some((a) => a.includes("store"))).toBe(false);
+    // No request was even attempted with a malformed value.
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });

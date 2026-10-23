@@ -54,7 +54,26 @@ export default function GitHubPane(): React.JSX.Element {
   // Disconnecting deletes a stored credential, so it is a two-step action
   // rather than a single click on a button next to "Sign in".
   const [confirming, setConfirming] = useState<string | null>(null);
+  // Held only until submitted, then cleared so it never lingers in React state.
+  const [token, setToken] = useState("");
   const mounted = useRef(true);
+
+  async function submitToken(): Promise<void> {
+    const value = token.trim();
+    if (!value) return;
+    setBusy("status");
+    setError(false);
+    try {
+      const next = await window.hermesAPI.githubAuthSignInWithToken(value);
+      if (mounted.current) setStatus(next);
+      // Clear regardless of outcome: a rejected token must not stay on screen.
+      if (mounted.current) setToken("");
+    } catch {
+      if (mounted.current) setError(true);
+    } finally {
+      if (mounted.current) setBusy(null);
+    }
+  }
 
   async function disconnect(account: string): Promise<void> {
     setBusy("status");
@@ -210,6 +229,42 @@ export default function GitHubPane(): React.JSX.Element {
 
                 {!status.manager && (
                   <p className="settings-field-hint">{t("settings.github.installHint")}</p>
+                )}
+
+                {status.manager && (
+                  <form
+                    className="github-token"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void submitToken();
+                    }}
+                  >
+                    <label className="settings-field-label" htmlFor="github-token-input">
+                      {t("settings.github.tokenLabel")}
+                    </label>
+                    <div className="github-token-row">
+                      <input
+                        id="github-token-input"
+                        className="github-token-input"
+                        type="password"
+                        autoComplete="off"
+                        spellCheck={false}
+                        placeholder={t("settings.github.tokenPlaceholder")}
+                        aria-label={t("settings.github.tokenLabel")}
+                        value={token}
+                        disabled={busy !== null}
+                        onChange={(event) => setToken(event.target.value)}
+                      />
+                      <button
+                        type="submit"
+                        className="btn btn-secondary"
+                        disabled={busy !== null || !token.trim()}
+                      >
+                        {t("settings.github.tokenSubmit")}
+                      </button>
+                    </div>
+                    <p className="settings-field-hint">{t("settings.github.tokenHint")}</p>
+                  </form>
                 )}
 
                 <div className="settings-card-actions github-actions">

@@ -121,6 +121,7 @@ const electronAPI = {
 const hermesAPI = {
   githubAuthStatus: (): Promise<import("../shared/github-auth").GitHubAuthStatus> => ipcRenderer.invoke("github-auth:status"),
   githubAuthSignIn: (): Promise<import("../shared/github-auth").GitHubAuthStatus> => ipcRenderer.invoke("github-auth:signin"),
+  githubAuthSignInWithToken: (token: string): Promise<import("../shared/github-auth").GitHubAuthStatus> => ipcRenderer.invoke("github-auth:token", token),
   githubAuthSelectAccount: (username: string): Promise<import("../shared/github-auth").GitHubAuthStatus> => ipcRenderer.invoke("github-auth:select", username),
   githubAuthDisconnect: (username: string): Promise<import("../shared/github-auth").GitHubAuthStatus> => ipcRenderer.invoke("github-auth:disconnect", username),
   githubAuthCancel: (): Promise<void> => ipcRenderer.invoke("github-auth:cancel"),

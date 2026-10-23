@@ -6,5 +6,5 @@ export interface GitHubAuthStatus {
   account?: string;
   accounts?: string[];
   selectedAccount?: string;
-  error?: "unavailable" | "failed" | "cancelled" | "timeout" | "busy" | "selectAccount";
+  error?: "unavailable" | "failed" | "cancelled" | "timeout" | "busy" | "selectAccount" | "invalidToken";
 }
