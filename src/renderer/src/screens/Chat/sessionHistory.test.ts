@@ -211,6 +211,25 @@ describe("preserveLocalAssistantErrors", () => {
     expect(preserveLocalAssistantErrors([first], [later])[0]).toBe(first);
     expect(next.pending).toBe(true);
   });
+
+  it("keeps renderer-only fallback notices across a DB refresh", () => {
+    // The fallback notice is added by the renderer and has no state.db row.
+    // Before this, every DB refresh rebuilt the transcript from DB rows only,
+    // so the notice vanished within a second of appearing.
+    const user: ChatMessage = { id: "u1", role: "user", content: "test" };
+    const notice: ChatMessage = {
+      id: "agent-local-1",
+      role: "agent",
+      content: "⚠️ Fallback triggered — this session is now running “cbai/glm-5.3”.",
+      localOnly: true,
+    };
+    const answer: ChatMessage = { id: "a1", role: "agent", content: "Working…" };
+
+    const output = preserveLocalAssistantErrors([user, answer], [user, notice, answer]);
+
+    expect(output.map((m) => m.id)).toEqual(["u1", "agent-local-1", "a1"]);
+    expect(output.find((m) => m.id === "agent-local-1")).toBe(notice);
+  });
 });
 
 const QUESTION = "How should I proceed?";

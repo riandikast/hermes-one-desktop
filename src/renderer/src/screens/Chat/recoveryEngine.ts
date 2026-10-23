@@ -59,7 +59,15 @@ export function recoveryNoticeMessage(notice: {
   attempt?: number;
   model?: string;
 }): string {
-  if (notice.observed) return `Runtime model changed to “${notice.model}”.`;
+  if (notice.observed) {
+    // The reply that follows may still describe the PREVIOUS model (the turn's
+    // system prompt was built before the switch), so name the change explicitly
+    // instead of a vague "runtime model changed".
+    return (
+      `⚠️ Fallback triggered — this session is now running “${notice.model}”. ` +
+      "Replies in this turn may still reference the previous model."
+    );
+  }
   if (notice.kind === "switched") {
     return (
       `No response — switching to fallback model “${notice.model ?? "next in list"}” ` +

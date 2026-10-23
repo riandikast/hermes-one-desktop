@@ -779,6 +779,24 @@ export function preserveLocalAssistantErrors(
     for (const row of rows) existingIds.add(row.id);
   }
 
+  // Renderer-only notices (fallback announcements, knowledge-change notes) have
+  // no state.db row by design, so a DB refresh used to erase them the moment it
+  // landed — the user saw the notice flash and vanish. Re-attach each one after
+  // the message it originally followed.
+  for (let i = 0; i < currentMessages.length; i++) {
+    const notice = currentMessages[i];
+    if (!isBubbleMessage(notice) || !notice.localOnly || notice.error) continue;
+    if (existingIds.has(notice.id)) continue;
+    const anchor = previousUserBefore(currentMessages, i);
+    let insertIndex = output.length;
+    if (anchor) {
+      const matched = findMatchingUserIndex(output, currentMessages, anchor);
+      if (matched >= 0) insertIndex = matched + 1;
+    }
+    output = insertAt(output, insertIndex, [notice]);
+    existingIds.add(notice.id);
+  }
+
   return output;
 }
 

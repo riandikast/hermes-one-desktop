@@ -1674,7 +1674,15 @@ function Chat({
       setMessages((prev) => [
         ...prev,
 
-        { id: `agent-local-${Date.now()}`, role: "agent", content },
+        {
+          id: `agent-local-${Date.now()}`,
+          role: "agent",
+          content,
+          // No state.db row exists for a renderer notice; marking it local keeps
+          // it out of the gateway seed while `localOnly` preservation keeps it
+          // visible across DB refreshes.
+          localOnly: true,
+        },
       ]);
     },
 
