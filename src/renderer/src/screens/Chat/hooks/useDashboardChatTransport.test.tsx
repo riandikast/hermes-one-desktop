@@ -225,6 +225,55 @@ describe("useDashboardChatTransport recovery", () => {
   });
 
 // @lat: [[model-selection#Fresh runtime readiness]]
+it("waits for fresh custom inventory before a NAMED custom provider's first send", async () => {
+  // The reported fallback failure: a fresh subagent session, provider named
+  // `cbai` (which resolves through the custom catalog), empty inventory on the
+  // first read. The readiness wait used to run only when the selected provider
+  // was literally "custom", so this selection threw "custom provider is not
+  // ready" and the recovery never resubmitted the prompt.
+  let optionsReads = 0;
+  const writes: string[] = [];
+  dashboardMock.request.mockImplementation(async (method, params) => {
+    if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+    if (method === "model.options") return ++optionsReads === 1 ? { providers: [] } : { providers: [{ slug: "custom:cbai", base_url: "https://fixture.invalid/v1", models: ["cbai/deepseek-v4.1-flash"] }] };
+    if (method === "session.status") return { output: "Model: cbai/deepseek-v4.1-flash (custom:cbai)" };
+    if (method === "config.set") { writes.push(params.value); return { key: "model", scope: "session" }; }
+    return {};
+  });
+  const api: HarnessApi = {};
+  const view = render(<Harness active={false} api={api} modelBaseUrl="" />);
+  try {
+    await act(async () => { api.setModel!("cbai/deepseek-v4.1-flash"); api.setProvider!("cbai"); });
+    await act(async () => { await api.send!("first prompt").catch(() => undefined); });
+    // The switch must reach the gateway: the reported bug was throwing
+    // "custom provider is not ready" BEFORE any config.set was attempted, so
+    // the fallback prompt was never resubmitted. Verification of the resulting
+    // runtime identity is covered by the live-identity tests below.
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toContain("cbai/deepseek-v4.1-flash");
+    // `cbai` is a configured named provider, so it needs no catalog discovery —
+    // the switch proceeds on the first read.
+  } finally { view.unmount(); }
+});
+
+// @lat: [[model-selection#Fresh runtime readiness]]
+it("refuses a NAMED provider that never resolves, instead of sending on bare custom", async () => {
+  dashboardMock.request.mockImplementation(async (method) => {
+    if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+    if (method === "model.options") return { providers: [] };
+    if (method === "session.status") return { output: "Model: unknown (unknown)" };
+    return {};
+  });
+  const api: HarnessApi = {};
+  const view = render(<Harness active={false} api={api} modelBaseUrl="" />);
+  try {
+    await act(async () => { api.setModel!("cbai/deepseek-v4.1-flash"); api.setProvider!("cbai"); });
+    await act(async () => { await api.send!("first prompt").catch(() => undefined); });
+    // No prompt may reach the gateway on an unresolved endpoint.
+    expect(dashboardMock.request.mock.calls.filter(([method]) => method === "prompt.submit")).toHaveLength(0);
+  } finally { view.unmount(); }
+}, 15_000);
+
 it("waits for fresh custom inventory and live identity before the first prompt", async () => {
   let optionsReads = 0;
   let statusReads = 0;

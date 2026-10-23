@@ -3054,7 +3054,24 @@ export function useDashboardChatTransport({
         let before = await readOptions(targetSessionId);
         let dashboardProvider = resolveDashboardProviderForModel(selectedProvider, selectedModel, selectedBaseUrl, before);
         // Fresh sessions return before agent construction and catalog discovery.
-        // Never route a named endpoint through an unresolved bare custom provider.
+        // Never route a NAMED provider through an unresolved bare `custom`: the
+        // catalog is how a named id (e.g. `cbai`) is resolved to its endpoint, so
+        // an empty inventory means "not discovered yet", not "not configured".
+        // This used to be gated on `selectedProvider === "custom"`, so a named
+        // custom provider skipped the wait and threw "custom provider is not
+        // ready" on the first send of a fresh session — the fallback-subagent
+        // failure. `selectedProvider` is the only thing checked here: for a
+        // named provider an unresolved catalog row also resolves to "custom".
+        if (selectedProvider !== "custom") {
+          for (let attempt = 0; dashboardProvider === "custom" && attempt < 20; attempt++) {
+            checkCancelled();
+            await new Promise((resolve) => setTimeout(resolve, 250));
+            checkCancelled();
+            before = await readOptions(targetSessionId, true);
+            checkCancelled();
+            dashboardProvider = resolveDashboardProviderForModel(selectedProvider, selectedModel, selectedBaseUrl, before);
+          }
+        }
         for (let attempt = 0; selectedProvider === "custom" && selectedBaseUrl && dashboardProvider === "custom" && attempt < 20; attempt++) {
           checkCancelled();
           await new Promise((resolve) => setTimeout(resolve, 250));
@@ -3064,6 +3081,12 @@ export function useDashboardChatTransport({
           dashboardProvider = resolveDashboardProviderForModel(selectedProvider, selectedModel, selectedBaseUrl, before);
         }
         checkCancelled();
+        if (dashboardProvider === "custom" && selectedProvider !== "custom") {
+          // Named provider still unresolved. A custom provider is only usable
+          // through an explicitly resolved endpoint — refuse rather than send
+          // the turn to whatever `custom` happens to point at.
+          throw new Error(`Hermes dashboard custom provider is not ready; custom inventory: ${modelOptionsSummary(before)}`);
+        }
         if (selectedProvider === "custom" && selectedBaseUrl && dashboardProvider === "custom") {
           throw new Error(`Hermes dashboard custom provider is not ready; custom inventory: ${modelOptionsSummary(before)}`);
         }

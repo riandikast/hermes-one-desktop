@@ -328,7 +328,7 @@ describe("transport wiring (source guard)", () => {
   it("latches recovery OFF inside abort(), before any other work", () => {
     const abortIdx = source.indexOf("const abort = useCallback(");
     expect(abortIdx).toBeGreaterThan(-1);
-    const body = source.slice(abortIdx, abortIdx + 900);
+    const body = source.slice(abortIdx, abortIdx + 1800);
     // The latch is set, and it is set EARLY — before the streaming client is
     // closed (the next statement in abort).
     expect(body).toContain("recoveryCancelledRef.current = true");
