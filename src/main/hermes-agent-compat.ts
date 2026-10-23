@@ -288,6 +288,14 @@ export function patchDashboardEmbeddedChatSource(
 export function patchDashboardModelLibrarySource(
   source: string,
 ): DashboardSourcePatchResult {
+  // Current upstream owns routes in web_routers/models.py. Never inject legacy
+  // handlers into its assembly module; saved-library CRUD remains optional.
+  if (source.includes("app.include_router(_models_routes.router)")) {
+    return {
+      compatible: true, changed: false, source,
+      detail: "Upstream model routes are modular; legacy model-library injection skipped. Remote saved-library CRUD requires a separate extension.",
+    };
+  }
   const withoutExisting = removeModelLibraryCompatBlock(source);
   if (!withoutExisting.source.includes('@app.post("/api/model/set")')) {
     return {
@@ -316,53 +324,6 @@ export function patchDashboardModelLibrarySource(
     detail: withoutExisting.removed
       ? "Moved Hermes One model library endpoint before the dashboard catch-all route."
       : "Installed Hermes One model library endpoint.",
-  };
-}
-
-export function patchGatewaySlashCommandsSource(
-  source: string,
-): DashboardSourcePatchResult {
-  let modified = source;
-  let changed = false;
-
-  // 1. Coerce user_id to string in _resume_caller_is_admin so numeric Telegram IDs match policy
-  if (modified.includes("uid = getattr(source, \"user_id\", None)")) {
-    modified = modified.replace(
-      "uid = getattr(source, \"user_id\", None)",
-      "uid = str(getattr(source, \"user_id\", \"\") or \"\")",
-    );
-    changed = true;
-  }
-
-  // 2. Allow bare "all" and "—all" in addition to "--all" for /resume and /sessions
-  const oldAllowAll = 'allow_all = "--all" in parts';
-  const newAllowAll = 'allow_all = "--all" in parts or "all" in parts or "—all" in parts';
-  if (modified.includes(oldAllowAll) && !modified.includes(newAllowAll)) {
-    modified = modified.replace(oldAllowAll, newAllowAll);
-    changed = true;
-  }
-
-  const oldCrossRoom = 'allow_cross_room = "--cross-room" in parts';
-  const newCrossRoom = 'allow_cross_room = "--cross-room" in parts or "cross-room" in parts or "—cross-room" in parts';
-  if (modified.includes(oldCrossRoom) && !modified.includes(newCrossRoom)) {
-    modified = modified.replace(oldCrossRoom, newCrossRoom);
-    changed = true;
-  }
-
-  const oldNameJoin = 'name = " ".join(p for p in parts if p not in {"--all", "--cross-room"}).strip()';
-  const newNameJoin = 'name = " ".join(p for p in parts if p not in {"--all", "all", "—all", "--cross-room", "cross-room", "—cross-room"}).strip()';
-  if (modified.includes(oldNameJoin) && !modified.includes(newNameJoin)) {
-    modified = modified.replace(oldNameJoin, newNameJoin);
-    changed = true;
-  }
-
-  return {
-    compatible: true,
-    changed,
-    source: modified,
-    detail: changed
-      ? "Patched gateway slash commands for Telegram /resume and /sessions compatibility."
-      : "Gateway slash commands already compatible.",
   };
 }
 
@@ -443,52 +404,38 @@ export function writeCompatFileAtomically(path: string, source: string): void {
   }
 }
 
-export function patchComputeHostBuildSha(source: string): DashboardSourcePatchResult {
-  if (source.includes("creationflags=_CREATE_NO_WINDOW")) {
-    return { source, changed: false, compatible: true, detail: "compute_host._build_sha: already patched" };
+/** Read-only source audit: no marker, backups, imports, or installation writes. */
+export function inspectLocalDashboardCompatibility(repo = HERMES_REPO): HermesAgentCompatResult {
+  const path = join(repo, "hermes_cli", "web_server.py");
+  try {
+    const source = readFileSync(path, "utf-8");
+    const result = patchDashboardCompatibilitySource(source);
+    return {
+      ok: result.compatible && !result.changed,
+      target: "local", compatible: result.compatible && !result.changed,
+      applied: false, version: HERMES_AGENT_COMPAT_VERSION, path,
+      detail: "Read-only source audit. " + (result.changed
+        ? "Legacy compatibility changes would be required; nothing was changed. Update the backend or run diagnosis before repair."
+        : result.detail),
+    };
+  } catch (err) {
+    return {
+      ok: false, target: "local", compatible: false, applied: false,
+      version: HERMES_AGENT_COMPAT_VERSION, path,
+      detail: "Could not inspect dashboard source; nothing was changed.",
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
-  const anchor = `def _build_sha() -> str:\n    try:\n`;
-  if (!source.includes(anchor)) {
-    return { source, changed: false, compatible: true, detail: "compute_host._build_sha: anchor not found, skipped" };
-  }
-  const patched = source.replace(
-    anchor,
-    `def _build_sha() -> str:\n    try:\n        import sys as _sys\n        _CREATE_NO_WINDOW = 0x08000000 if _sys.platform == "win32" else 0\n`,
-  ).replace(
-    `["git", "rev-parse", "HEAD"],`,
-    `["git", "rev-parse", "HEAD"],\n            creationflags=_CREATE_NO_WINDOW,`,
-  );
-  return { source: patched, changed: patched !== source, compatible: true, detail: "compute_host._build_sha: added CREATE_NO_WINDOW" };
-}
-
-export function patchBannerGitStdout(source: string): DashboardSourcePatchResult {
-  if (source.includes("creationflags=_CREATE_NO_WINDOW")) {
-    return { source, changed: false, compatible: true, detail: "banner._git_stdout: already patched" };
-  }
-  const anchor = `def _git_stdout(args: list[str], *, cwd: Path, timeout: int = 5) -> Optional[str]:\n    try:\n`;
-  if (!source.includes(anchor)) {
-    return { source, changed: false, compatible: true, detail: "banner._git_stdout: anchor not found, skipped" };
-  }
-  const patched = source.replace(
-    anchor,
-    `def _git_stdout(args: list[str], *, cwd: Path, timeout: int = 5) -> Optional[str]:\n    try:\n        import sys as _sys\n        _CREATE_NO_WINDOW = 0x08000000 if _sys.platform == "win32" else 0\n`,
-  ).replace(
-    `cwd=str(cwd),`,
-    `cwd=str(cwd),\n            creationflags=_CREATE_NO_WINDOW,`,
-  );
-  return { source: patched, changed: patched !== source, compatible: true, detail: "banner._git_stdout: added CREATE_NO_WINDOW" };
 }
 
 export function ensureLocalDashboardCompatibility(): HermesAgentCompatResult {
   const webServerPath = join(HERMES_REPO, "hermes_cli", "web_server.py");
-  const slashCommandsPath = join(HERMES_REPO, "gateway", "slash_commands.py");
-  const computeHostPath = join(HERMES_REPO, "tui_gateway", "compute_host.py");
-  const bannerPath = join(HERMES_REPO, "hermes_cli", "banner.py");
   const details: string[] = [];
   let totalApplied = false;
 
   try {
-    // 1. web_server.py compatibility
+    // Missing source must not be reported as a successful repair.
+    if (!existsSync(webServerPath)) throw new Error("Dashboard source not found");
     if (existsSync(webServerPath)) {
       const source = readFileSync(webServerPath, "utf-8");
       const patched = patchDashboardCompatibilitySource(source);
@@ -510,39 +457,6 @@ export function ensureLocalDashboardCompatibility(): HermesAgentCompatResult {
         totalApplied = true;
       }
       details.push(patched.detail);
-    }
-
-    // 2. gateway/slash_commands.py compatibility
-    if (existsSync(slashCommandsPath)) {
-      const slashSource = readFileSync(slashCommandsPath, "utf-8");
-      const slashPatched = patchGatewaySlashCommandsSource(slashSource);
-      if (slashPatched.changed) {
-        writeCompatFileAtomically(slashCommandsPath, slashPatched.source);
-        totalApplied = true;
-      }
-      details.push(slashPatched.detail);
-    }
-
-    // 3. tui_gateway/compute_host.py — _build_sha() git subprocess flash
-    if (existsSync(computeHostPath)) {
-      const chSource = readFileSync(computeHostPath, "utf-8");
-      const chPatched = patchComputeHostBuildSha(chSource);
-      if (chPatched.changed) {
-        writeCompatFileAtomically(computeHostPath, chPatched.source);
-        totalApplied = true;
-      }
-      details.push(chPatched.detail);
-    }
-
-    // 4. hermes_cli/banner.py — _git_stdout() git subprocess flash
-    if (existsSync(bannerPath)) {
-      const bnSource = readFileSync(bannerPath, "utf-8");
-      const bnPatched = patchBannerGitStdout(bnSource);
-      if (bnPatched.changed) {
-        writeCompatFileAtomically(bannerPath, bnPatched.source);
-        totalApplied = true;
-      }
-      details.push(bnPatched.detail);
     }
 
     const result: HermesAgentCompatResult = {
@@ -661,7 +575,9 @@ else:
 if compatible:
     original_source = source
     source_without_model_library, removed_model_library = remove_model_library_compat_block(source)
-    if '@app.post("/api/model/set")' in source_without_model_library:
+    if "app.include_router(_models_routes.router)" in source_without_model_library:
+        details.append("Upstream model routes are modular; legacy model-library injection skipped. Remote saved-library CRUD requires a separate extension.")
+    elif '@app.post("/api/model/set")' in source_without_model_library:
         source = insert_model_library_compat_block(source_without_model_library)
         if source != original_source:
             changed = True

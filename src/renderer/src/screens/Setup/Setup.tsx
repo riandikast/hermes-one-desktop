@@ -4,7 +4,10 @@ import { PROVIDERS, LOCAL_PRESETS, DASHSCOPE_ENDPOINTS } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 import VerifyWarningBanner from "../../components/VerifyWarningBanner";
 import BrandLogo from "../../components/common/BrandLogo";
-import { expectedEnvKeyForUrl } from "../../../../shared/url-key-map";
+import {
+  customProviderEnvKey,
+  expectedEnvKeyForUrl,
+} from "../../../../shared/url-key-map";
 
 interface SetupProps {
   onComplete: () => void;
@@ -24,12 +27,14 @@ function Setup({
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("http://localhost:1234/v1");
   const [modelName, setModelName] = useState("");
+  const [customName, setCustomName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showKey, setShowKey] = useState(false);
 
   const provider = PROVIDERS.setup.find((p) => p.id === selectedProvider)!;
   const isLocal = selectedProvider === "local";
+  const isCustom = selectedProvider === "custom";
   const isDashScope = selectedProvider === "alibaba";
 
   function applyLocalPreset(presetBaseUrl: string): void {
@@ -47,6 +52,27 @@ function Setup({
   }
 
   async function handleContinue(): Promise<void> {
+    if (saving) return;
+    if (isCustom) {
+      if (!customName.trim() || !baseUrl.trim() || !modelName.trim()) {
+        setError(t("providers.keys.custom.baseUrlNeeded"));
+        return;
+      }
+      try {
+        const url = new URL(baseUrl.trim());
+        if (
+          !["http:", "https:"].includes(url.protocol) ||
+          url.username ||
+          url.password ||
+          url.search ||
+          url.hash
+        )
+          throw new Error();
+      } catch {
+        setError(t("setup.missingServerUrl"));
+        return;
+      }
+    }
     if (provider.needsKey && !apiKey.trim()) {
       setError(t("setup.missingApiKey"));
       return;
@@ -60,7 +86,28 @@ function Setup({
     setError("");
 
     try {
-      if (provider.needsKey && provider.envKey) {
+      if (isCustom) {
+        const name = customName.trim();
+        const url = baseUrl.trim();
+        const model = modelName.trim();
+        await window.hermesAPI.setEnv(
+          customProviderEnvKey(name),
+          apiKey.trim(),
+        );
+        const record = await window.hermesAPI.upsertCustomProvider(undefined, {
+          name,
+          baseUrl: url,
+        });
+        if (!record) throw new Error();
+        await window.hermesAPI.addModel(
+          model,
+          "custom",
+          model,
+          url,
+          undefined,
+          name,
+        );
+      } else if (provider.needsKey && provider.envKey) {
         await window.hermesAPI.setEnv(provider.envKey, apiKey.trim());
       } else if (isLocal && apiKey.trim()) {
         const envKey = resolveCustomEnvKey(baseUrl.trim());
@@ -69,7 +116,7 @@ function Setup({
 
       const configProvider = isLocal ? "custom" : provider.configProvider;
       const configBaseUrl =
-        isLocal || isDashScope ? baseUrl.trim() : provider.baseUrl;
+        isLocal || isCustom || isDashScope ? baseUrl.trim() : provider.baseUrl;
       const configModel = modelName.trim() || "";
       await window.hermesAPI.setModelConfig(
         configProvider,
@@ -109,7 +156,11 @@ function Setup({
                   setSelectedProvider(p.id);
                   if (p.id === "alibaba") {
                     setBaseUrl(p.baseUrl);
+                  } else if (p.id === "custom" || p.id === "local") {
+                    setBaseUrl(p.baseUrl);
                   }
+                  setApiKey("");
+                  setShowKey(false);
                   setError("");
                 }}
               >
@@ -128,7 +179,73 @@ function Setup({
         </div>
 
         <div className="setup-form">
-          {isLocal ? (
+          {isCustom ? (
+            <>
+              <label className="setup-label" htmlFor="setup-custom-name">
+                {t("providers.keys.custom.namePlaceholder")}
+              </label>
+              <input
+                id="setup-custom-name"
+                className="input"
+                value={customName}
+                onChange={(e) => {
+                  setCustomName(e.target.value);
+                  setError("");
+                }}
+                autoFocus
+              />
+              <label className="setup-label" htmlFor="setup-custom-url">
+                {t("setup.serverUrl")}
+              </label>
+              <input
+                id="setup-custom-url"
+                className="input"
+                value={baseUrl}
+                placeholder={t("providers.keys.custom.baseUrlPlaceholder")}
+                onChange={(e) => {
+                  setBaseUrl(e.target.value);
+                  setError("");
+                }}
+              />
+              <label className="setup-label" htmlFor="setup-custom-key">
+                {t("setup.customApiKeyLabel")}
+              </label>
+              <div className="setup-input-group">
+                <input
+                  id="setup-custom-key"
+                  className="input"
+                  type={showKey ? "text" : "password"}
+                  value={apiKey}
+                  autoComplete="off"
+                  onChange={(e) => {
+                    setApiKey(e.target.value);
+                    setError("");
+                  }}
+                />
+                <button
+                  className="setup-toggle-visibility"
+                  type="button"
+                  onClick={() => setShowKey(!showKey)}
+                >
+                  {showKey ? t("common.hide") : t("common.show")}
+                </button>
+              </div>
+              <label className="setup-label" htmlFor="setup-custom-model">
+                {t("setup.modelName")}
+              </label>
+              <input
+                id="setup-custom-model"
+                className="input"
+                value={modelName}
+                placeholder={t("setup.modelNamePlaceholder")}
+                onChange={(e) => {
+                  setModelName(e.target.value);
+                  setError("");
+                }}
+                onKeyDown={(e) => e.key === "Enter" && handleContinue()}
+              />
+            </>
+          ) : isLocal ? (
             <>
               <label className="setup-label">
                 {t("setup.localGroupLabel")}
@@ -328,7 +445,11 @@ function Setup({
             </>
           )}
 
-          {error && <div className="setup-error">{error}</div>}
+          {error && (
+            <div role="alert" className="setup-error">
+              {error}
+            </div>
+          )}
 
           <button
             className="btn btn-primary setup-continue"
@@ -336,7 +457,9 @@ function Setup({
             disabled={
               saving ||
               (provider.needsKey && !apiKey.trim()) ||
-              ((isLocal || isDashScope) && !baseUrl.trim())
+              ((isLocal || isDashScope) && !baseUrl.trim()) ||
+              (isCustom &&
+                (!customName.trim() || !baseUrl.trim() || !modelName.trim()))
             }
             style={{ marginTop: isLocal ? 20 : 0 }}
           >

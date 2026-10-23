@@ -189,20 +189,20 @@ export default function AboutPane(): React.JSX.Element {
                   const res = await window.hermesAPI.checkBackendCompat();
                   setDumpOutput(
                     `Backend Compatibility: ${res.compatible ? "OK" : "FAILED"}\n` +
-                    `Applied Patch: ${res.applied ? "YES" : "NO"}\n` +
+                    `Changed Backend: ${res.applied ? "YES" : "NO (read-only)"}\n` +
                     `Details: ${res.detail}\n` +
                     (res.error ? `Error: ${res.error}\n` : "") +
-                    `Target: ${res.version}`
+                    `Compatibility policy: ${res.version}`
                   );
                 } catch (err) {
-                  setDumpOutput(`Failed to check/patch backend: ${err instanceof Error ? err.message : String(err)}`);
+                  setDumpOutput(`Failed to inspect backend: ${err instanceof Error ? err.message : String(err)}`);
                 }
                 setDumpRunning(false);
               }}
               disabled={dumpRunning}
             >
               <Wrench size={14} />
-              Repair / Patch Backend
+              Check Backend Compatibility
             </button>
           </div>
 

@@ -145,6 +145,8 @@ import {
 } from "../installer";
 import {
   ensureLocalDashboardCompatibility,
+  inspectLocalDashboardCompatibility,
+  remoteHttpCompatibilityResult,
   ensureSshDashboardCompatibility,
 } from "../hermes-agent-compat";
 import {
@@ -3754,13 +3756,17 @@ export function registerIpcHandlers(context: IpcContext): void {
     return runHermesDump();
   });
 
-  // Check / apply backend compatibility patch
+  // About diagnostics never patch local or remote installations.
   ipcMain.handle("check-backend-compat", () => {
     const conn = getConnectionConfig();
-    if (conn.mode === "ssh" && conn.ssh) {
-      return ensureSshDashboardCompatibility(conn.ssh);
+    if (conn.mode !== "local") {
+      return {
+        ...remoteHttpCompatibilityResult(),
+        target: conn.mode === "ssh" ? "ssh" : "remote-http",
+        detail: "Remote source audit unavailable. Nothing was changed. Run diagnosis on the remote host; use upstream maintenance commands for repair.",
+      };
     }
-    return ensureLocalDashboardCompatibility();
+    return inspectLocalDashboardCompatibility();
   });
 
   // MCP servers

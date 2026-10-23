@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   mkdtempSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -9,6 +10,7 @@ import {
 import { join } from "path";
 import { tmpdir } from "os";
 import {
+  inspectLocalDashboardCompatibility,
   patchDashboardCompatibilitySource,
   patchDashboardEmbeddedChatSource,
   patchDashboardModelLibrarySource,
@@ -16,6 +18,55 @@ import {
 } from "../src/main/hermes-agent-compat";
 
 describe("Hermes Agent dashboard compatibility patcher", () => {
+  // @lat: [[backend-compatibility#Read-only audit]]
+  it("audits current modular upstream without changing source or creating backups", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hermes-audit-"));
+    try {
+      mkdirSync(join(dir, "hermes_cli"));
+      const target = join(dir, "hermes_cli", "web_server.py");
+      const source = "_DASHBOARD_EMBEDDED_CHAT_ENABLED = True\napp.include_router(_models_routes.router)\n";
+      writeFileSync(target, source);
+      const result = inspectLocalDashboardCompatibility(dir);
+      expect(result).toMatchObject({ ok: true, compatible: true, applied: false });
+      expect(result.detail).toContain("Remote saved-library CRUD requires a separate extension");
+      expect(readFileSync(target, "utf-8")).toBe(source);
+      expect(readdirSync(dir)).toEqual(["hermes_cli"]);
+      expect(readdirSync(join(dir, "hermes_cli"))).toEqual(["web_server.py"]);
+      expect(patchDashboardCompatibilitySource(source)).toMatchObject({ compatible: true, changed: false, source });
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("does not claim a missing backend is compatible", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hermes-audit-"));
+    try {
+      expect(inspectLocalDashboardCompatibility(dir)).toMatchObject({ ok: false, compatible: false, applied: false });
+      expect(readdirSync(dir)).toEqual([]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("reports legacy changes as required rather than applied", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hermes-audit-"));
+    try {
+      mkdirSync(join(dir, "hermes_cli"));
+      const target = join(dir, "hermes_cli", "web_server.py");
+      const source = 'embedded_chat: bool = False\n@app.post("/api/model/set")\nmount_spa(app)\n';
+      writeFileSync(target, source);
+      expect(inspectLocalDashboardCompatibility(dir)).toMatchObject({ ok: false, compatible: false, applied: false });
+      expect(readFileSync(target, "utf-8")).toBe(source);
+      expect(readdirSync(join(dir, "hermes_cli"))).toEqual(["web_server.py"]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("keeps the About IPC read-only for local, SSH and HTTP connections", () => {
+    const source = readFileSync(join(process.cwd(), "src/main/ipc/register.ts"), "utf-8");
+    const handler = source.slice(source.indexOf('ipcMain.handle("check-backend-compat"'), source.indexOf("// MCP servers", source.indexOf('ipcMain.handle("check-backend-compat"')));
+    expect(handler.length).toBeGreaterThan(100);
+    expect(handler).toContain('conn.mode !== "local"');
+    expect(handler).toContain("inspectLocalDashboardCompatibility()");
+    expect(handler).not.toContain("ensureLocalDashboardCompatibility");
+    expect(handler).not.toContain("ensureSshDashboardCompatibility");
+  });
+
   it("leaves already-compatible embedded chat defaults unchanged", () => {
     const source = `
 async def start_server(

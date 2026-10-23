@@ -60,9 +60,14 @@ describe("PROVIDERS", () => {
     }
   });
 
-  it("setup entries that need a key have envKey and url", () => {
+  it("built-in setup entries that need a key have envKey and url", () => {
     for (const entry of PROVIDERS.setup) {
-      if (entry.needsKey) {
+      if (entry.id === "custom") {
+        expect(entry.configProvider).toBe("custom");
+        expect(entry.needsKey).toBe(true);
+        expect(entry.envKey).toBe(""); // derived from the user-entered name
+        expect(entry.baseUrl).toBe(""); // never silently targets localhost
+      } else if (entry.needsKey) {
         expect(entry.envKey).toBeTruthy();
         expect(entry.url).toBeTruthy();
       }

@@ -4,6 +4,16 @@ The first-run screen where the user picks an AI provider and enters credentials 
 
 The provider list is data-driven from `PROVIDERS.setup` in [[src/renderer/src/constants.ts]]. Each entry carries an `envKey`, `configProvider`, `baseUrl`, and `needsKey`; selecting a card drives which form fields show (API key, or the Local server/base-URL flow).
 
+## Custom provider during first setup
+
+The first-run Custom provider card uses the same named-provider identity, dedicated key, saved-model library and custom endpoint route as the Providers screen, without discovery or a live verification request.
+
+[[src/renderer/src/screens/Setup/Setup.tsx#Setup]] requires name, HTTP(S) base URL, API key and model ID. It rejects credentials, query strings and fragments in endpoints before writing. Existing setup layout and translation labels are reused to preserve the app's visual language.
+
+Continue trims input, writes the key through `setEnv(customProviderEnvKey(name))`, saves identity through `upsertCustomProvider`, saves the model through `addModel` with `providerLabel`, then selects `custom` plus the explicit endpoint with `setModelConfig`. Failure keeps onboarding open with a generic, retryable error and never logs exception details. Switching cards clears and remasks the key. Local presets retain their optional-key/model flow.
+
+[[src/renderer/src/screens/Setup/Setup.test.tsx]] exercises required fields, unsafe URLs, exact persistence payloads and ordering, visibility, switching and every save-stage failure with mocked IPC only. No credentials, provider network requests or live backend writes are needed.
+
 ## Hermes One is the first-priority provider
 
 **Hermes One Inference** (`https://inference.hermesone.org/v1`) is Hermes One's own OpenAI-compatible gateway, listed **first** in `PROVIDERS.setup`, `PROVIDER_CARDS`, and the `SETTINGS_SECTIONS` "LLM Providers" items — so it leads the Add-provider picker.

@@ -178,7 +178,7 @@ it.skipIf(process.platform !== "win32")("validates a fresh bootstrap with no too
   expect(progress.at(-1)).toContain("Hermes runtime validated");
 });
 
-it.skipIf(process.platform !== "win32")("rejects broken CLI imports after bootstrap then validates a repaired retry", async () => {
+it.skipIf(process.platform !== "win32")("allows successful installation with an honest warning then validates a repaired retry", async () => {
   const { home, repo, touch } = fixture();
   vi.stubEnv("TEMP", home);
   vi.stubEnv("TMP", home);
@@ -194,27 +194,85 @@ it.skipIf(process.platform !== "win32")("rejects broken CLI imports after bootst
       const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter() });
       childProcess.spawn.mockReturnValue(child);
       childProcess.execFile.mockImplementation((_python, _args, _options, callback) => callback(broken ? new Error("missing dependencies") : null, "", ""));
-      const installing = installer.runInstall(() => {});
-      const result = broken ? expect(installing).rejects.toThrow("runtime could not be validated") : expect(installing).resolves.toBeUndefined();
+      const logs: string[] = [];
+      const installing = installer.runInstall((p) => logs.push(p.log));
+      const result = expect(installing).resolves.toBeUndefined();
       child.emit("close", 0);
       await result;
+      expect(logs.at(-1)).toContain(broken ? "Warning:" : "Hermes runtime validated");
+      if (broken) expect(childProcess.execFile).toHaveBeenCalledTimes(3);
+      expect(await installer.verifyInstall()).toBe(!broken);
     }
   } finally {
     warn.mockRestore();
   }
 });
 
-it.skipIf(process.platform !== "win32")("rejects a zero-exit fresh installer that produced no backend", async () => {
+it.skipIf(process.platform !== "win32")("allows a zero-exit installer to proceed without claiming runtime validation", async () => {
   const { home } = fixture();
   vi.stubEnv("TEMP", home);
   vi.stubEnv("TMP", home);
   const installer = await import("../src/main/installer");
   const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter() });
   childProcess.spawn.mockReturnValue(child);
-  const installing = installer.runInstall(() => {});
-  const rejected = expect(installing).rejects.toThrow("runtime could not be validated");
+  const logs: string[] = [];
+  const installing = installer.runInstall((p) => logs.push(p.log));
   child.emit("close", 0);
+  await expect(installing).resolves.toBeUndefined();
+  expect(logs.at(-1)).toContain("Warning:");
+  expect(logs.at(-1)).not.toContain("Hermes runtime validated");
+  expect(installer.checkInstallStatus().installed).toBe(false);
+});
+
+it.skipIf(process.platform !== "win32")("retries cold managed discovery and CLI validation in the same process", async () => {
+  const { home, repo, touch } = fixture();
+  const installer = await import("../src/main/installer");
+  expect(installer.checkInstallStatus().installed).toBe(false);
+  const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter() });
+  childProcess.spawn.mockReturnValue(child);
+  const logs: string[] = [];
+  const installing = installer.runInstall((p) => logs.push(p.log));
+  const python = join(home, "new-managed-runtime", "python.exe");
+  touch(python);
+  touch(join(repo, "hermes_cli", "main.py"));
+  touch(join(repo, ".hermes", "bin", "hermes.exe"));
+  childProcess.execFileSync.mockImplementationOnce(() => { throw new Error("cold discovery"); });
+  childProcess.execFileSync.mockReturnValue(JSON.stringify([python, "-I", "-c", "bootstrap"]));
+  childProcess.execFile.mockImplementationOnce((_python, _args, _options, callback) => callback(new Error("cold import"), "", ""));
+  childProcess.execFile.mockImplementation((_python, _args, _options, callback) => callback(null, "Hermes test", ""));
+  child.emit("close", 0);
+  await installing;
+  expect(installer.HERMES_PYTHON).toBe(python);
+  expect(installer.checkInstallStatus().installed).toBe(true);
+  expect(childProcess.execFile).toHaveBeenCalledTimes(2);
+  expect(logs.at(-1)).toContain("Hermes runtime validated");
+});
+
+it("does not cache failed CLI verification across an immediate retry", async () => {
+  const { repo, touch } = fixture();
+  touch(join(repo, "hermes_cli", "main.py"));
+  touch(join(repo, "venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python"));
+  touch(process.platform === "win32" ? join(repo, "venv", "Scripts", "hermes.exe") : join(repo, "hermes"));
+  const installer = await import("../src/main/installer");
+  childProcess.execFile.mockImplementationOnce((_python, _args, _options, callback) => callback(new Error("cold import"), "", ""));
+  childProcess.execFile.mockImplementation((_python, _args, _options, callback) => callback(null, "Hermes test", ""));
+  expect(await installer.verifyInstall()).toBe(false);
+  expect(await installer.verifyInstall()).toBe(true);
+  expect(childProcess.execFile).toHaveBeenCalledTimes(2);
+});
+
+it.skipIf(process.platform !== "win32")("preserves a nonzero installer failure even with existing binaries", async () => {
+  const { repo, touch } = fixture();
+  touch(join(repo, "venv", "Scripts", "python.exe"));
+  touch(join(repo, "venv", "Scripts", "hermes.exe"));
+  const installer = await import("../src/main/installer");
+  const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter() });
+  childProcess.spawn.mockReturnValue(child);
+  const installing = installer.runInstall(() => {});
+  const rejected = expect(installing).rejects.toThrow("Installation failed (exit code 1)");
+  child.emit("close", 1);
   await rejected;
+  expect(childProcess.execFile).not.toHaveBeenCalled();
 });
 
 it("retries failed managed discovery when the install gate is checked again", async () => {

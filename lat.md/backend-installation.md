@@ -10,7 +10,7 @@ The published command supplies store Python and the isolated bootstrap arguments
 
 [[src/main/installer.ts#hermesCliArgs]] preserves the published bootstrap. [[src/main/installer.ts#hermesPythonArgs]] bootstraps direct Python snippets before importing backend packages. Profile arguments follow the complete bootstrap prefix, not a fixed offset.
 
-Installer completion refreshes runtime paths before status checks, allowing an installation created during the current app session to be recognized. Regression coverage lives in `tests/installer-runtime.test.ts` and `src/main/skills.test.ts`.
+Installer completion refreshes runtime paths and clears verification/version caches before status checks, allowing a new installation to be recognized without restarting. Failed CLI probes are not cached. Regression coverage lives in `tests/installer-runtime.test.ts` and `src/main/skills.test.ts`.
 
 [[src/main/installer.ts#checkInstallStatus]] retries discovery when the selected interpreter or launcher is missing. Recheck can recover from a transient cold-launch failure without changing the selected home or borrowing PATH dependencies.
 
@@ -24,13 +24,15 @@ Environment roots, saved overrides and manual validation share this normalizatio
 
 ## Fresh Windows bootstrap
 
-[[src/main/installer.ts#runInstall]] validates the newly installed Windows CLI before reporting success. A zero-exit bootstrap without a runnable backend fails, rather than letting onboarding claim completion.
+[[src/main/installer.ts#runInstall]] treats official Windows installer exit zero as completion. Runtime validation is best effort; unresolved validation emits an honest warning and allows setup to continue.
+
+After the installer process closes, desktop retries discovery and CLI `--version` at most three times, separated by 250 ms. Each attempt refreshes selected-home runtime paths and clears stale verification/version caches. Child PATH changes never require switching homes or borrowing system Python. Nonzero or signaled installer exits remain errors even when old binaries exist. An unresolved warning never marks the runtime verified or installed; normal status checks retain their actual result.
 
 The official [installation guide](https://hermes-agent.nousresearch.com/docs/getting-started/installation) and [native Windows guide](https://hermes-agent.nousresearch.com/docs/user-guide/windows-native) define the bootstrap contract: Windows 10/11, PowerShell, internet access, no administrator rights required. Native installs default to `%LOCALAPPDATA%\hermes`; `HERMES_HOME`, `-HermesHome` and `-InstallDir` select explicit roots. User PATH changes require a new terminal.
 
 The upstream PowerShell installer supplies pinned portable Git and uv when absent, downloads managed Python, installs the runtime and invokes PM for heavy tool dependencies. Desktop does not require preinstalled Git, uv, Python or Node. `-NonInteractive` suppresses interactive setup; `-SkipSetup` is a deprecated compatible alias. The copied Windows fallback command uses the official endpoint and upstream home selection, not a forced `~/.hermes` root.
 
-`tests/installer-runtime.test.ts` uses temporary homes and mocked child processes: empty PATH, missing backend, bootstrap failure then retry, managed runtime discovery, CLI validation and false-success rejection. These isolated tests do not prove an actual clean Windows end-to-end installation; a disposable Windows VM still needs download, bootstrap, provider setup and first-chat verification.
+`tests/installer-runtime.test.ts` uses temporary homes and mocked child processes: empty PATH, missing backend, bootstrap failure then retry, same-process cold discovery/import recovery, uncached failed probes, successful installer warnings and nonzero rejection with existing binaries. These isolated tests do not prove an actual clean Windows end-to-end installation; a disposable Windows VM still needs download, bootstrap, provider setup and first-chat verification.
 
 ## Context folder display names
 

@@ -269,6 +269,18 @@ export const PROVIDERS = {
       needsKey: false,
     },
     {
+      id: "custom",
+      name: "providers.keys.custom.title",
+      desc: "providers.keys.custom.pickerHint",
+      tag: "",
+      envKey: "",
+      url: "",
+      placeholder: "sk-...",
+      configProvider: "custom",
+      baseUrl: "",
+      needsKey: true,
+    },
+    {
       id: "local",
       name: "constants.localName",
       desc: "constants.localDesc",

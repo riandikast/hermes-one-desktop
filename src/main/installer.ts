@@ -231,6 +231,7 @@ function refreshInstallBinaries(): void {
   HERMES_PYTHON = installBinaries.python;
   HERMES_SCRIPT = installBinaries.script;
   _verifyCache = null;
+  _cachedVersion = null;
 }
 
 export function hermesCliArgs(args: string[] = []): string[] {
@@ -616,7 +617,7 @@ const VERIFY_TTL_MS = 5 * 60 * 1000;
 
 export async function verifyInstall(): Promise<boolean> {
   if (!canInvokeHermesCli()) return false;
-  if (_verifyCache && Date.now() - _verifyCache.ts < VERIFY_TTL_MS) {
+  if (_verifyCache?.ok && Date.now() - _verifyCache.ts < VERIFY_TTL_MS) {
     return _verifyCache.ok;
   }
   return new Promise((resolve) => {
@@ -992,12 +993,17 @@ export async function runInstall(
   if (IS_WINDOWS) {
     await runInstallWindows(emit);
     emit("\nValidating installed Hermes runtime...\n");
-    if (!(await verifyInstall())) {
-      throw new Error(
-        "Installer finished, but the Hermes runtime could not be validated. Check the installation logs, then retry.",
-      );
+    // The installer updates its child environment, not Electron's snapshot.
+    // Rediscover from the selected home; never reuse a cached failed probe.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt) await new Promise((resolve) => setTimeout(resolve, 250));
+      refreshInstallBinaries();
+      if (await verifyInstall()) {
+        emit("\nHermes runtime validated.\n");
+        return;
+      }
     }
-    emit("\nHermes runtime validated.\n");
+    emit("\nWarning: The official installer completed successfully, but the desktop could not validate the runtime yet. You can continue setup. If Hermes cannot start, use Recheck or restart the app; check the installation logs if it persists.\n");
     return;
   }
 
@@ -1231,25 +1237,17 @@ async function runInstallWindows(emit: (t: string) => void): Promise<void> {
       } catch {
         /* best-effort */
       }
-      refreshInstallBinaries();
       if (code === 0) {
+        refreshInstallBinaries();
         emit("\nInstallation complete!\n");
         resolve();
         return;
       }
-      // Same tolerance as the bash path: if the binary tree exists, count it.
-      if (existsSync(HERMES_PYTHON) && existsSync(HERMES_SCRIPT)) {
-        emit(
-          "\nInstall script exited with warnings, but Hermes is installed successfully.\n",
-        );
-        resolve();
-      } else {
-        reject(
-          new Error(
-            `Installation failed (exit code ${code}). Open PowerShell and try: irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex`,
-          ),
-        );
-      }
+      reject(
+        new Error(
+          `Installation failed (exit code ${code}). Open PowerShell and try: irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex`,
+        ),
+      );
     });
 
     proc.on("error", (err) => {
