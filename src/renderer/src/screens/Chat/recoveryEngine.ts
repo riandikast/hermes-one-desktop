@@ -55,9 +55,11 @@ export function initialRecoveryState(): RecoveryState {
  */
 export function recoveryNoticeMessage(notice: {
   kind: "retried" | "switched";
+  observed?: boolean;
   attempt?: number;
   model?: string;
 }): string {
+  if (notice.observed) return `Runtime model changed to “${notice.model}”.`;
   if (notice.kind === "switched") {
     return (
       `No response — switching to fallback model “${notice.model ?? "next in list"}” ` +

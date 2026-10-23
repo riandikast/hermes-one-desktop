@@ -1,6 +1,8 @@
 export default {
   github: {
-    scope: "Local machine only. HTTPS Git commands using this user account and Git configuration can reuse native credentials. SSH, remote agents and repository overrides are separate.",
+    scope: "Current OS user only. The selected account is the default for GitHub HTTPS. Repository config or usernames in remote URLs can override it. SSH and remote agents are separate.",
+    account: "Default GitHub account",
+    selectAccount: "Select the account to use. Browser sign-in cannot identify an already saved account; choose it here.",
     installed: "Installed",
     missing: "Not installed",
     helper: "GitHub credential helper",
@@ -12,7 +14,7 @@ export default {
     unknown: "Not verified",
     checking: "Checking local Git and GitHub identity…",
     signingIn: "Complete sign-in in the native browser window…",
-    consent: "Sign in opens Git Credential Manager browser OAuth, then configures this user's GitHub HTTPS helper globally. Secrets stay in the native credential manager. Verification checks GitHub identity, not repository push permission. Existing app-specific PAT overrides remain separate.",
+    consent: "Sign in opens Git Credential Manager browser OAuth. Selecting an account configures this OS user's global GitHub HTTPS helper and default username. Secrets stay in the native credential manager. Verification checks GitHub identity, not repository push permission. Existing app-specific PAT overrides remain separate.",
     installHint: "Install Git with Git Credential Manager using your platform's installer, then verify again. No credentials are stored by this settings page.",
     signIn: "Sign in with browser",
     verify: "Verify connection",

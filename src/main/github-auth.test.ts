@@ -10,7 +10,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ login: "octocat" }) }));
   execFile.mockImplementation((_file, args, options, callback) => {
     calls.push(args);
-    const out = args.includes("fill") ? `username=octocat\npassword=${secret}\n` : args.includes("--get-urlmatch") ? "manager\n" : "version";
+    const out = args.includes("fill") ? `username=octocat\npassword=${secret}\n` : args.includes("list") ? "octocat\n" : args.includes("credential.username") ? "octocat\n" : args.includes("--get-urlmatch") ? "manager\n" : "version";
     queueMicrotask(() => callback(null, out));
     expect(options.env.GIT_TERMINAL_PROMPT).toBe("0");
     return { stdin: { end: vi.fn() } };
@@ -37,7 +37,7 @@ describe("native GitHub auth", () => {
   });
   it("verifies identity without exposing credential or starting login/configuration", async () => {
     const status = await new GitHubAuth().status();
-    expect(status).toEqual({ git: true, manager: true, helper: true, auth: "authenticated", account: "octocat" });
+    expect(status).toMatchObject({ git: true, manager: true, helper: true, auth: "authenticated", account: "octocat", selectedAccount: "octocat", accounts: ["octocat"] });
     expect(JSON.stringify(status)).not.toContain(secret);
     expect(calls.some((a) => a.includes("login") || a.includes("--global"))).toBe(false);
     expect(calls.find((a) => a.includes("fill"))).toEqual(["-c", "credential.helper=", "-c", "credential.helper=manager", "credential", "fill"]);
@@ -49,11 +49,12 @@ describe("native GitHub auth", () => {
     vi.mocked(fetch).mockRejectedValue(new Error(secret));
     expect((await new GitHubAuth().status()).auth).toBe("unknown");
   });
-  it("uses fixed native browser command then GitHub-scoped helper configuration", async () => {
+  it("uses fixed native browser command without guessing an existing account", async () => {
     const result = await new GitHubAuth().signIn();
     expect(result.auth).toBe("authenticated");
     expect(calls).toContainEqual(["credential-manager", "github", "login", "--url", "https://github.com", "--browser"]);
-    expect(calls).toContainEqual(["config", "--global", "--add", "credential.https://github.com.helper", "manager"]);
+    expect(result.error).toBe("selectAccount");
+    expect(calls.some((a) => a.includes("--global"))).toBe(false);
   });
   it("does not configure credentials after failed login and sanitizes errors", async () => {
     const original = execFile.getMockImplementation()!;

@@ -1025,6 +1025,8 @@ function Chat({
   const [sessionModelOverride, setSessionModelOverride] = useState<
     SessionModelOverride | undefined
   >(undefined);
+  const [runtimeModel, setRuntimeModel] = useState<{ provider: string; model: string } | null>(null);
+  useEffect(() => { setRuntimeModel(null); }, [hermesSessionId, profile]);
 
   const sessionModelOverrideRef = useRef<SessionModelOverride | undefined>(
     undefined,
@@ -1817,6 +1819,7 @@ function Chat({
     setUsage,
 
     onDashboardUnavailable: handleDashboardUnavailable,
+    onRuntimeModel: setRuntimeModel,
     onKnowledgeChanged: (summary) => {
       // The gateway rebuilds its context on the NEXT prompt, so say so
       // rather than let the user assume the toggle applied retroactively.
@@ -1835,11 +1838,17 @@ function Chat({
     onRecoveryNotice: (notice) => {
       // Always tell the user: an unannounced switch looks like the app changing
       // the model on its own.
-      addAgentMessage(recoveryNoticeMessage(notice));
+      const message = recoveryNoticeMessage(notice);
+      addAgentMessage(message);
+      if (notice.kind === "switched") toast(message);
     },
     // A pick the backend never confirmed used to fail silently: the picker
     // showed the new model while requests kept using the old one.
     onModelApplyError: (message) => addAgentMessage(message),
+    onModelApplyWarning: (message) => {
+      addAgentMessage(message);
+      toast(message);
+    },
   });
 
   const [agentCommandCatalog, setAgentCommandCatalog] =
@@ -2936,11 +2945,11 @@ function Chat({
                   <ModelPicker
                     openRequest={modelPickerOpenRequest}
                     active={active}
-                    currentModel={chatCurrentModel}
-                    currentProvider={chatCurrentProvider}
-                    currentBaseUrl={chatCurrentBaseUrl}
+                    currentModel={runtimeModel?.model ?? chatCurrentModel}
+                    currentProvider={runtimeModel?.provider ?? chatCurrentProvider}
+                    currentBaseUrl={runtimeModel ? "" : chatCurrentBaseUrl}
                     modelGroups={modelConfig.modelGroups}
-                    displayModel={chatDisplayModel}
+                    displayModel={runtimeModel ? `${runtimeModel.provider}/${runtimeModel.model}` : chatDisplayModel}
                     onOpen={modelConfig.reload}
                     onSelectModel={handleSelectModel}
                   />

@@ -5,6 +5,7 @@ import { act } from "@testing-library/react";
 import { useRef, useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useDashboardChatTransport } from "./useDashboardChatTransport";
+import { recoveryNoticeMessage } from "../recoveryEngine";
 import { useModelConfig, effectiveOverrideBaseUrl, effectiveProviderForModel } from "./useModelConfig";
 import { renderWithI18n } from "../../../test/renderWithI18n";
 import type { SessionModelOverride } from "../../../../../shared/model-override";
@@ -28,17 +29,30 @@ const source = ts.createSourceFile("Chat.tsx", chatSource, ts.ScriptTarget.Lates
 function callback(name: string): string {
   let found = "";
   function visit(node: ts.Node): void {
-    if (name === "onSwitchModel" && ts.isPropertyAssignment(node) && node.name.getText(source) === name) found = node.initializer.getText(source);
+    if (["onSwitchModel", "onRecoveryNotice", "onModelApplyWarning"].includes(name) && ts.isPropertyAssignment(node) && node.name.getText(source) === name) found = node.initializer.getText(source);
     if (ts.isVariableDeclaration(node) && node.name.getText(source) === name && node.initializer && ts.isCallExpression(node.initializer)) found = node.initializer.arguments[0].getText(source);
     ts.forEachChild(node, visit);
   }
   visit(source);
-  expect(found.length).toBeGreaterThan(100);
+  expect(found.length).toBeGreaterThan(30);
   return ts.transpile(`(${found})`, { target: ts.ScriptTarget.ES2022 });
 }
+let displayExpression = "";
+function readDisplay(node: ts.Node): void {
+  if (ts.isVariableDeclaration(node) && node.name.getText(source) === "chatDisplayModel") displayExpression = node.initializer!.getText(source);
+  ts.forEachChild(node, readDisplay);
+}
+readDisplay(source);
+expect(displayExpression.length).toBeGreaterThan(100);
+const displaySource = ts.transpile(`(${displayExpression})`, { target: ts.ScriptTarget.ES2022 });
 const manualSource = callback("handleSelectModel");
 const automaticSource = callback("onSwitchModel");
+const noticeSource = callback("onRecoveryNotice");
+const warningSource = callback("onModelApplyWarning");
 const api: any = {};
+const notices: string[] = [];
+const warnings: string[] = [];
+const notifications = vi.fn();
 const modelErrors: string[] = [];
 function Harness(): null {
   const [sessionModelOverride, setSessionModelOverride] = useState<SessionModelOverride>();
@@ -51,7 +65,7 @@ function Harness(): null {
   const chatCurrentProvider = sessionModelOverride?.provider ?? modelConfig.currentProvider;
   const chatCurrentBaseUrl = sessionModelOverride?.baseUrl ?? modelConfig.currentBaseUrl;
   // Trusted repository source only, never external or user-provided code.
-  const bind = (body: string, transport?: unknown) => new Function("modelConfig", "sessionModelOverrideRef", "setSessionModelOverride", "isLoading", "dashboardTransport", "effectiveProviderForModel", "effectiveOverrideBaseUrl", `return ${body}`)(modelConfig, sessionModelOverrideRef, setSessionModelOverride, isLoading, transport, effectiveProviderForModel, effectiveOverrideBaseUrl);
+  const bind = (body: string, transport?: unknown) => new Function("addAgentMessage", "recoveryNoticeMessage", "toast", "modelConfig", "sessionModelOverrideRef", "setSessionModelOverride", "isLoading", "dashboardTransport", "effectiveProviderForModel", "effectiveOverrideBaseUrl", `return ${body}`)((message: string) => notices.push(message), recoveryNoticeMessage, notifications, modelConfig, sessionModelOverrideRef, setSessionModelOverride, isLoading, transport, effectiveProviderForModel, effectiveOverrideBaseUrl);
   const onSwitchModel = bind(automaticSource);
   const dashboardTransport = useDashboardChatTransport({
     active: false, enabled: true, fallbackOnUnavailable: false, connectionMode: "local", activeTurnRef,
@@ -60,11 +74,84 @@ function Harness(): null {
     provider: chatCurrentProvider, modelBaseUrl: chatCurrentBaseUrl,
     setMessages, setIsLoading, setHermesSessionId: () => {}, setToolProgress: () => {}, setUsage: () => {}, onSwitchModel,
     onModelApplyError: (message) => modelErrors.push(message),
+    onModelApplyWarning: (message) => { warnings.push(message); bind(warningSource)(message); },
+    onRecoveryNotice: bind(noticeSource),
   });
-  Object.assign(api, { ...dashboardTransport, select: bind(manualSource, dashboardTransport), shown: sessionModelOverride, sessionModelOverrideRef });
+  // Trusted Chat source only; no runtime/user strings are compiled.
+  const displayModel = new Function("sessionModelOverride", "modelConfig", `return ${displaySource}`)(sessionModelOverride, modelConfig);
+  Object.assign(api, { ...dashboardTransport, select: bind(manualSource, dashboardTransport), shown: sessionModelOverride, sessionModelOverrideRef, displayModel });
   return null;
 }
-afterEach(() => { localStorage.clear(); modelErrors.length = 0; });
+afterEach(() => { localStorage.clear(); modelErrors.length = 0; notices.length = 0; warnings.length = 0; notifications.mockClear(); });
+
+// @lat: [[model-selection#Endpoint-bound fallback without inventory]]
+it.each(["correct", "quota", "wrong-route", "bare-custom", "missing-route", "wrong-endpoint", "path-case", "ambiguous", "cancelled"])("stored custom fallback with permanently empty inventory: %s", async (scenario) => {
+  const baseUrl = "https://cbai.example/v1";
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  Object.defineProperty(window, "hermesAPI", { configurable: true, value: {
+    getModelConfig: async () => ({ model: "primary", provider: "9r", baseUrl: "" }),
+    listModels: async () => [], getEnv: async () => ({}),
+    listAgentProviderRoutes: async () => {
+      if (scenario === "cancelled") await held;
+      if (scenario === "missing-route") return [];
+      if (scenario === "ambiguous") return [{ slug: "cbai", baseUrl }, { slug: "duplicate", baseUrl }];
+      return [{ slug: "cbai", baseUrl: scenario === "wrong-endpoint" ? "https://other.example/v1" : scenario === "path-case" ? "https://cbai.example/V1" : baseUrl }];
+    },
+    onConnectionConfigChanged: () => () => {}, onModelLibraryChanged: () => () => {},
+    discoverProviderModels: async () => ({ models: [], status: "ok", cached: false }),
+    startDashboard: async () => ({ connection: { wsUrl: "ws://fixture" }, running: true }),
+    freshDashboardWsUrl: async () => "ws://fixture", getSessionMessages: async () => [],
+  } });
+  localStorage.setItem("hermes.chat.fallbackModels.v1", JSON.stringify({ models: [{ key: `custom::${baseUrl}::deepseek-v4.1-flash`, provider: "custom", model: "deepseek-v4.1-flash", baseUrl, label: "cbai/deepseek-v4.1-flash" }] }));
+  let runtime = { provider: "9r", model: "primary", baseUrl: "https://primary.example/v1" };
+  const submitted: typeof runtime[] = [];
+  wire.request.mockReset().mockImplementation(async (method: string, params: any) => {
+    if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+    if (method === "session.status") return { output: `Model: ${runtime.model} (${runtime.provider})` };
+    if (method === "model.options") return { ...runtime, providers: [] };
+    if (method === "session.active_list") return { sessions: [{ id: "live", status: "idle" }] };
+    if (method === "subagent.list") return { subagents: [] };
+    if (method === "config.set") {
+      expect(params.value).toBe("deepseek-v4.1-flash --provider cbai --session");
+      runtime = { model: "deepseek-v4.1-flash", provider: scenario === "wrong-route" ? "custom:other" : scenario === "bare-custom" ? "custom" : "cbai", baseUrl: scenario === "wrong-route" ? "https://other.example/v1" : baseUrl };
+      return { key: "model", scope: "session" };
+    }
+    if (method === "session.interrupt") return { status: "interrupted" };
+    if (method === "prompt.submit") submitted.push({ ...runtime });
+    return {};
+  });
+  const view = renderWithI18n(<Harness />);
+  try {
+    await act(async () => {});
+    await act(async () => { api.select("9r", "primary", ""); });
+    expect(api.shown?.model).toBe("primary");
+    await act(async () => { await api.sendMessage("original"); });
+    let switching: Promise<void> = Promise.resolve();
+    if (scenario === "quota") {
+      await act(async () => { wire.event({ type: "message.complete", session_id: "live", payload: { error: "insufficient_quota" } }); });
+    } else {
+      await act(async () => { wire.event({ type: "thinking.delta", session_id: "live", payload: { text: "waiting on provider, retrying in 300s (attempt 1/3)" } }); });
+      await act(async () => { switching = api.switchProviderNow(); });
+    }
+    if (scenario === "cancelled") {
+      await act(async () => { api.abort(); release(); });
+    }
+    await act(async () => { await switching; });
+    if (["correct", "quota"].includes(scenario)) {
+      expect(wire.request.mock.calls.some(([m]) => m === "config.set")).toBe(true);
+      expect(submitted).toEqual([{ provider: "9r", model: "primary", baseUrl: "https://primary.example/v1" }, { provider: "cbai", model: "deepseek-v4.1-flash", baseUrl }]);
+      expect(api.shown).toEqual({ provider: "custom", model: "deepseek-v4.1-flash", baseUrl });
+      expect(api.displayModel).toBe("deepseek-v4.1-flash");
+      expect(notices).toEqual([recoveryNoticeMessage({ kind: "switched", model: "cbai/deepseek-v4.1-flash" })]);
+      expect(notifications).toHaveBeenCalledWith(notices[0]);
+    } else {
+      expect(submitted).toHaveLength(1);
+      expect(notices).toEqual([]);
+      if (!["wrong-route", "bare-custom"].includes(scenario)) expect(wire.request.mock.calls.some(([m]) => m === "config.set")).toBe(false);
+    }
+  } finally { view.unmount(); }
+});
 
 it.each(["unsupported", "malformed", "confirmation", "contradictory", "missing-status", "timeout"])("fails visibly without submitting the wrong model: %s", async (failure) => {
   Object.defineProperty(window, "hermesAPI", { configurable: true, value: {
@@ -222,5 +309,39 @@ it.each([false, true])("retry, Switch now, interrupt, manual pick preserves rout
     expect(JSON.parse(localStorage.getItem("hermes.chat.fallbackModels.v1")!).models[0].model).toBe("fallback");
     console.info(JSON.stringify({ delayFallback, modelCommand: "/model cx/gpt-6.1-sol --provider 9r", slashRuntime, nextSubmit: submitted.at(-1), replayAfterInterrupt: false }));
     expect(applied.at(-1)).toBe("cx/gpt-6.1-sol");
+  } finally { view.unmount(); }
+});
+
+// @lat: [[model-selection#Acknowledged selection versus verified runtime]]
+it.each(["9r", "cbai"])("manual %s acknowledgement warns without proving bare-custom routing", async (provider) => {
+  Object.defineProperty(window, "hermesAPI", { configurable: true, value: {
+    getModelConfig: async () => ({ model: "primary", provider: "9r", baseUrl: "" }),
+    listModels: async () => [], getEnv: async () => ({}),
+    onConnectionConfigChanged: () => () => {}, onModelLibraryChanged: () => () => {},
+    discoverProviderModels: async () => ({ models: [], status: "ok", cached: false }),
+    startDashboard: async () => ({ connection: { wsUrl: "ws://fixture" }, running: true }),
+    freshDashboardWsUrl: async () => "ws://fixture", getSessionMessages: async () => [],
+  } });
+  let accepted = false;
+  wire.request.mockReset().mockImplementation(async (method: string) => {
+    if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+    if (method === "session.status") return { output: accepted ? "Model: deepseek-v4.1-flash (custom)" : "Model: primary (9r)" };
+    if (method === "model.options") return { providers: [] };
+    if (method === "config.set") { accepted = true; return { key: "model", scope: "session" }; }
+    return {};
+  });
+  const view = renderWithI18n(<Harness />);
+  try {
+    await act(async () => {});
+    await act(async () => { api.select(provider, "deepseek-v4.1-flash", ""); });
+    expect(api.shown.model).toBe("deepseek-v4.1-flash");
+    expect(modelErrors).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("accepted");
+    expect(warnings[0]).toContain("not verified");
+    expect(notifications).toHaveBeenCalledWith(warnings[0]);
+    expect(notices).toEqual(warnings);
+    await act(async () => { await api.sendMessage("must not submit"); });
+    expect(wire.request.mock.calls.some(([method]) => method === "prompt.submit")).toBe(false);
   } finally { view.unmount(); }
 });

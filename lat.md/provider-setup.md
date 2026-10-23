@@ -169,6 +169,22 @@ The gateway's runtime-provider resolver honors a persisted `model.api_mode` (`an
 
 The library lookup runs through [[src/main/ipc/register.ts#resolveLibraryModelEntry]], which disambiguates by base URL when several entries share the same provider+model — e.g. two `custom` endpoints exposing the same model id over different transports. A bare provider+model match would return the first entry and persist its `api_mode` for the other endpoint, routing it over the wrong protocol; matching the base URL too keeps each endpoint's transport correct. Single-entry activations are unaffected.
 
+## Default model changes do not restart bots
+
+Local default-model saves persist routing, context length and protocol without restarting the gateway, preserving active bot turns and avoiding a detached Windows console tree.
+
+The Providers picker confirms into state, then its 500 ms debounce calls `set-model-config`. The local handler in [[src/main/ipc/register.ts]] still uses [[src/main/config.ts#setModelConfig]] and the library's context/protocol overrides, but no longer calls `restartGateway`. Credential updates, remote/SSH fallback and explicit gateway controls retain their existing restart behavior.
+
+Read-only inspection of the installed Python backend confirms `gateway/run.py::_load_gateway_config` reads effective config from disk; turn runtime resolution uses that config; `gateway/run_turn_runner.py::_resolve_turn_agent` includes model/runtime in the cached-agent signature. `tests/fixtures/providers-live-config.py` executes extracted backend functions against temporary fixture data, without importing or starting the gateway. The IPC regression executes the real extracted registration with mocked dependencies in `tests/providers-model-config.test.ts`.
+
+Console evidence: [[src/main/hermes.ts#startGatewayDetailed]] uses `detached: true` with `windowsHide: true`. libuv's Windows launcher combines `DETACHED_PROCESS` with the hide path; the installed backend's `_subprocess_compat.py` documents that console-less parents can cause console-subsystem descendants to allocate visible windows. Removing this unnecessary restart avoids that launch path; deliberate terminals and gateway lifecycle flags are unchanged. No live console reproduction or older-backend compatibility claim is made.
+
+## Search the default model list
+
+The Providers active/default model picker filters its selected provider's saved and discovered models by model ID, saved display name, provider label or provider ID, case-insensitively.
+
+[[src/renderer/src/screens/Providers/Providers.tsx]] reuses the existing `settings-input-row provider-picker-search` input style. Only display metadata participates; keys, endpoint URLs and credential records are never searched. No matches renders a disabled empty option. Hidden selections cannot be confirmed, clearing restores the selected model, reopening clears the query. The mounted component regression is `src/renderer/src/screens/Providers/Providers.test.tsx`.
+
 ## Provider icons
 
 Each card's logo is resolved by [[src/renderer/src/components/common/BrandLogo.tsx]] from the provider id, falling back to a generic robot for unknown ids.

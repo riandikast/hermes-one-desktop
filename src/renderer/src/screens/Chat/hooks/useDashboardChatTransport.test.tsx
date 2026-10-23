@@ -22,6 +22,7 @@ import type { ActiveTurn, ChatMessage, UsageState } from "../types";
 import { FileChangeHistoryDialog } from "../FileChangeHistoryDialog";
 import { MessageRow } from "../MessageRow";
 import { reconcileTailAfterDbRefresh } from "../sessionHistory";
+import { explicitModelLimit } from "../providerRetry";
 import type { Attachment } from "../../../../../shared/attachments";
 import { renderWithI18n } from "../../../test/renderWithI18n";
 import { screen, fireEvent } from "@testing-library/react";
@@ -104,6 +105,8 @@ function Harness({
   profile,
   onDashboardUnavailable,
   onSwitchModel,
+  onRuntimeModel,
+  onRecoveryNotice,
   setUsage = vi.fn() as SetUsageMock,
 }: {
   active?: boolean;
@@ -117,6 +120,8 @@ function Harness({
   profile?: string;
   onDashboardUnavailable?: (reason: string) => void;
   onSwitchModel?: (provider: string, model: string, baseUrl: string) => Promise<void>;
+  onRuntimeModel?: (identity: { provider: string; model: string } | null) => void;
+  onRecoveryNotice?: (notice: { kind: "retried" | "switched"; model?: string }) => void;
   setUsage?: SetUsageMock;
 }): React.JSX.Element | null {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -161,6 +166,8 @@ function Harness({
     setUsage,
     onDashboardUnavailable,
     onSwitchModel,
+    onRuntimeModel,
+    onRecoveryNotice,
   });
 
   useEffect(() => {
@@ -202,6 +209,61 @@ function Harness({
 const payloadRejection = 'Provider said: HTTP 422: [422]: {"error":{"code":"VALIDATION_ERROR","message":"Input exceeds proxy payload limit.","request_id":"req_test"}}';
 
 describe("useDashboardChatTransport recovery", () => {
+  it("skips retired-model retries without treating every HTTP410 as model deprecation", () => {
+    expect(explicitModelLimit('HTTP410 ModelDeprecated: use recommended-model')).toBe(true);
+    expect(explicitModelLimit('HTTP 410 model has been deprecated')).toBe(true);
+    expect(explicitModelLimit('HTTP 410 resource removed')).toBe(false);
+    expect(explicitModelLimit('assistant says model is now recommended-model')).toBe(false);
+  });
+  // @lat: [[model-selection#Backend runtime transitions]]
+  it("observes backend fallback without onSwitchModel, deduplicates status, never forces primary on next send", async () => {
+    let output = "Model: bad-model (bad-provider)";
+    const runtime = vi.fn();
+    const notice = vi.fn();
+    const switchModel = vi.fn();
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output };
+      if (method === "session.active_list") return { sessions: [] };
+      return {};
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} onSwitchModel={switchModel} onRuntimeModel={runtime} onRecoveryNotice={notice} />);
+    try {
+      await act(async () => { await api.send?.("original"); });
+      output = "Model: deepseek-v4.1-flash (cbai)";
+      const emit = async () => { await act(async () => {
+        dashboardMock.onEvent?.({ type: "status.update", session_id: "live", payload: { kind: "status", text: "working" } });
+        await Promise.resolve();
+      }); };
+      await emit();
+      expect(runtime).toHaveBeenLastCalledWith({ provider: "cbai", model: "deepseek-v4.1-flash" });
+      expect(notice).toHaveBeenCalledExactlyOnceWith({ kind: "switched", observed: true, model: "cbai/deepseek-v4.1-flash" });
+      await emit();
+      expect(notice).toHaveBeenCalledTimes(1);
+      expect(switchModel).not.toHaveBeenCalled();
+      api.activeTurnRef!.current = null;
+      await act(async () => { await api.send?.("next"); });
+      expect(dashboardMock.request.mock.calls.filter(([method]) => method === "config.set")).toHaveLength(0);
+      output = "Model: another (custom)";
+      await emit();
+      expect(notice).toHaveBeenCalledTimes(1);
+      expect(runtime).toHaveBeenCalledTimes(1);
+      let release!: (value: unknown) => void;
+      const stale = new Promise((resolve) => { release = resolve; });
+      dashboardMock.request.mockImplementation(async (method) => {
+        if (method === "session.status") return stale;
+        if (method === "model.options") return {};
+        return {};
+      });
+      await emit();
+      let picking!: Promise<void>;
+      await act(async () => { picking = api.applyModelOverride!("bad-provider", "chosen"); await Promise.resolve(); });
+      await act(async () => { release({ output: "Model: stale (cbai)" }); await picking; });
+      expect(runtime).toHaveBeenLastCalledWith(null);
+      expect(notice).toHaveBeenCalledTimes(1);
+    } finally { view.unmount(); }
+  });
   beforeEach(() => {
     dashboardMock.close.mockClear();
     dashboardMock.connect.mockClear();
@@ -274,14 +336,15 @@ it("refuses a NAMED provider that never resolves, instead of sending on bare cus
   } finally { view.unmount(); }
 }, 15_000);
 
-it("waits for fresh custom inventory and live identity before the first prompt", async () => {
+it("uses saved endpoint route with empty inventory, then waits for live identity", async () => {
+  window.hermesAPI.listAgentProviderRoutes = async () => [{ slug: "cbai", baseUrl: "https://fixture.invalid/v1" }];
   let optionsReads = 0;
   let statusReads = 0;
   const writes: string[] = [];
   dashboardMock.request.mockImplementation(async (method, params) => {
     if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
-    if (method === "model.options") return ++optionsReads === 1 ? { providers: [] } : { providers: [{ slug: "custom:cbai", base_url: "https://fixture.invalid/v1", models: ["cbai/deepseek-v4.1-flash"] }] };
-    if (method === "session.status") return { output: ++statusReads < 4 ? "Model: (unknown) (unknown)" : "Model: cbai/deepseek-v4.1-flash (custom:cbai)" };
+    if (method === "model.options") { optionsReads++; return { providers: [] }; }
+    if (method === "session.status") return { output: ++statusReads < 4 ? "Model: (unknown) (unknown)" : "Model: cbai/deepseek-v4.1-flash (cbai)" };
     if (method === "config.set") { writes.push(params.value); return { key: "model", scope: "session" }; }
     return {};
   });
@@ -290,9 +353,9 @@ it("waits for fresh custom inventory and live identity before the first prompt",
   try {
     await act(async () => { api.setModel!("cbai/deepseek-v4.1-flash"); api.setProvider!("custom"); });
     await act(async () => { await api.send!("first prompt"); });
-    expect(writes).toEqual(["cbai/deepseek-v4.1-flash --provider custom:cbai --session"]);
+    expect(writes).toEqual(["cbai/deepseek-v4.1-flash --provider cbai --session"]);
     expect(dashboardMock.request.mock.calls.filter(([method]) => method === "prompt.submit")).toHaveLength(1);
-    expect(optionsReads).toBeGreaterThan(1);
+    expect(optionsReads).toBe(1);
   } finally { view.unmount(); }
 });
 
@@ -1088,7 +1151,7 @@ it("waits for fresh custom inventory and live identity before the first prompt",
       const calls = dashboardMock.request.mock.calls.slice(first);
       expect(calls.some(([method]) => method === "model.options")).toBe(true);
       // The fixture never applies a provider switch: fail closed, not on the old provider.
-      expect(calls.some(([method]) => method === "prompt.submit")).toBe(reason !== "provider");
+      expect(calls.some(([method]) => method === "prompt.submit")).toBe(!["provider", "baseUrl"].includes(reason));
       if (reason === "model" || reason === "foreign") {
         const switchIndex = calls.findIndex(([method]) => method === "config.set");
         expect(switchIndex).toBeGreaterThanOrEqual(0);

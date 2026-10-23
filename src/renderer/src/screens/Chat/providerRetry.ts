@@ -19,7 +19,8 @@ export function providerRetry(event: DashboardStreamEvent, now: number): Provide
 }
 
 export function explicitModelLimit(error: string): boolean {
-  return /\binsufficient_quota\b|\bquota (?:exceeded|exhausted)\b|\b(?:daily|monthly|model|usage|credit|spend) (?:usage )?limit (?:reached|exceeded)\b|\binsufficient (?:credits|balance)\b/i.test(error);
+  // Permanent model retirement skips same-model retries; only configured fallbacks apply.
+  return /\bModelDeprecated\b|\b(?:HTTP[ :]+410|status(?:_code)?["' :]+410)\b[^\n]*\b(?:model[^\n]*deprecat|deprecat[^\n]*model)|\binsufficient_quota\b|\bquota (?:exceeded|exhausted)\b|\b(?:daily|monthly|model|usage|credit|spend) (?:usage )?limit (?:reached|exceeded)\b|\binsufficient (?:credits|balance)\b/i.test(error);
 }
 
 type Request = (method: string, params?: Record<string, unknown>, timeout?: number) => Promise<unknown>;

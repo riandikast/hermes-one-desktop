@@ -18,8 +18,8 @@ import { useDiscoveredModels } from "../../hooks/useDiscoveredModels";
 import { KeyRound, Workflow, User } from "../../assets/icons";
 import {
   ChevronDown,
+  Search,
   X,
-  LayoutGrid,
   RefreshCw,
   Eye,
   EyeOff,
@@ -187,6 +187,8 @@ function Providers({
   >([]);
   const [pickGroupKey, setPickGroupKey] = useState("");
   const [pickModel, setPickModel] = useState("");
+  const [modelSearch, setModelSearch] = useState("");
+
   const modelLoaded = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -609,6 +611,13 @@ function Providers({
     return [...saved, ...pickDiscovery.models.filter((id) => !set.has(id))];
   }, [activeProvider, pickDiscovery.models]);
 
+  // Search display metadata only: never stringify provider records or credentials.
+  const filteredPickModels = pickModelOptions.filter((id) => {
+    const saved = activeProvider?.models.find((m) => m.model === id);
+    return [id, saved?.name, saved?.providerLabel, activeProvider?.label, activeProvider?.provider]
+      .some((value) => value?.toLowerCase().includes(modelSearch.trim().toLowerCase()));
+  });
+
   // Initialise / validate the selected provider whenever the picker opens.
   useEffect(() => {
     if (!modelPickerOpen) return;
@@ -646,6 +655,7 @@ function Providers({
     ]);
     setLibModels(all);
     setCustomProviders(customs);
+    setModelSearch("");
     setModelPickerOpen(true);
   }
 
@@ -804,14 +814,6 @@ function Providers({
                 )}
               </span>
               <div className="settings-section-title-actions">
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setRegistryOpen(true)}
-                >
-                  <LayoutGrid size={14} />
-                  {t("models.browseRegistry")}
-                </button>
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
@@ -1180,12 +1182,25 @@ function Providers({
                         <label className="settings-field-label">
                           {t("common.model")}
                         </label>
+                        <div className="settings-input-row provider-picker-search">
+                          <Search size={16} aria-hidden />
+                          <input
+                            className="input"
+                            type="search"
+                            aria-label="Search models"
+                            placeholder="Search models"
+                            value={modelSearch}
+                            onChange={(e) => setModelSearch(e.target.value)}
+                          />
+                        </div>
                         <select
                           className="input"
-                          value={pickModel}
+                          aria-label={t("common.model")}
+                          value={filteredPickModels.includes(pickModel) ? pickModel : ""}
                           onChange={(e) => setPickModel(e.target.value)}
                         >
-                          {pickModelOptions.map((id) => (
+                          {!filteredPickModels.includes(pickModel) && <option value="" disabled>{filteredPickModels.length ? "Select a model" : "No matching models"}</option>}
+                          {filteredPickModels.map((id) => (
                             <option key={id} value={id}>
                               {id}
                             </option>
@@ -1211,7 +1226,7 @@ function Providers({
                   </button>
                   <button
                     className="btn btn-primary"
-                    disabled={!pickModel}
+                    disabled={!pickModel || !filteredPickModels.includes(pickModel)}
                     onClick={() => void confirmModelPick()}
                   >
                     {t("providers.model.use")}

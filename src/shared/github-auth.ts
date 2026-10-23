@@ -4,5 +4,7 @@ export interface GitHubAuthStatus {
   helper: boolean;
   auth: "authenticated" | "unauthenticated" | "unknown";
   account?: string;
-  error?: "unavailable" | "failed" | "cancelled" | "timeout" | "busy";
+  accounts?: string[];
+  selectedAccount?: string;
+  error?: "unavailable" | "failed" | "cancelled" | "timeout" | "busy" | "selectAccount";
 }

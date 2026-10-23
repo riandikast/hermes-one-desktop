@@ -121,6 +121,7 @@ const electronAPI = {
 const hermesAPI = {
   githubAuthStatus: (): Promise<import("../shared/github-auth").GitHubAuthStatus> => ipcRenderer.invoke("github-auth:status"),
   githubAuthSignIn: (): Promise<import("../shared/github-auth").GitHubAuthStatus> => ipcRenderer.invoke("github-auth:signin"),
+  githubAuthSelectAccount: (username: string): Promise<import("../shared/github-auth").GitHubAuthStatus> => ipcRenderer.invoke("github-auth:select", username),
   githubAuthCancel: (): Promise<void> => ipcRenderer.invoke("github-auth:cancel"),
   // Installation
   checkInstall: (): Promise<{
@@ -1046,6 +1047,8 @@ const hermesAPI = {
     ipcRenderer.invoke("list-wallets", profile),
 
   // Custom (OpenAI-compatible) providers, profile-scoped identity records.
+  listAgentProviderRoutes: (profile?: string): Promise<{ slug: string; baseUrl: string }[]> =>
+    ipcRenderer.invoke("list-agent-provider-routes", profile),
   listCustomProviders: (profile?: string): Promise<CustomProviderRecord[]> =>
     ipcRenderer.invoke("list-custom-providers", profile),
   upsertCustomProvider: (
@@ -1573,6 +1576,11 @@ const hermesAPI = {
     ipcRenderer.invoke("claw3d-stop-adapter"),
 
   // Updates
+  listDesktopReleases: (page = 1): Promise<import("../shared/desktop-releases").DesktopReleasePage> => ipcRenderer.invoke("desktop-releases-list", page),
+  getDesktopReleaseState: (): Promise<import("../shared/desktop-releases").DesktopReleaseState> => ipcRenderer.invoke("desktop-release-state"),
+  downloadDesktopRelease: (tag: string, consent: boolean): Promise<import("../shared/desktop-releases").DesktopReleaseState> => ipcRenderer.invoke("desktop-release-download", tag, consent),
+  cancelDesktopRelease: (): Promise<import("../shared/desktop-releases").DesktopReleaseState> => ipcRenderer.invoke("desktop-release-cancel"),
+  installDesktopRelease: (version: string): Promise<void> => ipcRenderer.invoke("desktop-release-install", version),
   checkForUpdates: (): Promise<string | null> =>
     ipcRenderer.invoke("check-for-updates"),
   downloadUpdate: (): Promise<boolean> => ipcRenderer.invoke("download-update"),

@@ -282,6 +282,7 @@ interface KanbanCreateTaskInput {
 interface HermesAPI {
   githubAuthStatus: () => Promise<import("../shared/github-auth").GitHubAuthStatus>;
   githubAuthSignIn: () => Promise<import("../shared/github-auth").GitHubAuthStatus>;
+  githubAuthSelectAccount: (username: string) => Promise<import("../shared/github-auth").GitHubAuthStatus>;
   githubAuthCancel: () => Promise<void>;
   // Installation
   checkInstall: () => Promise<InstallStatus>;
@@ -787,6 +788,7 @@ interface HermesAPI {
     name: string,
   ) => Promise<{ success: boolean; error?: string }>;
   listWallets: (profile?: string) => Promise<ProfileWallet[]>;
+  listAgentProviderRoutes: (profile?: string) => Promise<{ slug: string; baseUrl: string }[]>;
   listCustomProviders: (profile?: string) => Promise<CustomProviderRecord[]>;
   upsertCustomProvider: (
     profile: string | undefined,
@@ -1188,6 +1190,11 @@ interface HermesAPI {
   claw3dStopAdapter: () => Promise<boolean>;
 
   // Updates
+  listDesktopReleases: (page?: number) => Promise<import("../shared/desktop-releases").DesktopReleasePage>;
+  getDesktopReleaseState: () => Promise<import("../shared/desktop-releases").DesktopReleaseState>;
+  downloadDesktopRelease: (tag: string, consent: boolean) => Promise<import("../shared/desktop-releases").DesktopReleaseState>;
+  cancelDesktopRelease: () => Promise<import("../shared/desktop-releases").DesktopReleaseState>;
+  installDesktopRelease: (version: string) => Promise<void>;
   checkForUpdates: () => Promise<string | null>;
   downloadUpdate: () => Promise<boolean>;
   installUpdate: () => Promise<void>;

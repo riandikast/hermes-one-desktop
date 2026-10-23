@@ -18,6 +18,7 @@ import pythonLogo from "../../assets/logos/python.svg";
 import openaiLogo from "../../assets/logos/openai.svg";
 import { ConfigHealth } from "../../screens/Settings/ConfigHealth";
 import { useSettings } from "./SettingsDataContext";
+import DesktopReleasePicker from "./DesktopReleasePicker";
 
 /**
  * About & Updates. Two clearly-separated cards for the two distinct update
@@ -297,6 +298,8 @@ export default function AboutPane(): React.JSX.Element {
               </span>
             )}
           </div>
+
+          <DesktopReleasePicker />
 
           {desktopUpdateError && (
             <div className="settings-hermes-result error">

@@ -73,10 +73,36 @@ The control socket used for a switch is tracked in `modelControlClientsRef` so t
 
 Named custom providers resolve to runtime provider `custom`; status lacks endpoint identity, so matching the model alone cannot safely validate a named-provider switch.
 
-`scripts/probe-named-provider-identity.py` replays installed resolver, setter and status definitions with fixture-only endpoints. Exact `9r` / `oc/mimo-v2.6-flash-free` pins `9r` but displays `custom` after construction. The same model on a different custom endpoint produces identical status. `config.set` acknowledges model and scope, not the live endpoint. Inventory canonical identity may fall back to model ownership or profile config, so it is not independent endpoint proof. Production validation remains fail-closed pending a live session-owned endpoint/route identity contract; no named-to-custom blanket equivalence is accepted. Safety controls: [[src/renderer/src/screens/Chat/hooks/namedProviderIdentity.test.ts]].
+`scripts/probe-named-provider-identity.py` replays installed resolver, setter and status definitions with fixture-only endpoints. Exact `9r` / `oc/mimo-v2.6-flash-free` pins `9r` but displays `custom` after construction. The same model on a different custom endpoint produces identical status. `config.set` acknowledges model and scope, not the live endpoint. Inventory canonical identity may fall back to model ownership or profile config, so it is not independent endpoint proof. Send validation remains fail-closed pending a live session-owned endpoint/route identity contract; no named-to-custom blanket equivalence is accepted. A successful session setter followed by same-model bare-custom status is an accepted but unverified selection warning, not a failed-mutation claim. Safety controls: [[src/renderer/src/screens/Chat/hooks/namedProviderIdentity.test.ts]].
 
 ## Fresh runtime readiness
 
-Fresh sessions return before agent construction; model selection waits for custom endpoint inventory and live identity rather than trusting a pre-build acknowledgement.
+Fresh sessions return before agent construction; model selection waits for live identity rather than trusting a pre-build acknowledgement.
 
-Installed session.create schedules construction after returning. Explicit-provider config.set can pin model_override without an agent; status then reports Model: (unknown) (unknown). Custom discovery is non-blocking. Selection refreshes unresolved endpoint inventory up to 20 times at 250 ms, then selects once and polls placeholder live status with the same bound. Existing generation, epoch, and application ceiling guards remain active. Missing/contradictory status fails closed; no prompt is retried. The offline scripts/probe-fresh-model-readiness.py replays installed definitions without importing the server or reading user state.
+Installed session.create schedules construction after returning. Explicit-provider config.set can pin model_override without an agent; status then reports Model: (unknown) (unknown). Selection polls only placeholder live status up to 20 times at 250 ms. Inventory can stay absent permanently: there is no discovery delay or retry. Existing generation, epoch, and application ceiling guards remain active. Missing/contradictory status fails closed.
+
+## Endpoint-bound fallback without inventory
+
+Stored fallback entries retain raw `custom` plus `baseUrl`; display labels such as cbai/deepseek-v4.1-flash do not identify a backend route.
+
+[[src/renderer/src/screens/Chat/fallbackModels.ts#loadFallbackModels]] feeds the actual Chat recovery callback, which preserves baseUrl in the session override. The gateway config.set model contract parses provider/session flags, not baseURL. For local connections a read-only preload API returns only the actual config.yaml providers keys and endpoint URLs through [[src/main/agent-config-providers.ts#listAgentUserProviders]]. It never invokes listCustomProviders, whose import path can write stores and alias credentials.
+
+The transport maps a bare custom endpoint to exactly one configured key, preserving path case and rejecting ambiguous/missing/wrong endpoint mappings. Named selections must keep their exact key. The session-only setter applies that route, then exact live provider/model must match before prompt.submit. URL-bound selections reapply because status contains no endpoint. Bare custom after construction remains unverifiable and fails closed, even with the right model; this does not solve the backend's separate named-to-custom runtime identity collapse.
+
+[[src/renderer/src/screens/Chat/hooks/modelSelection.integration.test.tsx]] runs real Chat callbacks, localStorage fallback loading, model config and transport against simulated IPC/RPC. It verifies empty inventory recovery requests, exact live selection at submission, wrong route/bare custom refusal, missing/wrong/path-case/ambiguous config routes, cancellation before mutation. This is an offline frontend contract regression, not a live backend or provider request verification.
+
+## Backend runtime transitions
+
+Backend fallback does not call the frontend model setter. Runtime observation updates display and emits one informational transcript/toast notice without saving a selection or replaying a prompt.
+
+The visible tab polls `session.status` every two seconds, including local active turns. Accepted `status.update` and `message.complete` events request an earlier refresh; neither event itself proves model identity. Installed contracts expose no dedicated fallback event. Status uses the live agent or compute-host metadata mirror; it may lag internal provider changes, and bare `custom` cannot establish a named route. Missing, unsupported, malformed and generic-custom identities are ignored rather than inferred from assistant prose or catalog ownership.
+
+[[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#useDashboardChatTransport]] deduplicates observed identities per runtime and selected intent. Explicit picks invalidate pending reads and suspend observations until application settles. The picker uses runtime-only state; saved defaults and durable session overrides remain unchanged. A subsequent send preserves an observed differing route until a manual selection changes intent. Reopening an idle session establishes a silent baseline; transitions faster than polling may be missed. Permanent `ModelDeprecated` errors skip same-model frontend retries and use only the configured fallback chain.
+
+## Acknowledged selection versus verified runtime
+
+A session setter acknowledgement records accepted intent; generic custom status cannot prove which named endpoint is live, even when its model matches.
+
+Manual picks report this bounded case through `onModelApplyWarning` as accepted but not verified, with a transcript message and toast. Unsupported, malformed, deferred, repeated-confirmation and contradictory-model responses remain hard failures. Every subsequent send retains exact runtime verification and refuses ambiguous routing.
+
+The actual Chat automatic callback updates both session override state and its immediate ref, so it overrides any previous manual pick in the picker and send path. Recovery announces a switch through the transcript and toast only after runtime model validation, never before a failed or cancelled route application. The integration harness executes the real Chat callbacks and display expression, covering Switch now, quota-triggered recovery, empty inventories, refusal controls, and later manual selection/Stop supersession.

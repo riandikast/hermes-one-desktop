@@ -212,6 +212,7 @@ interface UseDashboardChatTransportArgs {
    */
   onRecoveryNotice?: (notice: {
     kind: "retried" | "switched";
+    observed?: boolean;
     attempt?: number;
     model?: string;
   }) => void;
@@ -220,6 +221,10 @@ interface UseDashboardChatTransportArgs {
    * showed the new model while the runtime silently kept the old one.
    */
   onModelApplyError?: (message: string) => void;
+  /** Observed runtime only; never a durable selection or a model setter. */
+  onRuntimeModel?: (identity: { provider: string; model: string } | null) => void;
+  /** Setter accepted the selection, but status cannot establish its route. */
+  onModelApplyWarning?: (message: string) => void;
 }
 
 interface UseDashboardChatTransportResult {
@@ -438,7 +443,11 @@ export function dashboardModelCommand(
 }
 
 function normalizeBaseUrl(value: string | undefined): string {
-  return (value || "").trim().replace(/\/+$/, "").toLowerCase();
+  try {
+    const url = new URL(value || "");
+    if (!/^https?:$/.test(url.protocol) || url.username || url.password || url.search || url.hash) return "";
+    return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+  } catch { return ""; }
 }
 
 function providerBaseUrl(provider: ModelOptionProvider): string {
@@ -926,6 +935,7 @@ export function estimateContextTokens(
 
 /** Bounded budget for a session-scoped model config.set call. */
 export const MODEL_SWITCH_TIMEOUT_MS = 20_000;
+class ModelRouteUnverifiedError extends Error {}
 /** Bounded budget for one queued model application: connect + one switch call. */
 export const MODEL_APPLICATION_CEILING_MS = MODEL_SWITCH_TIMEOUT_MS * 2 + 5_000;
 /**
@@ -1159,6 +1169,8 @@ export function useDashboardChatTransport({
   onSwitchModel,
   onRecoveryNotice,
   onModelApplyError,
+  onModelApplyWarning,
+  onRuntimeModel,
   onKnowledgeChanged,
 }: UseDashboardChatTransportArgs): UseDashboardChatTransportResult {
   const sendTimingRef = useRef<{ send: number; started: number; submitted: boolean; firstDelta: boolean } | null>(null);
@@ -1925,6 +1937,7 @@ export function useDashboardChatTransport({
         }
       }
       logDashboardEvent(event, "accepted", runtimeSessionId);
+      if (["status.update", "message.complete"].includes(event.type)) refreshRuntimeRef.current();
       streamRevisionRef.current++;
       if (activeTurnRef.current && event.session_id === runtimeSessionIdRef.current && !recoveryCancelledRef.current) {
         const retry = providerRetry(event, Date.now());
@@ -2918,6 +2931,54 @@ export function useDashboardChatTransport({
    * the picker showed the new one.
    */
   const modelSelectionEpochRef = useRef(0);
+  const observedRuntimeRef = useRef<{ sessionId: string; selection: string; provider: string; model: string } | null>(null);
+  const applyingManualModelRef = useRef(false);
+  const runtimeCallbacksRef = useRef({ onRuntimeModel, onRecoveryNotice });
+  runtimeCallbacksRef.current = { onRuntimeModel, onRecoveryNotice };
+  const refreshRuntimeRef = useRef<() => void>(() => undefined);
+
+  useEffect(() => {
+    if (!enabled || !active) return;
+    let disposed = false;
+    let busy = false;
+    const refresh = async (): Promise<void> => {
+      const client = clientRef.current;
+      const sessionId = runtimeSessionIdRef.current;
+      if (!client || !sessionId || busy || applyingManualModelRef.current) return;
+      busy = true;
+      const epoch = modelSelectionEpochRef.current;
+      const selection = JSON.stringify([providerRef.current, modelRef.current, modelBaseUrlRef.current]);
+      try {
+        const status = await client.request<{ output?: string }>("session.status", {
+          session_id: sessionId, ...(profile ? { profile } : {}),
+        });
+        if (disposed || applyingManualModelRef.current || epoch !== modelSelectionEpochRef.current || sessionId !== runtimeSessionIdRef.current ||
+            selection !== JSON.stringify([providerRef.current, modelRef.current, modelBaseUrlRef.current])) return;
+        const match = status.output?.match(/^Model: (.+) \(([^\n]+)\)\s*$/m);
+        if (!match) return;
+        const identity = { model: match[1], provider: match[2] };
+        // Bare custom carries no route identity. Never invent a configured slug.
+        if (["custom", "unknown", "(unknown)"].includes(identity.provider) || ["unknown", "(unknown)"].includes(identity.model)) return;
+        const previous = observedRuntimeRef.current;
+        const same = previous?.sessionId === sessionId && previous.selection === selection &&
+          previous.model === identity.model && previous.provider === identity.provider;
+        if (same) return;
+        observedRuntimeRef.current = { ...identity, sessionId, selection };
+        runtimeCallbacksRef.current.onRuntimeModel?.(identity);
+        if (!dashboardModelMatches(providerRef.current, modelRef.current, identity) &&
+            (activeTurnRef.current || previous?.sessionId === sessionId)) {
+          runtimeCallbacksRef.current.onRecoveryNotice?.({ kind: "switched", observed: true, model: `${identity.provider}/${identity.model}` });
+        } else if (previous?.sessionId === sessionId && previous.selection === selection &&
+            (previous.model !== identity.model || previous.provider !== identity.provider)) {
+          runtimeCallbacksRef.current.onRecoveryNotice?.({ kind: "switched", observed: true, model: `${identity.provider}/${identity.model}` });
+        }
+      } catch { /* Older gateways may not expose runtime identity. Never guess. */ }
+      finally { busy = false; }
+    };
+    refreshRuntimeRef.current = () => { void refresh(); };
+    const timer = setInterval(() => { void refresh(); }, FOREIGN_TURN_POLL_MS);
+    return () => { disposed = true; clearInterval(timer); refreshRuntimeRef.current = () => undefined; };
+  }, [active, enabled, profile]);
   /**
    * Model writes survive streaming interrupts so the queue awaits the setter.
    * Only the application ceiling closes these owned control connections.
@@ -2957,6 +3018,9 @@ export function useDashboardChatTransport({
       const selectedModel = liveOverride?.model ?? modelRef.current;
       const selectedProvider = liveOverride?.provider ?? providerRef.current;
       const selectedBaseUrl = liveOverride?.baseUrl ?? modelBaseUrlRef.current;
+      const observed = observedRuntimeRef.current;
+      if (observed?.sessionId === sessionId && !dashboardModelMatches(selectedProvider, selectedModel, observed) &&
+          observed.selection === JSON.stringify([selectedProvider, selectedModel, selectedBaseUrl])) return sessionId;
       const command = dashboardModelCommand(selectedProvider, selectedModel);
       if (!command) return sessionId;
       const selectionKey = (id: string): string => JSON.stringify([
@@ -3015,14 +3079,9 @@ export function useDashboardChatTransport({
         });
         const match = status?.output?.match(/^Model: (.+) \(([^\n]+)\)\s*$/m);
         const identity = match ? { model: match[1], provider: match[2] } : null;
-        // Live identity already matches the selection => nothing to switch, and
-        // (critically) NO catalog probe is needed. This used to be gated on
-        // `!selectedBaseUrl && selectedProvider !== "custom"`, so a custom
-        // provider with a base_url — the common self-hosted setup — never took
-        // the early return and fell through to the `model.options` probe on
-        // every single send. `dashboardModelMatches` already accepts the
-        // backend reporting a custom provider as `custom:<slug>`.
-        if (dashboardModelMatches(selectedProvider, selectedModel, identity)) {
+        // Without an endpoint constraint, exact live identity needs no catalog.
+        // URL-bound selections must first resolve their configured route below.
+        if (!selectedBaseUrl && dashboardModelMatches(selectedProvider, selectedModel, identity)) {
           appliedModelRef.current = selectionKey(targetSessionId);
           return targetSessionId;
         }
@@ -3051,45 +3110,41 @@ export function useDashboardChatTransport({
           appliedModelRef.current = null;
           modelOptionsCacheRef.current = null;
         }
-        let before = await readOptions(targetSessionId);
+        const before = await readOptions(targetSessionId);
         let dashboardProvider = resolveDashboardProviderForModel(selectedProvider, selectedModel, selectedBaseUrl, before);
-        // Fresh sessions return before agent construction and catalog discovery.
-        // Never route a NAMED provider through an unresolved bare `custom`: the
-        // catalog is how a named id (e.g. `cbai`) is resolved to its endpoint, so
-        // an empty inventory means "not discovered yet", not "not configured".
-        // This used to be gated on `selectedProvider === "custom"`, so a named
-        // custom provider skipped the wait and threw "custom provider is not
-        // ready" on the first send of a fresh session — the fallback-subagent
-        // failure. `selectedProvider` is the only thing checked here: for a
-        // named provider an unresolved catalog row also resolves to "custom".
-        if (selectedProvider !== "custom") {
-          for (let attempt = 0; dashboardProvider === "custom" && attempt < 20; attempt++) {
-            checkCancelled();
-            await new Promise((resolve) => setTimeout(resolve, 250));
-            checkCancelled();
-            before = await readOptions(targetSessionId, true);
-            checkCancelled();
-            dashboardProvider = resolveDashboardProviderForModel(selectedProvider, selectedModel, selectedBaseUrl, before);
+        if (selectedBaseUrl && !normalizeBaseUrl(selectedBaseUrl)) {
+          throw new Error("Hermes dashboard selected endpoint is invalid");
+        }
+        if (selectedBaseUrl && connectionMode === "local") {
+          // config.set accepts provider flags, not an endpoint. Read config's
+          // actual keys, never infer a slug from a display label or providers.json.
+          const routes = await window.hermesAPI.listAgentProviderRoutes?.(profile || undefined) ?? [];
+          checkCancelled();
+          const matches = routes.filter((route) =>
+            normalizeBaseUrl(route.baseUrl) === normalizeBaseUrl(selectedBaseUrl) &&
+            /^[a-z0-9][a-z0-9._-]*$/.test(route.slug),
+          );
+          const route = matches.find((row) => row.slug === selectedProvider) ??
+            (selectedProvider === "custom" && matches.length === 1 ? matches[0] : undefined);
+          if (route) dashboardProvider = route.slug;
+          else if (dashboardProvider === "custom" || !before.providers?.some((row) =>
+            row.slug === dashboardProvider && normalizeBaseUrl(providerBaseUrl(row)) === normalizeBaseUrl(selectedBaseUrl),
+          )) {
+            throw new Error("Hermes dashboard has no unambiguous configured provider route for the selected endpoint");
           }
         }
-        for (let attempt = 0; selectedProvider === "custom" && selectedBaseUrl && dashboardProvider === "custom" && attempt < 20; attempt++) {
-          checkCancelled();
-          await new Promise((resolve) => setTimeout(resolve, 250));
-          checkCancelled();
-          before = await readOptions(targetSessionId, true);
-          checkCancelled();
-          dashboardProvider = resolveDashboardProviderForModel(selectedProvider, selectedModel, selectedBaseUrl, before);
-        }
         checkCancelled();
-        if (dashboardProvider === "custom" && selectedProvider !== "custom") {
-          // Named provider still unresolved. A custom provider is only usable
-          // through an explicitly resolved endpoint — refuse rather than send
-          // the turn to whatever `custom` happens to point at.
+        if (selectedBaseUrl && connectionMode !== "local" && !before.providers?.some((row) =>
+          row.slug === dashboardProvider && normalizeBaseUrl(providerBaseUrl(row)) === normalizeBaseUrl(selectedBaseUrl),
+        )) {
+          throw new Error("Hermes dashboard has no endpoint-bound remote provider route");
+        }
+        if (selectedBaseUrl && dashboardProvider === "custom") {
           throw new Error(`Hermes dashboard custom provider is not ready; custom inventory: ${modelOptionsSummary(before)}`);
         }
-        if (selectedProvider === "custom" && selectedBaseUrl && dashboardProvider === "custom") {
-          throw new Error(`Hermes dashboard custom provider is not ready; custom inventory: ${modelOptionsSummary(before)}`);
-        }
+        // Reapply URL-bound picks: status has no endpoint and cannot prove an
+        // existing named runtime still uses the configured URL. Never equate
+        // bare custom/custom:<other> with the exact route after the setter.
 
         // Model changes are in-place; close/resume discards a healthy runtime.
         const resolvedCommand = dashboardModelCommand(dashboardProvider, selectedModel);
@@ -3148,6 +3203,13 @@ export function useDashboardChatTransport({
         }
         checkCancelled();
         if (!dashboardModelMatches(dashboardProvider, selectedModel, liveIdentity)) {
+          // A valid setter acknowledgement is not endpoint proof. Distinguish
+          // accepted intent from a failed mutation, without permitting a send.
+          if (dashboardProvider !== "custom" && liveIdentity?.provider === "custom" && liveIdentity.model === selectedModel) {
+            throw new ModelRouteUnverifiedError(
+              `Selection accepted for ${dashboardProvider}/${selectedModel}; route not verified: live status reports custom without an endpoint. Sending remains blocked until runtime identity can be verified.`,
+            );
+          }
           throw new Error(
             `Hermes dashboard did not switch to ${dashboardProvider}/${selectedModel}; live model is ${liveIdentity?.provider || "unknown"}/${liveIdentity?.model || "unknown"}; custom inventory: ${modelOptionsSummary(before)}`,
           );
@@ -3158,7 +3220,7 @@ export function useDashboardChatTransport({
 
       return switchAndValidate(sessionId);
     },
-    [profile],
+    [profile, connectionMode],
   );
 
   /**
@@ -3374,7 +3436,7 @@ export function useDashboardChatTransport({
   }, [active, enabled, ensureClient, setMessages, setIsLoading, setToolProgress]);
 
   const sendMessage = useCallback(
-    async (text: string, attachments?: Attachment[], recoveryGeneration?: number): Promise<boolean> => {
+    async (text: string, attachments?: Attachment[], recoveryGeneration?: number, onModelVerified?: () => void): Promise<boolean> => {
       if (!enabled) return false;
       const isRecovery = recoveryGeneration !== undefined;
       if (isRecovery && (recoveryCancelledRef.current || recoveryGeneration !== sendGenerationRef.current)) return true;
@@ -3651,6 +3713,7 @@ export function useDashboardChatTransport({
         );
         markSendStage("model-ready");
         if (cancelled()) return true;
+        onModelVerified?.();
         // A guarded switch is now auto-accepted inside ensureSelectedModel, so
         // there is nothing pending to surface here — the send continues on the
         // model the switch actually landed on.
@@ -4068,10 +4131,7 @@ export function useDashboardChatTransport({
         }
         if (cancelled()) return;
         recoveryChainIndexRef.current += 1;
-        onRecoveryNotice?.({
-          kind: "switched",
-          model: action.model.label || action.model.model,
-        });
+        // Announce only once the replay has verified the selected runtime.
       } else {
         onRecoveryNotice?.({ kind: "retried", attempt: action.attempt });
       }
@@ -4079,7 +4139,11 @@ export function useDashboardChatTransport({
       // The action may have been decided a moment ago; re-check before sending.
       if (cancelled()) return;
       recoveryInFlightRef.current = false;
-      await sendMessage(buildRecoveryPrompt(original), undefined, generation);
+      await sendMessage(buildRecoveryPrompt(original), undefined, generation,
+        action.kind === "switch-model" ? () => onRecoveryNotice?.({
+          kind: "switched", model: action.model.label || action.model.model,
+        }) : undefined,
+      );
       } finally { recoveryInFlightRef.current = false; }
     },
     [onRecoveryNotice, onSwitchModel, sendMessage, ensureClient, clearStallTimer, clearQuietFinalize, activeSubagents],
@@ -4175,6 +4239,9 @@ export function useDashboardChatTransport({
       // generation — is what a queued application is checked against, so
       // interrupting a retrying turn cannot silently discard this selection.
       const epoch = ++modelSelectionEpochRef.current;
+      applyingManualModelRef.current = true;
+      observedRuntimeRef.current = null;
+      runtimeCallbacksRef.current.onRuntimeModel?.(null);
       appliedModelRef.current = null;
       modelOptionsCacheRef.current = null;
       const attempt = async (attemptEpoch: number): Promise<void> => {
@@ -4189,15 +4256,17 @@ export function useDashboardChatTransport({
           // A newer pick owns the outcome; its own application reports failures.
           if (attemptEpoch !== modelSelectionEpochRef.current) return;
           const reason = err instanceof Error ? err.message : String(err);
-          onModelApplyError?.(`Could not switch to ${provider}/${model}: ${reason}`);
+          if (err instanceof ModelRouteUnverifiedError) onModelApplyWarning?.(reason);
+          else onModelApplyError?.(`Could not switch to ${provider}/${model}: ${reason}`);
         } finally {
           appliedModelRef.current = null;
           modelOptionsCacheRef.current = null;
         }
       };
-      await attempt(epoch);
+      try { await attempt(epoch); }
+      finally { if (epoch === modelSelectionEpochRef.current) applyingManualModelRef.current = false; }
     },
-    [enabled, ensureClient, ensureRuntimeSession, ensureSelectedModel, onModelApplyError],
+    [enabled, ensureClient, ensureRuntimeSession, ensureSelectedModel, onModelApplyError, onModelApplyWarning],
   );
 
   return {

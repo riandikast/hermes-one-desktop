@@ -27,3 +27,14 @@ Pushing `custom` builds a Windows installer and portable exe and publishes them 
 The client side needs no branch awareness: `electron-builder.yml` already declares `publish.owner: riandikast` / `repo: hermes-one-desktop`, which becomes `app-update.yml` at package time, and [[src/main/app/updater.ts#setupUpdater]] reads the latest non-prerelease feed with `allowPrerelease` off. [[src/renderer/src/components/settings/AboutPane.tsx#AboutPane]] shows the update source next to the version so a build can be traced to the fork rather than upstream.
 
 Portable builds cannot self-update: `setupUpdater` returns early when `PORTABLE_EXECUTABLE_DIR` is set, so the update action is inert there and the portable exe must be replaced manually. Auto-update applies to the NSIS-installed build only.
+
+
+## Manual release selection
+
+Settings About offers exact fork versions for Windows x64 setup installations, with explicit download and restart actions and separate downgrade consent.
+
+[[src/main/app/desktop-releases.ts#setupDesktopReleases]] paginates the public fork releases API without credentials. Only stable `custom-vX.Y.Z` releases with exact fork-origin setup assets and matching SHA-512 metadata are offered. Metadata is revalidated before download. Portable, development, and non-x64 Windows builds report unavailability.
+
+A separate `NsisUpdater` uses the selected tag's generic feed, `allowDowngrade=true`, `autoDownload=false`, `autoInstallOnAppQuit=false`, and full installer download. It cannot fall back to latest. Normal checks/download/install are blocked while a selection is active; an existing normal download/ready update blocks selection. Discard, failure, and explicit installation clear selection. Download cancellation is deliberately unavailable in flight; discard is available once ready. No backend or data rollback is promised.
+
+[[src/renderer/src/components/settings/DesktopReleasePicker.tsx#DesktopReleasePicker]] shows installed/latest, paginated choices, error feedback, downgrade consent, and separate download, restart, and discard buttons. Tests mock IPC, network, and installer lifecycle; no real installer is executed. The Providers Active model heading no longer duplicates Browse models; its Change selector and the library's own controls remain.

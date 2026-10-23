@@ -12,6 +12,7 @@ import {
 } from "electron";
 import { extname, join } from "path";
 import { GitHubAuth } from "../github-auth";
+import { listAgentUserProviders } from "../agent-config-providers";
 import { randomUUID } from "crypto";
 import { readdir, readFile, stat, writeFile } from "fs/promises";
 import { watch } from "fs";
@@ -761,6 +762,10 @@ export function registerIpcHandlers(context: IpcContext): void {
     if (!trustedGitHubSender(event)) throw new Error("Unauthorized GitHub settings request");
     return githubAuth.signIn();
   });
+  ipcMain.handle("github-auth:select", (event, username: unknown) => {
+    if (!trustedGitHubSender(event)) throw new Error("Unauthorized GitHub settings request");
+    return githubAuth.selectAccount(username);
+  });
   ipcMain.handle("github-auth:cancel", (event) => {
     if (!trustedGitHubSender(event)) throw new Error("Unauthorized GitHub settings request");
     return githubAuth.cancel();
@@ -1231,7 +1236,6 @@ export function registerIpcHandlers(context: IpcContext): void {
           activeSshProfile(profile),
         );
       }
-      const prev = getModelConfig(profile);
       // Mirror the activated model's context-window override and API-protocol
       // mode (if any) into config.yaml so the gauge, the agent's
       // auto-compaction threshold, and the runtime transport all match the
@@ -1249,15 +1253,10 @@ export function registerIpcHandlers(context: IpcContext): void {
         libEntry?.apiMode ?? null,
       );
 
-      // Restart gateway when provider, model, or endpoint changes so it picks up new config
-      if (
-        isGatewayRunning(profile) &&
-        (prev.provider !== provider ||
-          prev.model !== model ||
-          prev.baseUrl !== baseUrl)
-      ) {
-        restartGateway(profile);
-      }
+      // The local gateway reloads config.yaml per turn and invalidates cached
+      // agents when model/runtime changes. Restarting here interrupts bots and
+      // launches a detached Windows console tree on every default-model save.
+      // Credential, SSH and explicit gateway restart paths remain unchanged.
 
       return true;
     },
@@ -2438,6 +2437,9 @@ export function registerIpcHandlers(context: IpcContext): void {
   // This store owns provider identity (name + base URL) so a configured
   // provider renders as a card independent of whether a model is added yet; the
   // key still lives in the profile `.env` and models in `models.json`.
+  ipcMain.handle("list-agent-provider-routes", (_event, profile?: string) =>
+    listAgentUserProviders(profile).map(({ slug, baseUrl }) => ({ slug, baseUrl })),
+  );
   ipcMain.handle("list-custom-providers", (_event, profile?: string) =>
     listCustomProviders(profile),
   );

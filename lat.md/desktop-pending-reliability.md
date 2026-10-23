@@ -10,6 +10,10 @@ The transport and regression coverage live in [[src/renderer/src/screens/Chat/ho
 
 ## GitHub browser sign-in
 
-Settings checks native credential availability without opening a browser. Only an explicit sign-in click starts Git Credential Manager browser authentication; credentials and process output never cross IPC.
+Settings lists native accounts and verifies only the pinned GitHub HTTPS username. Explicit selection persists the current OS user’s Git default; credentials never cross IPC.
+
+GCM 2.7.3 supports `github list` (one account per line) and `github login --browser`, but login emits no identity. A single newly added account is verified and pinned; existing-account reauthentication requires explicit selection, never a first-credential guess. Only user clicks mutate auth/config. The pin is `credential.https://github.com.username` in user-global Git config, not machine-wide; repository config and remote URL usernames can override it. SSH, remote agents, and app-specific encrypted PAT overrides remain separate.
+
+See [GCM multiple-user documentation](https://github.com/git-ecosystem/git-credential-manager/blob/v2.7.3/docs/multiple-users.md). Account-filtering and sticky defaults have mocked coverage in [[src/main/github-auth-accounts.test.ts]].
 
 Implementation: [[src/main/github-auth.ts]], [[src/renderer/src/components/settings/GitHubPane.tsx]]. Mocked regressions: [[src/main/github-auth.test.ts]], [[src/renderer/src/components/settings/GitHubPane.test.tsx]]. No app restart or live authentication is implied by unit-test success.

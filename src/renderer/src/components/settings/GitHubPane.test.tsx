@@ -7,6 +7,7 @@ beforeEach(() => {
   Object.assign(window, { hermesAPI: {
     githubAuthStatus: vi.fn().mockResolvedValue(status),
     githubAuthSignIn: vi.fn().mockResolvedValue({ ...status, helper: true, auth: "authenticated", account: "octocat" }),
+    githubAuthSelectAccount: vi.fn().mockResolvedValue({ ...status, accounts: ["first", "second"], selectedAccount: "second", account: "second", auth: "authenticated" }),
     githubAuthCancel: vi.fn().mockResolvedValue(undefined),
   } });
 });
@@ -18,6 +19,16 @@ it("checks status automatically but signs in only after a click", async () => {
   await screen.findByText("settings.github.authenticated (octocat)");
   fireEvent.click(screen.getByText("settings.github.verify"));
   await waitFor(() => expect(window.hermesAPI.githubAuthStatus).toHaveBeenCalledTimes(2));
+});
+it("selects a saved account only after user input, then displays the persisted pin", async () => {
+  vi.mocked(window.hermesAPI.githubAuthStatus).mockResolvedValue({ ...status, accounts: ["first", "second"] });
+  render(<GitHubPane />);
+  await screen.findByText("settings.github.unknown");
+  expect(window.hermesAPI.githubAuthSelectAccount).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByRole("combobox"), { target: { value: "second" } });
+  await screen.findByText("settings.github.authenticated (second)");
+  expect(window.hermesAPI.githubAuthSelectAccount).toHaveBeenCalledWith("second");
+  expect(screen.getByRole("combobox")).toHaveValue("second");
 });
 it("shows errors and disables sign-in without native manager", async () => {
   vi.mocked(window.hermesAPI.githubAuthStatus).mockRejectedValueOnce(new Error("IPC unavailable"));

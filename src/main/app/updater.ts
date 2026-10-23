@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import type { AppUpdater } from "electron-updater";
 import { dirname, join } from "path";
 import { updaterLogger } from "../updater-log";
+import { setupDesktopReleases } from "./desktop-releases";
 
 interface UpdaterDeps {
   getMainWindow: () => BrowserWindow | null;
@@ -37,11 +38,31 @@ function setAutoUpgradeEnabled(enabled: boolean): void {
 }
 
 export function setupUpdater({ getMainWindow }: UpdaterDeps): void {
+  let normalBusy = false;
+  let normalReady = false;
+  const manual = setupDesktopReleases(
+    () => {
+      if (normalBusy || normalReady)
+        throw new Error(
+          "A normal update is active. Finish it before choosing another version.",
+        );
+      if (autoUpdaterInstance) {
+        autoUpdaterInstance.autoDownload = false;
+        autoUpdaterInstance.autoInstallOnAppQuit = false;
+      }
+    },
+    () => {
+      if (autoUpdaterInstance) {
+        autoUpdaterInstance.autoDownload = getAutoUpgradeEnabled();
+        autoUpdaterInstance.autoInstallOnAppQuit = true;
+      }
+    },
+  );
   ipcMain.handle("get-app-version", () => app.getVersion());
   ipcMain.handle("get-auto-upgrade-enabled", () => getAutoUpgradeEnabled());
   ipcMain.handle("set-auto-upgrade-enabled", (_event, enabled: boolean) => {
     setAutoUpgradeEnabled(enabled);
-    if (autoUpdaterInstance) {
+    if (autoUpdaterInstance && !manual.active()) {
       autoUpdaterInstance.autoDownload = enabled;
     }
     return true;
@@ -52,7 +73,9 @@ export function setupUpdater({ getMainWindow }: UpdaterDeps): void {
     autoUpdaterInstance = null;
     ipcMain.handle("check-for-updates", async () => null);
     ipcMain.handle("download-update", () => true);
-    ipcMain.handle("install-update", () => {});
+    ipcMain.handle("install-update", () => {
+      if (manual.active()) return;
+    });
     return;
   }
 
@@ -78,21 +101,30 @@ export function setupUpdater({ getMainWindow }: UpdaterDeps): void {
     });
   });
   autoUpdater.on("update-downloaded", () => {
+    normalReady = true;
     getMainWindow()?.webContents.send("update-downloaded");
   });
   autoUpdater.on("error", (err) => {
     getMainWindow()?.webContents.send("update-error", err.message);
   });
 
-  ipcMain.handle("check-for-updates", async () => {
+  const checkNormal = async () => {
+    if (manual.active() || normalBusy) return null;
+    normalBusy = true;
     try {
       const result = await autoUpdater.checkForUpdates();
+      if (result?.downloadPromise) await result.downloadPromise;
       return result?.updateInfo?.version || null;
     } catch {
       return null;
+    } finally {
+      normalBusy = false;
     }
-  });
+  };
+  ipcMain.handle("check-for-updates", checkNormal);
   ipcMain.handle("download-update", async () => {
+    if (manual.active() || normalBusy) return false;
+    normalBusy = true;
     try {
       await autoUpdater.downloadUpdate();
       return true;
@@ -100,9 +132,12 @@ export function setupUpdater({ getMainWindow }: UpdaterDeps): void {
       const message = err instanceof Error ? err.message : String(err);
       getMainWindow()?.webContents.send("update-error", message);
       return false;
+    } finally {
+      normalBusy = false;
     }
   });
   ipcMain.handle("install-update", () => {
+    if (manual.active()) return;
     updaterLogger.info(
       "Restart requested by user — calling quitAndInstall(isSilent=false, isForceRunAfter=true)",
     );
@@ -110,6 +145,6 @@ export function setupUpdater({ getMainWindow }: UpdaterDeps): void {
   });
 
   setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(() => {});
+    void checkNormal();
   }, 5000);
 }
