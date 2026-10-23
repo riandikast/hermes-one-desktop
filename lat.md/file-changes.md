@@ -32,6 +32,12 @@ live or reopened.
 Capture is dashboard-transport only — the legacy transport's progress strings
 don't carry reliable paths. Reads are best-effort; failures are swallowed.
 
+## Per-prompt model answer
+
+Each expanded history prompt offers a separate collapsed model-answer disclosure, rendered with the existing Markdown component only when opened. File actions and full previews remain unchanged.
+
+[[src/renderer/src/screens/Chat/fileChangeHistory.ts#groupFileChangeHistory]] selects the last settled assistant bubble after the last tool call, excluding reasoning, tool output, pending text, slash loaders, local errors and injected notices. Internal user continuations do not split manual turns. [[src/renderer/src/screens/Chat/fileChangeHistory.ts#mergeFileChangeHistory]] prefers finalized live answers while retaining stored answers for incomplete live tails, even when the live tail has no file snapshots. Repeated prompts remain distinct. [[src/renderer/src/screens/Chat/FileChangeHistoryDialog.test.tsx]] covers two stored turns, lazy Markdown disclosure and live finalization without tools or reasoning.
+
 ## Copy current file content
 
 The history dialog's Copy content action reads the entire current local file, not its stored diff, and preserves whitespace, newlines, and empty files when copying to the clipboard.

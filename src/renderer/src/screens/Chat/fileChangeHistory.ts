@@ -7,6 +7,7 @@ import type { ChatBubbleMessage, ChatMessage, FileChange } from "./types";
 export interface FileChangeTurn {
   prompt: ChatBubbleMessage;
   changes: FileChange[];
+  answer?: string;
 }
 
 function keepRichest(changes: Map<string, FileChange>, change: FileChange): void {
@@ -21,6 +22,7 @@ function keepRichest(changes: Map<string, FileChange>, change: FileChange): void
 /** Manual prompts delimit turns; runtime notices remain inside their owning turn. */
 export function groupFileChangeHistory(
   messages: readonly ChatMessage[],
+  includeUnchanged = false,
 ): FileChangeTurn[] {
   const turns: FileChangeTurn[] = [];
   let prompt: ChatBubbleMessage | undefined;
@@ -44,7 +46,18 @@ export function groupFileChangeHistory(
       for (const change of snapshots ?? [])
         keepRichest(changes, change);
     }
-    if (changes.size) turns.push({ prompt, changes: [...changes.values()] });
+    // Tool calls invalidate pre-tool progress; only the last settled answer belongs here.
+    let answer: string | undefined;
+    for (const row of rows) {
+      if (row.kind === "tool_call") answer = undefined;
+      if (isBubbleMessage(row) && row.role === "agent" && !row.pending &&
+          !row.localOnly && !row.error && !row.isSlashLoader &&
+          !isAutoInjectedPrompt(row.content) && row.content.trim()) {
+        answer = row.content;
+      }
+    }
+    if (changes.size || includeUnchanged)
+      turns.push({ prompt, changes: [...changes.values()], ...(answer ? { answer } : {}) });
   };
   for (const message of messages) {
     if (
@@ -68,8 +81,8 @@ export function mergeFileChangeHistory(
   stored: readonly ChatMessage[],
   live: readonly ChatMessage[],
 ): FileChangeTurn[] {
-  const turns = groupFileChangeHistory(stored);
-  const liveTurns = groupFileChangeHistory(live);
+  const turns = groupFileChangeHistory(stored, true);
+  const liveTurns = groupFileChangeHistory(live, true);
   const used = new Set<number>();
   const appended: FileChangeTurn[] = [];
   for (let i = liveTurns.length - 1; i >= 0; i--) {
@@ -100,10 +113,11 @@ export function mergeFileChangeHistory(
       keepRichest(changes, change);
     turns[index] = {
       prompt: turns[index].prompt,
+      answer: turn.answer ?? turns[index].answer,
       changes: [...changes.values()],
     };
   }
-  return [...turns, ...appended].reverse();
+  return [...turns, ...appended].filter((turn) => turn.changes.length > 0).reverse();
 }
 
 export async function loadFileChangeHistory(

@@ -14,6 +14,24 @@ Tab switches do NOT remount the target run: [[src/renderer/src/screens/Layout/La
 
 The symptom this guards against: in conversations with many messages, each keystroke took up to ~2.6s with an empty JS profile — the cost was entirely in Chromium's layout engine, recalculating the whole transcript on every keystroke. CPU and memory were normal; new sessions were instant.
 
+## Session-wide find without eager transcript mounting
+
+Local chat search includes unloaded canonical DB rows; navigating a result mounts a bounded target window instead of every intervening turn.
+
+[[src/main/sessions.ts#buildSessionHistorySearchQuery]] reuses transcript visibility and compaction deduplication, with parameterized literal substring candidates (not token-based session-summary FTS). [[src/main/sessions.ts#searchSessionHistory]] streams candidates, decodes rich rows, removes image payloads, and returns matching row groups only. Unicode and encoded multimodal rows bypass SQL case-fold filtering to preserve exact JavaScript matching. Search remains O(session text) in SQLite; common queries can return many candidates, but never eagerly hydrate the entire history into the chat model or DOM.
+
+[[src/renderer/src/screens/Chat/ChatSearch.tsx#ChatSearch]] debounces queries, ignores superseded promises, cancels stale scroll retries, preserves message-ID plus occurrence identity, wraps next/previous, and centers same-message occurrences where DOM text corresponds. Highlights query only mounted rows. Markdown transformations retain the row-outline fallback.
+
+[[src/renderer/src/screens/Chat/Chat.tsx#Chat]] reuses backward paging with a target-ID cursor and a 40-row page, kept separate from live messages and poll cursors. [[src/renderer/src/screens/Chat/MessageList.tsx#MessageList]] mounts the target turn plus adjacent turns; closing search restores the normal tail budget. A single enormous turn remains the render ceiling. Search does not synthesize backend APIs: remote/SSH search reports loaded-only fallback. Desktop-only historical overlays not present in DB rows are searchable only when already loaded.
+
+Deterministic coverage: `ChatSearch.history.test.tsx` tests distant unloaded results, same-message occurrences, ordering/wrap, stable selection and superseded async queries; `MessageList.search.test.tsx` checks three mounted turns across a 10,000-turn fixture and restoration; `tests/session-chat-search.test.ts` executes canonical SQL on synthetic in-memory SQLite and tests payload stripping. No private DB or running app is used. The stable-selection test waits for enabled navigation and the first reveal, not the count alone, before clicking Next: debounce and selection effects can expose the count before reconciliation settles.
+
+## Sent image attachment previews
+
+Dashboard sends retain attachments on the optimistic user row, so thumbnails appear immediately, before the gateway connects or acknowledges the turn.
+
+[[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#useDashboardChatTransport]] preserves attachment order and data URLs without changing provider payloads. The composer and sent rows reuse [[src/renderer/src/components/AttachmentChip.tsx#AttachmentChip]] for accessible thumbnails and the existing portal lightbox. [[src/renderer/src/screens/Chat/sessionHistory.ts#reconcileTailAfterDbRefresh]] retains these previews when canonical rows arrive without attachment metadata. Tests cover text-plus-images, image-only sends, ordered thumbnails, zoom, and refresh. Reopening a session still depends on backend-persisted image content/path metadata and the existing history hydration; no new image cache is introduced.
+
 ## History refresh error lookup
 
 [[src/renderer/src/screens/Chat/sessionHistory.ts#preserveLocalAssistantErrors]] indexes current messages once by ID before restoring local errors, avoiding a quadratic scan even when history contains no errors.
@@ -87,3 +105,13 @@ The answer streams LIVE into the pending bubble and is replaced by one authorita
 [[src/renderer/src/screens/Chat/dashboardEventAdapter.ts#applyDashboardStreamEvent]] renders `message.delta` into the pending assistant bubble (`appendAssistantDelta`). At `message.complete`, [[src/renderer/src/screens/Chat/dashboardEventAdapter.ts]] applies the contract: when the final text COVERS the turn's streamed text (normalized includes), every streamed text bubble is discarded and ONE authoritative final bubble is appended (reasoning fully covered by the final is dropped too) — the final always wins, so dropped/garbled delta chunks can never corrupt the answer. When the final is last-turn-only (our backend can omit pre-tool-call text, #746), the streamed bubble is kept and merged via the legacy `mergeStreamedWithFinal` reconciliation. An empty final leaves the streamed bubble pending — `session.info running:false` settles it via [[src/renderer/src/screens/Chat/dashboardEventAdapter.ts]] (un-pends non-empty bubbles, drops empty placeholders). The answer-gate machinery (`useReasoningGate`/`reasoningStall`) was deleted: the live stream + final merge replaced it, and the stall watchdog + quiet-finalize remain as fallbacks.
 
 > **Reverted 2026-08-07:** the official streaming + inline_diff adoption (commits `0b057a4`..`cf801d8`) was reverted — the flat-row transcript model on the community fork could not cleanly host the official part-based streaming contract, producing partial/merged answers. Chat is back on the pre-adoption behavior: Option C (answer materializes once at completion, `renderAssistantDeltas:false`), the answer gate (`useReasoningGate`/`reasoningStall`), and the git-hybrid file-changes chip. The `dashboardEventAdapter.ts` exports referenced above no longer exist.
+
+## Image preview stacking
+
+Body-portaled image lightboxes share the existing global modal layer (1100), above tab and title chrome (1001–1002). No new portal or arbitrary topmost layer is needed. A CSS regression pins that ordering.
+
+## Unsend image restoration
+
+Unsend restores the removed manual row’s ordered attachments into ChatInput. Image-only rows expose the same action; session.undo semantics stay unchanged.
+
+MessageRow and Chat pass original attachments through the existing callback. The composer restores data URLs without re-uploading.

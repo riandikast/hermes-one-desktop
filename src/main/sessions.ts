@@ -798,6 +798,49 @@ export function mergeStoredPromptImageAttachments(
   });
 }
 
+/** Substring candidates, not FTS tokens: punctuation, spaces and literals work.
+ * Keep canonical visibility/deduplication identical to the transcript reader.
+ */
+export function buildSessionHistorySearchQuery(sessionId: string, query: string) {
+  const read = buildSessionMessagesQuery(sessionId);
+  const pattern = `%${escapeLikePattern(query.toLowerCase())}%`;
+  return {
+    sql: read.sql.replace("ORDER BY m.timestamp, m.id", `AND (
+      LOWER(COALESCE(m.content, '')) LIKE ? ESCAPE '\\'
+      OR LOWER(COALESCE(m.reasoning, '')) LIKE ? ESCAPE '\\'
+      OR LOWER(COALESCE(m.reasoning_content, '')) LIKE ? ESCAPE '\\'
+      OR m.reasoning_details IS NOT NULL OR m.tool_calls IS NOT NULL
+      OR INSTR(m.content, char(0)) > 0
+      OR ? = 1
+    ) ORDER BY m.timestamp, m.id`),
+    params: [...read.params, pattern, pattern, pattern, /[^\x00-\x7f]/.test(query) ? 1 : 0],
+  };
+}
+
+/** Stream canonical rows; only literal-search candidates cross IPC. */
+export function searchSessionHistory(sessionId: string, query: string): HistoryItem[] {
+  if (typeof sessionId !== "string" || !sessionId || typeof query !== "string" || !query) return [];
+  const db = getDb();
+  if (!db) return [];
+  const read = buildSessionHistorySearchQuery(sessionId, query);
+  const needle = query.toLowerCase();
+  const matches: HistoryItem[] = [];
+  for (const row of db.prepare(read.sql).iterate(...read.params) as Iterable<RawMessageRow>) {
+    const items = expandRowsToHistory([row]);
+    if (items.some((item) => {
+      const text = item.kind === "reasoning" ? item.text
+        : item.kind === "tool_call" ? `${item.name}\n${item.args}` : item.content;
+      return text.toLowerCase().includes(needle);
+    })) {
+      matches.push(...items.map((item) => {
+        const { attachments: _attachments, ...textOnly } = item as HistoryItem & { attachments?: Attachment[] };
+        return textOnly as HistoryItem;
+      }));
+    }
+  }
+  return matches;
+}
+
 export function getSessionMessages(
   sessionId: string,
   afterId = 0,

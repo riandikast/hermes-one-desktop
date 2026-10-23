@@ -68,3 +68,15 @@ Model applications are serialized so an older `config.set` cannot land after a n
 - **Every entry has a ceiling.** `MODEL_SWITCH_BUDGET` bounds each config call (20s) and the application (45s). Expiry prevents late async continuations from starting a mutation or validating success. There is no recursive timeout re-apply; failure is visible and a later explicit pick/send can retry.
 
 The control socket used for a switch is tracked in `modelControlClientsRef` so the ceiling can release it. Interrupt deliberately does *not* close it: closing only rejects the renderer promise while the gateway still executes the switch, which let a stale model land after the new pick. A selection the backend does not confirm now surfaces through `onModelApplyError` instead of silently leaving the old model running. Regression: [[src/renderer/src/screens/Chat/hooks/modelSwitchUnwedge.test.tsx]].
+
+## Named provider versus runtime billing class
+
+Named custom providers resolve to runtime provider `custom`; status lacks endpoint identity, so matching the model alone cannot safely validate a named-provider switch.
+
+`scripts/probe-named-provider-identity.py` replays installed resolver, setter and status definitions with fixture-only endpoints. Exact `9r` / `oc/mimo-v2.6-flash-free` pins `9r` but displays `custom` after construction. The same model on a different custom endpoint produces identical status. `config.set` acknowledges model and scope, not the live endpoint. Inventory canonical identity may fall back to model ownership or profile config, so it is not independent endpoint proof. Production validation remains fail-closed pending a live session-owned endpoint/route identity contract; no named-to-custom blanket equivalence is accepted. Safety controls: [[src/renderer/src/screens/Chat/hooks/namedProviderIdentity.test.ts]].
+
+## Fresh runtime readiness
+
+Fresh sessions return before agent construction; model selection waits for custom endpoint inventory and live identity rather than trusting a pre-build acknowledgement.
+
+Installed session.create schedules construction after returning. Explicit-provider config.set can pin model_override without an agent; status then reports Model: (unknown) (unknown). Custom discovery is non-blocking. Selection refreshes unresolved endpoint inventory up to 20 times at 250 ms, then selects once and polls placeholder live status with the same bound. Existing generation, epoch, and application ceiling guards remain active. Missing/contradictory status fails closed; no prompt is retried. The offline scripts/probe-fresh-model-readiness.py replays installed definitions without importing the server or reading user state.

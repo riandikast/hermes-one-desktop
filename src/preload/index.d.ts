@@ -655,6 +655,7 @@ interface HermesAPI {
       preview: string;
     }>
   >;
+  searchSessionHistory: (sessionId: string, query: string) => Promise<SessionHistoryPage["items"]>;
   getSessionMessagesBefore: (
     sessionId: string,
     beforeId?: number,

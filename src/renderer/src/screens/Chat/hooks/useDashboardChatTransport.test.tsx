@@ -20,6 +20,9 @@ import {
 } from "./useDashboardChatTransport";
 import type { ActiveTurn, ChatMessage, UsageState } from "../types";
 import { FileChangeHistoryDialog } from "../FileChangeHistoryDialog";
+import { MessageRow } from "../MessageRow";
+import { reconcileTailAfterDbRefresh } from "../sessionHistory";
+import type { Attachment } from "../../../../../shared/attachments";
 import { renderWithI18n } from "../../../test/renderWithI18n";
 import { screen, fireEvent } from "@testing-library/react";
 
@@ -59,7 +62,7 @@ interface HarnessApi {
   activeSubagents?: { subagent_id: string }[];
   activeTurnRef?: MutableRefObject<ActiveTurn | null>;
   messages?: ChatMessage[];
-  send?: (text: string) => Promise<boolean>;
+  send?: (text: string, attachments?: Attachment[]) => Promise<boolean>;
   providerWait?: { deadline: number | null } | null;
   switchProviderNow?: () => Promise<void>;
   abort?: () => void;
@@ -219,6 +222,68 @@ describe("useDashboardChatTransport recovery", () => {
         getKnowledgeIndex: vi.fn(async () => "KNOWLEDGE-INDEX"),
       },
     });
+  });
+
+// @lat: [[model-selection#Fresh runtime readiness]]
+it("waits for fresh custom inventory and live identity before the first prompt", async () => {
+  let optionsReads = 0;
+  let statusReads = 0;
+  const writes: string[] = [];
+  dashboardMock.request.mockImplementation(async (method, params) => {
+    if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+    if (method === "model.options") return ++optionsReads === 1 ? { providers: [] } : { providers: [{ slug: "custom:cbai", base_url: "https://fixture.invalid/v1", models: ["cbai/deepseek-v4.1-flash"] }] };
+    if (method === "session.status") return { output: ++statusReads < 4 ? "Model: (unknown) (unknown)" : "Model: cbai/deepseek-v4.1-flash (custom:cbai)" };
+    if (method === "config.set") { writes.push(params.value); return { key: "model", scope: "session" }; }
+    return {};
+  });
+  const api: HarnessApi = {};
+  const view = render(<Harness active={false} api={api} modelBaseUrl="https://fixture.invalid/v1" />);
+  try {
+    await act(async () => { api.setModel!("cbai/deepseek-v4.1-flash"); api.setProvider!("custom"); });
+    await act(async () => { await api.send!("first prompt"); });
+    expect(writes).toEqual(["cbai/deepseek-v4.1-flash --provider custom:cbai --session"]);
+    expect(dashboardMock.request.mock.calls.filter(([method]) => method === "prompt.submit")).toHaveLength(1);
+    expect(optionsReads).toBeGreaterThan(1);
+  } finally { view.unmount(); }
+});
+
+  // @lat: [[chat-performance#Sent image attachment previews]]
+  it.each(["look at these", ""])("previews sent images before gateway readiness and after DB refresh (%s)", async (text) => {
+    let release!: () => void;
+    dashboardMock.connect.mockImplementationOnce(() => new Promise<undefined>((resolve) => { release = () => resolve(undefined); }));
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      if (method === "image.attach_bytes") return { attached: true };
+      return {};
+    });
+    const images: Attachment[] = ["first.png", "second.png"].map((name, index) => ({
+      id: `image-${index}`, kind: "image", name, mime: "image/png", size: 1,
+      dataUrl: "data:image/png;base64,AA==",
+    }));
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} />);
+    let sending!: Promise<boolean>;
+    await act(async () => { sending = api.send!(text, images); });
+    try {
+      const user = api.messages!.at(-1)!;
+      expect(user).toMatchObject({ role: "user", content: text, attachments: images });
+      const bubble = renderWithI18n(<MessageRow msg={user} isLast isLoading onApprove={() => {}} onDeny={() => {}} />);
+      expect(screen.getAllByRole("img").map((img) => img.getAttribute("alt"))).toEqual(["first.png", "second.png"]);
+      fireEvent.click(screen.getByRole("button", { name: "first.png" }));
+      expect(screen.getByRole("dialog").querySelector("img")).toHaveAttribute("src", images[0].dataUrl);
+      fireEvent.keyDown(document, { key: "Escape" });
+      bubble.unmount();
+      await act(async () => { release(); await sending; });
+      const refreshed = reconcileTailAfterDbRefresh(api.messages!, [
+        { id: "db-10", role: "user", content: text },
+        { id: "db-11", role: "agent", content: "done" },
+      ]);
+      const echoed = refreshed.find((msg) => msg.role === "user" && msg.content === text)!;
+      expect(echoed).toMatchObject({ attachments: images });
+      expect(dashboardMock.request.mock.calls.filter(([method]) => method === "image.attach_bytes")).toHaveLength(2);
+    } finally { release?.(); await act(async () => { await sending; }); view.unmount(); }
   });
 
   it.each(["confirm", "stop", "new prompt", "model"])("Switch now waits for cancellation before resend (%s)", async (steer) => {

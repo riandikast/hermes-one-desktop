@@ -184,7 +184,7 @@ interface MessageRowProps {
   /** Fired when the user clicks the "unsend" button on the most recent user
    *  row. The desktop runs `/undo 1` (gateway-side truncation, no double
    *  token) and re-populates the input box so the user can edit+resend. */
-  onUnsendLastUser?: (msgId: string, content: string) => void;
+  onUnsendLastUser?: (msgId: string, content: string, attachments?: ChatBubbleMessage["attachments"]) => void;
   /** True only for the most recent user bubble — restricts the unsend button
    *  to that row so it doesn't clutter older bubbles. */
   isLastUser?: boolean;
@@ -346,7 +346,7 @@ export const MessageRow = memo(function MessageRow({
           msg.error ? " chat-bubble-error" : ""
         }`}
       >
-        {msg.content && !isLoading && !msg.isSlashLoader && (
+        {(msg.content || hasAttachments) && !isLoading && !msg.isSlashLoader && (
           <div className="chat-bubble-actions">
             <button
               type="button"
@@ -387,6 +387,7 @@ export const MessageRow = memo(function MessageRow({
                   onUnsendLastUser(
                     msg.id,
                     (msg as ChatBubbleMessage).content || "",
+                    msg.attachments,
                   )
                 }
                 title="Unsend — edit and resend this message"

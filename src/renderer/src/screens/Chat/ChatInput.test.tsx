@@ -12,7 +12,29 @@ vi.mock("../../components/useI18n", () => ({
   }),
 }));
 
-import { ChatInput } from "./ChatInput";
+import { ChatInput, type ChatInputHandle } from "./ChatInput";
+import { createRef } from "react";
+import { MessageRow } from "./MessageRow";
+import type { Attachment } from "../../../../shared/attachments";
+
+// @lat: [[chat-performance#Unsend image restoration]]
+it.each(["edit me", ""])("restores unsent ordered attachments into the composer and resends once (%s)", (text) => {
+  const attachments: Attachment[] = ["a.png", "b.png"].map((name, i) => ({ id: String(i), name, kind: "image", mime: "image/png", size: 1, dataUrl: "data:image/png;base64,AA==" }));
+  const ref = createRef<ChatInputHandle>();
+  const onSubmit = vi.fn();
+  render(<ChatInput ref={ref} isLoading={false} hasSession onSubmit={onSubmit} onQuickAsk={vi.fn()} onAbort={vi.fn()} />);
+  render(<MessageRow msg={{ id: "user", role: "user", content: text, attachments }} isLast isLastUser isLoading={false} onApprove={vi.fn()} onDeny={vi.fn()} onUnsendLastUser={(_id, content, images) => {
+    ref.current!.clear();
+    ref.current!.setText(content, images);
+  }} />);
+  fireEvent.click(screen.getByRole("button", { name: "Unsend message" }));
+  expect(document.querySelectorAll(".chat-attachment-strip img")).toHaveLength(2);
+  const textarea = screen.getByPlaceholderText("chat.typeMessage");
+  fireEvent.keyDown(textarea, { key: "Enter" });
+  fireEvent.keyDown(textarea, { key: "Enter" });
+  expect(onSubmit).toHaveBeenCalledExactlyOnceWith(text, attachments);
+  expect(document.querySelectorAll(".chat-attachment-strip img")).toHaveLength(0);
+});
 
 afterEach(cleanup);
 

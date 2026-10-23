@@ -41,7 +41,7 @@ function findRow(
 ): HTMLElement | null {
   const selector = `[id="chat-msg-${messageId.replace(/"/g, '\\"')}"]`;
   const scoped = container?.querySelector<HTMLElement>(selector);
-  if (scoped) return scoped;
+  if (container) return scoped ?? null;
   return document.querySelector<HTMLElement>(selector);
 }
 
@@ -64,11 +64,13 @@ function highlightSupport(): {
 
 export interface ChatSearchProps {
   messages: ChatMessage[];
+  searchHistory?: (query: string) => Promise<ChatMessage[]>;
+  onQueryChange?: () => void;
   /** The scroll container that holds the rendered transcript. */
   containerRef?: React.RefObject<HTMLDivElement | null>;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Raise MessageList's render budget so a collapsed match can be shown. */
+  /** Reveal a bounded transcript window containing the target. */
   onRevealMessage?: (messageId: string) => void;
   /**
    * Called right before scrolling to a match. The chat uses it to mark itself
@@ -84,6 +86,8 @@ export interface ChatSearchProps {
  */
 export function ChatSearch({
   messages,
+  searchHistory,
+  onQueryChange,
   containerRef,
   open,
   onOpenChange,
@@ -105,15 +109,54 @@ export function ChatSearch({
     return () => window.clearTimeout(timer);
   }, [query, deferredQuery]);
 
-  const matches = useMemo(
-    () => findChatMatches(messages, deferredQuery),
-    [messages, deferredQuery],
-  );
-
-  // A new query starts at its first match.
+  const [history, setHistory] = useState<ChatMessage[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [resultQuery, setResultQuery] = useState("");
+  const [searchError, setSearchError] = useState(false);
+  const navigationRef = useRef(0);
+  // The raw query invalidates in-flight work immediately, before debounce.
   useEffect(() => {
-    setActiveIndex(matches.length > 0 ? 0 : -1);
-  }, [deferredQuery, matches.length]);
+    navigationRef.current++;
+    setHistory([]);
+    setSearchError(false);
+    if (!open || !query || query !== deferredQuery || !searchHistory) {
+      setSearching(false);
+      return;
+    }
+    let stale = false;
+    setSearching(true);
+    void searchHistory(query).then((rows) => {
+      if (!stale) setHistory(rows);
+    }).catch(() => {
+      if (!stale) setSearchError(true);
+    }).finally(() => {
+      if (!stale) { setSearching(false); setResultQuery(query); }
+    });
+    return () => { stale = true; };
+  }, [query, deferredQuery, open, searchHistory]);
+
+  const matches = useMemo(() => {
+    const loaded = new Map(messages.map((message) => [message.id, message]));
+    const rows = history.map((message) => loaded.get(message.id) ?? message);
+    const persisted = new Set(rows.map((message) => message.id));
+    rows.push(...messages.filter((message) => !persisted.has(message.id)));
+    return findChatMatches(rows, deferredQuery);
+  }, [messages, history, deferredQuery]);
+  const pending = query !== deferredQuery || searching || !!(open && query && searchHistory && resultQuery !== query);
+
+  const activeMatchRef = useRef<ChatSearchMatch | undefined>(undefined);
+  const matchQueryRef = useRef(deferredQuery);
+  useEffect(() => {
+    if (pending) return;
+    const previous = matchQueryRef.current === deferredQuery ? activeMatchRef.current : undefined;
+    const index = previous ? matches.findIndex((match) =>
+      match.messageId === previous.messageId && match.indexInMessage === previous.indexInMessage) : -1;
+    setActiveIndex(index >= 0 ? index : matches.length ? 0 : -1);
+    matchQueryRef.current = deferredQuery;
+  }, [deferredQuery, matches, pending]);
+  useEffect(() => {
+    if (!pending) activeMatchRef.current = matches[activeIndex];
+  }, [activeIndex, matches, pending]);
 
   useEffect(() => {
     if (!open) return;
@@ -139,11 +182,33 @@ export function ChatSearch({
       // auto-follow yanks the viewport back to the bottom mid-jump.
       onBeforeScroll?.();
       const container = containerRef?.current ?? null;
+      const navigation = ++navigationRef.current;
       let attempts = 0;
       const attempt = (): void => {
+        if (navigation !== navigationRef.current) return;
         const row = findRow(container, match.messageId);
         if (row) {
-          row.scrollIntoView?.({ block: "center", behavior: "smooth" });
+          row.scrollIntoView?.({ block: "center", behavior: "instant" });
+          // A long message can contain several hits far apart; center the
+          // selected occurrence, not merely the same row on every Next.
+          if (container) {
+            const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+            let occurrence = 0;
+            let found = false;
+            for (let node = walker.nextNode(); node && !found; node = walker.nextNode()) {
+              const text = (node.nodeValue ?? "").toLowerCase();
+              for (let at = text.indexOf(deferredQuery.toLowerCase()); at >= 0 && deferredQuery; at = text.indexOf(deferredQuery.toLowerCase(), at + deferredQuery.length)) {
+                if (occurrence++ !== match.indexInMessage) continue;
+                const range = document.createRange();
+                range.setStart(node, at);
+                range.setEnd(node, at + deferredQuery.length);
+                const rect = range.getBoundingClientRect?.();
+                if (rect) container.scrollTop += rect.top - container.getBoundingClientRect().top - container.clientHeight / 2;
+                found = true;
+                break;
+              }
+            }
+          }
           // Repaint once the jump lands: rows that mount as the rendered
           // window expands can hold stale highlight ranges.
           setPaintTick((tick) => tick + 1);
@@ -156,21 +221,26 @@ export function ChatSearch({
       // Wait a frame so a just-revealed window has committed.
       window.requestAnimationFrame(attempt);
     },
-    [containerRef, onBeforeScroll],
+    [containerRef, onBeforeScroll, deferredQuery],
   );
 
   const go = useCallback(
     (direction: 1 | -1): void => {
-      if (matches.length === 0) return;
-      const next = stepMatchIndex(activeIndex, matches.length, direction);
-      setActiveIndex(next);
-      const target = matches[next];
-      if (!target) return;
-      onRevealMessage?.(target.messageId);
-      scrollToMatch(target);
+      if (pending || matches.length === 0) return;
+      setActiveIndex((current) => stepMatchIndex(current, matches.length, direction));
+
     },
-    [activeIndex, matches, onRevealMessage, scrollToMatch],
+    [matches.length, pending],
   );
+
+  useEffect(() => {
+    if (!open || pending || activeIndex < 0) return;
+    const target = matches[activeIndex];
+    if (!target) return;
+    onRevealMessage?.(target.messageId);
+    scrollToMatch(target);
+    return () => { navigationRef.current++; };
+  }, [open, pending, activeIndex, matches, onRevealMessage, scrollToMatch]);
 
   // Paint matches onto the rendered transcript. Rebuilt whenever the match set,
   // the active match, or the rendered DOM changes (rows mount/unmount as the
@@ -198,8 +268,10 @@ export function ChatSearch({
       const seen = new Set<string>();
       let activeRange: Range | null = null;
 
+      // Only mounted rows need DOM lookup/highlighting, even with thousands of hits.
+      const mountedIds = new Set(Array.from(container.querySelectorAll<HTMLElement>('[id^="chat-msg-"]'), (row) => row.id.slice(9)));
       for (const match of matches) {
-        if (seen.has(match.messageId)) continue;
+        if (!mountedIds.has(match.messageId) || seen.has(match.messageId)) continue;
         seen.add(match.messageId);
         const row = findRow(container, match.messageId);
         if (!row || !container.contains(row)) continue;
@@ -304,18 +376,18 @@ export function ChatSearch({
             aria-label="Search text in chat"
             spellCheck={false}
             autoComplete="off"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => { navigationRef.current++; onQueryChange?.(); setQuery(event.target.value); }}
             onKeyDown={onKeyDown}
           />
           <span className="chat-search-count" aria-live="polite">
-            {position}/{matches.length}
+            {pending ? "Searching…" : searchError ? "Loaded matches only" : `${position}/${matches.length}`}
           </span>
           <button
             type="button"
             className="chat-search-step"
             aria-label="Previous match"
             title="Previous match (Shift+Enter)"
-            disabled={matches.length === 0}
+            disabled={pending || matches.length === 0}
             onClick={() => go(-1)}
           >
             <ChevronUp size={14} />
@@ -325,7 +397,7 @@ export function ChatSearch({
             className="chat-search-step"
             aria-label="Next match"
             title="Next match (Enter)"
-            disabled={matches.length === 0}
+            disabled={pending || matches.length === 0}
             onClick={() => go(1)}
           >
             <ChevronDown size={14} />

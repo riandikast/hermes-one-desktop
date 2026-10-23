@@ -3051,13 +3051,22 @@ export function useDashboardChatTransport({
           appliedModelRef.current = null;
           modelOptionsCacheRef.current = null;
         }
-        const before = await readOptions(targetSessionId);
-        const dashboardProvider = resolveDashboardProviderForModel(
-          selectedProvider,
-          selectedModel,
-          selectedBaseUrl,
-          before,
-        );
+        let before = await readOptions(targetSessionId);
+        let dashboardProvider = resolveDashboardProviderForModel(selectedProvider, selectedModel, selectedBaseUrl, before);
+        // Fresh sessions return before agent construction and catalog discovery.
+        // Never route a named endpoint through an unresolved bare custom provider.
+        for (let attempt = 0; selectedProvider === "custom" && selectedBaseUrl && dashboardProvider === "custom" && attempt < 20; attempt++) {
+          checkCancelled();
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          checkCancelled();
+          before = await readOptions(targetSessionId, true);
+          checkCancelled();
+          dashboardProvider = resolveDashboardProviderForModel(selectedProvider, selectedModel, selectedBaseUrl, before);
+        }
+        checkCancelled();
+        if (selectedProvider === "custom" && selectedBaseUrl && dashboardProvider === "custom") {
+          throw new Error(`Hermes dashboard custom provider is not ready; custom inventory: ${modelOptionsSummary(before)}`);
+        }
 
         // Model changes are in-place; close/resume discards a healthy runtime.
         const resolvedCommand = dashboardModelCommand(dashboardProvider, selectedModel);
@@ -3105,7 +3114,15 @@ export function useDashboardChatTransport({
           control.close();
         }
         // No worker text or stale catalog may overrule the live runtime.
-        const liveIdentity = await readLiveIdentity(targetSessionId);
+        let liveIdentity = await readLiveIdentity(targetSessionId);
+        // config.set can pin a pre-build override without a live agent yet.
+        // Wait only for missing identity; a contradictory runtime still fails closed.
+        for (let attempt = 0; (liveIdentity?.model === "(unknown)" || liveIdentity?.provider === "unknown") && attempt < 20; attempt++) {
+          checkCancelled();
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          checkCancelled();
+          liveIdentity = await readLiveIdentity(targetSessionId);
+        }
         checkCancelled();
         if (!dashboardModelMatches(dashboardProvider, selectedModel, liveIdentity)) {
           throw new Error(
@@ -3414,6 +3431,7 @@ export function useDashboardChatTransport({
             id: `local-send-${Date.now()}`,
             role: "user",
             content: text,
+            ...(attachments?.length ? { attachments } : {}),
           };
       if (optimisticUser) {
         messagesRef.current = [

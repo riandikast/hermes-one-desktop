@@ -130,7 +130,8 @@ import { ChatTurnStatus } from "./ChatTurnStatus";
 import { ChatSubagentPanel } from "./ChatSubagentPanel";
 import { ChatSearch } from "./ChatSearch";
 
-import { dbItemsToChatMessages, hasPendingToolInTail } from "./sessionHistory";
+import { dbItemsToChatMessages,
+  type DbHistoryItem, hasPendingToolInTail } from "./sessionHistory";
 
 import { SLASH_COMMANDS, type SlashCommand } from "./slashCommands";
 
@@ -564,6 +565,35 @@ function Chat({
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   // Message the search wants brought into the rendered window.
   const [searchRevealId, setSearchRevealId] = useState<string | null>(null);
+  const [searchPage, setSearchPage] = useState<ChatMessage[] | null>(null);
+  const searchNavigationRef = useRef(0);
+  const searchSessionId = hermesSessionId ?? initialSessionId ?? null;
+  useEffect(() => {
+    searchNavigationRef.current++;
+    setSearchPage(null);
+    setSearchRevealId(null);
+  }, [searchSessionId, chatSearchOpen]);
+  const searchHistory = useCallback(async (query: string) => {
+    if (!searchSessionId) return [];
+    const rows = await window.hermesAPI.searchSessionHistory(searchSessionId, query);
+    return dbItemsToChatMessages(rows as DbHistoryItem[]);
+  }, [searchSessionId]);
+  const revealSearchMessage = useCallback((id: string) => {
+    const request = ++searchNavigationRef.current;
+    setSearchRevealId(id);
+    if (messagesRef.current.some((message) => message.id === id)) {
+      setSearchPage(null);
+      return;
+    }
+    const storedId = /^db-(?:r-|tr-|tc-|clarify-)?(\d+)/.exec(id)?.[1];
+    if (!searchSessionId || !storedId) return;
+    void window.hermesAPI.getSessionMessagesBefore(searchSessionId, Number(storedId) + 1, 40).then((page) => {
+      if (request !== searchNavigationRef.current) return;
+      setSearchPage(dbItemsToChatMessages(page.items as DbHistoryItem[]));
+    }).catch(() => {
+      if (request === searchNavigationRef.current) setSearchPage(null);
+    });
+  }, [searchSessionId]);
 
   const [usage, setUsage] = useState<UsageState | null>(null);
 
@@ -2288,7 +2318,7 @@ function Chat({
   );
 
   const handleUnsendLastUser = useCallback(
-    async (_msgId: string, content: string) => {
+    async (_msgId: string, content: string, attachments?: Attachment[]) => {
       // Truncate the GATEWAY's live history too (dashboard mode). Without this
 
       // the next resend builds context with the "unsent" text still present,
@@ -2332,7 +2362,7 @@ function Chat({
 
       chatInputRef.current?.clear();
 
-      chatInputRef.current?.setText(content);
+      chatInputRef.current?.setText(content, attachments);
 
       chatInputRef.current?.focus();
 
@@ -2583,6 +2613,8 @@ function Chat({
       />
       <div className="chat-display-controls">
         <ChatSearch
+          key={searchSessionId ?? "unsaved"}
+          onQueryChange={() => { searchNavigationRef.current++; setSearchPage(null); setSearchRevealId(null); }}
           messages={messages}
           containerRef={containerRef}
           open={chatSearchOpen}
@@ -2590,7 +2622,8 @@ function Chat({
             setChatSearchOpen(next);
             if (next) setDisplayControlsOpen(false);
           }}
-          onRevealMessage={setSearchRevealId}
+          searchHistory={searchHistory}
+          onRevealMessage={revealSearchMessage}
           onBeforeScroll={stopFollow}
         />
         <button
@@ -2734,8 +2767,8 @@ function Chat({
               <ChatEmptyState onSelectSuggestion={handleSuggestion} />
             ) : (
               <MessageList
-                messages={messages}
-                olderAvailable={hasMoreHistory}
+                messages={chatSearchOpen && searchPage ? searchPage : messages}
+                olderAvailable={!searchPage && hasMoreHistory}
                 onLoadEarlier={loadEarlierHistory}
                 loadingEarlier={loadingEarlier}
                 isLoading={isLoading}
@@ -2778,7 +2811,7 @@ function Chat({
                 containerRef={containerRef}
                 modelRef={messageListModelRef}
                 sessionKey={hermesSessionId}
-                revealMessageId={searchRevealId}
+                revealMessageId={chatSearchOpen ? searchRevealId : null}
               />
             )}
 

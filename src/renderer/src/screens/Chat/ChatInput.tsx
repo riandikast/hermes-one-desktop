@@ -56,7 +56,7 @@ import { SendConfirmDialog } from "./SendConfirmDialog";
 import type { Attachment } from "../../../../shared/attachments";
 
 export interface ChatInputHandle {
-  setText(text: string): void;
+  setText(text: string, attachments?: Attachment[]): void;
   appendText(text: string): void;
   clear(): void;
   focus(): void;
@@ -265,8 +265,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     useImperativeHandle(
       ref,
       () => ({
-        setText(text: string): void {
+        setText(text: string, restoredAttachments?: Attachment[]): void {
           setInput(text);
+          if (restoredAttachments) setAttachments([...restoredAttachments]);
           // Resize runs via the layout effect; place the caret + focus.
           requestAnimationFrame(() => {
             if (inputRef.current) {

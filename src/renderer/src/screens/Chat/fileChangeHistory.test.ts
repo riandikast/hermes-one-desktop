@@ -36,6 +36,47 @@ const edits = (id: string, path: string): ChatMessage[] => [
   },
 ];
 describe("file change history", () => {
+  // @lat: [[file-changes#Per-prompt model answer]]
+  it("keeps only each manual turn's final answer, not progress, tools, reasoning or notices", () => {
+    const turns = groupFileChangeHistory([
+      user("one", "First prompt"),
+      { id: "progress", role: "agent", content: "Working on it" },
+      ...edits("a", "a.ts"),
+      { id: "thought", kind: "reasoning", role: "agent", text: "private reasoning" },
+      user("internal", "[System: continue the interrupted task]"),
+      { id: "final-one", kind: "assistant", role: "agent", content: "**First answer**" },
+      { id: "notice", role: "agent", content: "[System: runtime notice]" },
+      { id: "local", role: "agent", localOnly: true, content: "local notice" },
+      { id: "loader", role: "agent", isSlashLoader: true, content: "Loading" },
+      user("two", "Second prompt"),
+      ...edits("b", "b.ts"),
+      { id: "final-two", role: "agent", content: "Second answer" },
+      { id: "error", role: "agent", error: "failure", content: "Error" },
+    ]);
+    expect(turns.map(({ prompt, answer }) => [prompt.id, answer])).toEqual([
+      ["one", "**First answer**"], ["two", "Second answer"],
+    ]);
+    expect(groupFileChangeHistory([user("one", "First prompt"),
+      { id: "progress", role: "agent", content: "Working on it" },
+      ...edits("a", "a.ts"),
+    ])[0].answer).toBeUndefined();
+  });
+  it("merges a finalized live answer without live file snapshots, preserving DB answers while pending", () => {
+    const stored: ChatMessage[] = [user("db-1", "same"), ...edits("a", "a.ts"),
+      { id: "a1", role: "agent", content: "Older answer" },
+      user("db-2", "same"), ...edits("b", "b.ts"),
+      { id: "a2", role: "agent", content: "Stored answer" }];
+    const live: ChatMessage[] = [user("live", "same"),
+      { id: "live-answer", role: "agent", content: "New answer", pending: true }];
+    expect(mergeFileChangeHistory(stored, live).map((turn) => turn.answer)).toEqual(["Stored answer", "Older answer"]);
+    expect(mergeFileChangeHistory(stored, [live[0], { ...live[1], pending: false } as ChatMessage])
+      .map((turn) => turn.answer)).toEqual(["New answer", "Older answer"]);
+    expect(mergeFileChangeHistory([], live)).toEqual([]);
+    const storedWithoutSnapshots: ChatMessage[] = [user("db-only", "edit"),
+      { id: "db-answer", role: "agent", content: "Persisted final answer" }];
+    expect(mergeFileChangeHistory(storedWithoutSnapshots, [user("local-only", "edit"), ...edits("c", "c.ts")])[0].answer)
+      .toBe("Persisted final answer");
+  });
   it("groups manual prompts, keeps exact text and IDs, ignores injected delimiters", () => {
     const messages: ChatMessage[] = [
       ...edits("orphan", "orphan.ts"),

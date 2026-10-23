@@ -9340,7 +9340,8 @@ body:has(.shell-vibrant),
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 200;
+  /* Match the global modal layer; body portal already escapes chat containment. */
+  z-index: 1100;
   cursor: zoom-out;
 }
 

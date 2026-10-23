@@ -9,8 +9,20 @@ import {
 } from "./fileChangeHistory";
 import { FileChangesDialog } from "./FileChangesDialog";
 import { WorktreePanel } from "./WorktreePanel";
+import { AgentMarkdown } from "../../components/AgentMarkdown";
 
 import type { ChatMessage, FileChange } from "./types";
+
+function ModelAnswer({ answer }: { answer: string }): React.JSX.Element {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  return (
+    <details className="file-change-history-turn" style={{ margin: "0 16px 12px" }} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary><ChevronDown size={16} aria-hidden /><span>{t("chat.fileChangeHistory.answer")}</span></summary>
+      {open && <div className="chat-tool-item-body"><AgentMarkdown>{answer}</AgentMarkdown></div>}
+    </details>
+  );
+}
 
 export function FileChangeHistoryDialog({
   sessionId,
@@ -141,6 +153,7 @@ export function FileChangeHistoryDialog({
                   })}
                 </span>
               </summary>
+              {turn.answer && <ModelAnswer answer={turn.answer} />}
               <div className="file-change-history-files">
                 {turn.changes.map((change) => {
                   const target = resolveHistoryExplorerTarget(change.path, cwd);

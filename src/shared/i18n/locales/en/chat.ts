@@ -9,6 +9,7 @@ export default {
     unconfirmed: "Stop not confirmed. No replacement sent.",
   },
   fileChangeHistory: {
+    answer: "Model answer",
     copyPath: "Copy path",
     copyContent: "Copy content",
     copyingContent: "Copying file content...",

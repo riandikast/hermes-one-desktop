@@ -266,6 +266,7 @@ import {
   listSessions,
   getSessionMessages,
   getSessionMessagesBefore,
+  searchSessionHistory,
   searchSessions,
   deleteSession,
   deleteSessions,
@@ -2746,6 +2747,12 @@ export function registerIpcHandlers(context: IpcContext): void {
       return updateSessionTitle(sessionId, title);
     },
   );
+
+  ipcMain.handle("search-session-history", (_event, sessionId: string, query: string) => {
+    if (getConnectionConfig().mode !== "local") throw new Error("Full history search is available for local sessions only");
+    if (typeof sessionId !== "string" || !sessionId || typeof query !== "string" || query.length > 10000) throw new Error("Invalid history search");
+    return searchSessionHistory(sessionId, query);
+  });
 
   // Session search
   ipcMain.handle("search-sessions", (_event, query: string, limit?: number) => {

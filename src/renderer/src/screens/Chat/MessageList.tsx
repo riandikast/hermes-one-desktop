@@ -229,7 +229,7 @@ interface MessageListProps {
   onClarifyStuck?: (requestId: string, answer: string) => void;
   agentAvatar?: AgentAvatarInfo;
   onRevertCheckpoint?: (msgId: string) => void;
-  onUnsendLastUser?: (msgId: string, content: string) => void;
+  onUnsendLastUser?: (msgId: string, content: string, attachments?: ChatBubbleMessage["attachments"]) => void;
   onOpenFileChanges?: (changes: FileChange[]) => void;
   /** Toggle pin state on a bubble (user or agent). */
   onPinToggle?: (msgId: string, pinned: boolean) => void;
@@ -306,7 +306,7 @@ function buildRows(
     /** An answer that the gateway never acknowledged (stuck turn recovery). */
     onClarifyStuck?: (requestId: string, answer: string) => void;
     onRevertCheckpoint?: (msgId: string) => void;
-    onUnsendLastUser?: (msgId: string, content: string) => void;
+    onUnsendLastUser?: (msgId: string, content: string, attachments?: ChatBubbleMessage["attachments"]) => void;
     onOpenFileChanges?: (changes: FileChange[]) => void;
     onPinToggle?: (msgId: string, pinned: boolean) => void;
   },
@@ -710,36 +710,6 @@ export const MessageList = memo(function MessageList({
     return () => cancelAnimationFrame(raf);
   }, [anchorBeforePrepend, renderBudget]);
 
-  // In-chat search: include a collapsed turn in the rendered window so its
-  // match has a row to scroll to and highlight. The budget is raised to exactly
-  // the weight needed for that group; the auto-raise effect above only ever
-  // raises (Math.max), so this is never undone.
-  useEffect(() => {
-    if (!revealMessageId) return;
-    const index = visibleMessages.findIndex((m) => m.id === revealMessageId);
-    if (index < 0) return;
-    let group = -1;
-    for (let g = 0; g < groups.length; g++) {
-      if (groups[g]!.indices.includes(index)) {
-        group = g;
-        break;
-      }
-    }
-    if (group < 0) return;
-    let needed = 0;
-    for (let g = group; g < groups.length; g++)
-      needed += groups[g]!.weight ?? 1;
-    if (needed <= renderBudget) return;
-    anchorBeforePrepend();
-    startTransition(() => setRenderBudget((b) => Math.max(b, needed)));
-  }, [
-    anchorBeforePrepend,
-    groups,
-    renderBudget,
-    revealMessageId,
-    visibleMessages,
-  ]);
-
   // Groups are already weighted; derive hiddenCount from the real group weights.
   const realHiddenCount = useMemo(
     () =>
@@ -751,8 +721,16 @@ export const MessageList = memo(function MessageList({
     [groups, renderBudget],
   );
   const visibleGroups = useMemo(
-    () => (realHiddenCount > 0 ? groups.slice(realHiddenCount) : groups),
-    [groups, realHiddenCount],
+    () => {
+      if (revealMessageId) {
+        const target = visibleMessages.findIndex((message) => message.id === revealMessageId);
+        const group = groups.findIndex((entry) => entry.indices.includes(target));
+        // Search mounts the target turn plus neighbors, not every intervening turn.
+        if (group >= 0) return groups.slice(Math.max(0, group - 1), group + 2);
+      }
+      return realHiddenCount > 0 ? groups.slice(realHiddenCount) : groups;
+    },
+    [groups, realHiddenCount, revealMessageId, visibleMessages],
   );
   const tailStart = useMemo(
     () =>

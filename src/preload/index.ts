@@ -909,6 +909,8 @@ const hermesAPI = {
     }>
   > => ipcRenderer.invoke("list-sessions", limit, offset),
 
+  searchSessionHistory: (sessionId: string, query: string): Promise<SessionHistoryPage["items"]> =>
+    ipcRenderer.invoke("search-session-history", sessionId, query),
   getSessionMessagesBefore: (
     sessionId: string,
     beforeId?: number,

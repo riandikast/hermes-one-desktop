@@ -26,6 +26,40 @@ const messages: ChatMessage[] = [
 ];
 afterEach(cleanup);
 describe("file change history dialog", () => {
+  it("discloses DB answers per prompt and updates finalized live answers without exposing tools", async () => {
+    window.hermesAPI = { getSessionMessages: vi.fn().mockResolvedValue([
+      { kind: "user", id: 1, content: "Older prompt" },
+      { kind: "assistant", id: 2, content: "**Older answer**", fileChanges: [change] },
+      { kind: "user", id: 3, content: "Manual prompt" },
+      { kind: "assistant", id: 4, content: "**Stored answer**", fileChanges: [change] },
+    ]) } as unknown as typeof window.hermesAPI;
+    const props = { sessionId: "session", messages, onClose: vi.fn() };
+    const view = renderWithI18n(<FileChangeHistoryDialog {...props} />);
+    await screen.findByText("Older prompt");
+    expect(screen.queryByText("Older answer")).toBeNull();
+    const current = screen.getByText("Manual prompt").closest("details")!;
+    fireEvent.click(current.querySelector("summary")!);
+    const answer = current.querySelector("details")!;
+    fireEvent.click(answer.querySelector("summary")!);
+    expect(await screen.findByText("Stored answer")).toHaveProperty("tagName", "STRONG");
+    const live: ChatMessage[] = [...messages,
+      { id: "tool", kind: "tool_result", role: "agent", name: "patch", callId: "edit", content: "private tool result" },
+      { id: "reason", kind: "reasoning", role: "agent", text: "private reasoning" },
+      { id: "answer", role: "agent", pending: true, content: "**Live answer**" }];
+    view.rerender(<FileChangeHistoryDialog {...props} messages={live} />);
+    expect(screen.queryByText("Live answer")).toBeNull();
+    view.rerender(<FileChangeHistoryDialog {...props} messages={live.map((row) => row.id === "answer" ? { ...row, pending: false } as ChatMessage : row)} />);
+    expect(await screen.findByText("Live answer")).toHaveProperty("tagName", "STRONG");
+    expect(screen.queryByText("Stored answer")).toBeNull();
+    expect(screen.queryByText("private tool result")).toBeNull();
+    expect(screen.queryByText("private reasoning")).toBeNull();
+    const older = screen.getByText("Older prompt").closest("details")!;
+    fireEvent.click(older.querySelector("summary")!);
+    fireEvent.click(older.querySelector("details")!.querySelector("summary")!);
+    expect(await screen.findByText("Older answer")).toBeTruthy();
+    expect(window.hermesAPI.getSessionMessages).toHaveBeenCalledTimes(1);
+    expect(current.querySelector("button")?.textContent).toBe(change.path);
+  });
   it("history opens the exact same file/turn diff as the real chat chip despite path-only live edits", async () => {
     const chip = { id: "chip", kind: "file_changes" as const, role: "agent" as const, changes: [change] };
     const onOpen = vi.fn();
