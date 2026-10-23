@@ -18,6 +18,7 @@ import {
   Eye,
   FolderSearch,
   History,
+  FileText,
 } from "lucide-react";
 import { Spinner } from "../../assets/icons";
 
@@ -45,6 +46,7 @@ import type { MessageListModel } from "./MessageList";
 
 import { FileChangesDialog } from "./FileChangesDialog";
 import { FileChangeHistoryDialog } from "./FileChangeHistoryDialog";
+import { ChatLogsDialog } from "./ChatLogsDialog";
 
 import { ModelPicker } from "./ModelPicker";
 
@@ -614,6 +616,7 @@ function Chat({
   // per-turn FileChangesRow chip only — the in-bubble badge was removed.
 
   const [fileChangeHistoryOpen, setFileChangeHistoryOpen] = useState(false);
+  const [logsModalOpen, setLogsModalOpen] = useState(false);
   const [fileChangesOpen, setFileChangesOpen] = useState<FileChange[] | null>(
     null,
   );
@@ -2645,6 +2648,21 @@ function Chat({
         />
         <button
           type="button"
+          className={`chat-display-controls-trigger${logsModalOpen ? " is-active" : ""}`}
+          aria-label={t("chat.logs.title", { defaultValue: "Logs" })}
+          title={t("chat.logs.title", { defaultValue: "Logs" })}
+          aria-haspopup="dialog"
+          aria-expanded={logsModalOpen}
+          onClick={() => {
+            setLogsModalOpen((open) => !open);
+            setDisplayControlsOpen(false);
+            setChatSearchOpen(false);
+          }}
+        >
+          <FileText size={15} />
+        </button>
+        <button
+          type="button"
           className="chat-display-controls-trigger"
           aria-label="Display controls"
           aria-expanded={displayControlsOpen}
@@ -3100,6 +3118,13 @@ function Chat({
         <FileChangesDialog
           changes={fileChangesOpen}
           onClose={() => setFileChangesOpen(null)}
+        />
+      )}
+
+      {logsModalOpen && (
+        <ChatLogsDialog
+          open={logsModalOpen}
+          onClose={() => setLogsModalOpen(false)}
         />
       )}
 

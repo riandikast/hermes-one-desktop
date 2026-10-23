@@ -20,7 +20,15 @@ Refresh reads the current session's full history using existing reconciliation. 
 
 A successful full reload clears earlier-page availability. Failure leaves the existing transcript intact and permits retry. Full reload is user-triggered only; very large histories may take time. No agent restart, tab reopen or context mutation occurs.
 
+## Floating diagnostic logs
+
+Chat provides a floating log viewer beneath the search icon for troubleshooting runtime crashes and inspecting provider API requests.
+
+The trigger in [[src/renderer/src/screens/Chat/Chat.tsx]] opens [[src/renderer/src/screens/Chat/ChatLogsDialog.tsx#ChatLogsDialog]] with two tabs: Crash & Errors (reading `errors.log`) and Request Log (reading `agent.log`). The Request Log defaults to filtering API call requests and responses with model, provider, tokens, and retry countdowns, while supporting full agent log view and live search filtering.
+
 ## Focused verification
+
+ChatLogsDialog.test.tsx tests tab switching between errors and requests, request-only line filtering, real-time query matching, copy to clipboard, and modal dismissal.
 
 TerminalDock.complete.test.tsx drives mocked xterm input, verifying listing, explicit execution with saved cwd, cancellation and directory completion. No real user command executes.
 

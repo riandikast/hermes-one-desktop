@@ -1,5 +1,21 @@
 export default {
   sourceControl: { stageAll: "Stage all changes" },
+  logs: {
+    title: "Logs",
+    description: "System diagnostics and provider request logs",
+    errorsTab: "Crash & Errors",
+    requestsTab: "Request Log",
+    requestsOnly: "Requests only",
+    allLines: "All lines",
+    filterPlaceholder: "Filter log entries...",
+    copy: "Copy",
+    copied: "Copied",
+    refresh: "Refresh",
+    empty: "No log entries found.",
+    loading: "Loading logs...",
+    wrap: "Wrap lines",
+    linesCount: "{{visible}} / {{total}} lines",
+  },
   providerRetry: {
     countdown: "Provider retry in {{seconds}}s",
     due: "Provider retry due, waiting for progress",
