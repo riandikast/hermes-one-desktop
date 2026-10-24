@@ -11,6 +11,12 @@ content changes (file switch, save, focus refresh) dispatch a full-doc replace
 that preserves the caret. `fileContent` state mirrors the doc via an update
 listener, so the existing Save path is unchanged.
 
+## Creating bundles
+
+Creation opens the API-returned canonical bundle name after refreshing the list, clears the previous file selection, and shows an empty file list with Add File. Failed creation keeps the typed name and displays an inline alert for retry.
+
+The mounted regression in [[src/renderer/src/screens/Knowledge/KnowledgeScreen.drill.test.tsx]] covers names containing spaces/punctuation, creation from the grid and editor, back navigation, and rejection followed by retry. Creation returns a bundle object, not a boolean.
+
 ## @ mention autocomplete
 
 `@`-mention file search is a CodeMirror autocomplete source, not a custom dropdown.

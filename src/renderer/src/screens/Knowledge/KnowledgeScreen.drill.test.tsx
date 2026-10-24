@@ -56,12 +56,99 @@ async function openBundle(): Promise<void> {
 async function openFile(): Promise<void> {
   await openBundle();
   fireEvent.click(q(".knowledge-file-card-open")!);
-  await waitFor(() =>
-    expect(q(".knowledge-editor-container")).not.toBeNull(),
-  );
+  await waitFor(() => expect(q(".knowledge-editor-container")).not.toBeNull());
 }
 
 describe("knowledge drill-down navigation", () => {
+  // @lat: [[knowledge-editor#Creating bundles]]
+  it("opens the canonical empty bundle after creation, including from an editor", async () => {
+    mockBundles();
+    const api = window.hermesAPI;
+    const created = { name: "Team-notes-", path: "/k/Team-notes-", files: [] };
+    api.createKnowledgeBundle = vi.fn().mockResolvedValue(created);
+    await openFile();
+    vi.mocked(api.listKnowledgeBundles).mockResolvedValue([created]);
+
+    fireEvent.click(screen.getByRole("button", { name: "New Bundle" }));
+    fireEvent.change(
+      screen.getByPlaceholderText("Bundle name (e.g. ui-guidelines)..."),
+      {
+        target: { value: "  Team notes!  " },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() =>
+      expect(q(".knowledge-drill-title")?.textContent).toBe(created.name),
+    );
+    expect(api.createKnowledgeBundle).toHaveBeenCalledWith("Team notes!");
+    expect(api.listKnowledgeBundles).toHaveBeenCalledTimes(2);
+    expect(q(".knowledge-drill-count")?.textContent).toBe("0 files");
+    expect(q(".knowledge-drill-empty")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Add File" })).toBeTruthy();
+    expect(q(".knowledge-editor-container")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Back to bundles" }));
+    await screen.findByText(created.name);
+    expect(q(".knowledge-bundle-list")).not.toBeNull();
+  });
+
+  it("keeps the typed name and shows creation failures for retry", async () => {
+    mockBundles();
+    window.hermesAPI.createKnowledgeBundle = vi
+      .fn()
+      .mockRejectedValue(new Error("Permission denied"));
+    render(<KnowledgeScreen />);
+    await screen.findByText("ui-style-guide");
+    fireEvent.click(screen.getByRole("button", { name: "New Bundle" }));
+    const input = screen.getByPlaceholderText(
+      "Bundle name (e.g. ui-guidelines)...",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Team notes!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Permission denied",
+    );
+    expect(input.value).toBe("Team notes!");
+    expect(q(".knowledge-bundle-list")).not.toBeNull();
+    const created = { name: "Team-notes-", path: "/k/Team-notes-", files: [] };
+    vi.mocked(window.hermesAPI.createKnowledgeBundle).mockResolvedValue(
+      created,
+    );
+    vi.mocked(window.hermesAPI.listKnowledgeBundles).mockResolvedValue([
+      created,
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(q(".knowledge-drill-title")?.textContent).toBe(created.name),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("opens a newly created empty bundle from the grid rather than a blank surface", async () => {
+    mockBundles();
+    const created = { name: "New-bundle-", path: "/k/New-bundle-", files: [] };
+    window.hermesAPI.createKnowledgeBundle = vi.fn().mockResolvedValue(created);
+    render(<KnowledgeScreen />);
+    await screen.findByText("ui-style-guide");
+    vi.mocked(window.hermesAPI.listKnowledgeBundles).mockResolvedValue([
+      created,
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "New Bundle" }));
+    fireEvent.change(
+      screen.getByPlaceholderText("Bundle name (e.g. ui-guidelines)..."),
+      {
+        target: { value: "New bundle!" },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(q(".knowledge-drill-title")?.textContent).toBe(created.name),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add File" }));
+    expect(q(".knowledge-add-file-bar--files input")).not.toBeNull();
+    expect(q(".knowledge-drill-empty")).not.toBeNull();
+  });
   it("starts on the bundle grid with no file list or editor", async () => {
     mockBundles();
     render(<KnowledgeScreen />);
@@ -179,9 +266,9 @@ describe("knowledge drill-down navigation", () => {
 
   it("handles an empty bundle without rendering an empty grid", async () => {
     (window as any).hermesAPI = {
-      listKnowledgeBundles: vi.fn().mockResolvedValue([
-        { name: "blank", path: "/k/blank", files: [] },
-      ]),
+      listKnowledgeBundles: vi
+        .fn()
+        .mockResolvedValue([{ name: "blank", path: "/k/blank", files: [] }]),
       readKnowledgeFile: vi.fn().mockResolvedValue(""),
     };
     render(<KnowledgeScreen />);

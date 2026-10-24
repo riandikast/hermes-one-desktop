@@ -61,6 +61,7 @@ export function KnowledgeScreen(): React.JSX.Element {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [newBundleName, setNewBundleName] = useState("");
+  const [createBundleError, setCreateBundleError] = useState("");
   const [showNewBundleInput, setShowNewBundleInput] = useState(false);
   const [newFileName, setNewFileName] = useState("");
   const [addingFileBundle, setAddingFileBundle] = useState<string | null>(null);
@@ -591,16 +592,20 @@ export function KnowledgeScreen(): React.JSX.Element {
   const handleCreateBundle = async () => {
     const trimmed = newBundleName.trim();
     if (!trimmed) return;
+    setCreateBundleError("");
     try {
-      await window.hermesAPI.createKnowledgeBundle(trimmed);
+      const bundle = await window.hermesAPI.createKnowledgeBundle(trimmed);
+      await reloadBundles();
       setNewBundleName("");
       setShowNewBundleInput(false);
-      await reloadBundles();
-      // A freshly created bundle is empty, so drill straight into its file
-      // list: the next action is always adding the first file.
-      setOpenBundle(trimmed);
-    } catch {
-      /* ignore error */
+      setSelectedFile(null);
+      setFileContent("");
+      // The API returns the canonical name (spaces/punctuation are sanitized).
+      setOpenBundle(bundle.name);
+    } catch (error) {
+      setCreateBundleError(
+        error instanceof Error ? error.message : "Failed to create bundle",
+      );
     }
   };
 
@@ -909,6 +914,7 @@ export function KnowledgeScreen(): React.JSX.Element {
           >
             Cancel
           </button>
+          {createBundleError && <span role="alert">{createBundleError}</span>}
         </div>
       )}
 
@@ -1153,6 +1159,14 @@ export function KnowledgeScreen(): React.JSX.Element {
               {activeBundle.files.length === 0 ? (
                 <div className="knowledge-drill-empty">
                   <p>No files in this bundle yet.</p>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setAddingFileBundle(activeBundle.name)}
+                  >
+                    <Plus size={14} />
+                    Add File
+                  </button>
                   <p className="knowledge-drill-empty-hint">
                     Right-click here (or use the + on the bundle card) to add one.
                   </p>
