@@ -1,4 +1,6 @@
 import { act, render, waitFor } from "@testing-library/react";
+import { decodeKnowledgePrompt, encodeKnowledgePrompt, originalKnowledgePrompt } from "../../../../../shared/knowledge-envelope";
+import { dbItemsToChatMessages } from "../sessionHistory";
 import {
   useEffect,
   useRef,
@@ -98,6 +100,7 @@ function Harness({
   history = false,
   api,
   initialKnowledgeBundles = [],
+  storedSessionId = null,
   fallbackOnUnavailable = false,
   initialConnectionMode = "local",
   initialPlanMode = false,
@@ -113,6 +116,7 @@ function Harness({
   history?: boolean;
   api: HarnessApi;
   initialKnowledgeBundles?: string[];
+  storedSessionId?: string | null;
   fallbackOnUnavailable?: boolean;
   initialConnectionMode?: "local" | "remote" | "ssh";
   initialPlanMode?: boolean;
@@ -150,7 +154,7 @@ function Harness({
     connectionMode,
     enabled: true,
     fallbackOnUnavailable,
-    hermesSessionId: null,
+    hermesSessionId: storedSessionId,
     knowledgeBundles,
     onKnowledgeChanged: (summary) => knowledgeNotices.current.push(summary),
     messages,
@@ -2396,186 +2400,157 @@ describe("ensureDashboardRuntimeSession — subagent watch attach", () => {
   });
 });
 
+describe("Knowledge envelope validation", () => {
+  it("preserves exact original text; rejects malformed and embedded envelopes", () => {
+    const prompt = "  /explain\n画像 😀\r\n ";
+    const envelope = encodeKnowledgePrompt(prompt, "INDEX", prompt + "\nattachment ref");
+    expect(originalKnowledgePrompt(envelope)).toBe(prompt);
+    for (const value of [prompt, "The user attached the following knowledge bundles.\n## ordinary\n- prose", envelope + " ", "quote: " + envelope, envelope.replace('"version":1', '"version":2'), envelope.replace('"context":"INDEX"', '"extra":true,"context":"INDEX"')]) {
+      expect(originalKnowledgePrompt(value)).toBe(value);
+      expect((dbItemsToChatMessages([{ id: 1, kind: "user", content: value }])[0] as { content: string }).content).toBe(value);
+    }
+    expect((dbItemsToChatMessages([{ id: 1, kind: "user", content: envelope }])[0] as { content: string }).content).toBe(prompt);
+  });
+});
+
 describe("mid-session knowledge toggle", () => {
   beforeEach(() => {
-    // Self-contained API mock: this describe must not depend on another
-    // block's beforeEach having run.
-    Object.defineProperty(window, "hermesAPI", {
-      configurable: true,
-      value: {
-        freshDashboardWsUrl: vi.fn(async () => "ws://fresh-dashboard"),
-        recordSessionContinuation: vi.fn(async () => true),
-        recordSessionLocalError: vi.fn(async () => true),
-        startDashboard: vi.fn(async () => ({
-          connection: { wsUrl: "ws://127.0.0.1:12345" },
-          running: true,
-        })),
-        getSessionMessages: vi.fn(async () => []),
-        getKnowledgeIndex: vi.fn(async () => "KNOWLEDGE-INDEX"),
-      },
-    });
-  });
-
-  beforeEach(() => {
-    dashboardMock.close.mockClear();
-    dashboardMock.connect.mockClear();
-    dashboardMock.instances.length = 0;
-    dashboardMock.onEvent = null;
     dashboardMock.request.mockReset();
-  });
-
-  it("rebuilds the runtime session on the next prompt instead of minting a new one", async () => {
-    // The index is seeded ONCE via session.create. A mid-session toggle must
-    // mark the runtime stale so the next prompt re-seeds it — while resuming the
-    // SAME stored session (a new session.create would add a sidebar row).
     dashboardMock.request.mockImplementation(async (method) => {
-      if (method === "session.create") {
-        return { session_id: "live-1", stored_session_id: "stored-1" };
-      }
-      if (method === "session.resume") {
-        return { session_id: "live-2", resumed: "stored-1" };
-      }
+
+      if (method === "session.create") return { session_id: "live-1", stored_session_id: "stored-1" };
+      if (method === "session.resume") return { session_id: "live-1", resumed: "stored-1" };
       if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
-      if (method === "model.options") {
-        return { model: "bad-model", provider: "bad-provider", providers: [] };
-      }
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider", providers: [] };
       return {};
     });
-
-    const api: HarnessApi = {};
-    render(
-      <Harness
-        api={api}
-        initialConnectionMode="local"
-        initialKnowledgeBundles={["alpha"]}
-      />,
-    );
-
-    // First prompt seeds the runtime with the alpha bundle.
-    await act(async () => {
-      await api.send?.("first");
-    });
-    const createsAfterFirst = dashboardMock.request.mock.calls.filter(
-      (c) => c[0] === "session.create",
-    ).length;
-    expect(createsAfterFirst).toBe(1);
-
-    // End the turn so the user is back at the composer (the realistic moment
-    // to toggle a bundle).
-    await act(async () => {
-      dashboardMock.onEvent?.({
-        type: "message.complete",
-        payload: { content: "ok" },
-        session_id: "live-1",
-      });
-    });
-
-    // Toggle a bundle on mid-session. Before the fix this was a silent no-op.
-    await act(async () => {
-      api.setKnowledgeBundles?.(["alpha", "beta"]);
-    });
-
-    // The NEXT prompt must rebuild the runtime: the old runtime is closed and
-
-    // the SAME stored session is resumed (never a second create).
-    await act(async () => {
-      await api.send?.("second");
-    });
-    const methods = dashboardMock.request.mock.calls.map((c) => c[0]);
-    expect(methods).toContain("session.close");
-    expect(methods).toContain("session.resume");
-    expect(
-      methods.filter((m) => m === "session.create").length,
-      "recovery must not mint a second session row",
-    ).toBe(1);
+    Object.defineProperty(window, "hermesAPI", { configurable: true, value: {
+      freshDashboardWsUrl: vi.fn(async () => "ws://fresh-dashboard"),
+      recordSessionContinuation: vi.fn(async () => true),
+      recordSessionLocalError: vi.fn(async () => true),
+      startDashboard: vi.fn(async () => ({ connection: { wsUrl: "ws://127.0.0.1:12345" }, running: true })),
+      getSessionMessages: vi.fn(async () => []),
+      getKnowledgeIndex: vi.fn(async (bundles: string[]) => `INDEX:${bundles.join(",")}`),
+    } });
   });
 
-  it("reports the change so the UI can explain the timing", async () => {
-    dashboardMock.request.mockImplementation(async (method) => {
-      if (method === "session.create") {
-        return { session_id: "live-1", stored_session_id: "stored-1" };
-      }
-      if (method === "session.resume") {
-        return { session_id: "live-2", resumed: "stored-1" };
-      }
-      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
-      if (method === "model.options") {
-        return { model: "bad-model", provider: "bad-provider", providers: [] };
-      }
-      return {};
-    });
-
+  // @lat: [[knowledge-injection#Synthetic transport diagnostics]]
+  it.each([false, true])("sends current indexes per turn, no system seed or runtime churn (resume %s)", async (history) => {
     const api: HarnessApi = {};
-    render(
-      <Harness
-        api={api}
-        initialConnectionMode="local"
-        initialKnowledgeBundles={["alpha"]}
-      />,
-    );
-    await act(async () => {
-      await api.send?.("first");
-    });
-    await act(async () => {
-      dashboardMock.onEvent?.({
-        type: "message.complete",
-        payload: { content: "ok" },
-        session_id: "live-1",
-      });
-    });
-
-    await act(async () => {
-      api.setKnowledgeBundles?.(["alpha", "beta"]);
-    });
-
-    expect(api.knowledgeNotices).toContain("enabled “beta”");
-
+    renderWithI18n(<Harness api={api} storedSessionId={history ? "stored-1" : null} initialKnowledgeBundles={["alpha"]} />);
+    await act(async () => { await api.send?.("first"); });
+    await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", payload: { content: "ok" }, session_id: "live-1" }); });
+    await act(async () => { api.setKnowledgeBundles?.(["beta"]); });
+    await act(async () => { await api.send?.("second"); });
+    await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", payload: { content: "ok" }, session_id: "live-1" }); });
+    await act(async () => { api.setKnowledgeBundles?.([]); });
+    await act(async () => { await api.send?.("third"); });
+    const submits = dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit");
+    expect(submits.map(([, p]) => decodeKnowledgePrompt(p.text)?.context ?? "")).toEqual(["INDEX:alpha", "INDEX:beta", ""]);
+    expect(submits.map(([, p]) => originalKnowledgePrompt(p.text))).toEqual(["first", "second", "third"]);
+    for (const [, p] of submits) expect(Object.keys(p).sort()).toEqual(["session_id", "text"]);
+    expect(api.messages?.filter((m) => m.role === "user").map((m) => "content" in m ? m.content : "")).toEqual(expect.arrayContaining(["first", "second", "third"]));
+    expect(dbItemsToChatMessages(submits.map(([, p], i) => ({ id: i + 1, kind: "user" as const, content: p.text }))).map((m) => "content" in m ? m.content : "")).toEqual(["first", "second", "third"]);
+    expect(dashboardMock.request.mock.calls.filter(([m]) => m === "session.close")).toHaveLength(0);
+    for (const [, p] of dashboardMock.request.mock.calls.filter(([m]) => m === "session.create")) {
+      expect((p.messages ?? []).some((m: { role: string }) => m.role === "system")).toBe(false);
+    }
   });
 
-  it("does nothing when the selection is unchanged", async () => {
-    dashboardMock.request.mockImplementation(async (method) => {
-      if (method === "session.create") {
-        return { session_id: "live-1", stored_session_id: "stored-1" };
-      }
-      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
-      if (method === "model.options") {
-        return { model: "bad-model", provider: "bad-provider", providers: [] };
-      }
-      return {};
-    });
-
+  it("re-fetches edited files each send with unchanged selection", async () => {
     const api: HarnessApi = {};
-    render(
-      <Harness
-        api={api}
-        initialConnectionMode="local"
-        initialKnowledgeBundles={["alpha"]}
-      />,
-    );
-    await act(async () => {
-      await api.send?.("first");
-    });
-    await act(async () => {
-      dashboardMock.onEvent?.({
-        type: "message.complete",
-        payload: { content: "ok" },
-        session_id: "live-1",
-      });
-    });
-    dashboardMock.request.mockClear();
+    render(<Harness api={api} initialKnowledgeBundles={["alpha"]} />);
+    await act(async () => { await api.send?.("first"); });
+    await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", payload: { content: "ok" }, session_id: "live-1" }); });
+    window.hermesAPI.getKnowledgeIndex = vi.fn(async () => "EDITED");
+    await act(async () => { await api.send?.("second"); });
+    expect(dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit").map(([, p]) => decodeKnowledgePrompt(p.text)?.context)).toEqual(["INDEX:alpha", "EDITED"]);
+  });
 
+  it("discards stale in-flight fetch after removal", async () => {
+    let resolve!: (s: string) => void;
+    window.hermesAPI.getKnowledgeIndex = vi.fn(() => new Promise<string>((r) => { resolve = r; }));
+    const api: HarnessApi = {};
+    render(<Harness api={api} initialKnowledgeBundles={["alpha"]} />);
+    let sending!: Promise<boolean>;
+    await act(async () => { sending = api.send!("first"); });
+    await waitFor(() => expect(resolve).toBeTypeOf("function"));
+    await act(async () => { api.setKnowledgeBundles?.([]); });
+    await act(async () => { resolve("STALE"); await sending; });
+    const submits = dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit");
+    expect(submits).toHaveLength(1);
+    expect(submits[0][1].text).toBe("first");
+  });
 
-    // Same set, different order — must be a no-op.
-    await act(async () => {
-      api.setKnowledgeBundles?.(["alpha"]);
+  it("keeps attachment-expanded text on the wire and original text in history", async () => {
+    const original = dashboardMock.request.getMockImplementation()!;
+    dashboardMock.request.mockImplementation(async (method, ...args) => {
+      if (method === "file.attach") return { attached: true, ref_text: "@C:/notes.txt" };
+      if (method === "image.attach_bytes") return { attached: true, path: "C:/image.png" };
+      return original(method, ...args);
     });
+    const api: HarnessApi = {};
+    render(<Harness api={api} initialKnowledgeBundles={["alpha"]} />);
+    const prompt = "  inspect these\n ";
+    await act(async () => { await api.send?.(prompt, [
+      { id: "file", kind: "path-ref", name: "notes.txt", path: "C:/notes.txt", mime: "text/plain", size: 1 },
+      { id: "image", kind: "image", name: "image.png", dataUrl: "data:image/png;base64,YQ==", mime: "image/png", size: 1 },
+    ]); });
+    const submit = dashboardMock.request.mock.calls.find(([m]) => m === "prompt.submit");
+    expect(submit).toBeDefined();
+    const decoded = decodeKnowledgePrompt(submit![1].text);
+    expect(decoded?.prompt).toBe(prompt);
+    expect(decoded?.text).toContain("@C:/notes.txt");
+    expect(dashboardMock.request.mock.calls.some(([m]) => m === "image.attach_bytes")).toBe(true);
+    expect((dbItemsToChatMessages([{ id: 1, kind: "user", content: submit![1].text }])[0] as { content: string }).content).toBe(prompt);
+  });
 
-    await act(async () => {
-      await api.send?.("second");
+  it("rejects an empty enabled index visibly", async () => {
+    window.hermesAPI.getKnowledgeIndex = vi.fn(async () => "");
+    const api: HarnessApi = {};
+    render(<Harness api={api} initialKnowledgeBundles={["alpha"]} />);
+    await act(async () => { await api.send?.("first"); });
+    expect(dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit")).toHaveLength(0);
+    expect(api.messages?.some((m) => JSON.stringify(m).includes("empty index"))).toBe(true);
+  });
+
+  it("retries a missing session once with the same single envelope", async () => {
+    const original = dashboardMock.request.getMockImplementation()!;
+    let attempts = 0;
+    dashboardMock.request.mockImplementation(async (method, ...args) => {
+      if (method === "prompt.submit" && ++attempts === 1) throw new Error("session not found");
+      return original(method, ...args);
     });
-    const methods = dashboardMock.request.mock.calls.map((c) => c[0]);
-    expect(methods).not.toContain("session.close");
-    expect(api.knowledgeNotices ?? []).toHaveLength(0);
+    const api: HarnessApi = {};
+    render(<Harness api={api} storedSessionId="stored-1" initialKnowledgeBundles={["alpha"]} />);
+    await act(async () => { await api.send?.("exact original"); });
+    const submits = dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit");
+    expect(submits).toHaveLength(2);
+    expect(submits[0][1].text).toBe(submits[1][1].text);
+    expect(decodeKnowledgePrompt(submits[1][1].text)).toEqual({ prompt: "exact original", context: "INDEX:alpha", text: "exact original" });
+    expect(window.hermesAPI.getKnowledgeIndex).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels a pending Knowledge fetch without submitting", async () => {
+    let resolve!: (s: string) => void;
+    window.hermesAPI.getKnowledgeIndex = vi.fn(() => new Promise<string>((r) => { resolve = r; }));
+    const api: HarnessApi = {};
+    render(<Harness api={api} initialKnowledgeBundles={["alpha"]} />);
+    let sending!: Promise<boolean>;
+    await act(async () => { sending = api.send!("stop me"); });
+    await waitFor(() => expect(resolve).toBeTypeOf("function"));
+    await act(async () => { api.abort?.(); });
+    await act(async () => { resolve("INDEX"); await sending; });
+    expect(dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit")).toHaveLength(0);
+  });
+
+  it("fails index fetch visibly without submitting or falling back", async () => {
+    window.hermesAPI.getKnowledgeIndex = vi.fn(async () => { throw new Error("index unavailable"); });
+    const api: HarnessApi = {};
+    render(<Harness api={api} initialKnowledgeBundles={["alpha"]} />);
+    await act(async () => { expect(await api.send?.("first")).toBe(true); });
+    expect(dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit")).toHaveLength(0);
+    expect(api.messages?.some((m) => JSON.stringify(m).includes("index unavailable"))).toBe(true);
   });
 });
 

@@ -39,6 +39,7 @@ import type {
 import type { DesktopSessionContinuationItem } from "../../../../../shared/session-continuation";
 import type { SessionModelOverride } from "../../../../../shared/model-override";
 import { knowledgeChange, knowledgeKey } from "./knowledgeChange";
+import { encodeKnowledgePrompt } from "../../../../../shared/knowledge-envelope";
 import {
   buildRecoveryPrompt,
   detectWedgedSubagent,
@@ -125,10 +126,8 @@ interface EnsureDashboardRuntimeSessionParams {
   messages: ReadonlyArray<ChatMessage>;
   profile?: string;
   storedSessionId?: string | null;
-  /** Global knowledge bundle index injected as a system-role seed message so
-   *  the agent sees it as context — never prepended to the user's prompt text
-   *  (which would leak the system prompt into the visible user bubble). */
-  knowledgeIndex?: string;
+  /** Folder hint for a newly created session, never Knowledge state. */
+  folderContext?: string;
   model?: string;
   provider?: string;
   /** Attach as a LAZY watch window (gateway `session.resume` `lazy: true`):
@@ -178,7 +177,7 @@ interface UseDashboardChatTransportArgs {
   profile?: string;
   provider?: string;
   /** Global knowledge bundle names attached to this session. Their content
-   *  index is prepended to each submitted prompt so the gateway-side agent
+   *  index is included as user-supplied reference data so the gateway-side agent
    *  can reference/update those files with its file tools. */
   knowledgeBundles?: string[];
   /** PLAN mode: inject a system-role instruction forbidding file mutations. */
@@ -192,9 +191,7 @@ interface UseDashboardChatTransportArgs {
    *  unavailable on a remote/SSH connection and the renderer is falling back to
    *  the legacy HTTP transport. Lets the UI surface a one-time notice. */
   onDashboardUnavailable?: (reason: string) => void;
-  /** Fired when a mid-session knowledge toggle forces the runtime
-   *  session to be rebuilt on the next prompt (the agent only gains
-   *  the bundle from then on, never retroactively). */
+  /** Reports selection changes that take effect on the next turn. */
   onKnowledgeChanged?: (summary: string) => void;
   /**
    * Switch the active model for auto-recovery. Owned by the model config (Chat
@@ -409,10 +406,10 @@ export async function ensureDashboardRuntimeSession(
   const seedMessages = dashboardSeedMessagesFromTranscript(params.messages, {
     excludeUserId: params.excludeSeedUserId ?? null,
   });
-  if (params.knowledgeIndex && params.knowledgeIndex.trim()) {
+  if (params.folderContext && params.folderContext.trim()) {
     seedMessages.unshift({
       role: "system",
-      content: params.knowledgeIndex,
+      content: params.folderContext,
     });
   }
   const created = await params.client.request<SessionResponse>(
@@ -1310,11 +1307,10 @@ export function useDashboardChatTransport({
     DesktopSessionContinuationItem[]
   >([]);
   const lastSyncedCwdRef = useRef<string | null>(null);
-  const knowledgeIndexRef = useRef<string>("");
-  // The bundle set the LIVE runtime session was seeded with. A change here means
-  // the gateway's built context no longer matches the user's selection, so the
-  // runtime must be rebuilt on the next prompt (see the effect below).
-  const seededKnowledgeKeyRef = useRef<string | null>(null);
+  const selectedKnowledgeRef = useRef(knowledgeBundles ?? []);
+  selectedKnowledgeRef.current = knowledgeBundles ?? [];
+  // Notices never change backend session identity or historical context.
+  const notifiedKnowledgeKeyRef = useRef<string | null>(null);
   /** A knowledge change observed mid-turn, applied when the turn ends. */
   const pendingKnowledgeKeyRef = useRef<string | null>(null);
   const pendingKnowledgeSummaryRef = useRef<string | null>(null);
@@ -1329,44 +1325,12 @@ export function useDashboardChatTransport({
   }, [planMode]);
 
   useEffect(() => {
-    let cancelled = false;
-    const bundles = knowledgeBundles ?? [];
-    if (!enabled || bundles.length === 0) {
-      knowledgeIndexRef.current = "";
-      // An empty selection still counts as a change when the live session was
-      // seeded WITH bundles — the agent must stop seeing them.
-      maybeRecreateForKnowledge([]);
-      return;
-    }
-    void window.hermesAPI
-      .getKnowledgeIndex(bundles)
-      .then((index) => {
-        if (!cancelled) {
-          knowledgeIndexRef.current = index;
-          maybeRecreateForKnowledge(bundles);
-        }
-      })
-      .catch(() => {
-        knowledgeIndexRef.current = "";
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (enabled) notifyKnowledgeChange(knowledgeBundles ?? []);
   }, [enabled, knowledgeBundles]);
 
-  /**
-   * Mark the live runtime session stale when the knowledge selection no longer
-   * matches what it was seeded with. The NEXT prompt then rebuilds the runtime
-   * through the transport's existing `recreateRuntimeSessionRef` path, which
-   * closes the old runtime and resumes the SAME stored session (no new sidebar
-   * row) with a freshly built knowledge index.
-   *
-   * A null `seededKnowledgeKeyRef` means no runtime exists yet, so the first
-   * prompt seeds correctly on its own — nothing to do.
-   */
-  function maybeRecreateForKnowledge(next: readonly string[]): void {
-    const seeded = seededKnowledgeKeyRef.current;
+  /** Defer selection notices until idle; actual delivery is independent per turn. */
+  function notifyKnowledgeChange(next: readonly string[]): void {
+    const seeded = notifiedKnowledgeKeyRef.current;
     if (seeded === null) return;
     const change = knowledgeChange(seeded ? seeded.split("\u0000") : [], next);
     if (!change) return;
@@ -1375,26 +1339,23 @@ export function useDashboardChatTransport({
     // toggle is silently lost, which is the exact bug this guards against.
     pendingKnowledgeKeyRef.current = knowledgeKey(next);
     if (change.summary) pendingKnowledgeSummaryRef.current = change.summary;
-    applyRecreateForKnowledge();
+    flushKnowledgeNotice();
   }
 
-  /**
-   * Arm `recreateRuntimeSessionRef` once no turn owns the UI, and flush the
-   * pending notice. Safe to call repeatedly (send path + turn end).
-   */
-  function applyRecreateForKnowledge(): void {
+  /** Flush the pending UI notice while idle. */
+  function flushKnowledgeNotice(): void {
     if (pendingKnowledgeKeyRef.current === null) return;
     if (activeTurnRef.current) return; // re-applied when the turn completes
     const summary = pendingKnowledgeSummaryRef.current;
+    notifiedKnowledgeKeyRef.current = pendingKnowledgeKeyRef.current;
     pendingKnowledgeKeyRef.current = null;
     pendingKnowledgeSummaryRef.current = null;
-    recreateRuntimeSessionRef.current = true;
     if (summary) onKnowledgeChangeRef.current?.(summary);
   }
 
-  /** Record the bundle key a newly seeded runtime session carries. */
-  function rememberSeededKnowledge(): void {
-    seededKnowledgeKeyRef.current = knowledgeKey(knowledgeBundles ?? []);
+  /** Initialize the UI notice baseline when attaching a runtime. */
+  function rememberKnowledgeSelection(): void {
+    notifiedKnowledgeKeyRef.current = knowledgeKey(knowledgeBundles ?? []);
   }
 
   // Attached workspace folder → system-prompt index (like the knowledge
@@ -2479,8 +2440,8 @@ export function useDashboardChatTransport({
         if (activeTurn) activeTurn.status = failed ? "failed" : "completed";
         activeTurnRef.current = null;
         // A knowledge toggle made DURING this turn was latched; apply it now
-        // so the next prompt rebuilds the runtime with the fresh index.
-        applyRecreateForKnowledge();
+        // so the next prompt uses the fresh selection.
+        flushKnowledgeNotice();
         clearQuietFinalize();
         setToolProgress(null);
         setIsLoading(false);
@@ -2803,29 +2764,11 @@ export function useDashboardChatTransport({
         const systemParts: string[] = [];
         // PLAN MODE is intentionally NOT baked into the system context here. A
         // baked instruction goes stale the moment the user toggles plan mode
-        // off mid-session: session.resume ignores the seeded knowledgeIndex for
+        // off mid-session: session.resume ignores the seeded folderContext for
         // an existing stored session, so the model keeps "claiming" plan mode
         // forever. Enforcement is per-turn instead — handleGatewayEvent blocks
         // write/exec tool.start events live, so toggling re-enables them
         // immediately and the model never sees a stale directive.
-        if (knowledgeIndexRef.current) {
-          systemParts.push(knowledgeIndexRef.current);
-        } else if ((knowledgeBundles ?? []).length > 0) {
-          // RACE GUARD: the index loads asynchronously in an effect. If the
-          // session is created before it resolves (toggle just flipped, or a
-          // slow index build), the system prompt would be built WITHOUT the
-          // knowledge index — the model then "doesn't know the knowledge
-          // files even though the toggle is on", forever (single-shot).
-          try {
-            const index = await window.hermesAPI.getKnowledgeIndex(
-              knowledgeBundles ?? [],
-            );
-            knowledgeIndexRef.current = index ?? "";
-            if (index) systemParts.push(index);
-          } catch {
-            /* index optional */
-          }
-        }
         if (folderIndexRef.current) {
           systemParts.push(folderIndexRef.current);
         } else if (contextFolder?.trim()) {
@@ -2851,7 +2794,7 @@ export function useDashboardChatTransport({
           messages: messagesRef.current,
           profile,
           storedSessionId: stored,
-          knowledgeIndex: systemParts.join("\n\n"),
+          folderContext: systemParts.join("\n\n"),
           model: selectedModel,
           provider: selectedProvider,
           // Subagent watch window: attach LAZILY so the gateway mirrors the
@@ -2875,8 +2818,8 @@ export function useDashboardChatTransport({
         targetSessionId = response.runtimeSessionId;
         runtimeSessionIdRef.current = targetSessionId;
         lastRuntimeSessionWasCreatedRef.current = response.created;
-        // The gateway now holds a context built from THIS bundle set.
-        rememberSeededKnowledge();
+        // Initialize the notice baseline, not backend Knowledge state.
+        rememberKnowledgeSelection();
         justCreated = response.created;
         if (justCreated && contextFolder) {
           lastSyncedCwdRef.current = contextFolder;
@@ -3814,13 +3757,34 @@ export function useDashboardChatTransport({
         // forever. Any accepted stream event pushes the deadline out.
         resetStallTimer();
 
+        let wireText = submitText;
+        // Snapshot immediately before submit; selection changes discard in-flight reads.
+        for (;;) {
+          const selected = [...selectedKnowledgeRef.current];
+          const key = knowledgeKey(selected);
+          let index = "";
+          try {
+            index = selected.length ? await window.hermesAPI.getKnowledgeIndex(selected) : "";
+          } catch (error) {
+            if (cancelled()) return true;
+            if (key !== knowledgeKey(selectedKnowledgeRef.current)) continue;
+            return failActiveTurn(`Knowledge index could not be loaded: ${error instanceof Error ? error.message : String(error)}`);
+          }
+          if (cancelled()) return true;
+          if (key !== knowledgeKey(selectedKnowledgeRef.current)) continue;
+          if (selected.length && (typeof index !== "string" || !index.trim())) {
+            return failActiveTurn("Knowledge index could not be loaded: selected bundles returned an empty index.");
+          }
+          if (index) wireText = encodeKnowledgePrompt(text, index, submitText);
+          break;
+        }
         submitted = true;
         if (sendTimingRef.current) sendTimingRef.current.submitted = true;
         markSendStage("submit");
         await submitDashboardPromptWithRecovery(client, {
           sessionId: selectedSessionId,
           storedSessionId: storedSessionIdRef.current,
-          text: submitText,
+          text: wireText,
           profile,
           cancelled,
           onRecoveredSessionId: (recoveredSessionId) => {
@@ -3932,11 +3896,23 @@ export function useDashboardChatTransport({
         const client = await ensureClient();
         const runtimeSessionId = await ensureRuntimeSession(client);
         const sessionId = await ensureSelectedModel(client, runtimeSessionId);
+        let wireText = text;
+        const generation = sendGenerationRef.current;
+        for (;;) {
+          const selected = [...selectedKnowledgeRef.current];
+          const key = knowledgeKey(selected);
+          const index = selected.length ? await window.hermesAPI.getKnowledgeIndex(selected) : "";
+          if (generation !== sendGenerationRef.current) return { error: "Background send cancelled" };
+          if (key !== knowledgeKey(selectedKnowledgeRef.current)) continue;
+          if (selected.length && (typeof index !== "string" || !index.trim())) throw new Error("Knowledge index could not be loaded: selected bundles returned an empty index.");
+          if (index) wireText = encodeKnowledgePrompt(text, index);
+          break;
+        }
         const r = await client.request<{ task_id?: string }>(
           "prompt.background",
           {
             session_id: sessionId,
-            text,
+            text: wireText,
             ...(profile && profile !== "default" ? { profile } : {}),
           },
         );

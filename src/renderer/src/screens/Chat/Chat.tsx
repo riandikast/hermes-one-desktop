@@ -1832,7 +1832,7 @@ function Chat({
     onDashboardUnavailable: handleDashboardUnavailable,
     onRuntimeModel: setRuntimeModel,
     onKnowledgeChanged: (summary) => {
-      // The gateway rebuilds its context on the NEXT prompt, so say so
+      // The next prompt carries the new selection; prior context persists, so say so
       // rather than let the user assume the toggle applied retroactively.
       addAgentMessage(knowledgeChangeNotice(summary));
     },

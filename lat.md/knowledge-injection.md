@@ -1,25 +1,47 @@
 # Knowledge bundle injection
 
-Knowledge indexes enter session context as system-role seed messages, not visible user text.
-
-When a chat attaches knowledge bundles, their content index is injected as a **system-role seed message** so the agent treats the files as context — the index is never prepended to the user's prompt text (which would leak the system prompt into the visible user bubble).
+The dashboard includes fresh selected Knowledge indexes in user-message text, without backend patches, extra RPC fields, system authority or Knowledge-driven session recreation.
 
 ## How the index reaches the model
 
-[[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#ensureDashboardRuntimeSession]] injects the index as a `system` seed message at `session.create`. The legacy transport ([[src/main/hermes.ts]]) instead re-injects it per request; the dashboard path can't — its turns resume via `session.resume`/`prompt.submit`, which carry no per-turn instructions.
+Every dashboard submit fetches the selected index immediately before dispatch, including unchanged selections so edits appear next turn.
 
-## Index wording + hints
+[[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#useDashboardChatTransport]] discards stale selection reads and checks cancellation. Fetch errors and empty enabled indexes visibly fail without submission or silent omission. Removal excludes the index from future prompts. Background prompts use the same user-data format.
 
-`buildKnowledgeIndex` ([[src/main/knowledge.ts#buildKnowledgeIndex]]) emits one assertive instruction line plus a per-bundle file list.
+## Text envelope and history
 
-The instruction frames the files as the user's AUTHORITATIVE context and tells the model to open a file with its file tools whenever a listed file COULD be relevant — the hint line is only a pointer, so the model must open the file for its full content before deciding it is not relevant. This stronger framing (vs the old soft "read when relevant") makes the model actually consult the bundles instead of silently judging them irrelevant from a cryptic title.
+[[src/shared/knowledge-envelope.ts#encodeKnowledgePrompt]] stores exact original text, reference context and attachment-expanded text in a versioned canonical JSON envelope.
 
-Each file's hint is the first non-empty line, truncated to 140 chars. When that line is a short markdown heading (≤60 chars) the start of the next non-empty line is appended ("`# Title — subtitle`"), so relevance is recognizable without dumping contents. A long prose first line already carries meaning, so no second line is pulled — the hint stays a pointer, not a content dump, inside the index budget.
+The introduction labels references user-supplied data, not system instructions. [[src/shared/knowledge-envelope.ts#decodeKnowledgePrompt]] requires exact whole-string canonical validation, version, types and keys. Malformed, partial, embedded and suffixed lookalikes remain unchanged. This marker is not cryptographic provenance: deliberately copying a valid envelope is indistinguishable from desktop output.
 
-## Single-shot limitation
+[[src/renderer/src/screens/Chat/sessionHistory.ts#stripKnowledgeIndexHeader]] decodes valid user envelopes at the DB-to-UI boundary. Ordinary text preserves whitespace. Optimistic bubbles, recovery source prompts, transcript/checkpoint snapshots, input history and unsend/edit callbacks retain original text. Image staging and attachment references remain unchanged. Slash routing precedes augmentation; command execution and clarify responses retain existing protocols.
 
-Knowledge context is seeded at creation; later attachment changes cannot refresh a resumed session seed.
+## Backend delivery contract
 
-On the dashboard transport the index is seeded only at `session.create`; resumed turns cannot carry a fresh seed. A RACE GUARD in [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#ensureDashboardRuntimeSession]] fetches the index inline (awaiting `getKnowledgeIndex`) when the async effect hasn't populated the ref yet — without it, toggling knowledge on and sending immediately could create the session with an EMPTY index ("toggle on but the model doesn't know the knowledge files"). The injected intro now carries a SNAPSHOT warning: the model must list the knowledge directory with its file tools and read the current content before writing, and must write to the EXACT absolute path in the index (never guess a path/filename) — this corrects stale-index wrong-file writes mid-session. Short-heading hints append the next line so files are more distinguishable.
+Only existing `text` changes; no capability endpoint, Knowledge parameter, compatibility installer or backend mutation is required.
 
-`session.resume`/`prompt.submit` accept only `{session_id, text, profile}`, so a bundle toggled on **mid-conversation** does not take effect until a new session is created, and the instruction recedes over a long conversation (recency / lost-in-the-middle). The toggle is persisted per session in `localStorage` (`hermes.session.knowledge.<id>`, managed in [[src/renderer/src/screens/Chat/Chat.tsx]]), so "always on" reliably injects on the first turn of each new chat. Fully re-seeding mid-conversation would require force-creating a fresh session (new stored id) and re-keying the localStorage attachment — intentionally not automated, because the id change would erase the just-made toggle via the load-on-id-change effect, and the `session.create` flow can't be integration-tested locally.
+Session-not-found replay resends the same envelope once. Actual recovery sends rebuild from original text with a fresh index, never recursive wrapping. Historical messages are not globally rewritten. Folder hints remain creation-time context; new sessions receive no Knowledge system seeds.
+
+## Unsupported routes and old sessions
+
+Selection changes affect future indexes only; previous user reference context and legacy durable system seeds can remain in backend history.
+
+No session recreation or clean-session requirement is imposed. Ambiguous unversioned user prefixes are not heuristically stripped. Legacy HTTP transport behavior is unchanged; this dashboard implementation does not repair that separate system-instruction route. Raw backend search indexes retain envelope text; search-rendered user rows use the strict decoder. Other clients may display stored wire text.
+
+## Rollout
+
+Source changes and offline tests perform no backend installation, paid provider call, user DB edit, build, restart, credential change, commit or push.
+
+Desktop deployment is separate; changes are not claimed to be loaded in the running app.
+
+## Index wording and hints
+
+[[src/main/knowledge.ts#buildKnowledgeIndex]] remains unchanged: selected paths and short relevance hints, not full contents.
+
+Full contents require file tools and permissions. The model may ignore references. Delivery is not obedience; prior context persists and fresh indexes consume tokens under existing provider limits.
+
+## Synthetic transport diagnostics
+
+Offline mounted tests assert actual payloads and decoded history, not merely reconnects or a model's claimed awareness.
+
+[[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.test.tsx]] covers fresh/resumed sends, change/removal without churn, unchanged-selection refresh, removal races, cancellation, visible fetch failure, original reopened history, malformed envelopes and one session-not-found replay. Existing attachment, command and recovery tests remain applicable. No live-provider obedience or installed-runtime behavior is claimed.

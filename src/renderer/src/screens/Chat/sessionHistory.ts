@@ -1,3 +1,4 @@
+import { originalKnowledgePrompt } from "../../../../shared/knowledge-envelope";
 import type { Attachment } from "../../../../shared/attachments";
 import {
   isAssistantError,
@@ -47,33 +48,9 @@ export interface DbHistoryItem {
  * makes them appear without the user having to focus-change to
  */
 
-/**
- * Strip a legacy knowledge-bundle index header that was previously prepended
- * to the user's prompt text (so the agent would see it). Those rows were
- * saved into state.db verbatim, so reopening the session rendered the system
- * prompt inside the visible user bubble. The header starts with the fixed
- * intro line, followed by `## <bundle>` / `- <file>` listing lines.
- */
+/** Decode only a complete, valid desktop envelope; ordinary text is byte-preserved. */
 export function stripKnowledgeIndexHeader(text: string): string {
-  if (!text) return "";
-  const trimmed = text.trim();
-  if (!/^The user attached the following knowledge bundles\./i.test(trimmed)) {
-    return trimmed;
-  }
-  const lines = text.split(/\r?\n/);
-  let i = 0;
-  // Skip the intro line and every subsequent blank / `##` / `-` listing line.
-  if (i < lines.length) i++;
-  while (
-    i < lines.length &&
-    (lines[i].trim() === "" ||
-      /^(##\s+|\s*-)/.test(lines[i]) ||
-      /^(##\s+|\s*-)/.test(lines[i].trim()))
-  ) {
-    i++;
-  }
-  const rest = lines.slice(i).join("\n").trim();
-  return rest || trimmed;
+  return originalKnowledgePrompt(text);
 }
 
 /** Local structural guards (kept private to this module). */

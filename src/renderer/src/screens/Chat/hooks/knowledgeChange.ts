@@ -1,18 +1,4 @@
-/**
- * Tracks the knowledge-bundle set a live runtime session was seeded with, so a
- * mid-session toggle can mark that session stale.
- *
- * Why this exists: the knowledge index is injected ONCE, through
- * `session.create`'s seed (`ensureRuntimeSessionUnlocked` → `knowledgeIndex`).
- * `prompt.submit` has no per-turn instructions channel, and the gateway ignores
- * a re-seeded index on `session.resume` for an existing stored session. So
- * without this, toggling a bundle on mid-conversation updates a ref nobody
- * reads again and the agent never learns about the bundle.
- *
- * Marking the runtime stale makes the NEXT prompt rebuild it (the transport's
- * existing `recreateRuntimeSessionRef` path, which closes the old runtime and
- * resumes the SAME stored session — no new sidebar row).
- */
+/** Selection notices only; Knowledge is sent as user data on each outgoing turn. */
 
 /** Stable, order-independent key for a bundle set. */
 export function knowledgeKey(bundles: readonly string[] | undefined): string {
@@ -22,7 +8,7 @@ export function knowledgeKey(bundles: readonly string[] | undefined): string {
 }
 
 export interface KnowledgeChange {
-  /** Bundles the live session was seeded with. */
+  /** Previously selected bundles. */
   previous: string[];
   /** Bundles now selected. */
   next: string[];
@@ -47,7 +33,7 @@ function describeChange(previous: string[], next: string[]): string {
 }
 
 /**
- * Decide whether a bundle-set change needs the runtime rebuilt.
+ * Describe a bundle-set change without rebuilding the runtime.
  *
  * Returns null when nothing meaningful changed (key identical), so callers can
  * safely invoke this on every render/toggle without churn.
@@ -70,6 +56,6 @@ export function knowledgeChange(
 export function knowledgeChangeNotice(summary: string): string {
   return (
     `Knowledge updated — ${summary}. ` +
-    "The change applies from your next message: the session context is being rebuilt so the agent sees it."
+    "The change applies from your next message. Earlier reference context remains in conversation history."
   );
 }
