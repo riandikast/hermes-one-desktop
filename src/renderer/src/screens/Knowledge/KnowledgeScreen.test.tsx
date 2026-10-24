@@ -47,7 +47,7 @@ describe("Knowledge list rows", () => {
       screen.getByRole("list", { name: "Knowledge bundles" }).tagName,
     ).toBe("UL");
     const row = bundle.closest("li")!;
-    expect(row.querySelectorAll("button")).toHaveLength(4);
+    expect(row.querySelectorAll("button")).toHaveLength(3);
     expect(
       row.querySelector("button button, button input, [role=button]"),
     ).toBeNull();
@@ -132,15 +132,19 @@ describe("Knowledge list rows", () => {
     },
   );
 
-  it("opens the inline add-file bar without entering the bundle", async () => {
+  it("offers Add File only at the top right of the bundle file list", async () => {
     setup();
     render(<KnowledgeScreen />);
-    await screen.findByText("guide");
-    fireEvent.click(screen.getByTitle("Add File"));
+    const bundle = await screen.findByRole("button", { name: "guide 1 file" });
+    expect(screen.queryByRole("button", { name: "Add File" })).toBeNull();
+    fireEvent.click(bundle);
+    const add = screen.getByRole("button", { name: "Add File" });
+    expect(add.closest(".knowledge-drill-head")).not.toBeNull();
+    fireEvent.click(add);
     const input = screen.getByPlaceholderText("File name (e.g. style.md)...");
     expect(document.activeElement).toBe(input);
     expect(
-      screen.getByRole("list", { name: "Knowledge bundles" }),
+      screen.getByRole("list", { name: "guide files" }),
     ).toBeTruthy();
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByRole("textbox")).toBeNull();

@@ -38,6 +38,8 @@ Transient New Bundle and Add File inputs retain ref-driven focus/select. Bundle 
 
 Native open buttons and sibling action buttons keep navigation separate from management. Bundle and file lists use the same row styles, visible actions, truncated names and responsive metadata; narrow/touch layouts provide 44px action targets.
 
+Add File lives at the top right of the opened bundle's file-list header, not in parent bundle rows. The same header action works for empty bundles; right-click creation remains available.
+
 [[src/renderer/src/screens/Knowledge/KnowledgeScreen.test.tsx]] checks semantic lists, sibling controls, actual counts, file opening and independent Add File input focus. [[src/renderer/src/screens/Knowledge/KnowledgeScreen.drill.test.tsx]] covers creation, rejection/retry, empty states and the navigation round trip.
 
 ## Keyboard rename isolation

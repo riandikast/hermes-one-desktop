@@ -1044,17 +1044,7 @@ export function KnowledgeScreen(): React.JSX.Element {
                             >
                               <Pencil size={13} />
                             </button>
-                            <button
-                              type="button"
-                              className="btn-ghost btn-xs"
-                              title="Add File"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setAddingFileBundle(bundle.name);
-                              }}
-                            >
-                              <Plus size={13} />
-                            </button>
+
                             <button
                               type="button"
                               className="btn-ghost btn-xs danger"
@@ -1068,41 +1058,7 @@ export function KnowledgeScreen(): React.JSX.Element {
                           </div>
                         </div>
 
-                        {addingFileBundle === bundle.name && (
-                          <div
-                            className="knowledge-add-file-bar"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <input
-                              ref={addFileInputRef}
-                              type="text"
-                              autoFocus
-                              placeholder="File name (e.g. style.md)..."
-                              value={newFileName}
-                              onChange={(e) => setNewFileName(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter")
-                                  void handleAddFile(bundle.name);
-                                if (e.key === "Escape")
-                                  setAddingFileBundle(null);
-                              }}
-                            />
-                            <button
-                              type="button"
-                              className="btn btn-xs btn-primary"
-                              onClick={() => void handleAddFile(bundle.name)}
-                            >
-                              Add
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-ghost btn-xs"
-                              onClick={() => setAddingFileBundle(null)}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        )}
+
                       </li>
                     );
                   })
@@ -1131,6 +1087,14 @@ export function KnowledgeScreen(): React.JSX.Element {
                 {activeBundle.files.length} file
                 {activeBundle.files.length === 1 ? "" : "s"}
               </span>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setAddingFileBundle(activeBundle.name)}
+              >
+                <Plus size={14} />
+                Add File
+              </button>
             </div>
 
             {/* Inline create bar for THIS bundle, right in the file list —
@@ -1180,17 +1144,8 @@ export function KnowledgeScreen(): React.JSX.Element {
               {activeBundle.files.length === 0 ? (
                 <div className="knowledge-drill-empty">
                   <p>No files in this bundle yet.</p>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setAddingFileBundle(activeBundle.name)}
-                  >
-                    <Plus size={14} />
-                    Add File
-                  </button>
                   <p className="knowledge-drill-empty-hint">
-                    Right-click here (or use the + on the bundle card) to add
-                    one.
+                    Right-click here or use Add File above to add one.
                   </p>
                 </div>
               ) : (
