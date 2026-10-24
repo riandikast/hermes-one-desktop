@@ -25,7 +25,6 @@ import {
   Check,
   Upload,
   Save,
-  ChevronRight,
   ArrowLeft,
   Pencil,
 } from "../../assets/icons";
@@ -774,7 +773,7 @@ export function KnowledgeScreen(): React.JSX.Element {
   };
 
   const handleDragOverBundle = (
-    e: React.DragEvent<HTMLDivElement>,
+    e: React.DragEvent<HTMLElement>,
     bundleName: string,
   ) => {
     if (!draggedFile) return;
@@ -785,7 +784,7 @@ export function KnowledgeScreen(): React.JSX.Element {
   };
 
   const handleDropOnBundle = async (
-    e: React.DragEvent<HTMLDivElement>,
+    e: React.DragEvent<HTMLElement>,
     bundleName: string,
   ) => {
     e.preventDefault();
@@ -945,9 +944,12 @@ export function KnowledgeScreen(): React.JSX.Element {
             </div>
 
             <div className="knowledge-drill-scroll">
-              <div className="knowledge-bundle-list">
+              <ul
+                className="knowledge-bundle-list"
+                aria-label="Knowledge bundles"
+              >
                 {bundles.length === 0 ? (
-                  <div className="knowledge-drill-empty">
+                  <li className="knowledge-drill-empty">
                     <p>No knowledge bundles yet.</p>
                     <button
                       type="button"
@@ -958,9 +960,10 @@ export function KnowledgeScreen(): React.JSX.Element {
                       <span>New Bundle</span>
                     </button>
                     <p className="knowledge-drill-empty-hint">
-                      Create a bundle or import a folder to organize documentation and reference files.
+                      Create a bundle or import a folder to organize
+                      documentation and reference files.
                     </p>
-                  </div>
+                  </li>
                 ) : (
                   bundles.map((bundle) => {
                     const isRenamingBundle = renamingBundle === bundle.name;
@@ -970,7 +973,7 @@ export function KnowledgeScreen(): React.JSX.Element {
                         ? "No files yet"
                         : `${fileCount} file${fileCount === 1 ? "" : "s"}`;
                     return (
-                      <div
+                      <li
                         key={bundle.name}
                         className={`knowledge-bundle-item ${
                           dragOverBundle === bundle.name
@@ -991,95 +994,77 @@ export function KnowledgeScreen(): React.JSX.Element {
                         }}
                         onDrop={(e) => void handleDropOnBundle(e, bundle.name)}
                       >
-                        {/* Card front: icon, title, summary, count, action.
-                            Clicking the card DRILLS IN to the file list. */}
-                        <div
-                          className="knowledge-bundle-card"
-                          onClick={() => openBundleFiles(bundle.name)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              openBundleFiles(bundle.name);
-                            }
-                          }}
-                        >
-                          <div className="knowledge-bundle-card-top">
-                            <span className="knowledge-bundle-card-icon">
-                              <BookOpen size={20} />
-                            </span>
-                            <div className="knowledge-bundle-card-main">
-                              {isRenamingBundle ? (
-                                <input
-                                  type="text"
-                                  className="knowledge-inline-rename-input knowledge-bundle-rename-input"
-                                  autoFocus
-                                  value={renamingBundleValue}
-                                  onChange={(e) =>
-                                    setRenamingBundleValue(e.target.value)
-                                  }
-                                  onClick={(e) => e.stopPropagation()}
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") {
-                                      e.preventDefault();
-                                      void submitRenameBundle();
-                                    } else if (e.key === "Escape") {
-                                      setRenamingBundle(null);
-                                    }
-                                  }}
-                                  onBlur={() => void submitRenameBundle()}
-                                />
-                              ) : (
-                                <div className="knowledge-bundle-card-title">
-                                  {bundle.name}
-                                </div>
-                              )}
-
-                              <div className="knowledge-bundle-card-sub">
-                                {fileLabel}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="knowledge-bundle-card-actions">
-                            <div className="bundle-hover-actions">
-                              <button
-                                type="button"
-                                className="btn-ghost btn-xs"
-                                title="Rename Bundle"
-                                onClick={(e) => startRenameBundle(bundle.name, e)}
-                              >
-                                <Pencil size={13} />
-                              </button>
-                              <button
-                                type="button"
-                                className="btn-ghost btn-xs"
-                                title="Add File"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setAddingFileBundle(bundle.name);
-                                }}
-                              >
-                                <Plus size={13} />
-                              </button>
-                              <button
-                                type="button"
-                                className="btn-ghost btn-xs danger"
-                                title="Delete Bundle"
-                                onClick={(e) =>
-                                  void handleDeleteBundle(bundle.name, e)
+                        <div className="knowledge-list-row">
+                          {isRenamingBundle ? (
+                            <div className="knowledge-row-edit">
+                              <BookOpen size={16} aria-hidden="true" />
+                              <input
+                                type="text"
+                                className="knowledge-inline-rename-input"
+                                aria-label="Bundle name"
+                                autoFocus
+                                value={renamingBundleValue}
+                                onChange={(e) =>
+                                  setRenamingBundleValue(e.target.value)
                                 }
-                              >
-                                <Trash2 size={13} />
-                              </button>
+                                onClick={(e) => e.stopPropagation()}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    void submitRenameBundle();
+                                  } else if (e.key === "Escape") {
+                                    setRenamingBundle(null);
+                                  }
+                                }}
+                                onBlur={() => void submitRenameBundle()}
+                              />
                             </div>
-
-                            <span className="knowledge-bundle-card-pill">
-                              Open
-                              <ChevronRight size={12} />
-                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="knowledge-row-open knowledge-bundle-open"
+                              onClick={() => openBundleFiles(bundle.name)}
+                            >
+                              <BookOpen size={16} aria-hidden="true" />
+                              <span className="knowledge-row-name">
+                                {bundle.name}
+                              </span>
+                              <span className="knowledge-row-meta">
+                                {fileLabel}
+                              </span>
+                            </button>
+                          )}
+                          <div className="knowledge-row-actions">
+                            <button
+                              type="button"
+                              className="btn-ghost btn-xs"
+                              title="Rename Bundle"
+                              onClick={(e) => startRenameBundle(bundle.name, e)}
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-ghost btn-xs"
+                              title="Add File"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAddingFileBundle(bundle.name);
+                              }}
+                            >
+                              <Plus size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-ghost btn-xs danger"
+                              title="Delete Bundle"
+                              onClick={(e) =>
+                                void handleDeleteBundle(bundle.name, e)
+                              }
+                            >
+                              <Trash2 size={13} />
+                            </button>
                           </div>
                         </div>
 
@@ -1096,8 +1081,10 @@ export function KnowledgeScreen(): React.JSX.Element {
                               value={newFileName}
                               onChange={(e) => setNewFileName(e.target.value)}
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") void handleAddFile(bundle.name);
-                                if (e.key === "Escape") setAddingFileBundle(null);
+                                if (e.key === "Enter")
+                                  void handleAddFile(bundle.name);
+                                if (e.key === "Escape")
+                                  setAddingFileBundle(null);
                               }}
                             />
                             <button
@@ -1116,11 +1103,11 @@ export function KnowledgeScreen(): React.JSX.Element {
                             </button>
                           </div>
                         )}
-                      </div>
+                      </li>
                     );
                   })
                 )}
-              </div>
+              </ul>
             </div>
           </div>
         )}
@@ -1139,9 +1126,7 @@ export function KnowledgeScreen(): React.JSX.Element {
                 <ArrowLeft size={14} />
                 <span>Bundles</span>
               </button>
-              <span className="knowledge-drill-title">
-                {activeBundle.name}
-              </span>
+              <span className="knowledge-drill-title">{activeBundle.name}</span>
               <span className="knowledge-drill-count">
                 {activeBundle.files.length} file
                 {activeBundle.files.length === 1 ? "" : "s"}
@@ -1160,7 +1145,8 @@ export function KnowledgeScreen(): React.JSX.Element {
                   value={newFileName}
                   onChange={(e) => setNewFileName(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") void handleAddFile(activeBundle.name);
+                    if (e.key === "Enter")
+                      void handleAddFile(activeBundle.name);
                     if (e.key === "Escape") setAddingFileBundle(null);
                   }}
                 />
@@ -1203,11 +1189,15 @@ export function KnowledgeScreen(): React.JSX.Element {
                     Add File
                   </button>
                   <p className="knowledge-drill-empty-hint">
-                    Right-click here (or use the + on the bundle card) to add one.
+                    Right-click here (or use the + on the bundle card) to add
+                    one.
                   </p>
                 </div>
               ) : (
-                <ul className="knowledge-file-grid">
+                <ul
+                  className="knowledge-file-list"
+                  aria-label={`${activeBundle.name} files`}
+                >
                   {activeBundle.files.map((file) => {
                     const isRenamingThis =
                       renamingFile?.bundleName === activeBundle.name &&
@@ -1215,60 +1205,59 @@ export function KnowledgeScreen(): React.JSX.Element {
                     return (
                       <li
                         key={file.name}
-                        className="knowledge-file-card"
-                        draggable
+                        className="knowledge-list-row"
+                        draggable={!isRenamingThis}
                         onDragStart={(e) =>
                           handleDragFileStart(e, activeBundle.name, file.name)
                         }
                         onDragEnd={handleDragEndFile}
                       >
-                        <button
-                          type="button"
-                          className="knowledge-file-card-open"
-                          onClick={() =>
-                            !isRenamingThis &&
-                            void handleSelectFile(
-                              activeBundle.name,
-                              file.name,
-                              file.path,
-                            )
-                          }
-                        >
-                          <span className="knowledge-file-card-icon">
-                            <FileText size={16} />
-                          </span>
-                          <div className="knowledge-file-card-content">
-                            {isRenamingThis ? (
-                              <input
-                                type="text"
-                                className="knowledge-inline-rename-input"
-                                autoFocus
-                                value={renamingValue}
-                                onChange={(e) => setRenamingValue(e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    void submitRenameFile();
-                                  } else if (e.key === "Escape") {
-                                    setRenamingFile(null);
-                                  }
-                                }}
-                                onBlur={() => void submitRenameFile()}
-                              />
-                            ) : (
-                              <span className="knowledge-file-card-name">
-                                {file.name}
-                              </span>
-                            )}
+                        {isRenamingThis ? (
+                          <div className="knowledge-row-edit">
+                            <FileText size={16} aria-hidden="true" />
+                            <input
+                              type="text"
+                              className="knowledge-inline-rename-input"
+                              aria-label="File name"
+                              autoFocus
+                              value={renamingValue}
+                              onChange={(e) => setRenamingValue(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  void submitRenameFile();
+                                } else if (e.key === "Escape") {
+                                  setRenamingFile(null);
+                                }
+                              }}
+                              onBlur={() => void submitRenameFile()}
+                            />
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="knowledge-row-open knowledge-file-open"
+                            onClick={() =>
+                              void handleSelectFile(
+                                activeBundle.name,
+                                file.name,
+                                file.path,
+                              )
+                            }
+                          >
+                            <FileText size={16} aria-hidden="true" />
+                            <span className="knowledge-row-name">
+                              {file.name}
+                            </span>
                             {file.size > 0 && (
-                              <span className="knowledge-file-card-size">
+                              <span className="knowledge-row-meta">
                                 {formatFileSize(file.size)}
                               </span>
                             )}
-                          </div>
-                        </button>
-                        <div className="knowledge-file-card-actions">
+                          </button>
+                        )}
+                        <div className="knowledge-row-actions">
                           <button
                             type="button"
                             className="btn-ghost btn-xs"

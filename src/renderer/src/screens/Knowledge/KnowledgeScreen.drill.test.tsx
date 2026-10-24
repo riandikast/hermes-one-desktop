@@ -48,14 +48,14 @@ const q = <T extends Element>(sel: string): T | null =>
 async function openBundle(): Promise<void> {
   render(<KnowledgeScreen />);
   await screen.findByText("ui-style-guide");
-  fireEvent.click(q(".knowledge-bundle-card")!);
-  await waitFor(() => expect(q(".knowledge-file-grid")).not.toBeNull());
+  fireEvent.click(q(".knowledge-bundle-open")!);
+  await waitFor(() => expect(q(".knowledge-file-list")).not.toBeNull());
 }
 
 /** Grid → file list → editor, via a file card. */
 async function openFile(): Promise<void> {
   await openBundle();
-  fireEvent.click(q(".knowledge-file-card-open")!);
+  fireEvent.click(q(".knowledge-file-open")!);
   await waitFor(() => expect(q(".knowledge-editor-container")).not.toBeNull());
 }
 
@@ -155,7 +155,7 @@ describe("knowledge drill-down navigation", () => {
     await screen.findByText("ui-style-guide");
 
     expect(q(".knowledge-bundle-list")).not.toBeNull();
-    expect(q(".knowledge-file-grid")).toBeNull();
+    expect(q(".knowledge-file-list")).toBeNull();
     expect(q(".knowledge-editor-container")).toBeNull();
   });
 
@@ -174,7 +174,7 @@ describe("knowledge drill-down navigation", () => {
     await openBundle();
 
     // Both files of that bundle, as cards.
-    const names = [...document.querySelectorAll(".knowledge-file-card-name")];
+    const names = [...document.querySelectorAll(".knowledge-row-name")];
     expect(names.map((n) => n.textContent)).toEqual([
       "colors.md",
       "spacing.md",
@@ -187,7 +187,7 @@ describe("knowledge drill-down navigation", () => {
     mockBundles();
     await openFile();
 
-    expect(q(".knowledge-file-grid")).toBeNull();
+    expect(q(".knowledge-file-list")).toBeNull();
     expect(q(".file-title")?.textContent).toBe("colors.md");
   });
 
@@ -197,7 +197,7 @@ describe("knowledge drill-down navigation", () => {
 
     fireEvent.click(q(".knowledge-back-btn")!);
 
-    await waitFor(() => expect(q(".knowledge-file-grid")).not.toBeNull());
+    await waitFor(() => expect(q(".knowledge-file-list")).not.toBeNull());
     // One level only: the grid must NOT reappear here.
     expect(q(".knowledge-bundle-list")).toBeNull();
   });
@@ -209,7 +209,7 @@ describe("knowledge drill-down navigation", () => {
     fireEvent.click(q(".knowledge-back-btn")!);
 
     await waitFor(() => expect(q(".knowledge-bundle-list")).not.toBeNull());
-    expect(q(".knowledge-file-grid")).toBeNull();
+    expect(q(".knowledge-file-list")).toBeNull();
   });
 
   it("supports the full round trip back to the grid", async () => {
@@ -217,12 +217,12 @@ describe("knowledge drill-down navigation", () => {
     await openFile();
 
     fireEvent.click(q(".knowledge-back-btn")!); // editor -> files
-    await waitFor(() => expect(q(".knowledge-file-grid")).not.toBeNull());
+    await waitFor(() => expect(q(".knowledge-file-list")).not.toBeNull());
     fireEvent.click(q(".knowledge-back-btn")!); // files -> bundles
     await waitFor(() => expect(q(".knowledge-bundle-list")).not.toBeNull());
 
     expect(q(".knowledge-editor-container")).toBeNull();
-    expect(q(".knowledge-file-grid")).toBeNull();
+    expect(q(".knowledge-file-list")).toBeNull();
   });
 
   it("labels each back control with its destination", async () => {
@@ -230,7 +230,7 @@ describe("knowledge drill-down navigation", () => {
     await openBundle();
     expect(q(".knowledge-back-btn")?.textContent).toContain("Bundles");
 
-    fireEvent.click(q(".knowledge-file-card-open")!);
+    fireEvent.click(q(".knowledge-file-open")!);
     await waitFor(() =>
       expect(q(".knowledge-editor-container")).not.toBeNull(),
     );
@@ -259,7 +259,7 @@ describe("knowledge drill-down navigation", () => {
     };
     render(<KnowledgeScreen />);
     await screen.findByText("solo");
-    fireEvent.click(q(".knowledge-bundle-card")!);
+    fireEvent.click(q(".knowledge-bundle-open")!);
     await waitFor(() => expect(q(".knowledge-drill-count")).not.toBeNull());
     expect(q(".knowledge-drill-count")?.textContent).toBe("1 file");
   });
@@ -273,10 +273,10 @@ describe("knowledge drill-down navigation", () => {
     };
     render(<KnowledgeScreen />);
     await screen.findByText("blank");
-    fireEvent.click(q(".knowledge-bundle-card")!);
+    fireEvent.click(q(".knowledge-bundle-open")!);
 
     await waitFor(() => expect(q(".knowledge-drill-empty")).not.toBeNull());
-    expect(q(".knowledge-file-grid")).toBeNull();
+    expect(q(".knowledge-file-list")).toBeNull();
     // Back still works, so an empty bundle is not a dead end.
     fireEvent.click(q(".knowledge-back-btn")!);
     await waitFor(() => expect(q(".knowledge-bundle-list")).not.toBeNull());

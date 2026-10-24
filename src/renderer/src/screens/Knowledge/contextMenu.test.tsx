@@ -29,7 +29,7 @@ function mockApi(): void {
 async function openEmptyBundle(): Promise<void> {
   render(<KnowledgeScreen />);
   await screen.findByText("ui-rules");
-  fireEvent.click(q(".knowledge-bundle-card")!);
+  fireEvent.click(q(".knowledge-bundle-open")!);
   await waitFor(() => expect(q(".knowledge-drill-empty")).not.toBeNull());
 }
 

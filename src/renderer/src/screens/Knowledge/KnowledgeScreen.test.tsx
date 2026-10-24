@@ -1,149 +1,148 @@
 // @vitest-environment jsdom
-//
-// The bundle grid: card structure, the file-count summary, and that the card
-// front is a single accessible target that drills into the bundle.
-
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { KnowledgeScreen } from "./KnowledgeScreen";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-vi.mock("../../components/useI18n", () => ({
-  useI18n: () => ({
-    t: (key: string) => key,
-  }),
-}));
+const css = readFileSync(resolve("src/renderer/src/assets/main.css"), "utf8");
 
-describe("KnowledgeScreen", () => {
-  function mockBundles(
-    files: {
-      name: string;
-      path: string;
-      relativePath?: string;
-      size?: number;
-    }[] = [
+function setup(count = 1): void {
+  window.hermesAPI = {
+    listKnowledgeBundles: vi.fn().mockResolvedValue([
       {
-        name: "colors.md",
-        relativePath: "ui-style-guide/colors.md",
-        path: "/home/.hermes/knowledge/ui-style-guide/colors.md",
-        size: 100,
+        name: "guide",
+        path: "/k/guide",
+        files: Array.from({ length: count }, (_, i) => ({
+          name: `note${i}.md`,
+          path: `/k/guide/note${i}.md`,
+          relativePath: `note${i}.md`,
+          size: 100,
+        })),
       },
-    ],
-  ): void {
-    const anyWindow = window as any;
-    anyWindow.hermesAPI = {
-      ...(anyWindow.hermesAPI ?? {}),
-      listKnowledgeBundles: vi.fn().mockResolvedValue([
-        {
-          name: "ui-style-guide",
-          path: "/home/.hermes/knowledge/ui-style-guide",
-          files,
-        },
-      ]),
-      readKnowledgeFile: vi.fn().mockResolvedValue("# colors"),
-    };
-  }
+    ]),
+    readKnowledgeFile: vi.fn().mockResolvedValue("# Notes"),
+    renameKnowledgeBundle: vi.fn().mockResolvedValue(true),
+    renameKnowledgeFile: vi.fn().mockResolvedValue(true),
+  } as unknown as typeof window.hermesAPI;
+}
 
-  it("renders Knowledge Management title and the bundle card", async () => {
-    mockBundles();
-
+describe("Knowledge list rows", () => {
+  it("shares flat full-width list styles instead of stretched tile styles", () => {
+    expect(css.length).toBeGreaterThan(1000);
+    const rows = css.slice(css.indexOf("/* Shared rows"), css.indexOf(".knowledge-add-file-bar {"));
+    expect(rows).toContain(".knowledge-bundle-list,");
+    expect(rows).toContain(".knowledge-file-list {");
+    expect(rows).toContain(".knowledge-row-open,");
+    expect(rows).toContain("var(--text-primary)");
+    expect(rows).toContain("var(--text-secondary)");
+    expect(rows).not.toMatch(/box-shadow|max-width: 900px|display: grid|card-pill/);
+  });
+  // @lat: [[knowledge-editor#List row controls]]
+  it("uses semantic lists and separate native open and action buttons", async () => {
+    setup();
     render(<KnowledgeScreen />);
-
-    expect(await screen.findByText("Knowledge Management")).toBeTruthy();
-    expect(await screen.findByText("ui-style-guide")).toBeTruthy();
-  });
-
-  it("renders the bundle as a CARD with icon, title and file count", async () => {
-    mockBundles();
-    const { container } = render(<KnowledgeScreen />);
-    await screen.findByText("ui-style-guide");
-
-    const card = container.querySelector(".knowledge-bundle-card");
-    expect(card).not.toBeNull();
-    expect(card!.querySelector(".knowledge-bundle-card-icon")).not.toBeNull();
+    const bundle = await screen.findByRole("button", { name: "guide 1 file" });
     expect(
-      card!.querySelector(".knowledge-bundle-card-title")?.textContent,
-    ).toBe("ui-style-guide");
+      screen.getByRole("list", { name: "Knowledge bundles" }).tagName,
+    ).toBe("UL");
+    const row = bundle.closest("li")!;
+    expect(row.querySelectorAll("button")).toHaveLength(4);
     expect(
-      card!.querySelector(".knowledge-bundle-card-sub")?.textContent,
-    ).toBe("1 file");
-  });
-
-  it("gives the icon the SAME color as the title label", async () => {
-    // Requested explicitly: the icon must not keep its own accent tint.
-    //
-    // jsdom neither loads the app's CSS nor resolves var() in
-    // getComputedStyle, so the color itself cannot be read here — the built
-    // stylesheet is verified in the build step (grep for both selectors).
-    // What IS assertable here is the DOM contract: the icon carries its own
-    // class (so the stylesheet can target it) and no inline color overrides it.
-    mockBundles();
-    const { container } = render(<KnowledgeScreen />);
-    await screen.findByText("ui-style-guide");
-
-    const icon = container.querySelector<HTMLElement>(
-      ".knowledge-bundle-card-icon",
+      row.querySelector("button button, button input, [role=button]"),
+    ).toBeNull();
+    expect(screen.queryByText("Open")).toBeNull();
+    fireEvent.click(bundle);
+    const file = screen.getByRole("button", { name: "note0.md 100 B" });
+    expect(screen.getByRole("list", { name: "guide files" }).tagName).toBe(
+      "UL",
     );
-    const title = container.querySelector<HTMLElement>(
-      ".knowledge-bundle-card-title",
+    expect(file.closest("li")!.querySelectorAll("button")).toHaveLength(4);
+    expect(file.closest("li")!.draggable).toBe(true);
+    fireEvent.click(file);
+    await screen.findByRole("button", { name: "Back to file list" });
+    expect(window.hermesAPI.readKnowledgeFile).toHaveBeenCalledWith(
+      "guide",
+      "note0.md",
     );
-
-    expect(icon).not.toBeNull();
-    expect(title).not.toBeNull();
-    // No inline colours, so the stylesheet decides the color for both.
-    expect(icon!.style.color).toBe("");
-    expect(title!.style.color).toBe("");
   });
 
-  it("offers an outlined pill action, per the reference", async () => {
-    mockBundles();
-    const { container } = render(<KnowledgeScreen />);
-    await screen.findByText("ui-style-guide");
-
-    const pill = container.querySelector(".knowledge-bundle-card-pill");
-    expect(pill).not.toBeNull();
-    // The pill now communicates drilling in, not an inline expand.
-    expect(pill!.textContent).toContain("Open");
-  });
-
-  it("reads file counts correctly, including the empty and plural cases", async () => {
-    mockBundles([]);
-    const { container } = render(<KnowledgeScreen />);
-    await screen.findByText("ui-style-guide");
+  it.each([0, 1, 2])("shows real counts for %i files", async (count) => {
+    setup(count);
+    render(<KnowledgeScreen />);
+    const summary = count
+      ? `${count} file${count === 1 ? "" : "s"}`
+      : "No files yet";
     expect(
-      container.querySelector(".knowledge-bundle-card-sub")?.textContent,
-    ).toBe("No files yet");
+      await screen.findByRole("button", { name: `guide ${summary}` }),
+    ).toBeTruthy();
   });
 
-  it("keeps the per-bundle actions reachable", async () => {
-    mockBundles();
-    const { container } = render(<KnowledgeScreen />);
-    await screen.findByText("ui-style-guide");
+  // @lat: [[knowledge-editor#Keyboard rename isolation]]
+  it.each(["Bundle", "File"])(
+    "submits and cancels %s rename without navigation",
+    async (kind) => {
+      setup();
+      render(<KnowledgeScreen />);
+      const bundle = await screen.findByRole("button", {
+        name: "guide 1 file",
+      });
+      if (kind === "File") fireEvent.click(bundle);
+      fireEvent.click(screen.getByTitle(`Rename ${kind}`));
+      let input = screen.getByRole("textbox", { name: `${kind} name` });
+      expect(document.activeElement).toBe(input);
+      expect(input.closest("button, [role=button]")).toBeNull();
+      fireEvent.change(input, { target: { value: "Team notes" } });
+      fireEvent.keyDown(input, { key: " " });
+      fireEvent.keyDown(input, { key: "Enter" });
+      const api = window.hermesAPI;
+      await waitFor(() =>
+        expect(
+          kind === "Bundle"
+            ? api.renameKnowledgeBundle
+            : api.renameKnowledgeFile,
+        ).toHaveBeenCalledTimes(1),
+      );
+      if (kind === "Bundle")
+        expect(api.renameKnowledgeBundle).toHaveBeenCalledWith(
+          "guide",
+          "Team notes",
+        );
+      else
+        expect(api.renameKnowledgeFile).toHaveBeenCalledWith(
+          "guide",
+          "note0.md",
+          "Team notes.md",
+        );
+      await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+      fireEvent.click(screen.getByTitle(`Rename ${kind}`));
+      input = screen.getByRole("textbox", { name: `${kind} name` });
+      fireEvent.change(input, { target: { value: "Cancelled" } });
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(screen.queryByRole("textbox")).toBeNull();
+      expect(
+        kind === "Bundle" ? api.renameKnowledgeBundle : api.renameKnowledgeFile,
+      ).toHaveBeenCalledTimes(1);
+      expect(api.readKnowledgeFile).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole("list", {
+          name: kind === "Bundle" ? "Knowledge bundles" : "guide files",
+        }),
+      ).toBeTruthy();
+    },
+  );
 
-    const card = container.querySelector<HTMLElement>(
-      ".knowledge-bundle-card",
-    )!;
-    const titles = [...card.querySelectorAll("[title]")].map((el) =>
-      el.getAttribute("title"),
-    );
-    expect(titles).toContain("Rename Bundle");
-    expect(titles).toContain("Add File");
-    expect(titles).toContain("Delete Bundle");
-  });
-
-  it("is keyboard operable — the card is not a mouse-only target", async () => {
-    mockBundles();
-    const { container } = render(<KnowledgeScreen />);
-    await screen.findByText("ui-style-guide");
-
-    const card = container.querySelector<HTMLElement>(
-      ".knowledge-bundle-card",
-    )!;
-    expect(card.getAttribute("role")).toBe("button");
-    expect(card.getAttribute("tabindex")).toBe("0");
-
-    fireEvent.keyDown(card, { key: "Enter" });
-    await waitFor(() =>
-      expect(container.querySelector(".knowledge-file-grid")).not.toBeNull(),
-    );
+  it("opens the inline add-file bar without entering the bundle", async () => {
+    setup();
+    render(<KnowledgeScreen />);
+    await screen.findByText("guide");
+    fireEvent.click(screen.getByTitle("Add File"));
+    const input = screen.getByPlaceholderText("File name (e.g. style.md)...");
+    expect(document.activeElement).toBe(input);
+    expect(
+      screen.getByRole("list", { name: "Knowledge bundles" }),
+    ).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 });
