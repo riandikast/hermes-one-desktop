@@ -40,7 +40,13 @@ function newId(): string {
     : `cmd-${Date.now()}`;
 }
 
-const EMPTY_FORM = { name: "", command: "", description: "", cwd: "", folder: "" };
+const EMPTY_FORM = {
+  name: "",
+  command: "",
+  description: "",
+  cwd: "",
+  folder: "",
+};
 const TERMINAL_HEIGHT_KEY = "hermes.commands.terminalHeight";
 const MIN_DOCK_HEIGHT = 120;
 const MAX_DOCK_HEIGHT = 640;
@@ -57,6 +63,7 @@ export function CommandScreen(): React.JSX.Element {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [showEditor, setShowEditor] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
@@ -89,6 +96,7 @@ export function CommandScreen(): React.JSX.Element {
   }>({ startY: 0, startHeight: 0, container: null });
 
   const refresh = useCallback(async () => {
+    setFetching(true);
     try {
       const list = await window.hermesAPI.listCommands();
       const items = (list as CommandItem[]).map((c) => ({
@@ -104,7 +112,9 @@ export function CommandScreen(): React.JSX.Element {
         setCollapsedFolders(new Set(items.map((c) => c.folder)));
       }
     } catch {
-      setCommands([]);
+      setError("Failed to load commands.");
+    } finally {
+      setFetching(false);
     }
   }, []);
 
@@ -250,10 +260,17 @@ export function CommandScreen(): React.JSX.Element {
     try {
       const destination = await window.hermesAPI.selectFolder();
       if (!destination) return;
-      const result = await window.hermesAPI.exportCommand({ id: cmd.id, destination });
-      setExportNotice(`Exported ${result.path}.${result.shell === "powershell" ? " Keep the companion .ps1 beside it. Requires PowerShell and script permission." : " CMD only, no PowerShell required."} Windows security software or office policy may block launchers. Export does not run the command.`);
+      const result = await window.hermesAPI.exportCommand({
+        id: cmd.id,
+        destination,
+      });
+      setExportNotice(
+        `Exported ${result.path}.${result.shell === "powershell" ? " Keep the companion .ps1 beside it. Requires PowerShell and script permission." : " CMD only, no PowerShell required."} Windows security software or office policy may block launchers. Export does not run the command.`,
+      );
     } catch {
-      setError("Failed to export launcher. Check folder permissions and the template working directory.");
+      setError(
+        "Failed to export launcher. Check folder permissions and the template working directory.",
+      );
     } finally {
       setExporting(false);
     }
@@ -400,7 +417,11 @@ export function CommandScreen(): React.JSX.Element {
           </div>
         </div>
 
-        {error && <div className="command-error">{error}</div>}
+        {error && (
+          <div className="command-error" role="alert">
+            {error}
+          </div>
+        )}
 
         {onFinishIds.length > 0 && (
           // Removal IS allowed here: the chat chip is the primary editor, but
@@ -449,11 +470,14 @@ export function CommandScreen(): React.JSX.Element {
         )}
 
         {exportNotice && <p role="status">{exportNotice}</p>}
-        {commands.length === 0 ? (
+        {fetching ? (
+          <p role="status">Loading commands…</p>
+        ) : commands.length === 0 ? (
           <div className="command-empty">
             <p>No commands saved yet.</p>
             <p className="command-empty-hint">
-              Save a command, then click Run to execute it in the built-in terminal.
+              Save a command, then click Run to execute it in the built-in
+              terminal.
             </p>
           </div>
         ) : visibleCommands.length === 0 ? (
@@ -473,6 +497,7 @@ export function CommandScreen(): React.JSX.Element {
                   <button
                     type="button"
                     className="command-group-header"
+                    aria-expanded={!collapsed}
                     onClick={() => toggleFolder(folder)}
                     onDragOver={(e) => {
                       e.preventDefault();
@@ -484,17 +509,26 @@ export function CommandScreen(): React.JSX.Element {
                       if (src) void moveToFolder(src, folder);
                       dragIdRef.current = null;
                     }}
-                    title={folder ? `Move command to ${label}` : "Move to Ungrouped"}
+                    title={
+                      folder ? `Move command to ${label}` : "Move to Ungrouped"
+                    }
                   >
-                    {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                    {collapsed ? (
+                      <ChevronRight size={12} />
+                    ) : (
+                      <ChevronDown size={12} />
+                    )}
                     <span className="command-group-label">
-                      {folder ? <Folder size={12} /> : <span className="command-group-dot" />}
+                      <Folder size={14} aria-hidden="true" />
                       {label}
                     </span>
                     <span className="command-group-count">{items.length}</span>
                   </button>
                   {!collapsed && (
-                    <ul className="command-list">
+                    <ul
+                      className="command-list"
+                      aria-label={`${label} commands`}
+                    >
                       {items.map((cmd) => (
                         <li
                           key={cmd.id}
@@ -508,71 +542,90 @@ export function CommandScreen(): React.JSX.Element {
                             dragIdRef.current = null;
                           }}
                         >
-                          <button
-                            type="button"
-                            className="command-row-run"
-                            onClick={() => void run(cmd)}
-                            title={`Run ${cmd.name}`}
-                            aria-label={`Run ${cmd.name}`}
-                          >
-                            <Play size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            className="command-row-run-os"
-                            onClick={() => void runOs(cmd)}
-                            title={`Run ${cmd.name} in OS terminal`}
-                            aria-label={`Run ${cmd.name} in OS terminal`}
-                          >
-                            <Terminal size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            className="command-row-run-os"
-                            onClick={() => void exportLauncher(cmd)}
-                            disabled={exporting}
-                            title={`Export ${cmd.name} as Windows launcher (uses selected terminal shell)`}
-                            aria-label={`Export ${cmd.name} as Windows launcher`}
-                          >
-                            <Download size={13} />
-                          </button>
                           <div className="command-row-body">
                             <div className="command-row-title">{cmd.name}</div>
-                            <div className="command-row-desc">
-                              {cmd.description ||
-                                (cmd.cwd ? `cwd: ${cmd.cwd}` : "—")}
-                            </div>
+                            {cmd.description && (
+                              <div
+                                className="command-row-desc"
+                                title={cmd.description}
+                              >
+                                {cmd.description}
+                              </div>
+                            )}
+                            <code
+                              className="command-row-preview"
+                              title={cmd.command}
+                            >
+                              {cmd.command}
+                            </code>
                             {cmd.cwd && (
-                              <div className="command-row-cwd">cwd: {cmd.cwd}</div>
+                              <div className="command-row-cwd" title={cmd.cwd}>
+                                cwd: {cmd.cwd}
+                              </div>
                             )}
                           </div>
-                          <button
-                            type="button"
-                            className="command-row-edit"
-                            onClick={() => startEdit(cmd)}
-                            title="Edit"
-                            aria-label="Edit"
+                          <div
+                            className="command-row-actions"
+                            role="group"
+                            aria-label={`${cmd.name} actions`}
                           >
-                            <Pencil size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            className="command-row-duplicate"
-                            onClick={() => startDuplicate(cmd)}
-                            title="Duplicate"
-                            aria-label="Duplicate"
-                          >
-                            <Copy size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            className="command-row-delete"
-                            onClick={() => confirmDelete(cmd)}
-                            title="Delete"
-                            aria-label="Delete"
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                            <button
+                              type="button"
+                              className="command-row-run"
+                              onClick={() => void run(cmd)}
+                              title={`Run ${cmd.name}`}
+                              aria-label={`Run ${cmd.name}`}
+                            >
+                              <Play size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              className="command-row-run-os"
+                              onClick={() => void runOs(cmd)}
+                              title={`Run ${cmd.name} in OS terminal`}
+                              aria-label={`Run ${cmd.name} in OS terminal`}
+                            >
+                              <Terminal size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              className="command-row-run-os"
+                              onClick={() => void exportLauncher(cmd)}
+                              disabled={exporting}
+                              title={`Export ${cmd.name} as Windows launcher (uses selected terminal shell)`}
+                              aria-label={`Export ${cmd.name} as Windows launcher`}
+                            >
+                              <Download size={13} />
+                            </button>
+
+                            <button
+                              type="button"
+                              className="command-row-edit"
+                              onClick={() => startEdit(cmd)}
+                              title="Edit"
+                              aria-label="Edit"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              className="command-row-duplicate"
+                              onClick={() => startDuplicate(cmd)}
+                              title="Duplicate"
+                              aria-label="Duplicate"
+                            >
+                              <Copy size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              className="command-row-delete"
+                              onClick={() => confirmDelete(cmd)}
+                              title="Delete"
+                              aria-label="Delete"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -603,7 +656,9 @@ export function CommandScreen(): React.JSX.Element {
               <input
                 type="text"
                 value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, name: e.target.value }))
+                }
                 placeholder="e.g. Build & run tests"
               />
             </label>
@@ -611,7 +666,9 @@ export function CommandScreen(): React.JSX.Element {
               <span>Command (multi-line supported)</span>
               <textarea
                 value={form.command}
-                onChange={(e) => setForm((f) => ({ ...f, command: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, command: e.target.value }))
+                }
                 placeholder={"npm install\nnpm run build"}
                 rows={5}
               />
@@ -683,7 +740,9 @@ export function CommandScreen(): React.JSX.Element {
                 <input
                   type="text"
                   value={form.cwd}
-                  onChange={(e) => setForm((f) => ({ ...f, cwd: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, cwd: e.target.value }))
+                  }
                   placeholder="Optional — folder the command runs in"
                 />
                 <button

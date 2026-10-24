@@ -22418,36 +22418,36 @@ body:has(.shell-vibrant),
   color: var(--text-muted);
   margin-top: 4px;
 }
+/* Knowledge's compact hierarchy, with distinct command surfaces for scanning. */
 .command-groups {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  overflow: hidden;
+  flex-shrink: 0;
 }
-.command-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.command-group + .command-group {
+  border-top: 1px solid var(--border-color);
 }
 .command-group-header {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border: none;
-  border-radius: 6px;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 16px;
+  border: 0;
   background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  align-self: flex-start;
-  user-select: none;
-}
-.command-group-header:hover {
-  background: var(--bg-tertiary);
   color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+}
+.command-group-header:hover,
+.command-row:hover {
+  background: var(--bg-hover);
 }
 .command-group-header svg {
   flex-shrink: 0;
@@ -22455,29 +22455,21 @@ body:has(.shell-vibrant),
 .command-group-label {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-}
-.command-group-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-muted);
+  gap: 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .command-group-count {
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--text-muted);
-  background: var(--bg-tertiary);
-  border-radius: 99px;
-  padding: 1px 7px;
-}
-.command-group--ungrouped .command-group-label {
-  opacity: 0.75;
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 .command-list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 8px 8px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -22485,34 +22477,95 @@ body:has(.shell-vibrant),
 .command-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color, rgba(127, 127, 127, 0.16));
-  border-radius: 10px;
-  background: var(--bg-secondary, rgba(127, 127, 127, 0.05));
+  gap: 16px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 8px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
   cursor: grab;
 }
 .command-row:active {
   cursor: grabbing;
 }
 .command-row.editing {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-color));
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
-.command-row-run {
+.command-row-actions {
+  display: flex;
+  flex-shrink: 0;
+}
+.command-row-actions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
   cursor: pointer;
-  flex-shrink: 0;
 }
-.command-row-run:hover {
-  filter: brightness(1.1);
+.command-row-actions button:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+.command-row-actions button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.command-page :is(button, input, textarea, select):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+@media (max-width: 600px), (pointer: coarse) {
+  .command-row-actions button {
+    width: 44px;
+    height: 44px;
+  }
+}
+@media (max-width: 600px) {
+  .command-main {
+    padding: 16px 12px 8px;
+  }
+  .command-list-header,
+  .command-list-actions {
+    flex-wrap: wrap;
+  }
+  .command-list-actions {
+    width: 100%;
+  }
+  .command-search {
+    flex: 1;
+    min-width: 0;
+  }
+  .command-search input {
+    width: 100%;
+    min-width: 0;
+  }
+  .command-row {
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px 12px;
+  }
+  .command-row .command-row-body {
+    flex-basis: 100%;
+  }
+  .command-row-actions {
+    flex-wrap: wrap;
+    margin-left: auto;
+    max-width: 100%;
+  }
+  .command-onfinish-head {
+    flex-wrap: wrap;
+  }
+  .command-page .command-editor {
+    margin: 0 12px;
+  }
 }
 
 /* ── On-Finish selection (Commands page is READ-ONLY; see OnFinishChip) ─────
@@ -22721,23 +22774,6 @@ body:has(.shell-vibrant),
     animation: none;
   }
 }
-.command-row-run-os {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--border-color, rgba(127, 127, 127, 0.16));
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.command-row-run-os:hover {
-  background: var(--bg-tertiary);
-  color: var(--accent-text);
-}
 .command-row-body {
   flex: 1;
   min-width: 0;
@@ -22746,45 +22782,29 @@ body:has(.shell-vibrant),
   gap: 2px;
 }
 .command-row-title {
-  font-weight: 600;
+  font-weight: 500;
   font-size: 13px;
   color: var(--text-primary);
 }
-.command-row-desc {
-  font-size: 11.5px;
-  color: var(--text-secondary);
+.command-row-title,
+.command-row-desc,
+.command-row-preview {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.command-row-desc,
+.command-row-preview {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
 .command-row-cwd {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-family: var(--font-mono, ui-monospace, monospace);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.command-row-edit,
-.command-row-delete,
-.command-row-duplicate {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.command-row-edit:hover,
-.command-row-delete:hover,
-.command-row-duplicate:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
 }
 
 /* Delete confirmation dialog */

@@ -20,6 +20,18 @@ it into that folder (saved via `commands:save`). The editor's Folder dropdown
 lists existing folders plus "＋ New folder…" which reveals an inline name
 input.
 
+## Compact command list
+
+Commands match Knowledge's compact semantic hierarchy: full-width folder disclosures, name-first rows, and trailing actions, with distinct command surfaces requested for scanability.
+
+Rows use secondary surfaces against a primary list background, thin borders and 6px gaps. Theme text tokens preserve readability. Names retain Knowledge's 13px medium hierarchy; code previews, optional descriptions and cwd appear once.
+
+Folders retain collapse and drag-to-group behavior with accessible expansion state and named lists. Actions remain visible; narrow layouts wrap actions below content, with 44px touch targets and visible keyboard focus. Loading and load errors are explicit.
+
+[[src/renderer/src/screens/Command/CommandScreen.list.test.tsx]] exercises semantic rows, collapse, terminal routing, edit/duplicate/delete entry points, drag persistence, search and loading/empty/error states. Existing export, queue and dock tests protect their unchanged contracts.
+
+Design direction: match current Knowledge, ENERGY 1 / RHYTHM 1 / MOTION 1. Distinct compact rows support scanning; quiet counts communicate real group sizes; existing icons identify execution, export and editing without new assets or animation.
+
 ## Resizable terminal dock
 
 The dock height defaults to 260px and is adjustable by dragging the
