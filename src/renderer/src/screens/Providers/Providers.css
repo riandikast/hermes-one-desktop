@@ -1,0 +1,278 @@
+/* Auxiliary's bordered rows carry across credential surfaces without changing routing. */
+.providers-page .provider-settings-panel {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+
+.providers-page .provider-settings-panel > .settings-section {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.providers-page .provider-settings-panel .settings-section-title {
+  margin: 0 0 16px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.providers-page
+  .provider-settings-panel
+  :is(.settings-key-list, .provider-summary, .settings-pool-group) {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.providers-page .provider-settings-panel .settings-key-row {
+  padding: 16px;
+  gap: 16px;
+}
+
+.providers-page
+  .provider-settings-panel
+  :is(
+    .settings-key-name,
+    .settings-key-desc,
+    .provider-summary-meta,
+    .provider-config-card-sub,
+    .settings-pool-key,
+    .settings-pool-label
+  ) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.providers-page
+  .provider-settings-panel
+  :is(
+    .settings-key-desc,
+    .settings-field-hint,
+    .settings-section-hint,
+    .provider-config-card-sub,
+    .provider-summary-meta
+  ) {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.providers-page
+  .provider-settings-panel
+  :is(.provider-keys-grid, .provider-picker-grid) {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+}
+
+.providers-page
+  .provider-settings-panel
+  :is(.provider-config-card, .provider-key-card, .provider-add-card) {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.providers-page
+  .provider-settings-panel
+  :is(.provider-config-card, .provider-add-card):hover {
+  background: var(--bg-hover);
+  border-color: var(--border-bright);
+}
+
+.providers-page
+  .provider-settings-panel
+  :is(.provider-config-card-title, .provider-key-card-title) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.providers-page
+  .provider-settings-panel
+  :is(
+    .btn,
+    .btn-ghost,
+    .settings-key-add,
+    .settings-key-eye,
+    .settings-key-masked,
+    .input,
+    .provider-config-card,
+    .provider-add-card
+  ) {
+  min-height: 44px;
+}
+
+.providers-page .provider-settings-panel .settings-key-eye {
+  min-width: 44px;
+}
+
+.providers-page .provider-settings-panel .settings-key-action {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.providers-page
+  .provider-settings-panel
+  :is(.settings-key-masked, .settings-key-input) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.providers-page .provider-settings-panel .settings-key-masked {
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+}
+
+.providers-page .provider-settings-panel .settings-pool-add {
+  display: grid;
+  grid-template-columns:
+    minmax(140px, 1fr) minmax(160px, 2fr) minmax(120px, 1fr)
+    auto;
+  align-items: start;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.providers-page .provider-settings-panel .settings-pool-add .input {
+  width: 100%;
+}
+
+.providers-page .provider-settings-panel .settings-pool-group {
+  padding: 16px;
+}
+
+.providers-page .provider-settings-panel .settings-pool-provider {
+  color: var(--text-primary);
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.providers-page .provider-settings-panel .settings-pool-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.providers-page .provider-settings-panel .oauth-signin-btn {
+  align-self: flex-start;
+  margin-top: auto;
+  white-space: normal;
+}
+
+/* Native arrow placement ignores padding. Draw an inset caret; keep native semantics. */
+.providers-page select.input:not([multiple]) {
+  appearance: none;
+  padding-inline: 12px 40px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23808080' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 16px;
+}
+
+.providers-page .model-select-modal .logo-select-trigger {
+  padding-inline: 12px 14px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.providers-page .logo-select-chevron {
+  margin-left: 8px;
+}
+
+.providers-page
+  .model-select-modal
+  :is(.logo-select-trigger, select.input):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Provider-owned dialogs clear the desktop tab strip; their bodies scroll, not controls. */
+.providers-page .provider-settings-panel .models-modal-overlay {
+  z-index: 1100;
+  padding: 76px 16px 24px;
+}
+
+.providers-page .provider-settings-panel .models-modal {
+  max-width: 100%;
+  max-height: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.providers-page
+  .provider-settings-panel
+  :is(.models-modal-title, .provider-modal-name) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.providers-page
+  .provider-settings-panel
+  :is(
+    .models-modal-header,
+    .models-modal-footer,
+    .provider-modal-heading,
+    .provider-key-field
+  ) {
+  flex-wrap: wrap;
+}
+
+.providers-page .provider-settings-panel .models-modal-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+@media (max-width: 720px) {
+  .providers-page .provider-settings-panel .settings-key-row {
+    flex-wrap: wrap;
+  }
+
+  .providers-page .provider-settings-panel .settings-key-info {
+    flex-basis: 100%;
+  }
+
+  .providers-page .provider-settings-panel .settings-key-action {
+    width: 100%;
+  }
+
+  .providers-page .provider-settings-panel .settings-key-input {
+    width: 100%;
+  }
+
+  .providers-page .provider-settings-panel .settings-pool-add {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .providers-page .provider-settings-panel .settings-pool-entry {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .providers-page .provider-settings-panel .settings-pool-key {
+    grid-column: 1;
+  }
+
+  .providers-page .provider-settings-panel .settings-pool-entry > button {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+}
+
+@media (forced-colors: active) {
+  .providers-page select.input:not([multiple]) {
+    appearance: auto;
+    background-image: none;
+  }
+}

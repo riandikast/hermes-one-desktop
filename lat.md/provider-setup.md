@@ -42,6 +42,14 @@ Eight settings tabs isolate LLM routing from credentials for tools, browsers, vo
 
 The tablist wraps rather than clips. Arrow keys cycle tabs; Home and End select the endpoints, with roving focus and linked tabpanel names. [[src/renderer/src/screens/Providers/Providers.test.tsx]] covers all tab destinations, the Default Model label and removed account controls.
 
+## Consistent credential surfaces
+
+Non-Auxiliary tabs reuse Auxiliary's bordered surfaces, readable theme tokens, 16px row spacing and 44px controls; credential forms reflow below 720px without changing persistence or authentication.
+
+[[src/renderer/src/screens/Providers/Providers.css]] is scoped to Providers. Neutral borders group saved credentials; existing typography and accent focus preserve the settings identity. ENERGY 1 / RHYTHM 1 / MOTION 1. Native selects retain native interaction with a drawn caret inset 14px and 40px trailing text space; forced colors restore the system arrow. Logo triggers use a 14px trailing inset. Auxiliary receives only the shared native-select fix. Provider-owned dialogs clear the tab strip and scroll internally.
+
+[[src/renderer/src/screens/Providers/Providers.test.tsx]] exercises editing in all four credential categories, exact profile-scoped writes, pool add/remove payloads and existing tab/model/Auxiliary interactions. [[src/renderer/src/screens/Providers/Providers.styles.test.js]] checks scoped caret spacing and responsive rules. Visual/theme/breakpoint inspection still requires an approved running renderer; DOM tests do not prove pixel geometry or contrast.
+
 ## Auxiliary routing editor
 
 Auxiliary Tasks uses compact task rows with readable routing summaries and separate edit actions, keeping model settings available below the list.
@@ -58,7 +66,7 @@ The screen has eight focused tabs: Providers, Auxiliary Tasks, Credential Pool, 
 
 The **MODEL** section shows a read-only summary (logo + provider label + model). A **Change** button opens a picker modal with a **provider** picker (a custom `LogoSelect` — the brand logo renders inside the control and each option, which a native `<select>` can't do) and a native **model** dropdown. Confirming sets `modelProvider`/`modelName`/`modelBaseUrl`, which the existing debounced auto-save persists to `config.yaml` via `setModelConfig` (compat providers as `custom` + base_url). The **API key is resolved automatically** at runtime — the picker never asks for it.
 
-That modal (`model-select-modal`) is styled **light-based** (no strokes): the container border, header/footer dividers, and control outlines are dropped in favor of filled controls (`--bg-elevated`, `--bg-hover` on hover/open) — matching the branded config modal's treatment. Crucially it sets `overflow: visible` (the base `.models-modal` clips with `overflow: hidden`), so the `LogoSelect` dropdown — which is absolutely positioned and can extend past the modal — isn't clipped; the menu itself caps at `max-height` and scrolls internally when the provider list is long. Without the override the lower providers were hidden and unreachable.
+That modal (`model-select-modal`) uses the same theme-backed bordered surface and inset selectors as the other Providers panels. It retains `overflow: visible` so the absolute `LogoSelect` menu is not clipped; the menu caps its own height and scrolls internally. The body scrolls for short viewports and focus indicators remain visible.
 
 The provider list (`pickerProviders`) is sourced from the **configured providers** — the same set shown as LLM cards — NOT from which providers happen to have saved models: keyed FieldDef providers (`env[f.key]` set, in FieldDef order so Hermes One leads) plus named custom providers whose `customProviderEnvKey(label)` is set. So a freshly-keyed provider with no models yet still appears.
 

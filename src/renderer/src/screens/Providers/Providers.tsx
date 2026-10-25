@@ -19,6 +19,7 @@ import { KeyRound } from "../../assets/icons";
 import { ChevronDown, Search, X, Eye, EyeOff } from "lucide-react";
 import { customProviderEnvKey } from "../../../../shared/url-key-map";
 import type { HermesAccount } from "../../../../shared/account";
+import "./Providers.css";
 
 /** Preview a stored key as prefix + dots + last 4, so a set key is recognisable
  * without exposing it. */
@@ -748,6 +749,9 @@ function Providers({
       </div>
       <div
         role="tabpanel"
+        className={
+          activeTab === "auxiliary" ? undefined : "provider-settings-panel"
+        }
         id={`provider-panel-${activeTab}`}
         aria-labelledby={`provider-tab-${activeTab}`}
       >
@@ -840,9 +844,9 @@ function Providers({
               <div className="settings-pool-add">
                 <select
                   className="input"
+                  aria-label={t("common.provider")}
                   value={poolProvider}
                   onChange={(e) => setPoolProvider(e.target.value)}
-                  style={{ width: 140 }}
                 >
                   <option value="">{t("common.provider")}</option>
                   {PROVIDERS.options
@@ -856,20 +860,22 @@ function Providers({
                 <input
                   className="input"
                   type="password"
+                  aria-label={t("settings.apiKeyPlaceholder")}
                   value={poolNewKey}
                   onChange={(e) => setPoolNewKey(e.target.value)}
                   placeholder={t("settings.apiKeyPlaceholder")}
-                  style={{ flex: 1 }}
                 />
                 <input
                   className="input"
                   type="text"
+                  aria-label={t("settings.labelPlaceholder", {
+                    optional: t("common.optional"),
+                  })}
                   value={poolNewLabel}
                   onChange={(e) => setPoolNewLabel(e.target.value)}
                   placeholder={t("settings.labelPlaceholder", {
                     optional: t("common.optional"),
                   })}
-                  style={{ width: 120 }}
                 />
                 <button
                   className="btn btn-primary btn-sm"
@@ -968,6 +974,7 @@ function Providers({
                         {isEditing ? (
                           <input
                             className="input settings-key-input"
+                            aria-label={t(field.label)}
                             autoFocus
                             type={
                               field.type === "password" && !revealed

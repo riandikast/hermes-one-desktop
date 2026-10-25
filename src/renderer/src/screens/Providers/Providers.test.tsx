@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import Providers from "./Providers";
+import { SETTINGS_SECTIONS } from "../../constants";
 
 vi.mock("../../components/useI18n", () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -81,8 +82,74 @@ beforeEach(() => {
       getConfig: vi.fn().mockResolvedValue(64000),
       setConfig: vi.fn().mockResolvedValue(true),
       setEnv: vi.fn().mockResolvedValue(true),
+      addCredentialPoolEntry: vi
+        .fn()
+        .mockResolvedValue([
+          { id: "fixture", label: "Work", access_token: "fixture-pool-token" },
+        ]),
+      setCredentialPool: vi.fn().mockResolvedValue(true),
     },
   });
+});
+
+// @lat: [[provider-setup#Provider setup#Consistent credential surfaces]]
+it("preserves credential editing and pool add/remove across redesigned panels", async () => {
+  render(<Providers visible profile="fixture-profile" />);
+  await screen.findByText("common.change");
+  for (const section of SETTINGS_SECTIONS.filter(
+    (section) => section.title !== "constants.sectionLlmProviders",
+  )) {
+    fireEvent.click(screen.getByRole("tab", { name: section.title }));
+    const panel = screen.getByRole("tabpanel");
+    expect(panel).toHaveClass("provider-settings-panel");
+    const field = section.items[0];
+    const row = within(panel)
+      .getByText(field.hint)
+      .closest(".settings-key-row")!;
+    fireEvent.click(within(row as HTMLElement).getByRole("button"));
+    const input = within(panel).getByLabelText(field.label);
+    fireEvent.change(input, { target: { value: "fixture-edited-value" } });
+    fireEvent.blur(input);
+    await waitFor(() =>
+      expect(window.hermesAPI.setEnv).toHaveBeenCalledWith(
+        field.key,
+        "fixture-edited-value",
+        "fixture-profile",
+      ),
+    );
+  }
+  fireEvent.click(
+    screen.getByRole("tab", { name: "settings.sections.credentialPool" }),
+  );
+  const add = screen.getByRole("button", { name: "settings.add" });
+  expect(add).toBeDisabled();
+  fireEvent.change(screen.getByRole("combobox", { name: "common.provider" }), {
+    target: { value: "openai" },
+  });
+  fireEvent.change(screen.getByLabelText("settings.apiKeyPlaceholder"), {
+    target: { value: "fixture-pool-token" },
+  });
+  fireEvent.change(screen.getByLabelText("settings.labelPlaceholder"), {
+    target: { value: "Work" },
+  });
+  fireEvent.click(add);
+  await screen.findByText("Work");
+  expect(window.hermesAPI.addCredentialPoolEntry).toHaveBeenCalledWith(
+    "openai",
+    "fixture-pool-token",
+    "Work",
+  );
+  expect(screen.getByLabelText("settings.apiKeyPlaceholder")).toHaveValue("");
+  fireEvent.click(screen.getByRole("button", { name: "settings.remove" }));
+  await waitFor(() =>
+    expect(window.hermesAPI.setCredentialPool).toHaveBeenCalledWith(
+      "openai",
+      [],
+    ),
+  );
+  await waitFor(() =>
+    expect(screen.queryByText("Work")).not.toBeInTheDocument(),
+  );
 });
 
 // @lat: [[provider-setup#Provider setup#Focused settings tabs]]
