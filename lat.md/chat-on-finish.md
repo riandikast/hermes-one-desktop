@@ -18,13 +18,15 @@ Hidden tabs remain mounted but do not poll child snapshots; automatic execution 
 
 On-Finish sends an explicitly selected Ctrl+A–Z, Enter, Tab, Escape or Backspace, or literal text with optional Enter, to an existing terminal. Actions share the ordered queue and settled-completion safeguards.
 
-Open the floating terminal first, then use the compact Existing terminal form: choose Key with editable native suggestions or Literal text, optionally Then Enter, and Add terminal input. Literal text preserves spaces and key-like words; keys are never inferred from text. Text is limited to 1–256 UTF-16 units without control characters; terminal IDs and titles to 256, encoded records to 16384. Unknown fields, ambiguous payloads and invalid keys are rejected. Old v1 key actions remain compatible. Actions persist per chat and migrate with draft/session identity and context handoff. Closed or restarted terminal targets fail visibly; they are never redirected and never spawn a terminal. Remove an action by clicking its queue chip.
+Open the floating terminal first, then use the compact Existing terminal form: choose Key from a native select or Literal text, optionally Then Enter, and Add terminal input. Literal text preserves spaces and key-like words; keys are never inferred from text. Text is limited to 1–256 UTF-16 units without control characters; terminal IDs and titles to 256, encoded records to 16384. Unknown fields, ambiguous payloads and invalid keys are rejected. Old v1 key actions remain compatible. Actions persist per chat and migrate with draft/session identity and context handoff. Closed or restarted terminal targets fail visibly; they are never redirected and never spawn a terminal. Remove an action by clicking its queue chip.
 
 [[src/renderer/src/screens/Chat/onFinishTerminal.ts]] validates the versioned input records; [[src/renderer/src/screens/Chat/onFinishTerminal.test.tsx]] exercises actual IPC payloads, closed targets, cancellation, UI configuration, and scope migration. The old post-run keyboard banner is no longer mounted, so it cannot capture normal typing.
 
 ## Selection layout
 
 The ordered selection badge stays immediately left of the checkmark in one non-shrinking group, keeping both aligned at the end of each command row.
+
+The compact Key/Text form uses a native key select, not a datalist. The popup chooses the larger viewport side, clamps its width and height, and scrolls overall on small screens. Queue and command list also scroll independently. Literal r uses Text with Then Enter off.
 
 [[src/renderer/src/screens/Chat/OnFinishChip.tsx#OnFinishChip]] preserves selection order; [[src/renderer/src/screens/Chat/OnFinishChip.test.tsx]] verifies the badge and checkmark share that group.
 

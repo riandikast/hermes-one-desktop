@@ -22,6 +22,7 @@ import { setupAskpass, AskpassHandle } from "./askpass";
 import { precacheSudoCredentials } from "./sudoCreds";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 import { updaterLogger } from "./updater-log";
+import { assertOfficialBackendUpdateTarget } from "./backend-update";
 
 const IS_WINDOWS = process.platform === "win32";
 
@@ -956,7 +957,8 @@ export async function runHermesUpdate(
     });
   }
 
-  emit("Running hermes update...\n");
+  await assertOfficialBackendUpdateTarget(HERMES_REPO);
+  emit("Running hermes update from the official repository...\n");
 
   return new Promise((resolve, reject) => {
     const proc = spawn(HERMES_PYTHON, hermesCliArgs(["update"]), {

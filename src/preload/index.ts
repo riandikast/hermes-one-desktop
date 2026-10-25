@@ -192,6 +192,7 @@ const hermesAPI = {
   },
 
   // Hermes engine info
+  checkBackendUpdate: () => ipcRenderer.invoke("check-backend-update"),
   getHermesVersion: (): Promise<string | null> =>
     ipcRenderer.invoke("get-hermes-version"),
   refreshHermesVersion: (): Promise<string | null> =>

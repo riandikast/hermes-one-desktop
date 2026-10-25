@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { useI18n } from "../useI18n";
 import BrandLogo from "../common/BrandLogo";
+import { useEffect, useRef, useState } from "react";
+import { BACKEND_SOURCE_URL, type BackendUpdateStatus } from "../../../../shared/backend-update";
 import hermesIcon from "../../assets/hermes-icon.svg";
 import pythonLogo from "../../assets/logos/python.svg";
 import openaiLogo from "../../assets/logos/openai.svg";
@@ -29,6 +31,8 @@ export default function AboutPane(): React.JSX.Element {
   const { t } = useI18n();
   const {
     hermesHome,
+    connMode,
+    profile,
     hermesVersion,
     appVersion,
     parsedVersion,
@@ -54,7 +58,27 @@ export default function AboutPane(): React.JSX.Element {
     handleDesktopUpdate,
   } = useSettings();
 
-  const engineHasUpdate = !!parsedVersion?.updateInfo;
+  const [backendUpdate, setBackendUpdate] = useState<BackendUpdateStatus | null>(null);
+  const [checkingBackend, setCheckingBackend] = useState(false);
+  const backendRequest = useRef(0);
+  async function checkBackend(): Promise<void> {
+    const request = ++backendRequest.current;
+    setCheckingBackend(true);
+    setBackendUpdate(null);
+    try {
+      const result = await window.hermesAPI.checkBackendUpdate();
+      if (request === backendRequest.current) setBackendUpdate(result);
+    } catch {
+      if (request === backendRequest.current) setBackendUpdate({ status: "unknown", detail: "Backend update check failed. Retry when connected." });
+    } finally {
+      if (request === backendRequest.current) setCheckingBackend(false);
+    }
+  }
+  useEffect(() => {
+    void checkBackend();
+    return () => { backendRequest.current++; };
+  }, [hermesHome, hermesVersion, updating, connMode, profile]);
+  const engineHasUpdate = backendUpdate?.status === "available";
   const loading = hermesVersion === null;
 
   return (
@@ -75,13 +99,13 @@ export default function AboutPane(): React.JSX.Element {
               {t("settings.agentSubtitle")}
             </div>
           </div>
-          {!loading && (
+          {backendUpdate && (
             <span
-              className={`settings-card-badge ${engineHasUpdate ? "is-update" : "is-ok"}`}
+              className={`settings-card-badge ${engineHasUpdate ? "is-update" : backendUpdate.status === "current" ? "is-ok" : ""}`}
             >
               {engineHasUpdate
                 ? t("settings.statusUpdateAvailable")
-                : t("settings.statusUpToDate")}
+                : backendUpdate.status === "current" ? t("settings.statusUpToDate") : backendUpdate.status === "unknown" ? "Unknown" : backendUpdate.status === "ahead" ? "Local commits ahead" : "Diverged"}
             </span>
           )}
         </header>
@@ -132,9 +156,13 @@ export default function AboutPane(): React.JSX.Element {
             )}
           </div>
 
-          {engineHasUpdate && (
+          <div className="settings-meta-path">
+            <span className="settings-meta-label">{t("settings.updateSource")}</span>
+            <a href={BACKEND_SOURCE_URL} onClick={(event) => { event.preventDefault(); void window.hermesAPI.openExternal(BACKEND_SOURCE_URL); }}>{BACKEND_SOURCE_URL}</a>
+          </div>
+          {backendUpdate && (
             <div className="settings-hermes-update-badge">
-              {parsedVersion?.updateInfo}
+              {backendUpdate.detail}
             </div>
           )}
 
@@ -153,8 +181,8 @@ export default function AboutPane(): React.JSX.Element {
                 {updating ? t("settings.updating") : t("settings.updateEngine")}
               </button>
             ) : (
-              <button className="btn btn-secondary" disabled>
-                {t("settings.latestVersion")}
+              <button className="btn btn-secondary" onClick={() => void checkBackend()} disabled={checkingBackend || updating}>
+                {checkingBackend ? t("settings.checkingUpdates") : t("settings.checkForUpdates")}
               </button>
             )}
             <button

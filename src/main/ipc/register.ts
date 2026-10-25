@@ -124,8 +124,10 @@ import {
   relaunchApp,
 } from "../gpu-fallback";
 import type { GpuPreferenceMode } from "../../shared/gpu";
+import { checkBackendUpdate } from "../backend-update";
 import {
   checkInstallStatus,
+  HERMES_REPO,
   verifyInstall,
   runInstall,
   inspectInstallTarget,
@@ -855,6 +857,12 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("list-system-fonts", () => listInstalledFonts());
 
   // Hermes engine info
+  ipcMain.handle("check-backend-update", async () => {
+    if (getConnectionConfig().mode !== "local") {
+      return { status: "unknown", detail: "Remote backend update checks are unavailable. Check the official repository on the backend host." };
+    }
+    return checkBackendUpdate(HERMES_REPO);
+  });
   ipcMain.handle("get-hermes-version", async () => {
     const conn = getConnectionConfig();
     if (conn.mode === "remote") return remoteGetHermesVersion(conn);
@@ -888,6 +896,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("run-hermes-update", async (event) => {
     try {
       const conn = getConnectionConfig();
+      if (conn.mode === "remote") throw new Error("Update remote backends on their host using the official repository.");
       if (conn.mode === "ssh" && conn.ssh) {
         event.sender.send("install-progress", {
           step: 1,

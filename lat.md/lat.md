@@ -22,6 +22,7 @@ This directory defines the high-level concepts, business logic, and architecture
 - [[sidebar-navigation]] — the recent-sessions list under the Chat nav item, capped at five with a "Show more" button that opens the full session list in a modal.
 - [[context-folder]] — the per-session linked working folder, persisted in a desktop-owned state.db table so a re-opened conversation restores its folder.
 - [[backend-installation]] - legacy and managed runtime detection after backend reinstall.
+- [[backend-update]] - fresh official backend commit checks and truthful About update states.
 - [[backend-compatibility]] - read-only backend compatibility audit and scoped legacy startup support.
 - [[main-process]] — the Electron main-process entrypoint, app lifecycle modules, and centralized IPC registry.
 - [[remote-dashboard-oauth]] — direct Remote dashboard browser authentication, main-process cookie isolation, and single-use WebSocket ticket handling.

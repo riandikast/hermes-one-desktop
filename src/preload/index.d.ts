@@ -309,6 +309,7 @@ interface HermesAPI {
   ) => () => void;
 
   // Hermes engine info
+  checkBackendUpdate: () => Promise<import("../shared/backend-update").BackendUpdateStatus>;
   getHermesVersion: () => Promise<string | null>;
   refreshHermesVersion: () => Promise<string | null>;
   runHermesDoctor: () => Promise<string>;

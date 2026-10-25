@@ -22966,12 +22966,21 @@ body:has(.shell-vibrant),
    two chips in the input footer behave identically. Only the queue/group
    specifics live here. */
 .chat-onfinish-dropdown {
-  min-width: 260px;
-  max-width: 340px;
+  width: min(340px, calc(100vw - 32px));
+  min-width: 0;
+  max-height: min(520px, calc(100dvh - 160px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.chat-onfinish-dropdown > * {
+  flex-shrink: 0;
 }
 
 /* Run order, at the top of the dropdown: numbered chips, click to remove. */
 .chat-onfinish-queue {
+  max-height: 96px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
@@ -23017,7 +23026,9 @@ body:has(.shell-vibrant),
 /* Long command lists must not push the footer chip off screen. */
 .chat-onfinish-scroll {
   max-height: 260px;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .chat-onfinish-group {
   display: flex;

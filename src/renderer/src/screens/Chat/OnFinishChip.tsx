@@ -1,4 +1,4 @@
-import { memo, useEffect, useId, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Play, ChevronDown, ChevronRight, Folder, Check, X } from "lucide-react";
 import {
   readOnFinishSelection,
@@ -44,6 +44,7 @@ export const OnFinishChip = memo(function OnFinishChip({
   lastError,
 }: OnFinishChipProps): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false);
+  const [placement, setPlacement] = useState<React.CSSProperties>({});
   const [terminals, setTerminals] = useState<{ id: string; title: string }[]>([]);
   const [terminalId, setTerminalId] = useState("");
   const [terminalKey, setTerminalKey] = useState("Ctrl+C");
@@ -59,7 +60,40 @@ export const OnFinishChip = memo(function OnFinishChip({
     () => new Set<string>(),
   );
   const containerRef = useRef<HTMLDivElement>(null);
-  const keyListId = useId();
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const place = (): void => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const viewport = window.visualViewport;
+      const height = viewport?.height ?? window.innerHeight;
+      const width = viewport?.width ?? window.innerWidth;
+      const top = viewport?.offsetTop ?? 0;
+      const left = viewport?.offsetLeft ?? 0;
+      const above = rect.top - top - 12;
+      const below = top + height - rect.bottom - 12;
+      const upwards = above >= below;
+      setPlacement({
+        position: "fixed", margin: 0, bottom: "auto", insetInlineStart: "auto",
+        left: Math.max(left + 8, Math.min(rect.left, left + width - Math.min(340, width - 16) - 8)),
+        top: upwards ? Math.max(top + 8, rect.top - 6) : rect.bottom + 6,
+        transform: upwards ? "translateY(-100%)" : undefined,
+        width: Math.min(340, width - 16),
+        maxHeight: Math.max(0, Math.min(520, upwards ? above : below)),
+      });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    window.visualViewport?.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+      window.visualViewport?.removeEventListener("resize", place);
+    };
+  }, [isOpen]);
+
 
   // Load commands when the dropdown opens, so edits made on the Commands page
   // show up without remounting the chat.
@@ -191,7 +225,7 @@ export const OnFinishChip = memo(function OnFinishChip({
       </button>
 
       {isOpen && (
-        <div className="chat-ctxfolder-dropdown chat-onfinish-dropdown">
+        <div className="chat-ctxfolder-dropdown chat-onfinish-dropdown" style={placement}>
           <div className="chat-ctxfolder-dropdown-header">
             {armed
               ? `Runs after each reply · in this order (${selected.length})`
@@ -213,12 +247,11 @@ export const OnFinishChip = memo(function OnFinishChip({
                 </select>
               </label>
               <label>{inputMode === "key" ? "Send key" : "Literal text"}
-                {inputMode === "key" ? <>
-                  <input aria-label="On-Finish key" list={keyListId} value={terminalKey} maxLength={16} onChange={(e) => setTerminalKey(e.target.value)} />
-                  <datalist id={keyListId}>
-                    {Object.keys(TERMINAL_KEYS).filter((key) => key !== "r" && key !== "r + Enter").map((key) => <option key={key} value={key} />)}
-                  </datalist>
-                </> : <input aria-label="On-Finish text" value={terminalText} maxLength={MAX_TERMINAL_TEXT} onChange={(e) => setTerminalText(e.target.value)} />}
+                {inputMode === "key" ? (
+                  <select aria-label="On-Finish key" value={terminalKey} onChange={(e) => setTerminalKey(e.target.value)}>
+                    {Object.keys(TERMINAL_KEYS).filter((key) => key !== "r" && key !== "r + Enter").map((key) => <option key={key} value={key}>{key}</option>)}
+                  </select>
+                ) : <input aria-label="On-Finish text" placeholder="e.g. r" value={terminalText} maxLength={MAX_TERMINAL_TEXT} onChange={(e) => setTerminalText(e.target.value)} />}
               </label>
             </div>
             <div className="chat-onfinish-input-row">
@@ -227,7 +260,7 @@ export const OnFinishChip = memo(function OnFinishChip({
                 if (terminalAction && !selected.includes(terminalAction)) persist([...selected, terminalAction]);
               }}>Add terminal input</button>
             </div>
-            <small>Keys: Ctrl+A–Z, Enter, Tab, Escape, Backspace. Text: 1–256 characters, no control characters. Existing terminal only.</small>
+            <small>{inputMode === "text" ? "Sends text exactly (e.g. r). 1–256 characters, no control characters." : "Sends one control key to this terminal only."}</small>
           </div>
 
           {/* The queue in RUN ORDER — the only place it is shown while in the
