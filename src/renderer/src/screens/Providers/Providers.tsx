@@ -10,21 +10,13 @@ import {
 import { useI18n } from "../../components/useI18n";
 import BrandLogo from "../../components/common/BrandLogo";
 import OAuthLoginModal from "../../components/OAuthLoginModal";
-import HermesAccountModal from "../../components/HermesAccountModal";
+
 import ProviderKeysSection from "../../components/ProviderKeysSection";
 import RegistryBrowserModal from "../../components/RegistryBrowserModal";
 import AuxiliaryTasksSection from "../../components/AuxiliaryTasksSection";
 import { useDiscoveredModels } from "../../hooks/useDiscoveredModels";
-import { KeyRound, Workflow, User } from "../../assets/icons";
-import {
-  ChevronDown,
-  Search,
-  X,
-  RefreshCw,
-  Eye,
-  EyeOff,
-  Coins,
-} from "lucide-react";
+import { KeyRound } from "../../assets/icons";
+import { ChevronDown, Search, X, Eye, EyeOff } from "lucide-react";
 import { customProviderEnvKey } from "../../../../shared/url-key-map";
 import type { HermesAccount } from "../../../../shared/account";
 
@@ -157,9 +149,16 @@ function Providers({
   visible?: boolean;
 }): React.JSX.Element {
   const { t } = useI18n();
-  const [activeTab, setActiveTab] = useState<"providers" | "auxiliary">(
-    "providers",
-  );
+  const [activeTab, setActiveTab] = useState("providers");
+  const tabs = [
+    { id: "providers", label: t("navigation.providers") },
+    { id: "auxiliary", label: t("constants.auxiliaryTitle") },
+    { id: "pool", label: t("settings.sections.credentialPool") },
+    ...SETTINGS_SECTIONS.filter(
+      (section) => section.title !== "constants.sectionLlmProviders",
+    ).map((section) => ({ id: section.title, label: t(section.title) })),
+    { id: "oauth", label: t("providers.oauth.sectionTitle") },
+  ];
   // Curated-registry browser (relocated from the removed Models screen).
   const [registryOpen, setRegistryOpen] = useState(false);
 
@@ -174,7 +173,9 @@ function Providers({
   const [modelProvider, setModelProvider] = useState("auto");
   const [modelName, setModelName] = useState("");
   const [modelBaseUrl, setModelBaseUrl] = useState("");
-  const [modelProviderLabel, setModelProviderLabel] = useState<string | undefined>(undefined);
+  const [modelProviderLabel, setModelProviderLabel] = useState<
+    string | undefined
+  >(undefined);
   const [modelSaved, setModelSaved] = useState(false);
   // Active-model picker modal: pick a configured provider, then one of its
   // configured models. Sourced from the model library (models.json).
@@ -209,9 +210,7 @@ function Providers({
 
   // Hermes account (device login). `account` is the signed-in profile or null.
   const [account, setAccount] = useState<HermesAccount | null>(null);
-  const [showAccountModal, setShowAccountModal] = useState(false);
-  // AI-credit balance for the account card (null = signed out / unavailable).
-  const [credits, setCredits] = useState<number | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     void window.hermesAPI.getAccount(profile).then((a) => {
@@ -222,8 +221,8 @@ function Providers({
     };
   }, [profile]);
 
-  // Hermes One convenience layer: with a signed-in account, surface the
-  // credit balance and make sure the profile has an auto-provisioned
+  // Keep account-based key provisioning independent of the removed account UI.
+  // With a signed-in account, make sure the profile has an auto-provisioned
   // HERMESONE_API_KEY (no-op when one exists; the main process guards
   // remote/SSH modes). A freshly created key means the env just changed
   // under us — re-read it so the Hermes One card + picker appear now, not
@@ -231,15 +230,9 @@ function Providers({
   useEffect(() => {
     let cancelled = false;
     if (!account) {
-      setCredits(null);
       return;
     }
-    void window.hermesAPI
-      .getHermesOneCredits()
-      .then((r) => {
-        if (!cancelled) setCredits(r.balance);
-      })
-      .catch(() => {});
+
     void window.hermesAPI
       .ensureHermesOneKey(profile)
       .then(async (r) => {
@@ -397,7 +390,14 @@ function Providers({
       const libProvider =
         modelProvider in OPENAI_COMPATIBLE_BASE_URLS ? "custom" : modelProvider;
       window.hermesAPI
-        .addModel(displayName, libProvider, modelName, modelBaseUrl, undefined, modelProviderLabel)
+        .addModel(
+          displayName,
+          libProvider,
+          modelName,
+          modelBaseUrl,
+          undefined,
+          modelProviderLabel,
+        )
         .catch(() => {
           /* non-fatal — library write is best-effort */
         });
@@ -614,8 +614,15 @@ function Providers({
   // Search display metadata only: never stringify provider records or credentials.
   const filteredPickModels = pickModelOptions.filter((id) => {
     const saved = activeProvider?.models.find((m) => m.model === id);
-    return [id, saved?.name, saved?.providerLabel, activeProvider?.label, activeProvider?.provider]
-      .some((value) => value?.toLowerCase().includes(modelSearch.trim().toLowerCase()));
+    return [
+      id,
+      saved?.name,
+      saved?.providerLabel,
+      activeProvider?.label,
+      activeProvider?.provider,
+    ].some((value) =>
+      value?.toLowerCase().includes(modelSearch.trim().toLowerCase()),
+    );
   });
 
   // Initialise / validate the selected provider whenever the picker opens.
@@ -701,181 +708,127 @@ function Providers({
   }
 
   return (
-    <div className="settings-container">
-      <div className="models-tabs">
-        <button
-          className={`models-tab ${activeTab === "providers" ? "active" : ""}`}
-          onClick={() => setActiveTab("providers")}
-        >
-          <KeyRound size={16} />
-          {t("navigation.providers")}
-        </button>
-        <button
-          className={`models-tab ${activeTab === "auxiliary" ? "active" : ""}`}
-          onClick={() => setActiveTab("auxiliary")}
-        >
-          <Workflow size={16} />
-          {t("constants.auxiliaryTitle")}
-        </button>
+    <div className="settings-container providers-page">
+      <div
+        className="models-tabs providers-tabs"
+        role="tablist"
+        aria-label={t("navigation.providers")}
+      >
+        {tabs.map((tab, index) => (
+          <button
+            key={tab.id}
+            id={`provider-tab-${tab.id}`}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls={`provider-panel-${tab.id}`}
+            tabIndex={activeTab === tab.id ? 0 : -1}
+            className={`models-tab ${activeTab === tab.id ? "active" : ""}`}
+            onClick={() => setActiveTab(tab.id)}
+            onKeyDown={(event) => {
+              const next =
+                event.key === "Home"
+                  ? 0
+                  : event.key === "End"
+                    ? tabs.length - 1
+                    : event.key === "ArrowRight"
+                      ? (index + 1) % tabs.length
+                      : event.key === "ArrowLeft"
+                        ? (index + tabs.length - 1) % tabs.length
+                        : -1;
+              if (next < 0) return;
+              event.preventDefault();
+              setActiveTab(tabs[next].id);
+              document.getElementById(`provider-tab-${tabs[next].id}`)?.focus();
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
-
-      {activeTab === "providers" && (
-        <>
-          <div className="settings-section">
-            <div className="settings-section-title">
-              {t("providers.hermesAccount.sectionTitle")}
-            </div>
-            {!account && (
-              <p className="settings-section-hint">
-                {t("providers.hermesAccount.sectionHint")}
-              </p>
-            )}
-            {account ? (
-              <div className="hermes-account-card">
-                {account.user.avatarUrl ? (
-                  <img
-                    className="hermes-account-avatar"
-                    src={account.user.avatarUrl}
-                    alt=""
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <span
-                    className="hermes-account-avatar hermes-account-avatar-letter"
-                    aria-hidden="true"
-                  >
-                    {(account.user.name || account.user.email || "?")
-                      .charAt(0)
-                      .toUpperCase()}
-                  </span>
-                )}
-                <span className="hermes-account-who">
-                  <span className="hermes-account-name">
-                    {account.user.name || account.user.email || account.user.id}
-                  </span>
-                  {account.user.name && account.user.email && (
-                    <span className="hermes-account-email">
-                      {account.user.email}
+      <div
+        role="tabpanel"
+        id={`provider-panel-${activeTab}`}
+        aria-labelledby={`provider-tab-${activeTab}`}
+      >
+        {activeTab === "providers" && (
+          <>
+            <div className="settings-section">
+              <div className="settings-section-title settings-section-title-row">
+                <span>
+                  {t("common.defaultModel")}
+                  {modelSaved && (
+                    <span className="settings-saved" style={{ marginLeft: 8 }}>
+                      {t("common.saved")}
                     </span>
                   )}
-                  <span className="hermes-account-chips">
-                    <span className="hermes-account-chip is-connected">
-                      <span className="hermes-account-dot" aria-hidden="true" />
-                      {t("providers.hermesAccount.connected")}
-                    </span>
-                    <span className="hermes-account-chip">
-                      <RefreshCw size={11} aria-hidden="true" />
-                      {t("providers.hermesAccount.syncOn")}
-                    </span>
-                    {credits !== null && (
-                      <span
-                        className="hermes-account-chip"
-                        title={t("providers.hermesAccount.creditsTitle")}
-                      >
-                        <Coins size={11} aria-hidden="true" />
-                        {t("providers.hermesAccount.credits", {
-                          amount: credits.toFixed(2),
-                        })}
-                      </span>
-                    )}
-                  </span>
                 </span>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={async () => {
-                    await window.hermesAPI.accountLogout(profile);
-                    setAccount(null);
-                  }}
-                >
-                  {t("providers.hermesAccount.signOut")}
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                onClick={() => setShowAccountModal(true)}
-              >
-                <User size={14} />
-                {t("providers.hermesAccount.signIn")}
-              </button>
-            )}
-          </div>
-
-          <div className="settings-section">
-            <div className="settings-section-title settings-section-title-row">
-              <span>
-                {t("common.activeModel")}
-                {modelSaved && (
-                  <span className="settings-saved" style={{ marginLeft: 8 }}>
-                    {t("common.saved")}
-                  </span>
-                )}
-              </span>
-              <div className="settings-section-title-actions">
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => void openModelPicker()}
-                >
-                  {isConfigured
-                    ? t("common.change")
-                    : t("providers.model.select")}
-                </button>
-              </div>
-            </div>
-
-            {isConfigured ? (
-              <div className="provider-summary">
-                <BrandLogo
-                  provider={modelProvider}
-                  modelId={modelName}
-                  size={26}
-                  matchTheme={true}
-                />
-                <div className="provider-summary-text">
-                  <div className="provider-summary-name">
-                    {t(PROVIDERS.labels[modelProvider] ?? modelProvider)}
-                  </div>
-                  {summaryMeta && (
-                    <div className="provider-summary-meta">{summaryMeta}</div>
-                  )}
+                <div className="settings-section-title-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => void openModelPicker()}
+                  >
+                    {isConfigured
+                      ? t("common.change")
+                      : t("providers.model.select")}
+                  </button>
                 </div>
               </div>
-            ) : (
-              <p className="settings-section-hint">
-                {t("providers.model.emptyHint")}
-              </p>
-            )}
-          </div>
 
-          {/* Provider configuration (keys + models). Placed above the
+              {isConfigured ? (
+                <div className="provider-summary">
+                  <BrandLogo
+                    provider={modelProvider}
+                    modelId={modelName}
+                    size={26}
+                    matchTheme={true}
+                  />
+                  <div className="provider-summary-text">
+                    <div className="provider-summary-name">
+                      {t(PROVIDERS.labels[modelProvider] ?? modelProvider)}
+                    </div>
+                    {summaryMeta && (
+                      <div className="provider-summary-meta">{summaryMeta}</div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <p className="settings-section-hint">
+                  {t("providers.model.emptyHint")}
+                </p>
+              )}
+            </div>
+
+            {/* Provider configuration (keys + models). Placed above the
               credential pool: it's the primary, user-friendly surface for
               configuring providers and the models the top selector picks from;
               the credential pool is the advanced multi-key feature below it. */}
-          {(() => {
-            const llm = SETTINGS_SECTIONS.find(
-              (s) => s.title === "constants.sectionLlmProviders",
-            );
-            return llm ? (
-              <div className="settings-section">
-                <div className="settings-section-title">{t(llm.title)}</div>
-                <ProviderKeysSection
-                  items={llm.items}
-                  env={env}
-                  savedKey={savedKey}
-                  visibleKeys={visibleKeys}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  onToggleVisibility={toggleVisibility}
-                  onRemove={handleRemove}
-                  profile={profile}
-                />
-              </div>
-            ) : null;
-          })()}
+            {(() => {
+              const llm = SETTINGS_SECTIONS.find(
+                (s) => s.title === "constants.sectionLlmProviders",
+              );
+              return llm ? (
+                <div className="settings-section">
+                  <div className="settings-section-title">{t(llm.title)}</div>
+                  <ProviderKeysSection
+                    items={llm.items}
+                    env={env}
+                    savedKey={savedKey}
+                    visibleKeys={visibleKeys}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    onToggleVisibility={toggleVisibility}
+                    onRemove={handleRemove}
+                    profile={profile}
+                  />
+                </div>
+              ) : null;
+            })()}
+          </>
+        )}
 
+        {activeTab === "pool" && (
           <div className="settings-section">
             <div className="settings-section-title">
               {t("settings.sections.credentialPool")}
@@ -979,114 +932,110 @@ function Providers({
               )}
             </div>
           </div>
-
-          {SETTINGS_SECTIONS.map((section) => {
-            // The LLM-providers section is rendered as a standalone section
-            // above the credential pool.
-            if (section.title === "constants.sectionLlmProviders") return null;
-            return (
-              <div key={section.title} className="settings-section">
-                <div className="settings-section-title">{t(section.title)}</div>
-                <div className="settings-key-list">
-                  {section.items.map((field) => {
-                    const value = env[field.key] || "";
-                    const hasValue = value.trim().length > 0;
-                    const isEditing = editingKey === field.key;
-                    const revealed = visibleKeys.has(field.key);
-                    // Short name: drop a trailing "… API Key" / "… Key" so the
-                    // row reads as the tool, not "X API Key".
-                    const name = t(field.label).replace(
-                      /\s+(API\s+)?Key$/i,
-                      "",
-                    );
-                    return (
-                      <div key={field.key} className="settings-key-row">
-                        <div className="settings-key-info">
-                          <span className="settings-key-name">
-                            {name}
-                            {savedKey === field.key && (
-                              <span className="settings-saved">
-                                {t("common.saved")}
-                              </span>
-                            )}
-                          </span>
-                          <span className="settings-key-desc">
-                            {t(field.hint)}
-                          </span>
-                        </div>
-                        <div className="settings-key-action">
-                          {isEditing ? (
-                            <input
-                              className="input settings-key-input"
-                              autoFocus
-                              type={
-                                field.type === "password" && !revealed
-                                  ? "password"
-                                  : "text"
+        )}
+        {SETTINGS_SECTIONS.map((section) => {
+          // The LLM-providers section is rendered as a standalone section
+          // above the credential pool.
+          if (section.title !== activeTab) return null;
+          return (
+            <div key={section.title} className="settings-section">
+              <div className="settings-section-title">{t(section.title)}</div>
+              <div className="settings-key-list">
+                {section.items.map((field) => {
+                  const value = env[field.key] || "";
+                  const hasValue = value.trim().length > 0;
+                  const isEditing = editingKey === field.key;
+                  const revealed = visibleKeys.has(field.key);
+                  // Short name: drop a trailing "… API Key" / "… Key" so the
+                  // row reads as the tool, not "X API Key".
+                  const name = t(field.label).replace(/\s+(API\s+)?Key$/i, "");
+                  return (
+                    <div key={field.key} className="settings-key-row">
+                      <div className="settings-key-info">
+                        <span className="settings-key-name">
+                          {name}
+                          {savedKey === field.key && (
+                            <span className="settings-saved">
+                              {t("common.saved")}
+                            </span>
+                          )}
+                        </span>
+                        <span className="settings-key-desc">
+                          {t(field.hint)}
+                        </span>
+                      </div>
+                      <div className="settings-key-action">
+                        {isEditing ? (
+                          <input
+                            className="input settings-key-input"
+                            autoFocus
+                            type={
+                              field.type === "password" && !revealed
+                                ? "password"
+                                : "text"
+                            }
+                            value={value}
+                            onChange={(e) =>
+                              handleChange(field.key, e.target.value)
+                            }
+                            onBlur={() => {
+                              handleBlur(field.key);
+                              setEditingKey(null);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === "Escape") {
+                                e.preventDefault();
+                                e.currentTarget.blur();
                               }
-                              value={value}
-                              onChange={(e) =>
-                                handleChange(field.key, e.target.value)
-                              }
-                              onBlur={() => {
-                                handleBlur(field.key);
-                                setEditingKey(null);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" || e.key === "Escape") {
-                                  e.preventDefault();
-                                  e.currentTarget.blur();
-                                }
-                              }}
-                              placeholder={t(field.label)}
-                            />
-                          ) : hasValue ? (
-                            <>
-                              <button
-                                type="button"
-                                className="settings-key-masked"
-                                onClick={() => setEditingKey(field.key)}
-                                title={t("common.edit")}
-                              >
-                                {revealed ? value : maskKey(value)}
-                              </button>
-                              {field.type === "password" && (
-                                <button
-                                  type="button"
-                                  className="settings-key-eye"
-                                  onClick={() => toggleVisibility(field.key)}
-                                  aria-label={
-                                    revealed
-                                      ? t("common.hide")
-                                      : t("common.show")
-                                  }
-                                >
-                                  {revealed ? (
-                                    <EyeOff size={15} />
-                                  ) : (
-                                    <Eye size={15} />
-                                  )}
-                                </button>
-                              )}
-                            </>
-                          ) : (
+                            }}
+                            placeholder={t(field.label)}
+                          />
+                        ) : hasValue ? (
+                          <>
                             <button
                               type="button"
-                              className="settings-key-add"
+                              className="settings-key-masked"
                               onClick={() => setEditingKey(field.key)}
+                              title={t("common.edit")}
                             >
-                              {t("common.addKey")}
+                              {revealed ? value : maskKey(value)}
                             </button>
-                          )}
-                        </div>
+                            {field.type === "password" && (
+                              <button
+                                type="button"
+                                className="settings-key-eye"
+                                onClick={() => toggleVisibility(field.key)}
+                                aria-label={
+                                  revealed ? t("common.hide") : t("common.show")
+                                }
+                              >
+                                {revealed ? (
+                                  <EyeOff size={15} />
+                                ) : (
+                                  <Eye size={15} />
+                                )}
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className="settings-key-add"
+                            onClick={() => setEditingKey(field.key)}
+                          >
+                            {t("common.addKey")}
+                          </button>
+                        )}
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          );
+        })}
 
+        {activeTab === "oauth" && (
           <div className="settings-section">
             <div className="settings-section-title">
               {t("providers.oauth.sectionTitle")}
@@ -1114,132 +1063,135 @@ function Providers({
               ))}
             </div>
           </div>
+        )}
+        {oauthModal && (
+          <OAuthLoginModal
+            provider={oauthModal.id}
+            providerLabel={oauthModal.name}
+            profile={profile}
+            onClose={() => setOauthModal(null)}
+          />
+        )}
 
-          {oauthModal && (
-            <OAuthLoginModal
-              provider={oauthModal.id}
-              providerLabel={oauthModal.name}
-              profile={profile}
-              onClose={() => setOauthModal(null)}
-            />
-          )}
-
-          {showAccountModal && (
-            <HermesAccountModal
-              profile={profile}
-              onClose={() => setShowAccountModal(false)}
-              onSignedIn={() => {
-                // Refetch to get the full stored account (apiUrl + user).
-                void window.hermesAPI.getAccount(profile).then(setAccount);
-              }}
-            />
-          )}
-
-          {/* Active-model picker: choose a configured provider → one of its
+        {/* Active-model picker: choose a configured provider → one of its
               configured models. The key is resolved automatically at runtime. */}
-          {modelPickerOpen && (
+        {modelPickerOpen && (
+          <div
+            className="models-modal-overlay"
+            onClick={() => setModelPickerOpen(false)}
+          >
             <div
-              className="models-modal-overlay"
-              onClick={() => setModelPickerOpen(false)}
+              className="models-modal model-select-modal"
+              onClick={(e) => e.stopPropagation()}
             >
-              <div
-                className="models-modal model-select-modal"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="models-modal-header">
-                  <h2 className="models-modal-title model-select-title">
-                    {t("providers.model.pickerTitle")}
-                  </h2>
-                  <button
-                    className="btn-ghost"
-                    onClick={() => setModelPickerOpen(false)}
-                    aria-label={t("common.close")}
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-                <div className="models-modal-body">
-                  {pickerProviders.length === 0 ? (
-                    <p className="settings-field-hint">
-                      {t("providers.model.noModels")}
-                    </p>
-                  ) : (
-                    <>
-                      <div className="settings-field">
-                        <label className="settings-field-label">
-                          {t("common.provider")}
-                        </label>
-                        <LogoSelect
-                          options={pickerProviders}
-                          value={pickGroupKey}
-                          onChange={selectPickGroup}
-                          brandOf={(p) => p.brand}
-                          labelOf={(p) => p.label}
+              <div className="models-modal-header">
+                <h2 className="models-modal-title model-select-title">
+                  {t("providers.model.pickerTitle")}
+                </h2>
+                <button
+                  className="btn-ghost"
+                  onClick={() => setModelPickerOpen(false)}
+                  aria-label={t("common.close")}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="models-modal-body">
+                {pickerProviders.length === 0 ? (
+                  <p className="settings-field-hint">
+                    {t("providers.model.noModels")}
+                  </p>
+                ) : (
+                  <>
+                    <div className="settings-field">
+                      <label className="settings-field-label">
+                        {t("common.provider")}
+                      </label>
+                      <LogoSelect
+                        options={pickerProviders}
+                        value={pickGroupKey}
+                        onChange={selectPickGroup}
+                        brandOf={(p) => p.brand}
+                        labelOf={(p) => p.label}
+                      />
+                    </div>
+
+                    <div className="settings-field">
+                      <label className="settings-field-label">
+                        {t("common.model")}
+                      </label>
+                      <div className="settings-input-row provider-picker-search">
+                        <Search size={16} aria-hidden />
+                        <input
+                          className="input"
+                          type="search"
+                          aria-label="Search models"
+                          placeholder="Search models"
+                          value={modelSearch}
+                          onChange={(e) => setModelSearch(e.target.value)}
                         />
                       </div>
-
-                      <div className="settings-field">
-                        <label className="settings-field-label">
-                          {t("common.model")}
-                        </label>
-                        <div className="settings-input-row provider-picker-search">
-                          <Search size={16} aria-hidden />
-                          <input
-                            className="input"
-                            type="search"
-                            aria-label="Search models"
-                            placeholder="Search models"
-                            value={modelSearch}
-                            onChange={(e) => setModelSearch(e.target.value)}
-                          />
-                        </div>
-                        <select
-                          className="input"
-                          aria-label={t("common.model")}
-                          value={filteredPickModels.includes(pickModel) ? pickModel : ""}
-                          onChange={(e) => setPickModel(e.target.value)}
-                        >
-                          {!filteredPickModels.includes(pickModel) && <option value="" disabled>{filteredPickModels.length ? "Select a model" : "No matching models"}</option>}
-                          {filteredPickModels.map((id) => (
-                            <option key={id} value={id}>
-                              {id}
-                            </option>
-                          ))}
-                        </select>
-                        <div className="settings-field-hint">
-                          {pickDiscovery.status === "loading"
-                            ? t("settings.discoveringModels")
-                            : pickModelOptions.length === 0
-                              ? t("providers.model.noProviderModels")
-                              : ""}
-                        </div>
+                      <select
+                        className="input"
+                        aria-label={t("common.model")}
+                        value={
+                          filteredPickModels.includes(pickModel)
+                            ? pickModel
+                            : ""
+                        }
+                        onChange={(e) => setPickModel(e.target.value)}
+                      >
+                        {!filteredPickModels.includes(pickModel) && (
+                          <option value="" disabled>
+                            {filteredPickModels.length
+                              ? "Select a model"
+                              : "No matching models"}
+                          </option>
+                        )}
+                        {filteredPickModels.map((id) => (
+                          <option key={id} value={id}>
+                            {id}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="settings-field-hint">
+                        {pickDiscovery.status === "loading"
+                          ? t("settings.discoveringModels")
+                          : pickModelOptions.length === 0
+                            ? t("providers.model.noProviderModels")
+                            : ""}
                       </div>
-                    </>
-                  )}
-                </div>
-                <div className="models-modal-footer">
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => setModelPickerOpen(false)}
-                  >
-                    {t("common.cancel")}
-                  </button>
-                  <button
-                    className="btn btn-primary"
-                    disabled={!pickModel || !filteredPickModels.includes(pickModel)}
-                    onClick={() => void confirmModelPick()}
-                  >
-                    {t("providers.model.use")}
-                  </button>
-                </div>
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="models-modal-footer">
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setModelPickerOpen(false)}
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  className="btn btn-primary"
+                  disabled={
+                    !pickModel || !filteredPickModels.includes(pickModel)
+                  }
+                  onClick={() => void confirmModelPick()}
+                >
+                  {t("providers.model.use")}
+                </button>
               </div>
             </div>
-          )}
-        </>
-      )}
-
-      {activeTab === "auxiliary" && <AuxiliaryTasksSection visible={visible} />}
-      {activeTab === "auxiliary" && <ModelSettingsSection visible={visible} />}
+          </div>
+        )}
+        {activeTab === "auxiliary" && (
+          <AuxiliaryTasksSection visible={visible} />
+        )}
+        {activeTab === "auxiliary" && (
+          <ModelSettingsSection visible={visible} />
+        )}
+      </div>
 
       {registryOpen && (
         <RegistryBrowserModal onClose={() => setRegistryOpen(false)} />
@@ -1248,16 +1200,22 @@ function Providers({
   );
 }
 
-function ModelSettingsSection({ visible }: { visible?: boolean }): React.JSX.Element {
+function ModelSettingsSection({
+  visible,
+}: {
+  visible?: boolean;
+}): React.JSX.Element {
   const [minCtx, setMinCtx] = useState<string>("");
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (!visible || loaded) return;
-    void window.hermesAPI.getConfig("model.minimum_context_length").then((v) => {
-      setMinCtx(v != null ? String(v) : "");
-      setLoaded(true);
-    });
+    void window.hermesAPI
+      .getConfig("model.minimum_context_length")
+      .then((v) => {
+        setMinCtx(v != null ? String(v) : "");
+        setLoaded(true);
+      });
   }, [visible, loaded]);
 
   const save = useCallback(async () => {
@@ -1268,21 +1226,31 @@ function ModelSettingsSection({ visible }: { visible?: boolean }): React.JSX.Ele
     } else {
       const num = parseInt(val, 10);
       if (Number.isNaN(num) || num < 0) return;
-      await window.hermesAPI.setConfig("model.minimum_context_length", String(num));
+      await window.hermesAPI.setConfig(
+        "model.minimum_context_length",
+        String(num),
+      );
     }
-    toast.success("Minimum context length saved — restart gateway to apply");
+    toast.success("Minimum context length saved. Restart gateway to apply.");
   }, [minCtx]);
 
   return (
-    <div style={{ padding: "16px 0" }}>
-      <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Model Settings</h3>
-      <p style={{ fontSize: 12, color: "var(--text-secondary, #888)", marginBottom: 12 }}>
-        Minimum context window required for a model to be accepted. Default: 64000.
-        Set to 0 to disable the check.
+    <section className="settings-section auxiliary-model-settings">
+      <h3 className="settings-section-title">Model Settings</h3>
+      <p className="settings-field-hint">
+        Minimum context window required for a model to be accepted. Default:
+        64000. Set to 0 to disable the check.
       </p>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <label style={{ fontSize: 13, whiteSpace: "nowrap" }}>Min context length:</label>
+      <div className="settings-field">
+        <label
+          className="settings-field-label"
+          htmlFor="minimum-context-length"
+        >
+          Min context length:
+        </label>
         <input
+          id="minimum-context-length"
+          className="input"
           type="number"
           min={0}
           step={1000}
@@ -1290,18 +1258,9 @@ function ModelSettingsSection({ visible }: { visible?: boolean }): React.JSX.Ele
           onChange={(e) => setMinCtx(e.target.value)}
           onBlur={() => void save()}
           placeholder="64000"
-          style={{
-            width: 120,
-            padding: "4px 8px",
-            border: "1px solid var(--border, #333)",
-            borderRadius: 4,
-            background: "var(--input-bg, #1a1a1a)",
-            color: "var(--text, #eee)",
-            fontSize: 13,
-          }}
         />
       </div>
-    </div>
+    </section>
   );
 }
 

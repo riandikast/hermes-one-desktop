@@ -36,11 +36,25 @@ Endpoints the agent does not natively support (Groq, DeepSeek, Together, Firewor
 
 Selecting a preset sets the base URL; the API-key env var is resolved by `resolveCustomEnvKey` — first an exact `LOCAL_PRESETS.envKey` match, then [[src/shared/url-key-map.ts]] by host. So a compatible provider configures correctly without a dedicated card (e.g. `api.aimlapi.com` → `AIMLAPI_API_KEY`).
 
+## Focused settings tabs
+
+Eight settings tabs isolate LLM routing from credentials for tools, browsers, voice, research, OAuth and multi-key pools without changing IPC semantics.
+
+The tablist wraps rather than clips. Arrow keys cycle tabs; Home and End select the endpoints, with roving focus and linked tabpanel names. [[src/renderer/src/screens/Providers/Providers.test.tsx]] covers all tab destinations, the Default Model label and removed account controls.
+
+## Auxiliary routing editor
+
+Auxiliary Tasks uses compact task rows with readable routing summaries and separate edit actions, keeping model settings available below the list.
+
+Default routes explicitly show Default Model; overrides show provider and model IDs. The editor preserves auto, native and local/custom routing, editable model IDs, discovery refresh, a native discovered-model selector, custom base URLs, save and reset. Controls use primary foreground/background tokens, visible focus, associated labels, Escape dismissal, focus containment and focus restoration. Loading, empty and retryable error states are explicit. Save/reset errors retain the editor and show feedback. Tests exercise discovered and manual selections, exact save payloads, Escape and reset.
+
+Design direction: existing compact Knowledge/Commands settings language, shadcn-like neutral surfaces, ENERGY 1 / RHYTHM 1 / MOTION 1. Borders separate task rows; filled route summaries distinguish saved choices; app typography and accent focus preserve identity without decorative assets.
+
 ## Active model is picked from configured providers
 
 The Providers tab ([[src/renderer/src/screens/Providers/Providers.tsx]]) sets the default (active) model by choosing from what's already configured, not by free-form entry — there's no more provider chip grid, manual model/base-URL fields, or inline API-key input.
 
-The screen is organized as two tabs: Providers and Auxiliary Tasks. There is no longer a standalone Models tab — models are managed only under each provider card (see "Models live under each provider" below), since the provider owns the base URL and key a per-model editor would otherwise duplicate. The Auxiliary Tasks tab renders [[src/renderer/src/components/AuxiliaryTasksSection.tsx]] (per-task model overrides), and a **Browse Registry** button in the model-section header opens [[src/renderer/src/components/RegistryBrowserModal.tsx]] to pick curated models into the library. A registry pick captures the model's context window/capabilities into a definition, then adds the attachment; its "already added" state is keyed by provider + endpoint + model id — matching [[src/main/models.ts#addModel]]'s dedup — so the same model id offered by two different custom endpoints can be added from each.
+The screen has eight focused tabs: Providers, Auxiliary Tasks, Credential Pool, Tool API Keys, Browser & Automation, Voice & STT, Research & Training, and Subscription / OAuth Plans. Providers contains only Default Model and LLM Providers. Account sign-in, balance and sign-out UI is removed here; existing account-based key provisioning remains intact. The default model route and all persistence APIs retain their original semantics.
 
 The **MODEL** section shows a read-only summary (logo + provider label + model). A **Change** button opens a picker modal with a **provider** picker (a custom `LogoSelect` — the brand logo renders inside the control and each option, which a native `<select>` can't do) and a native **model** dropdown. Confirming sets `modelProvider`/`modelName`/`modelBaseUrl`, which the existing debounced auto-save persists to `config.yaml` via `setModelConfig` (compat providers as `custom` + base_url). The **API key is resolved automatically** at runtime — the picker never asks for it.
 
@@ -78,13 +92,13 @@ Visually the modal is **stroke-free**: the logo tile, status pill, API-key field
 
 The cards and picker are **ordered by display priority**, not the FieldDef declaration order (which groups providers by when they were added, surfacing niche endpoints like AIML API near the top). [[src/renderer/src/constants.ts#providerKeyRank]] ranks each env key: `PROVIDER_KEY_ORDER` front-loads the well-known providers (Hermes One first), unlisted keys keep their FieldDef order in the middle, and `PROVIDER_KEY_DEMOTED` (AIML API) sinks to the end. `ProviderKeysSection` sorts `keyItems` with a **stable** sort on the rank, so both the configured cards and the Add-provider picker share the ordering. A test pins Hermes One first and AIML last.
 
-The section is rendered **standalone, above the credential pool** rather than in the `SETTINGS_SECTIONS.map` position — it's the primary surface for configuring providers and the models the top active-model selector picks from, so it sits before the advanced multi-key pool. The map skips the `constants.sectionLlmProviders` entry (an inline title check returning null); other `SETTINGS_SECTIONS` (non-LLM) still render inline in place, after the pool.
+The LLM section is rendered standalone under Default Model. Credential Pool, each non-LLM `SETTINGS_SECTIONS` entry and OAuth each have their own tab, retaining the same state, autosave, visibility, add/remove and sign-in handlers.
 
 ### Named custom providers
 
 The picker offers a **Custom provider** tile (last) for any OpenAI-compatible endpoint not covered by a built-in card. You can add **multiple**, each with a distinct name, base URL, and its own key.
 
-A custom provider's **identity** (name + base URL) is a first-class record in the desktop's per-profile store [[src/main/providers-store.ts]] (`providers.json`, plaintext — it holds no secrets, only name + base URL). Its **key** still lives in the profile `.env` and its **models** in `models.json`; the store is *additive* so a provider renders as a card the moment it is saved, independent of whether any model has been added. This fixed the prior gap where a keyed-but-modelless provider was invisible.
+A custom provider's **identity** (name + base URL) is a first-class record in the desktop's per-profile store [[src/main/providers-store.ts]] (`providers.json`, plaintext — it holds no secrets, only name + base URL). Its **key** still lives in the profile `.env` and its **models** in `models.json`; the store is _additive_ so a provider renders as a card the moment it is saved, independent of whether any model has been added. This fixed the prior gap where a keyed-but-modelless provider was invisible.
 
 The config modal collects **Name**, **Base URL**, and an API key. On save (modal close) the identity is upserted via `upsertCustomProvider` ([[src/main/providers-store.ts#upsertCustomProvider]]), deduped by the derived env-key anchor so a re-save updates in place. The key is stored under the provider's dedicated env var, [[src/shared/url-key-map.ts#customProviderEnvKey]]`(name)` → `CUSTOM_PROVIDER_<SANITISED_NAME>_KEY` — so two custom providers never share a key. Models are added through the same [[src/renderer/src/components/ProviderKeysSection.tsx#ProviderModelsManager]] with an explicit `{ provider: "custom", baseUrl }` route plus `providerLabel = name`; that label is persisted on each [[src/main/models.ts#SavedModel]] (`providerLabel`) via [[src/main/models.ts#addModel]] (whose dedup now includes base URL, so the same model id can exist under two endpoints).
 

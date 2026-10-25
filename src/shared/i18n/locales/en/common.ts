@@ -11,6 +11,7 @@ export default {
   edit: "Edit",
   addKey: "Add key",
   activeModel: "Active Model",
+  defaultModel: "Default Model",
   change: "Change",
   search: "Search",
   searchPlaceholder: "Search...",

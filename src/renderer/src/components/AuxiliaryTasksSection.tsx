@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import toast from "react-hot-toast";
 import {
   X,
@@ -47,6 +47,16 @@ function AuxiliaryTasksSection({
   const [auxFormProvider, setAuxFormProvider] = useState("auto");
   const [auxFormModel, setAuxFormModel] = useState("");
   const [auxFormBaseUrl, setAuxFormBaseUrl] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const modalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showAuxModal) return;
+    const previous = document.activeElement as HTMLElement | null;
+    modalRef.current?.querySelector<HTMLElement>("select")?.focus();
+    return () => previous?.focus();
+  }, [showAuxModal]);
 
   const auxDiscoveryBaseUrl =
     auxFormProvider === "custom" || localPresetForProvider(auxFormProvider)
@@ -59,11 +69,17 @@ function AuxiliaryTasksSection({
     enabled: showAuxModal && auxFormProvider !== "auto",
     refreshToken: auxDiscoveryRefresh,
   });
-  const auxDiscoveryListId = "aux-modal-discovery";
 
   const loadAuxConfig = useCallback(async () => {
-    const aux = await window.hermesAPI.getAuxiliaryConfig();
-    setAuxConfig(aux);
+    setLoading(true);
+    setError(false);
+    try {
+      setAuxConfig(await window.hermesAPI.getAuxiliaryConfig());
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -158,78 +174,140 @@ function AuxiliaryTasksSection({
   }
 
   async function handleAuxSave(): Promise<void> {
-    if (!auxEditingTask) return;
-    await window.hermesAPI.setAuxiliaryTask(auxEditingTask, {
-      provider: auxFormProvider,
-      model: auxFormModel,
-      baseUrl: auxFormBaseUrl,
-    });
-    const updated = await window.hermesAPI.getAuxiliaryConfig();
-    setAuxConfig(updated);
-    closeAuxModal();
-    toast.success(t("constants.auxiliarySaved"));
+    if (!auxEditingTask || saving) return;
+    setSaving(true);
+    try {
+      await window.hermesAPI.setAuxiliaryTask(auxEditingTask, {
+        provider: auxFormProvider,
+        model: auxFormModel,
+        baseUrl: auxFormBaseUrl,
+      });
+      const updated = await window.hermesAPI.getAuxiliaryConfig();
+      setAuxConfig(updated);
+      closeAuxModal();
+      toast.success(t("constants.auxiliarySaved"));
+    } catch {
+      toast.error(t("common.errorMessage"));
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleResetAux(): Promise<void> {
-    await window.hermesAPI.resetAuxiliaryConfig();
-    const updated = await window.hermesAPI.getAuxiliaryConfig();
-    setAuxConfig(updated);
-    toast.success(t("constants.auxiliaryResetSuccess"));
+    try {
+      await window.hermesAPI.resetAuxiliaryConfig();
+      const updated = await window.hermesAPI.getAuxiliaryConfig();
+      setAuxConfig(updated);
+      toast.success(t("constants.auxiliaryResetSuccess"));
+    } catch {
+      toast.error(t("common.errorMessage"));
+    }
   }
 
   return (
     <>
       <section className="auxiliary-header">
-        <div className="settings-field-hint" style={{ marginBottom: 10 }}>
-          {t("constants.auxiliaryDescription")}
+        <div>
+          <h2 className="settings-section-title">
+            {t("constants.auxiliaryTitle")}
+          </h2>
+          <p className="settings-field-hint">
+            {t("constants.auxiliaryDescription")}
+          </p>
         </div>
         <button
           className="btn btn-secondary btn-sm"
-          style={{ marginBottom: 15 }}
           onClick={handleResetAux}
+          disabled={loading || error || !auxConfig.length}
         >
           {t("constants.auxiliaryResetAll")}
         </button>
       </section>
-      <div className="provider-keys-grid">
+      {loading && <p role="status">{t("common.loading")}</p>}
+      {error && (
+        <div role="alert">
+          {t("common.errorMessage")}{" "}
+          <button
+            className="btn btn-secondary"
+            onClick={() => void loadAuxConfig()}
+          >
+            {t("common.retry")}
+          </button>
+        </div>
+      )}
+      {!loading && !error && !auxConfig.length && <p>{t("common.noData")}</p>}
+      <div className="auxiliary-task-list">
         {auxConfig.map((task) => {
           const labels = auxTaskLabels[task.task];
           if (!labels) return null;
           const Icon = labels.icon;
           return (
-            <div key={task.task} className="provider-key-card">
-              <div className="provider-key-card-head">
-                <Icon size={22} />
-                <span className="provider-key-card-title">
-                  {t(labels.name)}
-                </span>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => openAuxEdit(task.task)}
-                  title={t("common.edit")}
-                >
-                  <Pencil size={14} />
-                </button>
+            <div key={task.task} className="auxiliary-task-row">
+              <div className="auxiliary-task-icon" aria-hidden="true">
+                <Icon size={20} />
               </div>
-              <div className="settings-field-hint">{t(labels.hint)}</div>
-              {task.provider !== "auto" && (
-                <div className="aux-task-details">
-                  <span className="aux-task-provider">{task.provider}</span>
-                  {task.model && (
-                    <span className="aux-task-model">{task.model}</span>
-                  )}
-                </div>
-              )}
+              <div className="auxiliary-task-copy">
+                <h3>{t(labels.name)}</h3>
+                <p className="settings-field-hint">{t(labels.hint)}</p>
+              </div>
+              <div className="aux-task-details">
+                <span className="aux-task-provider">
+                  {task.provider === "auto"
+                    ? t("common.defaultModel")
+                    : t(PROVIDERS.labels[task.provider] || task.provider)}
+                </span>
+                {task.provider !== "auto" && task.model && (
+                  <span className="aux-task-model">{task.model}</span>
+                )}
+              </div>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => openAuxEdit(task.task)}
+                aria-label={`${t("common.edit")} ${t(labels.name)}`}
+              >
+                <Pencil size={14} aria-hidden="true" /> {t("common.edit")}
+              </button>
             </div>
           );
         })}
       </div>
 
       {showAuxModal && (
-        <div className="models-modal-overlay" onClick={closeAuxModal}>
-          <div className="models-modal" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="models-modal-overlay auxiliary-modal-overlay"
+          onClick={closeAuxModal}
+        >
+          <div
+            className="models-modal auxiliary-modal"
+            ref={modalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="auxiliary-dialog-title"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.stopPropagation();
+                closeAuxModal();
+              }
+              if (event.key !== "Tab") return;
+              const controls = modalRef.current?.querySelectorAll<HTMLElement>(
+                "button:not(:disabled), input, select",
+              );
+              if (!controls?.length) return;
+              const first = controls[0];
+              const last = controls[controls.length - 1];
+              if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+              }
+              if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+              }
+            }}
+          >
             <div className="models-modal-header">
-              <h2 className="models-modal-title">
+              <h2 className="models-modal-title" id="auxiliary-dialog-title">
                 {t("constants.auxiliaryTitle")} -{" "}
                 {t(auxTaskLabels[auxEditingTask || ""]?.name || "")}
               </h2>
@@ -245,10 +323,11 @@ function AuxiliaryTasksSection({
             </div>
             <div className="models-modal-body">
               <div className="models-modal-field">
-                <label className="models-modal-label">
+                <label className="models-modal-label" htmlFor="aux-provider">
                   {t("constants.auxiliaryProviderLabel")}
                 </label>
                 <select
+                  id="aux-provider"
                   className="input"
                   value={auxFormProvider}
                   onChange={(e) => {
@@ -274,7 +353,7 @@ function AuxiliaryTasksSection({
               {auxFormProvider !== "auto" && (
                 <>
                   <div className="models-modal-field">
-                    <label className="models-modal-label">
+                    <label className="models-modal-label" htmlFor="aux-model">
                       {t("constants.auxiliaryModelLabel")}
                     </label>
                     <div className="settings-model-row">
@@ -282,13 +361,9 @@ function AuxiliaryTasksSection({
                         className="input"
                         type="text"
                         value={auxFormModel}
+                        id="aux-model"
                         onChange={(e) => setAuxFormModel(e.target.value)}
                         placeholder="e.g. gpt-4o-mini"
-                        list={
-                          auxDiscovery.models.length > 0
-                            ? auxDiscoveryListId
-                            : undefined
-                        }
                         autoComplete="off"
                       />
                       {auxDiscovery.status !== "unsupported" &&
@@ -305,11 +380,27 @@ function AuxiliaryTasksSection({
                         )}
                     </div>
                     {auxDiscovery.models.length > 0 && (
-                      <datalist id={auxDiscoveryListId}>
+                      <select
+                        className="input auxiliary-discovered-models"
+                        aria-label={t("constants.auxiliaryModelLabel")}
+                        value={
+                          auxDiscovery.models.includes(auxFormModel)
+                            ? auxFormModel
+                            : ""
+                        }
+                        onChange={(event) =>
+                          setAuxFormModel(event.target.value)
+                        }
+                      >
+                        <option value="" disabled>
+                          {t("constants.auxiliaryModelLabel")}
+                        </option>
                         {auxDiscovery.models.map((m) => (
-                          <option key={m} value={m} />
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
                         ))}
-                      </datalist>
+                      </select>
                     )}
                     {auxDiscovery.status !== "idle" &&
                       auxDiscovery.status !== "unsupported" && (
@@ -332,13 +423,17 @@ function AuxiliaryTasksSection({
                   {(auxFormProvider === "custom" ||
                     localPresetForProvider(auxFormProvider)) && (
                     <div className="models-modal-field">
-                      <label className="models-modal-label">
+                      <label
+                        className="models-modal-label"
+                        htmlFor="aux-base-url"
+                      >
                         {t("constants.auxiliaryBaseUrlLabel")}
                       </label>
                       <input
                         className="input"
                         type="text"
                         value={auxFormBaseUrl}
+                        id="aux-base-url"
                         onChange={(e) => setAuxFormBaseUrl(e.target.value)}
                         placeholder="https://..."
                       />
@@ -358,6 +453,7 @@ function AuxiliaryTasksSection({
               <button
                 className="btn btn-primary btn-sm"
                 onClick={handleAuxSave}
+                disabled={saving}
               >
                 {t("common.save")}
               </button>
