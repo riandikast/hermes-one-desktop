@@ -140,6 +140,8 @@ export function useActiveSubagents(
   active = true,
 ): {
   activeSubagents: ActiveSubagent[];
+  hasActiveSubagents: () => boolean;
+  getSubagentRevision: () => number;
   onSubagentEvent: (event: DashboardRpcEvent) => void;
 } {
   const [roster, setRoster] = useState<{
@@ -147,6 +149,8 @@ export function useActiveSubagents(
     children: ActiveSubagent[];
   }>({ session: null, children: [] });
   const pendingRef = useRef<Map<string, ActiveSubagent | null> | null>(null);
+  const revisionRef = useRef(0);
+  const snapshotKnownRef = useRef(false);
   // Mirror of the committed roster. The poll builds a FRESH children map each
   // tick, so without this it has nothing to merge a sparse snapshot onto and
   // fields only the event stream knows (notably `child_session_id`, which
@@ -172,6 +176,7 @@ export function useActiveSubagents(
         return;
       const child = childRecord(event.payload);
       if (!child) return;
+      revisionRef.current++;
       const value = event.type === "subagent.complete" ? null : child;
       pendingRef.current?.set(child.subagent_id, value);
       const scoped =
@@ -209,6 +214,7 @@ export function useActiveSubagents(
 
   useEffect(() => {
     if (!enabled || !active) return;
+    snapshotKnownRef.current = false;
     let disposed = false;
     let busy = false;
     const poll = async (): Promise<void> => {
@@ -230,16 +236,16 @@ export function useActiveSubagents(
           return;
         const rows = (response as { subagents?: unknown } | null)?.subagents;
         if (!Array.isArray(rows)) return; // Malformed/failed snapshots mean unknown, not empty.
+        snapshotKnownRef.current = true;
         // Seeded from the last committed roster so a sparse snapshot MERGES
         // onto fields only the event stream knows (e.g. child_session_id).
         // Only when the ref describes THIS session: seeding across a session
         // switch would carry the previous session's children into the new one.
-        const children = new Map<string, ActiveSubagent>(
-          (rosterRef.current.session === session
-            ? rosterRef.current.children
-            : []
-          ).map((row) => [row.subagent_id, row]),
+        const previous = new Map(
+          (rosterRef.current.session === session ? rosterRef.current.children : [])
+            .map((row) => [row.subagent_id, row]),
         );
+        const children = new Map<string, ActiveSubagent>();
         for (const row of rows) {
           const child = childRecord(row);
           if (!child) continue;
@@ -261,7 +267,7 @@ export function useActiveSubagents(
           // the entry wiped a known id, which is what made the "View" button
           // appear and then vanish — or never appear at all.
           children.set(child.subagent_id, {
-            ...children.get(child.subagent_id),
+            ...previous.get(child.subagent_id),
             ...child,
           });
         }
@@ -271,6 +277,7 @@ export function useActiveSubagents(
           else children.delete(id);
         }
         const committed = [...children.values()];
+        if (!rostersEqual(rosterRef.current, { session, children: committed })) revisionRef.current++;
         rosterRef.current = { session, children: committed };
         // Skip the state write when nothing changed. The poll rebuilds the
         // array every tick, so writing unconditionally re-rendered the entire
@@ -304,6 +311,9 @@ export function useActiveSubagents(
   return {
     activeSubagents:
       enabled && roster.session === sessionRef.current ? roster.children : [],
+    hasActiveSubagents: () => enabled && !!sessionRef.current &&
+      (!snapshotKnownRef.current || rosterRef.current.session !== sessionRef.current || rosterRef.current.children.length > 0),
+    getSubagentRevision: () => revisionRef.current,
     onSubagentEvent,
   };
 }

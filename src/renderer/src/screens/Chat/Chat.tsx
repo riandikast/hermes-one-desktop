@@ -30,9 +30,9 @@ import {
   isOnFinishArmed,
   migrateOnFinishSelection,
   readOnFinishSelection,
-  type OnFinishCommand,
 } from "./onFinish";
 import { useOnFinishRunner } from "./useOnFinishRunner";
+import { useSettledOnFinish } from "./useSettledOnFinish";
 import { OnFinishChip } from "./OnFinishChip";
 import { FloatingDialog } from "./FloatingDialog";
 import type { TerminalDockHandle } from "../Command/TerminalDock";
@@ -460,26 +460,6 @@ function Chat({
 
     forceReleaseAllReasoning();
 
-    // On-Finish: auto-run the queued commands, in selection order. Fired from
-    // THIS transition (not the send path) so it also triggers for turns that
-    // end in an error or a subagent resume — any completed turn counts.
-    // The queue is read fresh so Commands-page edits apply without a remount.
-    void (async () => {
-      if (!onFinishArmedRef.current) return;
-      const ids = readOnFinishSelection();
-      if (ids.length === 0) return;
-      try {
-        const list =
-          (await window.hermesAPI.listCommands()) as OnFinishCommand[];
-        onFinishCommandsRef.current = list;
-      } catch {
-        // Fall back to the cached list rather than skipping the run.
-      }
-      await onFinishRunnerRef.current.runQueue(
-        ids,
-        onFinishCommandsRef.current,
-      );
-    })();
   }, [isLoading]);
 
   const [hermesSessionId, setHermesSessionId] = useState<string | null>(
@@ -682,7 +662,6 @@ function Chat({
   const onFinishArmed = isOnFinishArmed(onFinishSelected);
   // Commands are read fresh on each finish so Commands-page edits apply without
   // remounting the chat.
-  const onFinishCommandsRef = useRef<OnFinishCommand[]>([]);
   const onFinishDockRef = useRef<TerminalDockHandle | null>(null);
   // The terminal now lives in a dialog, opened from a floating icon. Kept as
   // state (not just CSS) so opening can trigger a refit — see below.
@@ -773,14 +752,6 @@ function Chat({
     [contextFolders],
   );
 
-  // Refs so the finish effect can read the latest values WITHOUT adding them to
-  // its deps: the effect must fire on the isLoading transition only, and
-  // re-subscribing it on every arming change would drop the transition.
-  const onFinishArmedRef = useRef(onFinishArmed);
-  useEffect(() => {
-    onFinishArmedRef.current = onFinishArmed;
-  }, [onFinishArmed]);
-
   // The chip's dropdown owns selection edits. It lives in this same tree, so it
   // cannot raise a `storage` event (those only fire cross-document) — instead
   // the chip dispatches a CustomEvent and we re-read.
@@ -799,11 +770,6 @@ function Chat({
     return () =>
       window.removeEventListener(ON_FINISH_CHANGE_EVENT, syncSelection);
   }, []);
-  const onFinishRunnerRef = useRef(onFinishRunner);
-  useEffect(() => {
-    onFinishRunnerRef.current = onFinishRunner;
-  }, [onFinishRunner]);
-
   const togglePlanMode = useCallback(() => {
     setPlanMode((prev) => {
       const next = !prev;
@@ -1864,6 +1830,19 @@ function Chat({
     },
   });
 
+  const cancelPendingOnFinish = useSettledOnFinish({
+    loading: isLoading,
+    active,
+    identity: hermesSessionId ?? runId,
+    armed: onFinishArmed,
+    getActivity: () => ({
+      ...dashboardTransport.getOnFinishActivity(),
+      busy: !!activeTurnRef.current || hasPendingToolInTail(messagesForChimeRef.current) ||
+        dashboardTransport.getOnFinishActivity().busy,
+    }),
+    runQueue: (ids, commands, valid) => onFinishRunner.runQueue(ids, commands, valid),
+  });
+
   const [agentCommandCatalog, setAgentCommandCatalog] =
     useState<AgentCommandsCatalogResponse | null>(null);
 
@@ -2178,6 +2157,7 @@ function Chat({
         : undefined;
 
       // Explicit selection wins over any in-flight automatic fallback replay.
+      cancelPendingOnFinish();
       if (isLoading) dashboardTransport.abort();
       sessionModelOverrideRef.current = override;
 
@@ -2198,7 +2178,7 @@ function Chat({
       }
     },
 
-    [modelConfig.selectModel, dashboardTransport, isLoading],
+    [modelConfig.selectModel, dashboardTransport, isLoading, cancelPendingOnFinish],
   );
 
   const handleSelectRecentFolder = useCallback((path: string) => {
@@ -2968,7 +2948,7 @@ function Chat({
               slashCommands={slashMenuCommands}
               onSubmit={handleSubmitOrQueue}
               onQuickAsk={actions.handleQuickAsk}
-              onAbort={actions.handleAbort}
+              onAbort={() => { cancelPendingOnFinish(); actions.handleAbort(); }}
               toolbarExtras={
                 <>
                   <ModelPicker

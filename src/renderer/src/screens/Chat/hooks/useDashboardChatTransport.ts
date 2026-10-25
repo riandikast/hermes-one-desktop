@@ -226,6 +226,7 @@ interface UseDashboardChatTransportArgs {
 }
 
 interface UseDashboardChatTransportResult {
+  getOnFinishActivity: () => { busy: boolean; cancelled: boolean; revision: string };
   canSwitchProvider: boolean;
   providerWait: ProviderRetry | null;
   switchProviderNow: () => Promise<void>;
@@ -1217,7 +1218,7 @@ export function useDashboardChatTransport({
   // immediately. Reset on connection change (see the effect below).
   const dashboardUnavailableRef = useRef(false);
   const runtimeSessionIdRef = useRef<string | null>(null);
-  const { activeSubagents, onSubagentEvent } = useActiveSubagents(
+  const { activeSubagents, hasActiveSubagents, getSubagentRevision, onSubagentEvent } = useActiveSubagents(
     enabled,
     runtimeSessionIdRef,
     clientRef,
@@ -4114,6 +4115,7 @@ export function useDashboardChatTransport({
         recoveryFiredForEpisodeRef.current = true;
         clearStallTimer();
         clearQuietFinalize();
+        recoveryInFlightRef.current = true;
         try {
           const client = await ensureClient();
           if (cancelled()) return;
@@ -4129,7 +4131,7 @@ export function useDashboardChatTransport({
           await sendMessage(buildRecoveryPrompt(original), undefined, generation);
         } catch {
           // Keep the original failure visible; failed compression must not resend.
-        }
+        } finally { recoveryInFlightRef.current = false; }
         return;
       }
 
@@ -4320,6 +4322,12 @@ export function useDashboardChatTransport({
 
   return {
     canSwitchProvider: !!onSwitchModel && !!fallbackChainRef.current[recoveryChainIndexRef.current],
+    getOnFinishActivity: () => ({
+      busy: hasActiveSubagents() || !!providerWaitRef.current || !!providerWait ||
+        recoveryInFlightRef.current || switchingProviderRef.current,
+      cancelled: recoveryCancelledRef.current,
+      revision: `${sendGenerationRef.current}:${streamRevisionRef.current}:${getSubagentRevision()}`,
+    }),
     providerWait,
     switchProviderNow,
     activeSubagents,

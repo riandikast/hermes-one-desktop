@@ -35,6 +35,7 @@ export function useOnFinishRunner(
   runQueue: (
     selectedIds: readonly string[],
     commands: readonly OnFinishCommand[],
+    valid?: () => boolean,
   ) => Promise<void>;
   cancel: () => void;
 } {
@@ -50,6 +51,7 @@ export function useOnFinishRunner(
     async (
       selectedIds: readonly string[],
       commands: readonly OnFinishCommand[],
+      valid: () => boolean = () => true,
     ): Promise<void> => {
       // Guard: never overlap queues.
       if (runningRef.current) return;
@@ -69,7 +71,7 @@ export function useOnFinishRunner(
 
       try {
         for (let i = 0; i < queue.length; i += 1) {
-          if (cancelledRef.current) break;
+          if (cancelledRef.current || !valid()) break;
           const cmd = queue[i];
           setState((prev) => ({ ...prev, current: i + 1 }));
           try {

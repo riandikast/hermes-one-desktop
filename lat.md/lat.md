@@ -4,6 +4,7 @@ This directory defines the high-level concepts, business logic, and architecture
 
 - [[desktop-pending-reliability]] - guarded recovery, serialized model changes, GitHub settings authentication.
 - [[chat-manual-tools]] - manual terminal actions and history refresh.
+- [[chat-on-finish]] - child-aware automatic commands after three settled idle seconds.
 - [[knowledge-injection]] - knowledge bundle context injection.
 - [[resource-budget]] - shared resource queue and bounded tests.
 - [[source-control]] - git status, staging, commit, and synchronization.
