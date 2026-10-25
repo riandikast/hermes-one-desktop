@@ -35,6 +35,21 @@ export interface HandoffInfo {
   tailCount: number;
 }
 
+export interface HandoffSessionContext {
+  /** Context folders attached to the outgoing session. */
+  contextFolders?: string[];
+  /** Session-specific model override (provider, model, baseUrl). */
+  modelOverride?: { model: string; provider: string; baseUrl?: string };
+  /** Reasoning effort level. */
+  reasoningEffort?: string;
+  /** Ticked command IDs to run on turn completion. */
+  onFinishSelected?: string[];
+  /** Attached knowledge bundle names. */
+  knowledgeBundles?: string[];
+  /** Plan / build mode state. */
+  planMode?: boolean;
+}
+
 interface HandoffResult {
   /** The single seed bubble for the new session. */
   message: ChatMessage;

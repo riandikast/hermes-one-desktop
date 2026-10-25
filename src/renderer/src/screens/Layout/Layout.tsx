@@ -41,6 +41,9 @@ import Usage from "../Usage/Usage";
 import { CommandScreen } from "../Command/CommandScreen";
 import Capabilities from "../Capabilities/Capabilities";
 import RemoteNotice from "../../components/RemoteNotice";
+import { writePlanMode } from "../Chat/planMode";
+import { writeOnFinishSelection } from "../Chat/onFinish";
+import type { HandoffSessionContext } from "../Chat/sessionHandoff";
 import VerifyWarningBanner from "../../components/VerifyWarningBanner";
 import { useSettingsModal } from "../../components/settings/SettingsModalContext";
 import {
@@ -724,14 +727,51 @@ function Layout({
    *  renders as the new session's opening bubble. The previous tab stays open
    *  untouched so nothing is lost if the handoff missed something. */
   const handleNewSessionWithContext = useCallback(
-    (seed: ChatMessage[], title: string) => {
-      const run = mintRun(activeProfile, seed);
+    (seed: ChatMessage[], title: string, context?: HandoffSessionContext) => {
+      const initialFolders = context?.contextFolders?.length
+        ? [...context.contextFolders]
+        : (() => {
+            const outgoing = runs.find((r) => r.runId === activeRunId);
+            return outgoing?.initialContextFolders?.length
+              ? [...outgoing.initialContextFolders]
+              : undefined;
+          })();
+      const run = mintRun(activeProfile, seed, initialFolders);
       run.title = title;
-      // Carry the outgoing session's workspace folders into the new tab.
-      const outgoing = runs.find((r) => r.runId === activeRunId);
-      if (outgoing?.initialContextFolders?.length) {
-        run.initialContextFolders = [...outgoing.initialContextFolders];
+      run.initialModelOverride = context?.modelOverride;
+      run.initialKnowledgeBundles = context?.knowledgeBundles?.length
+        ? [...context.knowledgeBundles]
+        : undefined;
+
+      if (context?.planMode !== undefined) {
+        writePlanMode(run.runId, context.planMode);
       }
+      if (context?.onFinishSelected?.length) {
+        writeOnFinishSelection(context.onFinishSelected, run.runId);
+      }
+      if (context?.reasoningEffort) {
+        try {
+          const rKey = JSON.stringify([
+            "hermes.chat.reasoning.v1",
+            activeProfile || "default",
+            run.runId,
+          ]);
+          localStorage.setItem(rKey, context.reasoningEffort);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (context?.knowledgeBundles?.length) {
+        try {
+          localStorage.setItem(
+            `hermes.session.knowledge.${run.runId}`,
+            JSON.stringify(context.knowledgeBundles),
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+
       setRuns((prev) => [...prev, run]);
       setActiveRunId(run.runId);
       setView("chat");
@@ -1604,6 +1644,8 @@ function Layout({
                   initialSessionId={run.sessionId}
                   initialTitle={run.title}
                   initialContextFolders={run.initialContextFolders}
+                  initialModelOverride={run.initialModelOverride}
+                  initialKnowledgeBundles={run.initialKnowledgeBundles}
 
                   initialOldestId={run.oldestLoadedId}
 

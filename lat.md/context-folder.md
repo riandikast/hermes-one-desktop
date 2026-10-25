@@ -49,3 +49,9 @@ Remote and SSH chats use an in-app picker so users do not accidentally select a 
 The tree keeps file-type icon shapes but normalizes their colors so the explorer reads quietly in the chat sidebar.
 
 The `@wesbos/code-icons` SVGs render inside `.worktree-file-icon-wrapper`; CSS overrides inline fills/strokes to `currentColor` while preserving `fill:none` outlines, and folder icons use the same low-opacity white tone.
+
+## Context inheritance on handoff
+
+Seeding a new session with context carries forward the previous session's attached folders and operational state.
+
+When spawning a continued session via [[src/renderer/src/screens/Chat/Chat.tsx#Chat]], `HandoffSessionContext` passes the active context folders, session model override, reasoning effort, on-finish command queue, attached knowledge bundles, and plan mode into [[src/renderer/src/screens/Layout/Layout.tsx#Layout]]. The newly minted [[src/renderer/src/screens/Layout/chatRuns.ts#ChatRun]] receives these initial bindings so continuation chats retain the user's workspace without re-selection.

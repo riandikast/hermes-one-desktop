@@ -274,7 +274,7 @@ function installBinariesFor(home: string): {
         if (!statSync(python).isFile()) throw new Error("Missing recorded Python");
         const probe = [
           "import pathlib, sys, json",
-          `root = pathlib.Path(${JSON.stringify(repo)}).resolve()`,
+          `root = pathlib.Path(${JSON.stringify(repo.replace(/\\/g, "/"))}).resolve()`,
           "sys.path.insert(0, str(root))",
           "from hermes_cli import _launchers",
           "assert pathlib.Path(_launchers.__file__).resolve() == root / 'hermes_cli' / '_launchers.py'",
@@ -292,12 +292,15 @@ function installBinariesFor(home: string): {
         }));
         if (Array.isArray(command) && command.length > 1 &&
             command.every((part) => typeof part === "string") &&
-            isAbsolute(command[0]) && resolve(command[0]) === resolve(python)) {
+            isAbsolute(command[0]) && resolve(command[0]).toLowerCase() === resolve(python).toLowerCase()) {
           report("managed-runtime-recovered", python);
           return { venv, python, script: launcher, args: command.slice(1), managed: true };
         }
-      } catch {
-        // Missing/malformed metadata, foreign module roots and broken imports fail closed.
+      } catch (err) {
+        updaterLogger.info(JSON.stringify({
+          event: "runtime-recovery-failed",
+          error: err instanceof Error ? err.message : String(err),
+        }));
       }
     }
     report(reason);

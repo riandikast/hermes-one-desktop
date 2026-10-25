@@ -115,7 +115,7 @@ import type {
   FileChange,
   UsageState,
 } from "./types";
-import { buildSessionHandoff } from "./sessionHandoff";
+import { buildSessionHandoff, type HandoffSessionContext } from "./sessionHandoff";
 import { knowledgeChangeNotice } from "./hooks/knowledgeChange";
 import { recoveryNoticeMessage } from "./recoveryEngine";
 
@@ -229,6 +229,8 @@ interface ChatProps {
   /** Workspace context folders to pre-attach when mounting. */
 
   initialContextFolders?: string[];
+  initialModelOverride?: SessionModelOverride;
+  initialKnowledgeBundles?: string[];
 
   /**
    * Oldest DB row id in `initialMessages`. Long sessions open on their newest
@@ -276,7 +278,11 @@ interface ChatProps {
   /** Start a FRESH session seeded with a handoff of this conversation's
    *  working state (last turns verbatim + outline of earlier prompts).
    *  Layout mints the new tab; Chat supplies the seed. */
-  onNewSessionWithContext?: (seed: ChatMessage[], title: string) => void;
+  onNewSessionWithContext?: (
+    seed: ChatMessage[],
+    title: string,
+    context?: HandoffSessionContext,
+  ) => void;
 
   /** Optional callback to open Settings — from the config-health banner's
 
@@ -319,6 +325,8 @@ function Chat({
   initialTitle,
 
   initialContextFolders,
+  initialModelOverride,
+  initialKnowledgeBundles,
 
   initialOldestId,
 
@@ -623,7 +631,7 @@ function Chat({
 
   const [attachedKnowledgeBundles, setAttachedKnowledgeBundles] = useState<
     string[]
-  >([]);
+  >(() => initialKnowledgeBundles ?? []);
 
   // PLAN / BUILD mode toggle. Persisted PER SESSION so a re-opened
 
@@ -993,12 +1001,12 @@ function Chat({
 
   const [sessionModelOverride, setSessionModelOverride] = useState<
     SessionModelOverride | undefined
-  >(undefined);
+  >(initialModelOverride);
   const [runtimeModel, setRuntimeModel] = useState<{ provider: string; model: string } | null>(null);
   useEffect(() => { setRuntimeModel(null); }, [hermesSessionId, profile]);
 
   const sessionModelOverrideRef = useRef<SessionModelOverride | undefined>(
-    undefined,
+    initialModelOverride,
   );
 
   const sessionModelOverrideLoadedRef = useRef<boolean>(!initialSessionId);
@@ -3056,7 +3064,14 @@ function Chat({
                 // gauge is interactive only when no turn is streaming.
                 if (isLoading) return;
                 const { message, info } = buildSessionHandoff(messages);
-                onNewSessionWithContext?.([message], info.title);
+                onNewSessionWithContext?.([message], info.title, {
+                  contextFolders: contextFolders.length ? [...contextFolders] : undefined,
+                  modelOverride: sessionModelOverrideRef.current ?? sessionModelOverride,
+                  reasoningEffort,
+                  onFinishSelected: onFinishSelected.length ? [...onFinishSelected] : undefined,
+                  knowledgeBundles: attachedKnowledgeBundles.length ? [...attachedKnowledgeBundles] : undefined,
+                  planMode,
+                });
               }}
             />
           </>

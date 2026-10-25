@@ -347,6 +347,7 @@ it.skipIf(process.platform !== "win32").each([false, true])("recovers exit 1 wit
   expect(installer.HERMES_PYTHON).toBe(python);
   expect(installer.checkInstallStatus().installed).toBe(true);
   expect(installer.hermesCliArgs()).toEqual(["-I", "-c", "validated bootstrap"]);
+  expect(childProcess.execFileSync).toHaveBeenCalledWith(python, ["-I", "-B", "-c", expect.stringContaining(`root = pathlib.Path("${repo.replace(/\\/g, "/")}")`)], expect.objectContaining({ cwd: repo, windowsHide: true }));
   expect(childProcess.execFileSync).toHaveBeenCalledWith(python, ["-I", "-B", "-c", expect.stringContaining("import hermes_cli.main")], expect.objectContaining({ cwd: repo, windowsHide: true }));
   const records = runtimeLog.info.mock.calls.map(([text]) => JSON.parse(text));
   expect(records).toContainEqual(expect.objectContaining({ reason: "managed-runtime-recovered", failure: { status: 1, errno: null, signal: null, stdoutBytes: 0, stderrBytes: 0 } }));

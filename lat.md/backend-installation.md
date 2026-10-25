@@ -20,7 +20,7 @@ Windows launcher execution failure can recover through PM's recorded store Pytho
 
 [[src/main/installer.ts#installBinariesFor]] reads only `runtimeDir` from the checkout's `install-stamp.json` and `packages.python.entry` from store `facts.json`. Absent `runtimeDir` uses the selected home's `tools` contract. No PATH search, version scan or legacy-venv fallback occurs.
 
-The recorded interpreter runs `-I -B`, verifies `_launchers` and `hermes_cli.main` module roots, checks upstream `resolve_store_python` agrees with its executable, imports the bootstrap and CLI, then returns upstream `runtime_command`. Success records `managed-runtime-recovered` alongside the original sanitized launcher failure. Normal CLI verification remains separate; recovery never sets its verified cache.
+The recorded interpreter runs `-I -B`, verifies `_launchers` and `hermes_cli.main` module roots (normalizing Windows repo paths to prevent unicode escape errors), checks upstream `resolve_store_python` agrees with its executable, imports the bootstrap and CLI, then returns upstream `runtime_command`. Success records `managed-runtime-recovered` alongside the original sanitized launcher failure. Normal CLI verification remains separate; recovery never sets its verified cache.
 
 Missing/malformed metadata, traversal entries, missing Python, failed imports and invalid returned commands fail closed. Malformed launcher JSON does not activate recovery. `tests/installer-runtime.test.ts` reproduces exit 1 with empty stdout/stderr and covers broken recovery candidates plus later CLI verification failure.
 

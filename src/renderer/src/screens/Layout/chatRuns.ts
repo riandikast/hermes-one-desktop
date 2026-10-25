@@ -20,6 +20,10 @@ export interface ChatRun {
   seed?: ChatMessage[];
   /** Workspace context folders to pre-attach when mounting. */
   initialContextFolders?: string[];
+  /** Session-specific model override to pre-attach when mounting. */
+  initialModelOverride?: { model: string; provider: string; baseUrl?: string };
+  /** Knowledge bundles to pre-attach when mounting. */
+  initialKnowledgeBundles?: string[];
   /**
    * Oldest state.db row id in `seed`. A long session opens on its newest page
    * (a full read is ~450ms of blocking SQLite on a 29k-row session), so this is
