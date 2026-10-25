@@ -256,13 +256,15 @@ export const OnFinishChip = memo(function OnFinishChip({
                             <span className="chat-ctxfolder-dropdown-item-name">
                               {cmd.name}
                             </span>
-                            {isSelected && (
-                              <span className="chat-onfinish-item-order">
-                                {index + 1}
+                            <span className="chat-onfinish-item-selection">
+                              {isSelected && (
+                                <span className="chat-onfinish-item-order">
+                                  {index + 1}
+                                </span>
+                              )}
+                              <span className="chat-ctxfolder-dropdown-item-check">
+                                {isSelected && <Check size={12} />}
                               </span>
-                            )}
-                            <span className="chat-ctxfolder-dropdown-item-check">
-                              {isSelected && <Check size={12} />}
                             </span>
                           </button>
                         );

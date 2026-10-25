@@ -23053,7 +23053,17 @@ body:has(.shell-vibrant),
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
-/* Per-item run position, shown next to the command name when ticked. */
+.chat-onfinish-item-selection {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+  margin-left: 8px;
+}
+.chat-onfinish-item-selection .chat-ctxfolder-dropdown-item-check {
+  margin-left: 0;
+}
+/* Keep the run position immediately left of the checkmark. */
 .chat-onfinish-item-order {
   display: inline-flex;
   align-items: center;

@@ -14,6 +14,12 @@ Hidden tabs remain mounted but do not poll child snapshots; automatic execution 
 
 [[src/renderer/src/screens/Chat/useOnFinishRunner.ts#useOnFinishRunner]] preserves ordered, non-overlapping launches and skips deleted commands. Automatic runs recheck validity before each launch; manual callers retain immediate execution. Already launched terminal commands are never killed.
 
+## Selection layout
+
+The ordered selection badge stays immediately left of the checkmark in one non-shrinking group, keeping both aligned at the end of each command row.
+
+[[src/renderer/src/screens/Chat/OnFinishChip.tsx#OnFinishChip]] preserves selection order; [[src/renderer/src/screens/Chat/OnFinishChip.test.tsx]] verifies the badge and checkmark share that group.
+
 ## Execution regressions
 
 Fake timers exercise actual commandRun calls through the settled hook and ordered runner. Child events block execution, then permit the first launch at exactly 3000ms, never 2999ms.

@@ -82,6 +82,15 @@ function item(name: string): HTMLElement {
 }
 
 describe("On-Finish chip", () => {
+  it("keeps the order badge immediately left of the checkmark", async () => {
+    await openDropdown();
+    await expandGroup("Ungrouped");
+    fireEvent.click(item("Zebra"));
+    const group = item("Zebra").querySelector(".chat-onfinish-item-selection")!;
+    expect(group.children[0].className).toBe("chat-onfinish-item-order");
+    expect(group.children[0].textContent).toBe("1");
+    expect(group.children[1].className).toBe("chat-ctxfolder-dropdown-item-check");
+  });
   it("opens a dropdown listing commands grouped AND ungrouped", async () => {
     await openDropdown();
 
