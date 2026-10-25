@@ -25432,3 +25432,9 @@ body:has(.shell-vibrant),
   white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
+
+/* Saved-library removal stays separate from model selection. */
+.chat-model-row-wrap:has(> .chat-model-remove) { display: flex; align-items: center; }
+.chat-model-row-wrap:has(> .chat-model-remove) > .chat-model-row { flex: 1; min-width: 0; }
+.chat-model-remove { flex-shrink: 0; padding: 8px; color: var(--text-secondary); }
+.chat-model-remove:hover { color: var(--error); }

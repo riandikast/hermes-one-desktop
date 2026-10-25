@@ -231,7 +231,10 @@
 
 .providers-page .provider-settings-panel .models-modal {
   max-width: 100%;
-  max-height: 100%;
+  max-height: calc(100dvh - 100px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--bg-primary);
   color: var(--text-primary);
   border: 1px solid var(--border);
@@ -255,7 +258,14 @@
   flex-wrap: wrap;
 }
 
+.providers-page
+  .provider-settings-panel
+  :is(.models-modal-header, .models-modal-footer) {
+  flex-shrink: 0;
+}
+
 .providers-page .provider-settings-panel .models-modal-body {
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
 }

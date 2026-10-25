@@ -28,6 +28,9 @@ export default {
   searchModels: "Cari model...",
   ungrouped: "Tidak Dikelompokkan",
   addAndSelect: "Tambah & Pilih",
+  removeSavedModelConfirm:
+    'Hapus model tersimpan "{model}" dari {provider}? Percakapan saat ini tetap memakai modelnya.',
+  removeSavedModelFailed: "Model tersimpan tidak dapat dihapus. Coba lagi.",
   typeModelName: "Ketik nama model...",
   fallbackModels: "Model cadangan",
   fallbackDesc:

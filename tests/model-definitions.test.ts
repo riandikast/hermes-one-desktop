@@ -217,3 +217,41 @@ describe("ensureModelDefinitionsMigrated", () => {
     );
   });
 });
+
+// @lat: [[model-selection#Session model override#Saved model removal API scope]]
+it("removeModel deletes the exact attachment, preserves other routes, definitions and config", async () => {
+  const {
+    addModel,
+    removeModel,
+    readModelsRaw,
+    setModelDefinition,
+    getModelDefinition,
+  } = await loadModels();
+  writeModelsFile([]);
+  const config =
+    "model:\n  provider: custom\n  default: same\n  base_url: http://one.invalid/v1\n";
+  writeFileSync(join(testHome, "config.yaml"), config);
+  const one = addModel(
+    "Same",
+    "custom",
+    "same",
+    "http://one.invalid/v1",
+    undefined,
+    "One",
+  );
+  const two = addModel(
+    "Same",
+    "custom",
+    "same",
+    "http://two.invalid/v1",
+    undefined,
+    "Two",
+  );
+  const other = addModel("Same", "openai", "same", "");
+  setModelDefinition("same", { contextLength: 8000 });
+  expect(removeModel(one.id)).toBe(true);
+  expect(readModelsRaw().map((row) => row.id)).toEqual([two.id, other.id]);
+  expect(removeModel(one.id)).toBe(false);
+  expect(getModelDefinition("same")?.contextLength).toBe(8000);
+  expect(readFileSync(join(testHome, "config.yaml"), "utf8")).toBe(config);
+});

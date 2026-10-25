@@ -110,8 +110,14 @@ export const ModelPicker = memo(function ModelPicker({
   }, [openRequest]);
   // Left-rail provider filter (brand id); null = "All models".
   const [selectedBrand, setSelectedBrand] = useState<string | null>(null);
-  const [editingModel, setEditingModel] = useState<{ id: string; model: string } | null>(null);
+  const [editingModel, setEditingModel] = useState<{
+    id: string;
+    model: string;
+  } | null>(null);
   const [aliasInput, setAliasInput] = useState("");
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   // Frontend-only custom groups (localStorage); rows keep their own
   // provider/model/baseUrl so selection routing is never affected.
   const [customGroups, setCustomGroups] = useState<CustomModelGroup[]>([]);
@@ -280,17 +286,20 @@ export const ModelPicker = memo(function ModelPicker({
   // `groupKey` is the rail identity (brand vs. custom label), `brand` keeps the
   // logo mapping.
   const allRows = filteredGroups.flatMap((g) =>
-    g.models.map((m) => {
-      const key = modelKeyOf(m.provider, m.baseUrl, m.model);
-      return {
-        ...m,
-        brand: g.provider,
-        providerLabel: g.providerLabel,
-        groupKey: groupKeyOf(g),
-        rowKey: key,
-        customGroupId: customGroups.find((cg) => cg.modelKeys.includes(key))?.id,
-      };
-    }),
+    g.models
+      .filter((m) => !m.id || !removedIds.has(m.id))
+      .map((m) => {
+        const key = modelKeyOf(m.provider, m.baseUrl, m.model);
+        return {
+          ...m,
+          brand: g.provider,
+          providerLabel: g.providerLabel,
+          groupKey: groupKeyOf(g),
+          rowKey: key,
+          customGroupId: customGroups.find((cg) => cg.modelKeys.includes(key))
+            ?.id,
+        };
+      }),
   );
   // Ignore a stale brand filter once search narrows it away → fall back to All.
   // Named custom providers share brand "custom" so filtering must use groupKey
@@ -320,12 +329,11 @@ export const ModelPicker = memo(function ModelPicker({
       ? allRows.filter(
           (r) => r.customGroupId === activeBrand.slice("custom:".length),
         )
-      // Provider entries live under "Ungrouped": show that provider's rows
-      // EXCEPT ones captured by a custom group (their home is the group or
-      // "All models"), matching the count shown on the rail.
-      : allRows.filter(
-          (r) =>
-            r.groupKey === activeBrand && !groupedRowKeys.has(r.rowKey),
+      : // Provider entries live under "Ungrouped": show that provider's rows
+        // EXCEPT ones captured by a custom group (their home is the group or
+        // "All models"), matching the count shown on the rail.
+        allRows.filter(
+          (r) => r.groupKey === activeBrand && !groupedRowKeys.has(r.rowKey),
         )
     : allRows;
 
@@ -354,7 +362,12 @@ export const ModelPicker = memo(function ModelPicker({
   /** Rows for one add-list bucket, in the picker's own display order. */
   const bucketRows = (
     rows: typeof allRows,
-  ): { entry: FallbackModel; label: string; provider: string; model: string }[] =>
+  ): {
+    entry: FallbackModel;
+    label: string;
+    provider: string;
+    model: string;
+  }[] =>
     rows.map((m) => ({
       entry: fallbackFromRow({
         provider: m.provider,
@@ -487,7 +500,11 @@ export const ModelPicker = memo(function ModelPicker({
     if (selectedBrand === `custom:${id}`) setSelectedBrand(null);
   }
 
-  function openAliasEditor(model: { id?: string; model: string; label: string }): void {
+  function openAliasEditor(model: {
+    id?: string;
+    model: string;
+    label: string;
+  }): void {
     if (!model.id) return;
     setAddingProvider(null);
     setEditingModel({ id: model.id, model: model.model });
@@ -543,6 +560,40 @@ export const ModelPicker = memo(function ModelPicker({
       setNewModelError((err as Error)?.message || "Failed to add model");
     } finally {
       setNewModelBusy(false);
+    }
+  }
+
+  async function removeSavedModel(m: (typeof allRows)[number]): Promise<void> {
+    if (!m.id || !m.removable || removingId) return;
+    if (
+      !window.confirm(
+        t("chat.removeSavedModelConfirm", {
+          model: m.model,
+          provider: t(m.providerLabel),
+        }),
+      )
+    )
+      return;
+    setRemovingId(m.id);
+    setRemoveError(null);
+    try {
+      if (!(await window.hermesAPI.removeModel(m.id))) {
+        throw new Error(t("chat.removeSavedModelFailed"));
+      }
+      setRemovedIds((prev) => new Set([...prev, m.id!]));
+      mutateFallbacks((prev) => removeFallbackModel(prev, m.rowKey));
+      mutateGroups((prev) =>
+        prev.map((g) => ({
+          ...g,
+          modelKeys: g.modelKeys.filter((key) => key !== m.rowKey),
+        })),
+      );
+      // Library deletion is not a model selection; keep the live turn intact.
+      await onOpenRef.current();
+    } catch {
+      setRemoveError(t("chat.removeSavedModelFailed"));
+    } finally {
+      setRemovingId(null);
     }
   }
 
@@ -1085,6 +1136,18 @@ export const ModelPicker = memo(function ModelPicker({
                           />
                         )}
                       </button>
+                      {m.id && m.removable && (
+                        <button
+                          type="button"
+                          className="chat-model-remove btn-ghost"
+                          aria-label={`${t("common.remove")} ${m.model} (${t(m.providerLabel)})`}
+                          title={t("common.remove")}
+                          disabled={removingId !== null}
+                          onClick={() => void removeSavedModel(m)}
+                        >
+                          <Trash2 size={14} aria-hidden />
+                        </button>
+                      )}
                       {groupTarget === m.rowKey && (
                         <div
                           className="chat-model-group-menu"
@@ -1176,6 +1239,11 @@ export const ModelPicker = memo(function ModelPicker({
 
             </div>
           </div>
+          {removeError && (
+            <div role="alert" className="chat-model-error-hint">
+              {removeError}
+            </div>
+          )}
           {addingProvider && (
             <div
               className="chat-model-alias-editor"
@@ -1183,7 +1251,8 @@ export const ModelPicker = memo(function ModelPicker({
             >
               <div className="chat-model-alias-header">
                 <strong>
-                  {t("models.addModel") || "Add Model"} · {t(addingProvider.label)}
+                  {t("models.addModel") || "Add Model"} ·{" "}
+                  {t(addingProvider.label)}
                 </strong>
                 <span
                   className="chat-model-row-alias"

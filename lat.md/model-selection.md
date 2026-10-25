@@ -118,3 +118,17 @@ The transport parses `using <model> via <provider>`, updates the runtime identit
 `providerLabel` names a custom provider. Rows written with the picker's display text (`providerLabel: "Custom"`) made the model dialog grow a phantom provider holding one model.
 
 Grouping treats `Custom` and `OpenAI Compatible / Local` as unlabelled so those rows merge by base URL into the real provider, and picker actions never persist a generic label.
+
+
+## Remove saved model IDs
+
+The chat picker confirms deletion of persisted non-catalog rows by exact saved ID, never by model name. Catalog and discovery-only rows have no remove action; the live conversation retains its selected model.
+
+Legacy stores lack provenance, so exact default-catalog routes are conservatively protected even after renaming. Successful removal cleans the route's fallback and custom-group references, refreshes the library, and hides the deleted row. Cancellation, false results and rejected IPC keep it visible with an error on failure. [[src/renderer/src/screens/Chat/ModelPicker.test.tsx]] covers these paths; [[src/renderer/src/screens/Chat/hooks/useModelConfig.grouping.test.ts]] checks catalog protection and provider-scoped IDs.
+
+
+## Saved model removal API scope
+
+The existing removeModel API deletes one saved attachment ID, leaving same-name models on other endpoints or providers, shared definitions and active config untouched. The store regression uses an isolated temporary home.
+
+[[tests/model-definitions.test.ts]] exercises the real add/remove store API and checks the persisted rows and unchanged config after deletion.

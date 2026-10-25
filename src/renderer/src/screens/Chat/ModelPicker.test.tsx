@@ -928,9 +928,156 @@ describe("ModelPicker add model to provider", () => {
       ).find((el) => el.textContent?.includes("chat.allModels"))!;
       fireEvent.click(allItem);
       expect(dropdown.querySelector(".chat-model-fallback")).toBeNull();
-      expect(dropdown.querySelectorAll(".chat-model-row").length).toBeGreaterThan(
-        0,
-      );
+      expect(
+        dropdown.querySelectorAll(".chat-model-row").length,
+      ).toBeGreaterThan(0);
     });
   });
+});
+
+describe("saved model removal", () => {
+  const url = "http://one.invalid/v1";
+  const rows: ModelGroup[] = [
+    {
+      provider: "custom",
+      providerLabel: "One",
+      models: [
+        {
+          id: "one",
+          removable: true,
+          provider: "custom",
+          model: "same",
+          label: "Same One",
+          baseUrl: url,
+        },
+      ],
+    },
+    {
+      provider: "custom",
+      providerLabel: "Two",
+      models: [
+        {
+          id: "two",
+          removable: true,
+          provider: "custom",
+          model: "same",
+          label: "Same Two",
+          baseUrl: "http://two.invalid/v1",
+        },
+        {
+          id: "catalog",
+          provider: "custom",
+          model: "built-in",
+          label: "Catalog",
+          baseUrl: "",
+        },
+        { provider: "custom", model: "live", label: "Live", baseUrl: "" },
+      ],
+    },
+  ];
+  function setup(result: boolean | Error = true) {
+    localStorage.clear();
+    const removeModel =
+      result instanceof Error
+        ? vi.fn().mockRejectedValue(result)
+        : vi.fn().mockResolvedValue(result);
+    Object.defineProperty(window, "hermesAPI", {
+      configurable: true,
+      value: { removeModel },
+    });
+    const view = renderPicker({
+      modelGroups: rows,
+      currentModel: "same",
+      currentProvider: "custom",
+      currentBaseUrl: url,
+    });
+    const dropdown = openPicker(view.container);
+    return { ...view, dropdown, removeModel };
+  }
+
+  // @lat: [[model-selection#Session model override#Remove saved model IDs]]
+  it("removes only the exact saved ID and route refs, never selects a replacement", async () => {
+    const view = setup();
+    const { modelKeyOf, saveModelGroups, loadModelGroups } =
+      await import("./modelGroups");
+    const { saveFallbackModels, loadFallbackModels, fallbackFromRow } =
+      await import("./fallbackModels");
+    const one = modelKeyOf("custom", url, "same");
+    const two = modelKeyOf("custom", "http://two.invalid/v1", "same");
+    act(() => {
+      saveModelGroups([{ id: "g", name: "G", modelKeys: [one, two] }]);
+      saveFallbackModels([
+        fallbackFromRow({
+          provider: "custom",
+          model: "same",
+          baseUrl: url,
+          label: "One",
+        }),
+        fallbackFromRow({
+          provider: "custom",
+          model: "same",
+          baseUrl: "http://two.invalid/v1",
+          label: "Two",
+        }),
+      ]);
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    await act(async () =>
+      fireEvent.click(
+        within(view.dropdown).getByRole("button", {
+          name: "common.remove same (One)",
+        }),
+      ),
+    );
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(view.removeModel).toHaveBeenCalledExactlyOnceWith("one");
+    expect(screen.queryByText("Same One")).not.toBeInTheDocument();
+    expect(screen.getByText("Same Two")).toBeInTheDocument();
+    expect(loadFallbackModels().map((m) => m.key)).toEqual([two]);
+    expect(loadModelGroups()[0].modelKeys).toEqual([two]);
+    expect(view.onSelectModel).not.toHaveBeenCalled();
+    expect(view.onOpen).toHaveBeenCalledTimes(2);
+    expect(
+      within(view.dropdown).getAllByRole("button", { name: /^common.remove / }),
+    ).toHaveLength(1);
+    confirm.mockRestore();
+  });
+
+  it("cancels without deleting or changing selection", async () => {
+    const view = setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    await act(async () =>
+      fireEvent.click(
+        within(view.dropdown).getByRole("button", {
+          name: "common.remove same (One)",
+        }),
+      ),
+    );
+    expect(view.removeModel).not.toHaveBeenCalled();
+    expect(screen.getByText("Same One")).toBeInTheDocument();
+    expect(view.onSelectModel).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it.each([false, new Error("offline")])(
+    "keeps the saved row on failure %s",
+    async (result) => {
+      const view = setup(result);
+      const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+      await act(async () =>
+        fireEvent.click(
+          within(view.dropdown).getByRole("button", {
+            name: "common.remove same (One)",
+          }),
+        ),
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "chat.removeSavedModelFailed",
+      );
+      expect(screen.getByText("Same One")).toBeInTheDocument();
+      expect(view.onSelectModel).not.toHaveBeenCalled();
+      expect(view.onOpen).toHaveBeenCalledTimes(1);
+      confirm.mockRestore();
+    },
+  );
 });

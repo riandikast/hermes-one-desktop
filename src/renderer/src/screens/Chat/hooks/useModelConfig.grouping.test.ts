@@ -39,3 +39,39 @@ describe("groupModelsByProvider named custom providers", () => {
     expect(local?.models[0].providerLabel).toBeUndefined();
   });
 });
+
+it("marks only persisted non-catalog routes removable and retains exact IDs", () => {
+  const groups = groupModelsByProvider([
+    {
+      id: "seed",
+      name: "renamed",
+      provider: "openai",
+      model: "gpt-4.1",
+      baseUrl: "",
+    },
+    { name: "live", provider: "custom", model: "x", baseUrl: "http://one/v1" },
+    {
+      id: "one",
+      name: "x",
+      provider: "custom",
+      model: "x",
+      baseUrl: "http://one/v1",
+      providerLabel: "One",
+    },
+    {
+      id: "two",
+      name: "x",
+      provider: "custom",
+      model: "x",
+      baseUrl: "http://two/v1",
+      providerLabel: "Two",
+    },
+  ]);
+  const rows = groups.flatMap((g) => g.models);
+  expect(rows.find((m) => m.id === "seed")?.removable).toBe(false);
+  expect(rows.find((m) => !m.id)?.removable).toBe(false);
+  expect(rows.filter((m) => m.removable).map((m) => m.id)).toEqual([
+    "one",
+    "two",
+  ]);
+});

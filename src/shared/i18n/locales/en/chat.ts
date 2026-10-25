@@ -77,6 +77,9 @@ export default {
     "Delete this group? Models are NOT removed from the picker.",
   ungrouped: "Ungrouped",
   addAndSelect: "Add & Select",
+  removeSavedModelConfirm:
+    'Remove saved model "{model}" from {provider}? The current conversation will keep its model.',
+  removeSavedModelFailed: "Could not remove the saved model. Please try again.",
   typeModelName: "Type model name...",
   fallbackModels: "Fallback models",
   fallbackDesc:

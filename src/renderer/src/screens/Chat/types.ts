@@ -138,6 +138,8 @@ export interface ModelGroup {
   providerLabel: string;
   models: {
     id?: string;
+    removable?: boolean;
+    providerLabel?: string;
     provider: string;
     model: string;
     label: string;

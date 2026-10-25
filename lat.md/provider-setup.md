@@ -226,3 +226,10 @@ Each card's logo is resolved by [[src/renderer/src/components/common/BrandLogo.t
 `detectBrand` matches the provider/model string to a `BrandKey`, and `matchTheme` flattens every logo to a single white/black tint so colored and `currentColor` SVGs render uniformly in the grid's logo tiles.
 
 The Local/Remote preset chips are also branded: each renders the same `BrandLogo` (by preset id) to the left of its name in a row. `llama.cpp` is mapped off the Meta logo to the generic API mark (the `/llama/` substring would otherwise tag it, and Ollama, as Meta); any preset without a bundled logo falls back to the generic mark.
+
+
+## Viewport-bounded provider dialogs
+
+Provider configuration dialogs use a viewport-bounded flex column. Only the shrinking body scrolls; the header and footer remain reachable when custom-provider fields or saved models exceed the window height.
+
+[[src/renderer/src/screens/Providers/Providers.styles.test.js]] checks the viewport cap, flex sizing, nonshrinking controls, body overflow and custom-provider header/body/footer structure.

@@ -8,6 +8,7 @@ import { customProviderEnvKey, expectedEnvKeyForUrl } from "../../../../../share
 import { useDiscoveredModels } from "../../../hooks/useDiscoveredModels";
 import { useI18n } from "../../../components/useI18n";
 import type { ModelGroup } from "../types";
+import DEFAULT_MODELS from "../../../../../main/default-models";
 
 const OLLAMA_CLOUD_PROVIDER = "ollama-cloud";
 const OLLAMA_CLOUD_BASE_URL = "https://ollama.com/v1";
@@ -127,6 +128,15 @@ export function groupModelsByProvider(
     }
     groupMap.get(groupKey)!.models.push({
       id: m.id,
+      // Legacy stores have no origin flag: protect exact seeded catalog routes.
+      removable:
+        !!m.id &&
+        !DEFAULT_MODELS.some(
+          (d) =>
+            d.provider === m.provider &&
+            d.model === m.model &&
+            normUrl(d.baseUrl) === normUrl(m.baseUrl || ""),
+        ),
       provider: m.provider,
       model: m.model,
       label: m.name,
@@ -280,7 +290,11 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
   // provider), so never filtered. For everything else the picker mirrors the Providers
   // tab: a group whose key isn't set is hidden (with the active-model exception).
   // `PROVIDERS.setup` is the single source of truth for "what needs a key".
-  function groupKeyForFilter(g: { provider: string; providerLabel: string; models: { baseUrl: string }[] }): string | null {
+  function groupKeyForFilter(g: {
+    provider: string;
+    providerLabel: string;
+    models: { baseUrl: string }[];
+  }): string | null {
     // Custom-named providers (e.g. 9router) each get their own dedicated key
     // derived from the name — must check that, not the generic CUSTOM_API_KEY.
     if (g.provider === "custom" && g.providerLabel && g.providerLabel !== PROVIDERS.labels["custom"] && g.providerLabel !== "OpenAI Compatible / Local") {
