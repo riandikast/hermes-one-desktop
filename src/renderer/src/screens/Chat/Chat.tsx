@@ -1337,7 +1337,7 @@ function Chat({
     set: setFastTier,
   } = useFastMode(profile);
 
-  const { reasoningEffort, setReasoningEffort } = useReasoningEffort(profile);
+  const { reasoningEffort, setReasoningEffort } = useReasoningEffort(profile, hermesSessionId, runId);
 
   // Pre-send readiness — fail-open check that disables Send + shows
 
@@ -1813,6 +1813,8 @@ function Chat({
 
     modelBaseUrl: chatCurrentBaseUrl,
 
+    reasoningEffort,
+
     profile,
 
     provider: chatCurrentProvider,
@@ -2004,6 +2006,7 @@ function Chat({
 
     planMode,
     sessionModel: sessionModelOverride,
+    reasoningEffort,
     sessionModelOverrideRef,
     sendViaDashboard: dashboardTransport.enabled
       ? dashboardTransport.sendMessage

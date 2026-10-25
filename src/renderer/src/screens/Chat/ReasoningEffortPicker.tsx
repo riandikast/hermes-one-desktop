@@ -27,6 +27,7 @@ const OPTIONS: Array<{
     labelKey: "chat.reasoningEffort.auto",
     descriptionKey: "chat.reasoningEffort.autoDescription",
   },
+  { value: "none", labelKey: "chat.reasoningEffort.none", descriptionKey: "chat.reasoningEffort.noneDescription" },
   {
     value: "minimal",
     labelKey: "chat.reasoningEffort.minimal",
@@ -52,6 +53,8 @@ const OPTIONS: Array<{
     labelKey: "chat.reasoningEffort.xhigh",
     descriptionKey: "chat.reasoningEffort.xhighDescription",
   },
+  { value: "max", labelKey: "chat.reasoningEffort.max", descriptionKey: "chat.reasoningEffort.maxDescription" },
+  { value: "ultra", labelKey: "chat.reasoningEffort.ultra", descriptionKey: "chat.reasoningEffort.ultraDescription" },
 ];
 
 export const ReasoningEffortPicker = memo(function ReasoningEffortPicker({

@@ -71,6 +71,7 @@ interface UseChatActionsArgs {
    *  persisting to config.yaml (issue #688). Carries the full identity so a
    *  cross-provider switch routes to the right backend, not just the model. */
   sessionModel?: SessionModelOverride;
+  reasoningEffort?: string;
   sessionModelOverrideRef?: React.MutableRefObject<SessionModelOverride | undefined>;
   sendViaDashboard?: (
     text: string,
@@ -138,6 +139,7 @@ export function useChatActions({
   knowledgeBundles,
   planMode,
   sessionModel,
+  reasoningEffort,
   sessionModelOverrideRef,
   sendViaDashboard,
   execSlashViaDashboard,
@@ -185,6 +187,11 @@ export function useChatActions({
           const handled = await sendViaDashboard(text, attachments);
           if (handled) return;
         }
+        if (reasoningEffort && reasoningEffort !== "auto") {
+          addAgentMessage?.("Session reasoning requires the Dashboard chat transport. Message was not sent.");
+          setIsLoading(false);
+          return;
+        }
         await window.hermesAPI.sendMessage(
           text,
           profile,
@@ -214,6 +221,9 @@ export function useChatActions({
       knowledgeBundles,
       planMode,
       sendViaDashboard,
+      reasoningEffort,
+      addAgentMessage,
+      setIsLoading,
     ],
   );
 

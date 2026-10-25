@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type ReasoningEffort =
   | "auto"
+  | "none"
+  | "max"
+  | "ultra"
   | "minimal"
   | "low"
   | "medium"
@@ -11,7 +14,7 @@ export type ReasoningEffort =
 export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "auto";
 
 export function normalizeReasoningEffort(value: unknown): ReasoningEffort {
-  return value === "auto" ||
+  return value === "none" || value === "max" || value === "ultra" || value === "auto" ||
     value === "minimal" ||
     value === "low" ||
     value === "medium" ||
@@ -26,59 +29,26 @@ interface UseReasoningEffortResult {
   setReasoningEffort: (next: ReasoningEffort) => Promise<void>;
 }
 
-export function useReasoningEffort(profile?: string): UseReasoningEffortResult {
-  const [reasoningEffort, setReasoningEffortState] = useState<ReasoningEffort>(
-    DEFAULT_REASONING_EFFORT,
-  );
-  const reasoningEffortRef = useRef<ReasoningEffort>(DEFAULT_REASONING_EFFORT);
-
+export function useReasoningEffort(profile?: string, sessionId?: string | null, draftId = "draft"): UseReasoningEffortResult {
+  const key = JSON.stringify(["hermes.chat.reasoning.v1", profile || "default", sessionId || draftId]);
+  const read = (k: string): ReasoningEffort => {
+    try { return normalizeReasoningEffort(localStorage.getItem(k)); } catch { return "auto"; }
+  };
+  const [selection, setSelection] = useState(() => ({ key, value: read(key) }));
+  const previous = useRef({ key, sessionId, profile, draftId });
+  let value = selection.key === key ? selection.value : read(key);
+  // The first durable id binds this draft; navigation must never carry its pick.
+  if (selection.key !== key && !previous.current.sessionId && sessionId && previous.current.profile === profile && previous.current.draftId === draftId) value = selection.value;
   useEffect(() => {
-    reasoningEffortRef.current = reasoningEffort;
-  }, [reasoningEffort]);
-
-  useEffect(() => {
-    let cancelled = false;
-    window.hermesAPI
-      .getConfig("agent.reasoning_effort", profile)
-      .then((value) => {
-        if (!cancelled) {
-          const next = normalizeReasoningEffort(value);
-          reasoningEffortRef.current = next;
-          setReasoningEffortState(next);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          reasoningEffortRef.current = DEFAULT_REASONING_EFFORT;
-          setReasoningEffortState(DEFAULT_REASONING_EFFORT);
-        }
-      });
-
-    return (): void => {
-      cancelled = true;
-    };
-  }, [profile]);
-
-  const setReasoningEffort = useCallback(
-    async (next: ReasoningEffort): Promise<void> => {
-      const previous = reasoningEffortRef.current;
-      reasoningEffortRef.current = next;
-      setReasoningEffortState(next);
-
-      try {
-        await window.hermesAPI.setConfig(
-          "agent.reasoning_effort",
-          next,
-          profile,
-        );
-      } catch (error) {
-        reasoningEffortRef.current = previous;
-        setReasoningEffortState(previous);
-        throw error;
-      }
-    },
-    [profile],
-  );
-
-  return { reasoningEffort, setReasoningEffort };
+    if (selection.key !== key) {
+      localStorage.setItem(key, value);
+      setSelection({ key, value });
+    }
+    previous.current = { key, sessionId, profile, draftId };
+  }, [key, sessionId, profile, draftId, selection, value]);
+  const setReasoningEffort = useCallback(async (next: ReasoningEffort): Promise<void> => {
+    localStorage.setItem(key, next);
+    setSelection({ key, value: next });
+  }, [key]);
+  return { reasoningEffort: value, setReasoningEffort };
 }

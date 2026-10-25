@@ -1,8 +1,26 @@
 # Reasoning effort control
 
-The composer's reasoning-effort control sets how hard the model thinks for the current chat: a `Brain` trigger opens a glass popover with a Faster⟷Smarter slider over six ordered levels (auto → minimal → low → medium → high → xhigh).
+The composer selects reasoning for one chat, never the profile. Its slider offers Auto, Off, minimal, low, medium, high, xhigh, max and ultra; provider support still determines the actual wire level.
 
-[[src/renderer/src/screens/Chat/ReasoningEffortPicker.tsx#ReasoningEffortPicker]] renders it. The label reads from each API value's `labelKey` (the `medium` API value shows "Standard", `xhigh` shows "Max"); the hint warns that manual levels may be ignored by models that lack effort support.
+[[src/renderer/src/screens/Chat/ReasoningEffortPicker.tsx#ReasoningEffortPicker]] renders it. Medium is labeled Standard; xhigh is Extra high, distinct from max. Manual tiers are Hermes requests, not promises that every provider supports each wire level.
+
+## Session storage and transport
+
+Selections are keyed by profile and durable session id, or by the unique run id for a new draft. Migration preserves a draft pick; reopening restores it without writing profile config.
+
+[[src/renderer/src/screens/Chat/hooks/useReasoningEffort.ts#useReasoningEffort]] never calls getConfig/setConfig. [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#applyDashboardReasoning]] applies `config.set` with `key: reasoning`, explicit `scope: session` and the live runtime session id before `prompt.submit`, including a recovered id. It requires the returned value to match and blocks submission on rejection. Auto leaves an untouched runtime alone; after a manual pick it restores that connection's captured prior value. Legacy HTTP cannot apply these session RPCs, so a manual selection blocks legacy sending rather than silently using global effort.
+
+## Official tier vocabulary
+
+Official Hermes exposes seven enabled tiers plus Off. The old fork exposed five enabled tiers and mislabeled xhigh as Max.
+
+Evidence: upstream commit `4ea8d23cc9f527332ccb1d55359b27741b6ea51b`, `apps/shared/src/reasoning-effort.ts`, and installed `hermes_constants.py` define minimal/low/medium/high/xhigh/max/ultra. Upstream `agent/reasoning_effort.py` clamps to the route's vocabulary: ultra is normally an internal tier, not a literal provider wire value. Codex app-server can accept ultra when its model supports max. No provider request is constructed by this renderer. Configuration reference: https://hermes-agent.nousresearch.com/docs/user-guide/configuration.
+
+## Session isolation verification
+
+The focused regression exercises independent drafts, draft-to-stored migration, remount restoration and actual ordered dashboard RPC payloads, including a second chat with no mutation.
+
+The actual send-hook test checks session-scoped max application before prompt submission. The network boundary is simulated; no paid provider request, installed backend edit or user database mutation is required.
 
 ## Slider interaction
 

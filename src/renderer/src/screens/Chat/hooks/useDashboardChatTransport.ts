@@ -174,6 +174,7 @@ interface UseDashboardChatTransportArgs {
   sessionModelOverrideRef?: React.MutableRefObject<SessionModelOverride | undefined>;
   model?: string;
   modelBaseUrl?: string;
+  reasoningEffort?: string;
   profile?: string;
   provider?: string;
   /** Global knowledge bundle names attached to this session. Their content
@@ -317,6 +318,24 @@ export function isDashboardSlashWorkerExitError(err: unknown): boolean {
   return /slash worker exited/i.test(message);
 }
 
+const reasoningDefaults = new WeakMap<object, Map<string, string>>();
+
+export async function applyDashboardReasoning(client: DashboardPromptClient, sessionId: string, effort?: string): Promise<void> {
+  if (!effort) return;
+  if (!sessionId) throw new Error("Session reasoning requires a live session id");
+  let defaults = reasoningDefaults.get(client);
+  if (!defaults) { defaults = new Map(); reasoningDefaults.set(client, defaults); }
+  if (effort === "auto" && !defaults.has(sessionId)) return;
+  if (!defaults.has(sessionId)) {
+    const result = await client.request<{ value: string }>("config.get", { key: "reasoning", session_id: sessionId });
+    if (!result?.value) throw new Error("Hermes did not report the session reasoning level");
+    defaults.set(sessionId, result.value);
+  }
+  const value = effort === "auto" ? defaults.get(sessionId)! : effort;
+  const result = await client.request<{ value: string }>("config.set", { key: "reasoning", value, scope: "session", session_id: sessionId });
+  if (result?.value !== value) throw new Error("Hermes did not confirm the session reasoning level");
+}
+
 export async function submitDashboardPromptWithRecovery(
   client: DashboardPromptClient,
   params: {
@@ -324,6 +343,7 @@ export async function submitDashboardPromptWithRecovery(
     cancelled?: () => boolean;
     sessionId: string;
     storedSessionId?: string | null;
+    reasoningEffort?: string;
     text: string;
     /** Scopes the turn to this profile on the UNIFIED machine dashboard. Without
      *  it, prompt.submit runs in the dashboard's launch profile (default), so a
@@ -337,6 +357,8 @@ export async function submitDashboardPromptWithRecovery(
       ? { profile: params.profile }
       : {};
   try {
+    if (params.cancelled?.()) return params.sessionId;
+    await applyDashboardReasoning(client, params.sessionId, params.reasoningEffort);
     if (params.cancelled?.()) return params.sessionId;
     await client.request("prompt.submit", {
       session_id: params.sessionId,
@@ -361,6 +383,8 @@ export async function submitDashboardPromptWithRecovery(
     }
 
     params.onRecoveredSessionId?.(recoveredSessionId);
+    await applyDashboardReasoning(client, recoveredSessionId, params.reasoningEffort);
+    if (params.cancelled?.()) return recoveredSessionId;
     await client.request("prompt.submit", {
       session_id: recoveredSessionId,
       text: params.text,
@@ -1169,7 +1193,10 @@ export function useDashboardChatTransport({
   onModelApplyWarning,
   onRuntimeModel,
   onKnowledgeChanged,
+  reasoningEffort,
 }: UseDashboardChatTransportArgs): UseDashboardChatTransportResult {
+  const reasoningEffortRef = useRef(reasoningEffort);
+  reasoningEffortRef.current = reasoningEffort;
   const sendTimingRef = useRef<{ send: number; started: number; submitted: boolean; firstDelta: boolean } | null>(null);
   const markSendStage = (stage: SendStage): void => {
     const timing = sendTimingRef.current;
@@ -3785,6 +3812,7 @@ export function useDashboardChatTransport({
           sessionId: selectedSessionId,
           storedSessionId: storedSessionIdRef.current,
           text: wireText,
+          reasoningEffort: reasoningEffortRef.current,
           profile,
           cancelled,
           onRecoveredSessionId: (recoveredSessionId) => {
