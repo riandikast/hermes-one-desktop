@@ -28,7 +28,7 @@ The trigger in [[src/renderer/src/screens/Chat/Chat.tsx]] opens [[src/renderer/s
 
 ## Pinned chat bar
 
-The pinned bar sits in the same top row as the floating control rail, to its LEFT, so the two never overlap. The rail starts at `top: 72px`, which leaves room for the speed-dial stack to expand upward.
+The pinned bar sits in the same top row as the floating control rail, to its LEFT, so the two never overlap. The rail starts at `top: 72px`, with tools expanding below its stationary trigger.
 
 [[src/renderer/src/screens/Chat/MessageList.tsx#PinnedMessagesBar]] starts COLLAPSED on every mount, showing only the pin-count pill. Expanding it is a user action; the bubbles are not rendered until then.
 
@@ -36,7 +36,7 @@ The pinned bar sits in the same top row as the floating control rail, to its LEF
 
 The floating control rail is collapsed behind a single grid-icon FAB (speed-dial pattern). Clicking the FAB expands all tool icons in a vertical animated stack; clicking FAB again or anywhere outside collapses it.
 
-[[src/renderer/src/screens/Chat/SpeedDialFAB.tsx]] wraps any number of `items` (each a React node). It owns open/close state, outside-click dismissal, and Escape handling. CSS keyframe `speed-dial-item-in` staggers item entrance via `--item-index`. No new dependencies added.
+[[src/renderer/src/screens/Chat/SpeedDialFAB.tsx]] wraps any number of `items` (each a React node). It owns open/close state, outside-click dismissal, and Escape handling. The trigger stays first in the DOM; absolute-positioned tools expand below it without changing its position. Collapsed tools are inert and invisible, not keyboard targets. Item actions do not collapse their own Search or display popovers; outside pointer dismissal never cancels item clicks. Escape restores trigger focus. CSS keyframe `speed-dial-item-in` staggers entrance. No new dependencies added.
 
 ### Collapsed by default
 
@@ -92,4 +92,4 @@ TerminalDock.complete.test.tsx drives mocked xterm input, verifying listing, exp
 
 TerminalDock.newSession.test.tsx verifies empty opening and reopen preservation. chatWiring.test.ts checks real chat props, single-flight creation, retry and dark/light token contrast. useSessionRefresh.test.tsx covers history refresh races and failures.
 
-chatPanels.speedDial.test.tsx covers SpeedDialFAB collapse/expand/Escape/aria states, and OnFinishBanner keyboard shortcuts (Enter, N, R, Escape), click actions, and visibility.
+chatPanels.speedDial.test.tsx covers stable trigger DOM order, inert hidden tools, Search action clicks, outside dismissal, collapse/expand/Escape/aria states; SpeedDialFAB.layout.test.ts guards absolute below-trigger CSS without popover clipping, and OnFinishBanner keyboard shortcuts (Enter, N, R, Escape), click actions, and visibility.

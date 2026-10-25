@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Grid2x2 } from "lucide-react";
 
 interface SpeedDialItem {
@@ -24,6 +24,8 @@ interface SpeedDialFABProps {
 export function SpeedDialFAB({ items }: SpeedDialFABProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const fabRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const itemsId = useId();
 
   const toggle = useCallback(() => setOpen((v) => !v), []);
   const close = useCallback(() => setOpen(false), []);
@@ -42,32 +44,20 @@ export function SpeedDialFAB({ items }: SpeedDialFABProps): React.JSX.Element {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") { e.stopPropagation(); close(); }
+      if (e.key === "Escape" && !e.defaultPrevented) { close(); triggerRef.current?.focus(); }
     };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [open, close]);
 
   return (
     <div ref={fabRef} className={`speed-dial${open ? " speed-dial--open" : ""}`}>
-      {/* Expanded items — rendered first so they sit BELOW the FAB in z-order. */}
-      <div className="speed-dial-items" aria-hidden={!open}>
-        {items.map(({ key, element }, i) => (
-          <div
-            key={key}
-            className="speed-dial-item"
-            style={{ "--item-index": i } as React.CSSProperties}
-            onClick={close}
-          >
-            {element}
-          </div>
-        ))}
-      </div>
-
       {/* The FAB trigger button. */}
       <button
         type="button"
         className="speed-dial-fab chat-display-controls-trigger"
+        ref={triggerRef}
+        aria-controls={itemsId}
         aria-expanded={open}
         aria-label={open ? "Collapse tools" : "Expand tools"}
         title={open ? "Collapse" : "Tools"}
@@ -78,6 +68,18 @@ export function SpeedDialFAB({ items }: SpeedDialFABProps): React.JSX.Element {
           className={`speed-dial-icon${open ? " speed-dial-icon--open" : ""}`}
         />
       </button>
+      {/* Tools are positioned below the stationary trigger. */}
+      <div id={itemsId} className="speed-dial-items" aria-hidden={!open} inert={!open}>
+        {items.map(({ key, element }, i) => (
+          <div
+            key={key}
+            className="speed-dial-item"
+            style={{ "--item-index": i } as React.CSSProperties}
+          >
+            {element}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

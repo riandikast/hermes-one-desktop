@@ -192,3 +192,23 @@ describe("SpeedDialFAB", () => {
     expect(fab.getAttribute("aria-expanded")).toBe("true");
   });
 });
+
+it("keeps FAB first and stable; Search clicks remain actions, outside clicks dismiss", () => {
+  const search = vi.fn();
+  const { container } = render(<SpeedDialFAB items={[{ key: "search", element: <button onClick={search}>Search</button> }]} />);
+  const trigger = screen.getByRole("button", { name: "Expand tools" });
+  const tools = container.querySelector(".speed-dial-items")!;
+  expect(container.querySelector(".speed-dial")?.firstElementChild).toBe(trigger);
+  expect(tools.hasAttribute("inert")).toBe(true);
+  fireEvent.click(trigger);
+  expect(tools.hasAttribute("inert")).toBe(false);
+  const action = screen.getByRole("button", { name: "Search" });
+  fireEvent.pointerDown(action);
+  fireEvent.click(action);
+  expect(search).toHaveBeenCalledTimes(1);
+  expect(trigger.getAttribute("aria-expanded")).toBe("true");
+  expect(container.querySelector(".speed-dial")?.firstElementChild).toBe(trigger);
+  fireEvent.pointerDown(document.body);
+  expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  expect(tools.hasAttribute("inert")).toBe(true);
+});

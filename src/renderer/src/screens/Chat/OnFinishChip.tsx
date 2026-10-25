@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useId, useRef, useState } from "react";
 import { Play, ChevronDown, ChevronRight, Folder, Check, X } from "lucide-react";
 import {
   readOnFinishSelection,
@@ -7,7 +7,7 @@ import {
   type OnFinishCommand,
 } from "./onFinish";
 
-import { decodeTerminalInput, encodeTerminalInput, TERMINAL_KEYS } from "./onFinishTerminal";
+import { decodeTerminalInput, encodeTerminalInput, MAX_TERMINAL_TEXT, TERMINAL_KEYS } from "./onFinishTerminal";
 
 interface OnFinishChipProps {
   getLiveSessions?: () => { id: string; title: string }[];
@@ -46,7 +46,10 @@ export const OnFinishChip = memo(function OnFinishChip({
   const [isOpen, setIsOpen] = useState(false);
   const [terminals, setTerminals] = useState<{ id: string; title: string }[]>([]);
   const [terminalId, setTerminalId] = useState("");
-  const [terminalKey, setTerminalKey] = useState<keyof typeof TERMINAL_KEYS>("Ctrl+C");
+  const [terminalKey, setTerminalKey] = useState("Ctrl+C");
+  const [inputMode, setInputMode] = useState("key");
+  const [terminalText, setTerminalText] = useState("");
+  const [appendEnter, setAppendEnter] = useState(false);
   const [commands, setCommands] = useState<OnFinishCommand[]>([]);
   const [selected, setSelected] = useState<string[]>(() =>
     readOnFinishSelection(scope),
@@ -56,6 +59,7 @@ export const OnFinishChip = memo(function OnFinishChip({
     () => new Set<string>(),
   );
   const containerRef = useRef<HTMLDivElement>(null);
+  const keyListId = useId();
 
   // Load commands when the dropdown opens, so edits made on the Commands page
   // show up without remounting the chat.
@@ -148,6 +152,15 @@ export const OnFinishChip = memo(function OnFinishChip({
   ].filter((g) => g.items.length > 0);
 
   const armed = selected.length > 0;
+  let terminalAction: string | null = null;
+  const target = terminals.find((session) => session.id === terminalId);
+  if (target) {
+    try {
+      terminalAction = encodeTerminalInput({ terminalId, title: target.title, enter: appendEnter,
+        ...(inputMode === "key" ? { key: terminalKey } : { text: terminalText }),
+      });
+    } catch { /* Invalid or incomplete input stays unarmed. */ }
+  }
 
   return (
     <div className="chat-ctxfolder-picker" ref={containerRef}>
@@ -193,19 +206,28 @@ export const OnFinishChip = memo(function OnFinishChip({
                 {terminals.map((session) => <option key={session.id} value={session.id}>{session.title} · {session.id.slice(-6)}</option>)}
               </select>
             </label>
-            <label>Send key
-              <select aria-label="On-Finish key" value={terminalKey} onChange={(e) => setTerminalKey(e.target.value as keyof typeof TERMINAL_KEYS)}>
-                {Object.keys(TERMINAL_KEYS).map((key) => <option key={key}>{key}</option>)}
-              </select>
-            </label>
-            <button type="button" className="chat-ctxfolder-dropdown-item" disabled={!terminalId} onClick={() => {
-              const target = terminals.find((session) => session.id === terminalId);
-              if (target) {
-                const id = encodeTerminalInput({ terminalId, title: target.title, key: terminalKey });
-                if (!selected.includes(id)) persist([...selected, id]);
-              }
-            }}>Add terminal input</button>
-            <small>Sends after each settled reply. No new terminal is created.</small>
+            <div className="chat-onfinish-input-row">
+              <label>Input type
+                <select aria-label="On-Finish input type" value={inputMode} onChange={(e) => setInputMode(e.target.value)}>
+                  <option value="key">Key</option><option value="text">Literal text</option>
+                </select>
+              </label>
+              <label>{inputMode === "key" ? "Send key" : "Literal text"}
+                {inputMode === "key" ? <>
+                  <input aria-label="On-Finish key" list={keyListId} value={terminalKey} maxLength={16} onChange={(e) => setTerminalKey(e.target.value)} />
+                  <datalist id={keyListId}>
+                    {Object.keys(TERMINAL_KEYS).filter((key) => key !== "r" && key !== "r + Enter").map((key) => <option key={key} value={key} />)}
+                  </datalist>
+                </> : <input aria-label="On-Finish text" value={terminalText} maxLength={MAX_TERMINAL_TEXT} onChange={(e) => setTerminalText(e.target.value)} />}
+              </label>
+            </div>
+            <div className="chat-onfinish-input-row">
+              <label className="chat-onfinish-enter"><input type="checkbox" checked={appendEnter} onChange={(e) => setAppendEnter(e.target.checked)} />Then Enter</label>
+              <button type="button" className="chat-ctxfolder-dropdown-item" disabled={!terminalAction} onClick={() => {
+                if (terminalAction && !selected.includes(terminalAction)) persist([...selected, terminalAction]);
+              }}>Add terminal input</button>
+            </div>
+            <small>Keys: Ctrl+A–Z, Enter, Tab, Escape, Backspace. Text: 1–256 characters, no control characters. Existing terminal only.</small>
           </div>
 
           {/* The queue in RUN ORDER — the only place it is shown while in the
@@ -228,7 +250,7 @@ export const OnFinishChip = memo(function OnFinishChip({
                         {index + 1}
                       </span>
                       <span className="chat-onfinish-queue-name">
-                        {input ? `${input.title}: ${input.key}` : cmd?.name ?? "(deleted)"}
+                        {input ? `${input.title}: ${input.key ?? JSON.stringify(input.text)}${input.enter ? " + Enter" : ""}` : cmd?.name ?? "(deleted)"}
                       </span>
                       <X size={10} />
                     </button>

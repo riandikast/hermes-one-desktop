@@ -47,5 +47,43 @@ it("configures terminal input through the On-Finish dropdown", async () => {
   await waitFor(() => expect(screen.getByLabelText("On-Finish terminal")).toBeTruthy());
   fireEvent.change(screen.getByLabelText("On-Finish key"), { target: { value: "r + Enter" } });
   fireEvent.click(screen.getByRole("button", { name: "Add terminal input" }));
-  expect(decodeTerminalInput(readOnFinishSelection("chat")[0])).toEqual({ terminalId: target.id, title: target.title, key: "r + Enter" });
+  expect(decodeTerminalInput(readOnFinishSelection("chat")[0])).toEqual({ terminalId: target.id, title: target.title, key: "r + Enter", enter: false });
+});
+
+it.each([false, true])("delivers literal text exactly, optional Enter %s", async (enter) => {
+  render(<OnFinishChip running={false} scope="custom" getLiveSessions={() => [target]} />);
+  fireEvent.click(screen.getByRole("button", { name: /On-Finish/ }));
+  await screen.findByLabelText("On-Finish input type");
+  fireEvent.change(screen.getByLabelText("On-Finish input type"), { target: { value: "text" } });
+  fireEvent.change(screen.getByLabelText("On-Finish text"), { target: { value: " Ctrl+C 🙂 " } });
+  if (enter) fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(screen.getByRole("button", { name: "Add terminal input" }));
+  const { result } = renderHook(() => useOnFinishRunner(vi.fn(), () => [target]));
+  await act(async () => { await result.current.runQueue(readOnFinishSelection("custom"), []); });
+  expect(window.hermesAPI.terminalWrite).toHaveBeenCalledWith({ id: target.id, data: " Ctrl+C 🙂 " + (enter ? "\r" : "") });
+  expect(window.hermesAPI.commandRun).not.toHaveBeenCalled();
+});
+it("preserves old v1 actions and independent control byte expectations", async () => {
+  const { result } = renderHook(() => useOnFinishRunner(vi.fn(), () => [target]));
+  for (const [key, data] of [["Ctrl+C", "\x03"], ["Ctrl+Y", "\x19"], ["r", "r"], ["Enter", "\r"], ["r + Enter", "r\r"], ["Tab", "\t"], ["Escape", "\x1b"], ["Backspace", "\x7f"], ...Array.from({ length: 26 }, (_, i) => [`Ctrl+${String.fromCharCode(65+i)}`, String.fromCharCode(i+1)])]) {
+    const id = "terminal-input:v1:" + encodeURIComponent(JSON.stringify({ terminalId: target.id, title: target.title, key }));
+    await act(async () => { await result.current.runQueue([id], []); });
+    expect(window.hermesAPI.terminalWrite).toHaveBeenLastCalledWith({ id: target.id, data });
+  }
+});
+it("rejects ambiguous, unknown, oversized, control and malformed input", () => {
+  for (const extra of [{ key: "Ctrl+AA" }, { key: "__proto__" }, { key: ["Enter"] }, { key: "Enter", text: "x" }, { text: "" }, { text: "x".repeat(257) }, { text: "a\nb" }, { text: "\x1b" }, { text: "\x80" }, { text: "ok", enter: "true" }, { text: "ok", extra: true }]) {
+    const id = "terminal-input:v1:" + encodeURIComponent(JSON.stringify({ ...target, terminalId: target.id, id: undefined, ...extra }));
+    expect(decodeTerminalInput(id)).toBeNull();
+  }
+  expect(() => encodeTerminalInput({ terminalId: target.id, title: target.title, text: "x".repeat(257) })).toThrow();
+  expect(decodeTerminalInput(encodeTerminalInput({ terminalId: target.id, title: target.title, text: "界".repeat(256) }))).not.toBeNull();
+});
+it("shows discoverable keys and disables unknown key configuration", async () => {
+  const { container } = render(<OnFinishChip running={false} scope="invalid" getLiveSessions={() => [target]} />);
+  fireEvent.click(screen.getByRole("button", { name: /On-Finish/ }));
+  await screen.findByLabelText("On-Finish key");
+  expect(container.querySelectorAll("datalist option")).toHaveLength(30);
+  fireEvent.change(screen.getByLabelText("On-Finish key"), { target: { value: "Ctrl+AA" } });
+  expect((screen.getByRole("button", { name: "Add terminal input" }) as HTMLButtonElement).disabled).toBe(true);
 });

@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { type OnFinishCommand } from "./onFinish";
-import { decodeTerminalInput, TERMINAL_INPUT_PREFIX, TERMINAL_KEYS } from "./onFinishTerminal";
+import { decodeTerminalInput, TERMINAL_INPUT_PREFIX, terminalInputBytes } from "./onFinishTerminal";
 
 export interface OnFinishRunState {
   /** True while a queue is executing (drives the armed indicator). */
@@ -87,7 +87,7 @@ export function useOnFinishRunner(
               if (!getLiveSessions().some((session) => session.id === input.terminalId))
                 throw new Error(`Terminal “${input.title}” is closed. Select an existing terminal in On-Finish.`);
               const response = await window.hermesAPI.terminalWrite({
-                id: input.terminalId, data: TERMINAL_KEYS[input.key],
+                id: input.terminalId, data: terminalInputBytes(input),
               });
               if (!response?.ok) throw new Error("Terminal input failed");
               continue;

@@ -10800,34 +10800,25 @@ body:has(.shell-vibrant),
   align-items: center;
 }
 
-/* Collapsed: items hidden, no space taken. */
+/* Absolute tools never change the trigger's position or steal its hit region. */
 .speed-dial-items {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  /* Reserve space only when open so the FAB doesn't jump. */
-  overflow: hidden;
-  max-height: 0;
+  visibility: hidden;
   opacity: 0;
-  /* Collapse animation: shrink height, fade. */
-  transition: max-height 0.22s ease, opacity 0.18s ease;
   pointer-events: none;
+  transition: opacity 0.18s ease;
 }
 
-/* Items appear ABOVE the FAB (padding-bottom adds gap between items and FAB). */
-.speed-dial-items {
-  padding-bottom: 4px;
-  /* Items are ordered top-to-bottom in the DOM so the stack reads naturally. */
-}
-
-/* Expanded state. */
 .speed-dial--open .speed-dial-items {
-  /* 7 items × 38px each = 266px. A generous max so new items just work. */
-  max-height: 320px;
+  visibility: visible;
   opacity: 1;
   pointer-events: auto;
-  transition: max-height 0.26s ease, opacity 0.2s ease;
 }
 
 /* Per-item entrance: slide down + fade in, staggered by --item-index. */
@@ -23055,21 +23046,28 @@ body:has(.shell-vibrant),
 }
 .chat-onfinish-terminal-input {
   display: grid;
-  gap: 8px;
-  padding: 10px;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 11px;
   border-bottom: 1px solid var(--border);
 }
-.chat-onfinish-terminal-input label { display: grid; gap: 4px; }
-.chat-onfinish-terminal-input select {
+.chat-onfinish-terminal-input label { display: grid; gap: 3px; min-width: 0; }
+.chat-onfinish-terminal-input select,
+.chat-onfinish-terminal-input input:not([type="checkbox"]) {
   width: 100%;
   min-width: 0;
-  padding: 6px 8px;
+  height: 26px;
+  padding: 3px 6px;
+  font: inherit;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
   color: var(--text-primary);
 }
-.chat-onfinish-terminal-input small { color: var(--text-secondary); }
+.chat-onfinish-input-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 6px; align-items: end; }
+.chat-onfinish-terminal-input .chat-onfinish-enter { display: flex; align-items: center; gap: 4px; align-self: center; }
+.chat-onfinish-terminal-input .chat-ctxfolder-dropdown-item { font: inherit; padding: 4px 6px; justify-content: center; }
+.chat-onfinish-terminal-input small { color: var(--text-secondary); font-size: 10px; }
 .chat-onfinish-error { padding: 8px 16px; color: var(--text-primary); background: var(--bg-elevated); }
 .chat-onfinish-item-selection {
   display: inline-flex;
