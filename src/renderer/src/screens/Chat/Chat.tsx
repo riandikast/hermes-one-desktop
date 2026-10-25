@@ -95,6 +95,7 @@ import { useLocalCommands } from "./hooks/useLocalCommands";
 
 import {
   dashboardChatEnabledForConnection,
+  estimateContextTokens,
   useDashboardChatTransport,
 } from "./hooks/useDashboardChatTransport";
 
@@ -2460,26 +2461,23 @@ function Chat({
     [eventHasFiles],
   );
 
-  // Context-gauge data: the latest turn's prompt tokens vs the model's window.
+  // Display local occupancy immediately; provider usage takes priority when available.
 
   // Denominator priority: gateway-reported context_max (authoritative — knows
 
   // the actual model config) > provider /models catalogue > static heuristic.
 
-  const contextUsage: ContextUsage | null = usage?.contextTokens
-    ? {
-        used: usage.contextTokens,
-
-        window:
-          usage.contextWindowTokens ??
-          realContextWindow ??
-          contextWindowForModel(chatCurrentModel),
-
-        cacheReadTokens: usage.cacheReadTokens,
-
-        cacheWriteTokens: usage.cacheWriteTokens,
-      }
-    : null;
+  const localContextTokens = useMemo(
+    () => usage?.contextTokens == null ? estimateContextTokens(messages, false) : 0,
+    [messages, usage?.contextTokens],
+  );
+  const contextUsage: ContextUsage = {
+    used: usage?.contextTokens ?? localContextTokens,
+    window: usage?.contextWindowTokens ?? realContextWindow ?? contextWindowForModel(chatCurrentModel),
+    estimated: usage?.contextTokens == null || usage.contextEstimated === true,
+    cacheReadTokens: usage?.cacheReadTokens,
+    cacheWriteTokens: usage?.cacheWriteTokens,
+  };
 
   const prettyPrintHTML = (html: string): string => {
     const formatNode = (node: Node, level: number = 0): string => {

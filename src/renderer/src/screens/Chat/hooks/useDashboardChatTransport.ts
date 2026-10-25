@@ -926,9 +926,9 @@ function messageChars(message: ChatMessage): number {
 }
 
 /**
- * Rough context-occupancy estimate (~4 chars/token) from the transcript, used
- * as a last resort when the provider omits usage counts so the context gauge
- * still renders (it only shows when `contextTokens` is set — see Chat.tsx).
+ * Rough context-occupancy estimate (~4 chars/token) from the transcript.
+ * Before provider usage arrives, pass false to include the entire locally
+ * loaded context; completion-time fallback excludes the latest reply.
  *
  * `contextTokens` means the turn's PROMPT-side occupancy, and by the time
  * `message.complete` is handled the just-finished assistant reply has already
@@ -941,6 +941,7 @@ function messageChars(message: ChatMessage): number {
  */
 export function estimateContextTokens(
   messages: ReadonlyArray<ChatMessage>,
+  excludeLatestReply = true,
 ): number {
   let totalChars = 0;
   let lastAssistantBubbleChars = 0;
@@ -952,7 +953,7 @@ export function estimateContextTokens(
       lastAssistantBubbleChars = chars;
     }
   }
-  return Math.max(Math.round((totalChars - lastAssistantBubbleChars) / 4), 0);
+  return Math.max(Math.round((totalChars - (excludeLatestReply ? lastAssistantBubbleChars : 0)) / 4), 0);
 }
 
 /** Bounded budget for a session-scoped model config.set call. */
@@ -2531,12 +2532,9 @@ export function useDashboardChatTransport({
         }, 400);
         const usage = usageFromPayload(event.payload);
         if (usage || !failed) {
-          // The gauge only renders when `contextTokens` is set, so it must be
-          // populated even when the provider omits usage — entirely
-          // (usageFromPayload → null) or just the prompt-side counts. Exact
-          // payload values win; otherwise fall back to the chars/4 transcript
-          // estimate, then to the previous turn's value. A failed turn with no
-          // usage doesn't fabricate one — nothing new entered the context.
+          // Keep completion-time occupancy even when the provider omits usage.
+          // Label transcript fallbacks as estimates; a failed turn without
+          // usage leaves the earlier value alone.
           const estimatedContextTokens = estimateContextTokens(
             messagesRef.current,
           );
@@ -2547,9 +2545,8 @@ export function useDashboardChatTransport({
             completionTokens: usage?.completionTokens || 0,
             totalTokens: usage?.totalTokens || 0,
             cost: undefined,
-            contextTokens:
-              usage?.contextTokens ||
-              estimatedContextTokens,
+            contextTokens: usage?.contextTokens ?? estimatedContextTokens,
+            contextEstimated: usage?.contextTokens == null,
             contextWindowTokens:
               usage?.contextWindowTokens,
             cacheReadTokens: undefined,

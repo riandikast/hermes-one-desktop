@@ -429,6 +429,7 @@ export function useChatIPC({
         totalTokens: (prev?.totalTokens || 0) + u.totalTokens,
         cost: u.cost != null ? (prev?.cost || 0) + u.cost : prev?.cost,
         contextTokens: u.promptTokens || prev?.contextTokens,
+        contextEstimated: u.promptTokens ? false : prev?.contextEstimated,
         cacheReadTokens: u.cacheReadTokens ?? prev?.cacheReadTokens,
         cacheWriteTokens: u.cacheWriteTokens ?? prev?.cacheWriteTokens,
       }));

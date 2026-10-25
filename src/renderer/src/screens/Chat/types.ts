@@ -155,6 +155,8 @@ export interface UsageState {
   /** Latest turn's prompt tokens = current context-window occupancy (NOT
    *  summed across turns, unlike promptTokens). Drives the context gauge. */
   contextTokens?: number;
+  /** True when occupancy came from the local transcript rather than provider usage. */
+  contextEstimated?: boolean;
   /** Model's total context window as reported by the backend gateway
    *  (`context_max` from the compressor) — the authoritative denominator for
    *  the gauge. Falls back to the static heuristic table when absent. */

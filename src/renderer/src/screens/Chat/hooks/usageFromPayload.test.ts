@@ -144,6 +144,16 @@ describe("estimateContextTokens", () => {
     expect(estimateContextTokens(messages)).toBe(225);
   });
 
+  it("includes the latest reply when estimating the locally loaded context before a response", () => {
+    const messages: ChatMessage[] = [
+      { id: "u1", role: "user", content: chars(400) },
+      { id: "a1", role: "agent", content: chars(200) },
+      { id: "u2", role: "user", content: chars(400) },
+    ];
+    expect(estimateContextTokens(messages, false)).toBe(250);
+    expect(estimateContextTokens(messages, true)).toBe(200);
+  });
+
   it("never returns a negative estimate", () => {
     const messages: ChatMessage[] = [
       { id: "a1", role: "agent", content: chars(200) },
@@ -151,7 +161,7 @@ describe("estimateContextTokens", () => {
     expect(estimateContextTokens(messages)).toBe(0);
   });
 
-  it("returns 0 for an empty transcript so the gauge stays hidden", () => {
+  it("returns 0 for an empty transcript", () => {
     expect(estimateContextTokens([])).toBe(0);
   });
 });

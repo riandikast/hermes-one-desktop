@@ -83,7 +83,7 @@ interface ChatInputProps {
   contextFolders?: string[];
   /** Active profile — used to resolve the provider for voice transcription. */
   profile?: string;
-  /** Context-window occupancy for the gauge; null until the first response. */
+  /** Context-window occupancy, using a local estimate before provider usage arrives. */
   contextUsage?: ContextUsage | null;
   onCompactContext?: () => void;
   /** "New session with context" — surfaced inside the context gauge. */
