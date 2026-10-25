@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
-import { resolveOnFinishCommands, type OnFinishCommand } from "./onFinish";
+import { type OnFinishCommand } from "./onFinish";
+import { decodeTerminalInput, TERMINAL_INPUT_PREFIX, TERMINAL_KEYS } from "./onFinishTerminal";
 
 export interface OnFinishRunState {
   /** True while a queue is executing (drives the armed indicator). */
@@ -30,6 +31,7 @@ const IDLE: OnFinishRunState = {
  */
 export function useOnFinishRunner(
   attachSession: (id: string, title: string) => void,
+  getLiveSessions: () => { id: string; title: string }[] = () => [],
 ): {
   state: OnFinishRunState;
   runQueue: (
@@ -57,7 +59,10 @@ export function useOnFinishRunner(
       if (runningRef.current) return;
       // Resolve against the live list so a deleted command is skipped rather
       // than throwing mid-run, and so ORDER comes from the selection.
-      const queue = resolveOnFinishCommands(selectedIds, commands);
+      const queue = selectedIds.filter((id) =>
+        id.startsWith(TERMINAL_INPUT_PREFIX) || commands.some((cmd) => cmd.id === id),
+      );
+      let lastError: string | null = null;
       if (queue.length === 0) return;
 
       runningRef.current = true;
@@ -72,22 +77,33 @@ export function useOnFinishRunner(
       try {
         for (let i = 0; i < queue.length; i += 1) {
           if (cancelledRef.current || !valid()) break;
-          const cmd = queue[i];
+          const actionId = queue[i];
+          const cmd = commands.find((command) => command.id === actionId);
           setState((prev) => ({ ...prev, current: i + 1 }));
           try {
+            if (actionId.startsWith(TERMINAL_INPUT_PREFIX)) {
+              const input = decodeTerminalInput(actionId);
+              if (!input) throw new Error("Invalid terminal input action");
+              if (!getLiveSessions().some((session) => session.id === input.terminalId))
+                throw new Error(`Terminal “${input.title}” is closed. Select an existing terminal in On-Finish.`);
+              const response = await window.hermesAPI.terminalWrite({
+                id: input.terminalId, data: TERMINAL_KEYS[input.key],
+              });
+              if (!response?.ok) throw new Error("Terminal input failed");
+              continue;
+            }
+            if (!cmd) continue;
             const { id } = await window.hermesAPI.commandRun({
               commandId: cmd.id,
               cwd: cmd.cwd ?? "",
               command: cmd.command,
             });
             attachSession(id, cmd.name ?? "On-Finish");
-          } catch {
-            // One failing launch must not abort the rest of the queue; record
-            // it and continue so later commands still run in order.
-            setState((prev) => ({
-              ...prev,
-              lastError: `Failed to start ${cmd.name ?? cmd.id}`,
-            }));
+          } catch (error) {
+            lastError = actionId.startsWith(TERMINAL_INPUT_PREFIX)
+              ? (error instanceof Error ? error.message : "Terminal input failed")
+              : `Failed to start ${cmd?.name ?? actionId}`;
+            setState((prev) => ({ ...prev, lastError }));
           }
           // Let the main process spawn the pty before the next one, so tab
           // order in the dock matches selection order.
@@ -95,10 +111,11 @@ export function useOnFinishRunner(
         }
       } finally {
         runningRef.current = false;
-        setState(IDLE);
+        setState({ ...IDLE, lastError });
+
       }
     },
-    [attachSession],
+    [attachSession, getLiveSessions],
   );
 
   return { state, runQueue, cancel };

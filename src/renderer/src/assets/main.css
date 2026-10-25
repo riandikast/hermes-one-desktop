@@ -23053,6 +23053,24 @@ body:has(.shell-vibrant),
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
+.chat-onfinish-terminal-input {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.chat-onfinish-terminal-input label { display: grid; gap: 4px; }
+.chat-onfinish-terminal-input select {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+.chat-onfinish-terminal-input small { color: var(--text-secondary); }
+.chat-onfinish-error { padding: 8px 16px; color: var(--text-primary); background: var(--bg-elevated); }
 .chat-onfinish-item-selection {
   display: inline-flex;
   align-items: center;

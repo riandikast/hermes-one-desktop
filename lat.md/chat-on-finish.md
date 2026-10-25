@@ -14,6 +14,14 @@ Hidden tabs remain mounted but do not poll child snapshots; automatic execution 
 
 [[src/renderer/src/screens/Chat/useOnFinishRunner.ts#useOnFinishRunner]] preserves ordered, non-overlapping launches and skips deleted commands. Automatic runs recheck validity before each launch; manual callers retain immediate execution. Already launched terminal commands are never killed.
 
+## Existing terminal input
+
+On-Finish can send Ctrl+C, Ctrl+Y, literal r, Enter, or r followed by Enter to a selected live terminal. Input actions share the ordered command queue and settled-completion safeguards.
+
+Open the floating terminal first, then choose Existing terminal and Send key in the On-Finish dropdown and click Add terminal input. Actions persist per chat and migrate with draft/session identity and context handoff. Closed or restarted terminal targets fail visibly; they are never redirected and never spawn a terminal. Remove an action by clicking its queue chip.
+
+[[src/renderer/src/screens/Chat/onFinishTerminal.ts]] validates the versioned input records; [[src/renderer/src/screens/Chat/onFinishTerminal.test.tsx]] exercises actual IPC payloads, closed targets, cancellation, UI configuration, and scope migration. The old post-run keyboard banner is no longer mounted, so it cannot capture normal typing.
+
 ## Selection layout
 
 The ordered selection badge stays immediately left of the checkmark in one non-shrinking group, keeping both aligned at the end of each command row.

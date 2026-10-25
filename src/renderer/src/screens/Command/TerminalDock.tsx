@@ -50,6 +50,7 @@ export interface TerminalDockHandle {
   refit(): void;
   /** Returns the id of the currently active terminal session, or null. */
   getActiveSessionId(): string | null;
+  getLiveSessions(): { id: string; title: string }[];
 }
 
 interface SessionState {
@@ -197,6 +198,7 @@ export const TerminalDock = forwardRef<
       if (sid !== id) return;
       const dock = sessionsRef.current.get(sid);
       if (dock) {
+        dock.state.dead = true;
         dock.term.write("\r\n\x1b[90m[process exited]\x1b[0m\r\n");
         setSessions((prev) =>
           prev.map((s) => (s.id === sid ? { ...s, dead: true } : s)),
@@ -450,7 +452,12 @@ export const TerminalDock = forwardRef<
     });
   }, [activeId]);
 
-  useImperativeHandle(ref, () => ({ attachSession, findSessionByCwd, focusSession, refit, getActiveSessionId: () => activeIdRef.current }), [
+  useImperativeHandle(ref, () => ({ attachSession, findSessionByCwd, focusSession, refit,
+    getActiveSessionId: () => activeIdRef.current,
+    getLiveSessions: () => [...sessionsRef.current.values()]
+      .filter((session) => !session.state.dead)
+      .map(({ state }) => ({ id: state.id, title: state.title })),
+  }), [
     attachSession,
     findSessionByCwd,
     focusSession,

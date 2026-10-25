@@ -60,7 +60,7 @@ The FAB button's `aria-expanded` attribute tracks the open/closed state accurate
 
 ## On-finish keyboard banner
 
-After an on-finish command queue completes, a small notification banner appears above the chat input while the terminal dock is open. It forwards keyboard input to the active terminal session without requiring the user to click into it.
+The legacy banner component is retained for compatibility tests but is no longer mounted in Chat. Configure automatic key delivery through [[chat-on-finish#Existing terminal input]] instead; normal typing is no longer intercepted.
 
 [[src/renderer/src/screens/Chat/OnFinishBanner.tsx]] renders when `visible` is true. It registers a `keydown` listener for Enter/Y (sends `\n`), N/Ctrl+C (sends SIGINT `\x03`), R (re-run queue), and Escape (dismiss). `TerminalDockHandle.getActiveSessionId()` exposes the active session id to the banner. Clicking outside the banner dismisses it via an invisible backdrop.
 

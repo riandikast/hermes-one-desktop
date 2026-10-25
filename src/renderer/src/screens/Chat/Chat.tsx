@@ -35,7 +35,7 @@ import { useOnFinishRunner } from "./useOnFinishRunner";
 import { useSettledOnFinish } from "./useSettledOnFinish";
 import { OnFinishChip } from "./OnFinishChip";
 import { FloatingDialog } from "./FloatingDialog";
-import { OnFinishBanner } from "./OnFinishBanner";
+
 import { SpeedDialFAB } from "./SpeedDialFAB";
 import type { TerminalDockHandle } from "../Command/TerminalDock";
 import { TerminalDock } from "../Command/TerminalDock";
@@ -707,20 +707,10 @@ function Chat({
     },
     [],
   );
-  const onFinishRunner = useOnFinishRunner(attachOnFinishSession);
+  const getOnFinishTerminals = useCallback(() => onFinishDockRef.current?.getLiveSessions() ?? [], []);
+  const onFinishRunner = useOnFinishRunner(attachOnFinishSession, getOnFinishTerminals);
 
-  // Show the keyboard-shortcut banner briefly after an on-finish queue finishes.
-  // The banner lets the user send Enter/N/R to the active terminal without clicking.
-  const [onFinishBannerVisible, setOnFinishBannerVisible] = useState(false);
-  const prevOnFinishRunningRef = useRef(false);
-  useEffect(() => {
-    const wasRunning = prevOnFinishRunningRef.current;
-    prevOnFinishRunningRef.current = onFinishRunner.state.running;
-    // Transition: running → idle = queue just finished.
-    if (wasRunning && !onFinishRunner.state.running && onFinishDockOpen) {
-      setOnFinishBannerVisible(true);
-    }
-  }, [onFinishRunner.state.running, onFinishDockOpen]);
+
 
   /**
    * New terminal from the dialog's "+" button.
@@ -3031,6 +3021,8 @@ function Chat({
                   <OnFinishChip
                     running={onFinishRunner.state.running}
                     scope={onFinishIdentityRef.current}
+                    getLiveSessions={getOnFinishTerminals}
+                    lastError={onFinishRunner.state.lastError}
                   />
 
                   <ContextFolderChip
@@ -3172,20 +3164,10 @@ function Chat({
         />
       )}
 
-      {/* On-finish keyboard shortcut banner — appears when a queue completes
-          while the terminal dock is open. Lets the user send Enter/N/R to the
-          active session without clicking. */}
-      <OnFinishBanner
-        visible={onFinishBannerVisible}
-        sessionId={onFinishDockRef.current?.getActiveSessionId() ?? null}
-        onDismiss={() => setOnFinishBannerVisible(false)}
-        onRerun={() => {
-          // Re-trigger settled-on-finish by momentarily re-arming; simplest
-          // path is to just call the runner directly with the current selection.
-          const ids = readOnFinishSelection(onFinishIdentityRef.current);
-          if (ids.length > 0) void onFinishRunner.runQueue(ids, []);
-        }}
-      />
+      {/* Keep failed automatic terminal actions visible outside the dropdown. */}
+      {onFinishRunner.state.lastError && (
+        <div role="alert" className="chat-onfinish-error">{onFinishRunner.state.lastError}</div>
+      )}
 
       {/* The dialog lives outside the floating control group so its overlay is
           not clipped by that group's stacking context. Mounted unconditionally

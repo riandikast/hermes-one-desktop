@@ -7,7 +7,11 @@ import {
   type OnFinishCommand,
 } from "./onFinish";
 
+import { decodeTerminalInput, encodeTerminalInput, TERMINAL_KEYS } from "./onFinishTerminal";
+
 interface OnFinishChipProps {
+  getLiveSessions?: () => { id: string; title: string }[];
+  lastError?: string | null;
   /** True while the queue is executing (drives the spinner/label). */
   running: boolean;
   /**
@@ -36,8 +40,13 @@ interface OnFinishChipProps {
 export const OnFinishChip = memo(function OnFinishChip({
   running,
   scope,
+  getLiveSessions,
+  lastError,
 }: OnFinishChipProps): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false);
+  const [terminals, setTerminals] = useState<{ id: string; title: string }[]>([]);
+  const [terminalId, setTerminalId] = useState("");
+  const [terminalKey, setTerminalKey] = useState<keyof typeof TERMINAL_KEYS>("Ctrl+C");
   const [commands, setCommands] = useState<OnFinishCommand[]>([]);
   const [selected, setSelected] = useState<string[]>(() =>
     readOnFinishSelection(scope),
@@ -52,6 +61,9 @@ export const OnFinishChip = memo(function OnFinishChip({
   // show up without remounting the chat.
   useEffect(() => {
     if (!isOpen) return;
+    const live = getLiveSessions?.() ?? [];
+    setTerminals(live);
+    setTerminalId((id) => live.some((session) => session.id === id) ? id : live[0]?.id ?? "");
     let cancelled = false;
     void window.hermesAPI
       .listCommands()
@@ -75,7 +87,7 @@ export const OnFinishChip = memo(function OnFinishChip({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, scope]);
+  }, [isOpen, scope, getLiveSessions]);
 
   // Close on outside click / Escape, matching the folder chip.
   useEffect(() => {
@@ -173,6 +185,29 @@ export const OnFinishChip = memo(function OnFinishChip({
               : "Pick commands to run after each reply"}
           </div>
 
+          {lastError && <div role="alert" className="chat-ctxfolder-dropdown-empty">{lastError}</div>}
+          <div className="chat-onfinish-terminal-input">
+            <label>Existing terminal
+              <select aria-label="On-Finish terminal" value={terminalId} onChange={(e) => setTerminalId(e.target.value)}>
+                {!terminals.length && <option value="">Open a terminal first</option>}
+                {terminals.map((session) => <option key={session.id} value={session.id}>{session.title} · {session.id.slice(-6)}</option>)}
+              </select>
+            </label>
+            <label>Send key
+              <select aria-label="On-Finish key" value={terminalKey} onChange={(e) => setTerminalKey(e.target.value as keyof typeof TERMINAL_KEYS)}>
+                {Object.keys(TERMINAL_KEYS).map((key) => <option key={key}>{key}</option>)}
+              </select>
+            </label>
+            <button type="button" className="chat-ctxfolder-dropdown-item" disabled={!terminalId} onClick={() => {
+              const target = terminals.find((session) => session.id === terminalId);
+              if (target) {
+                const id = encodeTerminalInput({ terminalId, title: target.title, key: terminalKey });
+                if (!selected.includes(id)) persist([...selected, id]);
+              }
+            }}>Add terminal input</button>
+            <small>Sends after each settled reply. No new terminal is created.</small>
+          </div>
+
           {/* The queue in RUN ORDER — the only place it is shown while in the
               chat, and the place to fix it. */}
           {armed && (
@@ -180,6 +215,7 @@ export const OnFinishChip = memo(function OnFinishChip({
               <div className="chat-onfinish-queue">
                 {selected.map((id, index) => {
                   const cmd = commands.find((c) => c.id === id);
+                  const input = decodeTerminalInput(id);
                   return (
                     <button
                       key={id}
@@ -192,7 +228,7 @@ export const OnFinishChip = memo(function OnFinishChip({
                         {index + 1}
                       </span>
                       <span className="chat-onfinish-queue-name">
-                        {cmd?.name ?? "(deleted)"}
+                        {input ? `${input.title}: ${input.key}` : cmd?.name ?? "(deleted)"}
                       </span>
                       <X size={10} />
                     </button>
