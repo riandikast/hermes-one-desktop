@@ -61,8 +61,26 @@ export async function checkBackendUpdate(repo: string): Promise<BackendUpdateSta
           await metadata(`/commits/${installed}`);
         } catch (commitError) {
           if (!(commitError instanceof MetadataError) || commitError.status !== 404) throw commitError;
+          // Bounded, read-only first-parent walk: local commits need not exist on GitHub.
+          const ancestors = (await backendGit(repo, ["rev-list", "--first-parent", "--max-count=21", installed])).split(/\r?\n/).slice(1);
+          for (const ancestor of ancestors) {
+            if (!/^[a-f0-9]{40}$/.test(ancestor)) throw new Error("Invalid local ancestor commit");
+            try {
+              const published = await metadata(`/commits/${ancestor}`);
+              if (published.sha !== ancestor) throw new Error("Published ancestor metadata is invalid");
+            } catch (ancestorError) {
+              if (ancestorError instanceof MetadataError && ancestorError.status === 404) continue;
+              throw ancestorError;
+            }
+            const base = ancestor === latest ? "identical" : (await metadata(`/compare/${latest}...${ancestor}`)).status;
+            const relationships = { identical: "Published base matches official HEAD", behind: "Official updates available beyond published base",
+              ahead: "Published base is ahead of official HEAD", diverged: "Published base and official history diverged" };
+            if (!Object.hasOwn(relationships, String(base))) throw new Error("Published base relationship is unknown");
+            return { status: "diverged", installed, latest, branch,
+              detail: `Custom/local commits above published base ${ancestor.slice(0, 10)}. ${relationships[base as keyof typeof relationships]}; review and update manually from ${BACKEND_SOURCE_URL}. Installed ${installed.slice(0, 10)} / official ${latest.slice(0, 10)} (${branch}).` };
+          }
           return { status: "unknown", installed, latest, branch,
-            detail: `Installed commit is not published in the official repository (possibly custom/local). Relationship unknown; review and update manually from ${BACKEND_SOURCE_URL}. Installed ${installed.slice(0, 10)} / official ${latest.slice(0, 10)} (${branch}).` };
+            detail: `Installed commit is not published in the official repository (custom/local). No published base found within 20 first-parent ancestors; review and update manually from ${BACKEND_SOURCE_URL}. Installed ${installed.slice(0, 10)} / official ${latest.slice(0, 10)} (${branch}).` };
         }
         throw error;
       }

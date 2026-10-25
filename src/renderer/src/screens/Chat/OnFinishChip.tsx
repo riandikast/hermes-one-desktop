@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Play, ChevronDown, ChevronRight, Folder, Check, X } from "lucide-react";
 import {
   readOnFinishSelection,
@@ -8,6 +8,50 @@ import {
 } from "./onFinish";
 
 import { decodeTerminalInput, encodeTerminalInput, MAX_TERMINAL_TEXT, TERMINAL_KEYS } from "./onFinishTerminal";
+
+const PICKABLE_KEYS = Object.keys(TERMINAL_KEYS).filter((key) => key !== "r" && key !== "r + Enter");
+
+function KeyPicker({ value, onChange }: { value: string; onChange: (key: string) => void }): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  useEffect(() => {
+    if (!open) return;
+    root.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+    const outside = (event: MouseEvent): void => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", outside);
+    return () => document.removeEventListener("mousedown", outside);
+  }, [open]);
+  const close = (): void => { setOpen(false); trigger.current?.focus(); };
+  return <div className="chat-onfinish-key-picker" ref={root} onBlur={(event) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+  }}>
+    <button type="button" ref={trigger} aria-label="On-Finish key" aria-haspopup="listbox"
+      aria-expanded={open} aria-controls={open ? id : undefined}
+      onClick={() => setOpen(!open)} onKeyDown={(event) => {
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setOpen(true); }
+      }}>{value} <ChevronDown size={12} aria-hidden="true" /></button>
+    {open && <div id={id} role="listbox" aria-label="On-Finish keys" className="chat-onfinish-keys"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); return; }
+        const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+        const index = options.indexOf(document.activeElement as HTMLButtonElement);
+        if ((event.key === "Enter" || event.key === " ") && index >= 0) {
+          event.preventDefault(); options[index].click(); return;
+        }
+        const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1
+          : event.key === "ArrowDown" ? (index + 1) % options.length
+          : event.key === "ArrowUp" ? (index - 1 + options.length) % options.length : -1;
+        if (next >= 0) { event.preventDefault(); options[next].focus(); options[next].scrollIntoView?.({ block: "nearest" }); }
+      }}>
+      {PICKABLE_KEYS.map((key) => <button type="button" role="option" tabIndex={-1} aria-selected={key === value}
+        key={key} onClick={() => { onChange(key); close(); }}>{key}</button>)}
+    </div>}
+  </div>;
+}
 
 interface OnFinishChipProps {
   getLiveSessions?: () => { id: string; title: string }[];
@@ -246,13 +290,10 @@ export const OnFinishChip = memo(function OnFinishChip({
                   <option value="key">Key</option><option value="text">Literal text</option>
                 </select>
               </label>
-              <label>{inputMode === "key" ? "Send key" : "Literal text"}
-                {inputMode === "key" ? (
-                  <select className="chat-onfinish-keys" size={5} aria-label="On-Finish key" value={terminalKey} onChange={(e) => setTerminalKey(e.target.value)}>
-                    {Object.keys(TERMINAL_KEYS).filter((key) => key !== "r" && key !== "r + Enter").map((key) => <option key={key} value={key}>{key}</option>)}
-                  </select>
-                ) : <input aria-label="On-Finish text" placeholder="e.g. r" value={terminalText} maxLength={MAX_TERMINAL_TEXT} onChange={(e) => setTerminalText(e.target.value)} />}
-              </label>
+              <div className="chat-onfinish-input-field"><span>{inputMode === "key" ? "Send key" : "Literal text"}</span>
+                {inputMode === "key" ? <KeyPicker value={terminalKey} onChange={setTerminalKey} />
+                  : <input aria-label="On-Finish text" placeholder="e.g. r" value={terminalText} maxLength={MAX_TERMINAL_TEXT} onChange={(e) => setTerminalText(e.target.value)} />}
+              </div>
             </div>
             <div className="chat-onfinish-input-row">
               <label className="chat-onfinish-enter"><input type="checkbox" checked={appendEnter} onChange={(e) => setAppendEnter(e.target.checked)} />Then Enter</label>

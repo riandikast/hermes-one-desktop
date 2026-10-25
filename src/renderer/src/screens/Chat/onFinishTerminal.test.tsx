@@ -45,7 +45,8 @@ it("configures terminal input through the On-Finish dropdown", async () => {
   render(<OnFinishChip running={false} scope="chat" getLiveSessions={() => [target]} />);
   fireEvent.click(screen.getByRole("button", { name: /On-Finish/ }));
   await waitFor(() => expect(screen.getByLabelText("On-Finish terminal")).toBeTruthy());
-  fireEvent.change(screen.getByLabelText("On-Finish key"), { target: { value: "Ctrl+R" } });
+  fireEvent.click(screen.getByRole("button", { name: "On-Finish key" }));
+  fireEvent.click(screen.getByRole("option", { name: "Ctrl+R" }));
   fireEvent.click(screen.getByRole("button", { name: "Add terminal input" }));
   expect(decodeTerminalInput(readOnFinishSelection("chat")[0])).toEqual({ terminalId: target.id, title: target.title, key: "Ctrl+R", enter: false });
   const { result } = renderHook(() => useOnFinishRunner(vi.fn(), () => [target]));
@@ -82,15 +83,38 @@ it("rejects ambiguous, unknown, oversized, control and malformed input", () => {
   expect(() => encodeTerminalInput({ terminalId: target.id, title: target.title, text: "x".repeat(257) })).toThrow();
   expect(decodeTerminalInput(encodeTerminalInput({ terminalId: target.id, title: target.title, text: "界".repeat(256) }))).not.toBeNull();
 });
-it("shows discoverable keys and disables unknown key configuration", async () => {
-  const { container } = render(<OnFinishChip running={false} scope="invalid" getLiveSessions={() => [target]} />);
+it("keeps keys collapsed until opened and supports keyboard, focus and dismissal", async () => {
+  const { container } = render(<OnFinishChip running={false} scope="keys" getLiveSessions={() => [target]} />);
   fireEvent.click(screen.getByRole("button", { name: /On-Finish/ }));
-  await screen.findByLabelText("On-Finish key");
+  const trigger = await screen.findByRole("button", { name: "On-Finish key" });
   expect(container.querySelector("datalist")).toBeNull();
-  expect(screen.getByRole("listbox", { name: "On-Finish key" }).getAttribute("size")).toBe("5");
-  expect(screen.getByRole("listbox", { name: "On-Finish key" }).querySelectorAll("option")).toHaveLength(30);
-  fireEvent.change(screen.getByLabelText("On-Finish key"), { target: { value: "Ctrl+AA" } });
-  expect((screen.getByRole("button", { name: "Add terminal input" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  fireEvent.keyDown(trigger, { key: "ArrowDown" });
+  const list = screen.getByRole("listbox", { name: "On-Finish keys" });
+  expect(list.querySelectorAll('[role="option"]')).toHaveLength(30);
+  expect(document.activeElement?.textContent).toBe("Ctrl+C");
+  fireEvent.keyDown(document.activeElement!, { key: "End" });
+  expect(document.activeElement?.textContent).toBe("Backspace");
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+  expect(document.activeElement?.textContent).toBe("Ctrl+A");
+  fireEvent.keyDown(document.activeElement!, { key: "Home" });
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+  expect(document.activeElement?.textContent).toBe("Backspace");
+  fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+  expect(trigger.textContent).toContain("Backspace");
+  expect(document.activeElement).toBe(trigger);
+  expect(screen.queryByRole("listbox")).toBeNull();
+  fireEvent.click(trigger);
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(screen.getByRole("button", { name: "Add terminal input" })).toBeTruthy();
+  fireEvent.click(trigger);
+  fireEvent.mouseDown(screen.getByRole("button", { name: "Add terminal input" }));
+  expect(screen.queryByRole("listbox")).toBeNull();
+  fireEvent.click(trigger);
+  fireEvent.blur(document.activeElement!, { relatedTarget: screen.getByRole("button", { name: "Add terminal input" }) });
+  expect(screen.queryByRole("listbox")).toBeNull();
 });
 
 it("bounds the popup to available viewport space", async () => {
@@ -111,7 +135,8 @@ it("keeps literal r distinct from control R and preserves queue order", async ()
   fireEvent.change(screen.getByLabelText("On-Finish text"), { target: { value: "r" } });
   fireEvent.click(screen.getByRole("button", { name: "Add terminal input" }));
   fireEvent.change(screen.getByLabelText("On-Finish input type"), { target: { value: "key" } });
-  fireEvent.change(screen.getByLabelText("On-Finish key"), { target: { value: "Ctrl+R" } });
+  fireEvent.click(screen.getByRole("button", { name: "On-Finish key" }));
+  fireEvent.click(screen.getByRole("option", { name: "Ctrl+R" }));
   fireEvent.click(screen.getByRole("button", { name: "Add terminal input" }));
   expect(readOnFinishSelection("letters").map(decodeTerminalInput)).toEqual([
     { terminalId: target.id, title: target.title, text: "r", enter: false },

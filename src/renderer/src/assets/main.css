@@ -9532,7 +9532,15 @@ body:has(.shell-vibrant),
    z-index). `position: absolute` against .chat-container, like the FAB. */
 .chat-pinned-float,
 .chat-display-controls { top: 72px; }
-.chat-pinned-bar--floating .chat-pinned-bar-trigger { min-height: 30px; }
+.chat-pinned-bar.chat-pinned-bar--floating.is-collapsed {
+  margin: 0;
+  height: 32px;
+  box-sizing: border-box;
+}
+.chat-pinned-bar.chat-pinned-bar--floating.is-collapsed .chat-pinned-bar-trigger {
+  height: 100%;
+  box-sizing: border-box;
+}
 .chat-pinned-float {
   position: absolute;
   /* Shares the chat-container coordinate system and row with the FAB. */
@@ -23060,7 +23068,9 @@ body:has(.shell-vibrant),
   font-size: 11px;
   border-bottom: 1px solid var(--border);
 }
-.chat-onfinish-terminal-input label { display: grid; gap: 3px; min-width: 0; }
+.chat-onfinish-terminal-input label,
+.chat-onfinish-input-field { display: grid; gap: 3px; min-width: 0; }
+.chat-onfinish-key-picker > button,
 .chat-onfinish-terminal-input select,
 .chat-onfinish-terminal-input input:not([type="checkbox"]) {
   width: 100%;
@@ -23073,11 +23083,23 @@ body:has(.shell-vibrant),
   background: var(--bg-elevated);
   color: var(--text-primary);
 }
-.chat-onfinish-terminal-input select.chat-onfinish-keys {
-  height: auto;
-  max-height: min(110px, calc(100dvh - 32px));
+.chat-onfinish-key-picker { position: relative; }
+.chat-onfinish-key-picker > button { display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+.chat-onfinish-keys {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  max-height: 120px;
   overflow-y: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
+.chat-onfinish-keys > button { display: block; width: 100%; padding: 4px 6px; border: 0; background: transparent; color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; }
+.chat-onfinish-keys > button:focus, .chat-onfinish-keys > button:hover { background: var(--bg-hover); }
+.chat-onfinish-keys > button[aria-selected="true"] { font-weight: 600; }
 .chat-onfinish-input-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 6px; align-items: end; }
 .chat-onfinish-terminal-input .chat-onfinish-enter { display: flex; align-items: center; gap: 4px; align-self: center; }
 .chat-onfinish-terminal-input .chat-ctxfolder-dropdown-item { font: inherit; padding: 4px 6px; justify-content: center; }

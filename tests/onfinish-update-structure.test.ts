@@ -13,10 +13,13 @@ it("keeps popup and queue/list independently bounded and scrollable", () => {
 
 it("keeps Send key inside the renderer instead of a native popup", () => {
   const source = readFileSync("src/renderer/src/screens/Chat/OnFinishChip.tsx", "utf8");
-  expect(source).toContain('size={5} aria-label="On-Finish key"');
+  expect(source).not.toContain('size={5}');
+  expect(source).toContain('role="listbox"');
+  expect(source).toContain('aria-haspopup="listbox"');
   const css = readFileSync("src/renderer/src/assets/main.css", "utf8");
-  const rule = css.match(/select\.chat-onfinish-keys \{([^}]+)/)?.[1];
-  expect(rule).toContain("100dvh");
+  const rule = css.match(/\.chat-onfinish-keys \{([^}]+)/)?.[1];
+  expect(rule).toContain("max-height: 120px");
+  expect(rule).toContain("position: absolute");
   expect(rule).toContain("overflow-y: auto");
 });
 

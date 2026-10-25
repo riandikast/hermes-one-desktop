@@ -34,7 +34,8 @@ it.each([404, 422])("keeps unpublished local commits unknown after compare 404 a
     .mockResolvedValueOnce({ ok: false, status: 404 })
     .mockResolvedValueOnce({ ok: false, status, json: async () => ({ message: `No commit found for SHA: ${installed}` }) });
   expect(await checkBackendUpdate("install")).toMatchObject({ status: "unknown", installed, latest, branch: "main", detail: expect.stringContaining("review and update manually") });
-  expect(vi.mocked(execFile)).toHaveBeenCalledTimes(1);
+  expect(vi.mocked(execFile)).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(execFile).mock.calls[1][1]).toContain("rev-list");
 });
 it.each(["known", "offline", "forbidden", "invalid"])("preserves genuine comparison/probe errors: %s", async (kind) => {
   fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ default_branch: "main" }) })
@@ -83,4 +84,40 @@ it("rejects malformed upstream metadata and unrecognized comparisons", async () 
   expect(await checkBackendUpdate("install")).toMatchObject({ status: "unknown" });
   fetchMock.mockResolvedValue({ ok: true, json: async () => ({ default_branch: "main", sha: latest, status: "identical" }) });
   expect(await checkBackendUpdate("install")).toMatchObject({ status: "unknown" });
+});
+
+const ancestor = "c".repeat(40), localParent = "d".repeat(40);
+it.each(["identical", "behind", "ahead", "diverged"])("reports custom ancestry without false current: %s", async (relationship) => {
+  vi.mocked(execFile).mockImplementation(((_cmd: string, args: string[], _opts: unknown, cb: Function) => {
+    cb(null, args.includes("rev-list") ? [installed, localParent, ancestor].join("\n") : installed, "");
+  }) as never);
+  fetchMock.mockImplementation(async (url: string) => {
+    const path = url.replace("https://api.github.com/repos/NousResearch/hermes-agent", "");
+    if (path === "") return { ok: true, json: async () => ({ default_branch: "main" }) };
+    if (path === "/commits/main") return { ok: true, json: async () => ({ sha: relationship === "identical" ? ancestor : latest }) };
+    if (path.endsWith(installed) || path.endsWith(localParent)) return { ok: false, status: 404 };
+    if (path === `/commits/${ancestor}`) return { ok: true, json: async () => ({ sha: ancestor }) };
+    return { ok: true, json: async () => ({ status: relationship }) };
+  });
+  const result = await checkBackendUpdate("install");
+  expect(result.status).toBe("diverged");
+  expect(result.detail).toContain(`published base ${ancestor.slice(0, 10)}`);
+  expect(result.detail).toContain({ identical: "matches official HEAD", behind: "Official updates available", ahead: "ahead of official HEAD", diverged: "history diverged" }[relationship]);
+  expect(result.detail).toContain("review and update manually");
+  expect(vi.mocked(execFile).mock.calls[1][1]).toEqual(["--no-optional-locks", "-C", "install", "rev-list", "--first-parent", "--max-count=21", installed]);
+});
+it.each(["offline", "forbidden", "malformed"])("preserves ancestry lookup failures: %s", async (kind) => {
+  vi.mocked(execFile).mockImplementation(((_cmd: string, args: string[], _opts: unknown, cb: Function) => cb(null, args.includes("rev-list") ? `${installed}\n${ancestor}` : installed, "")) as never);
+  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ default_branch: "main" }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ sha: latest }) })
+    .mockResolvedValueOnce({ ok: false, status: 404 })
+    .mockResolvedValueOnce({ ok: false, status: 404 });
+  if (kind === "offline") fetchMock.mockRejectedValueOnce(new Error("offline"));
+  else if (kind === "forbidden") fetchMock.mockResolvedValueOnce({ ok: false, status: 403 });
+  else fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ sha: ancestor }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ status: "invalid" }) });
+  const result = await checkBackendUpdate("install");
+  expect(result.status).toBe("unknown");
+  expect(result.detail).toContain("Update check failed:");
+  expect(result.detail).toContain(kind === "offline" ? "offline" : kind === "forbidden" ? "HTTP 403" : "relationship is unknown");
 });

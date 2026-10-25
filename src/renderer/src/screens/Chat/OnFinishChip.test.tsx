@@ -53,7 +53,7 @@ beforeEach(() => {
 });
 
 function chip(): HTMLElement {
-  return screen.getByRole("button", { name: /On-Finish/ });
+  return screen.getByRole("button", { name: /^On-Finish(?: \(\d+\))?…?$/ });
 }
 
 async function openDropdown(): Promise<void> {

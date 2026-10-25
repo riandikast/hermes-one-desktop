@@ -485,7 +485,13 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     const block = css.slice(css.indexOf(".chat-pinned-float {"), css.indexOf(".chat-pinned-float >"));
     expect(block).toContain("right: 62px");
     expect(block).toContain("calc(100% - 80px)");
-    expect(css).toContain(".chat-pinned-bar--floating .chat-pinned-bar-trigger { min-height: 30px; }");
+    const collapsed = css.match(/\.chat-pinned-bar\.chat-pinned-bar--floating\.is-collapsed \{([^}]+)/)?.[1];
+    expect(collapsed).toContain("margin: 0");
+    expect(collapsed).toContain("height: 32px");
+    expect(collapsed).toContain("box-sizing: border-box");
+    const trigger = css.match(/\.chat-pinned-bar\.chat-pinned-bar--floating\.is-collapsed \.chat-pinned-bar-trigger \{([^}]+)/)?.[1];
+    expect(trigger).toContain("height: 100%");
+    expect(trigger).toContain("box-sizing: border-box");
   });
 
   it("caps the chip so it cannot reach the DB counter's lane", () => {
