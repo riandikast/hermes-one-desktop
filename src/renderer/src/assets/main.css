@@ -9532,8 +9532,10 @@ body:has(.shell-vibrant),
    z-index). `position: absolute` against .chat-body, like the chip. */
 .chat-pinned-float {
   position: absolute;
-  top: 48px;
-  right: 18px;
+  /* Same top row as the floating rail (top: 72px), placed to the LEFT of its
+     32px-wide column (right: 18px) with a 12px gap, so the two never overlap. */
+  top: 72px;
+  right: 62px;
   z-index: 28;
   pointer-events: none;
   max-width: min(360px, calc(100% - 36px));
@@ -10397,12 +10399,10 @@ body:has(.shell-vibrant),
    this element) opens to the side rather than over the icons. */
 .chat-display-controls {
   position: absolute;
-  /* Below the floating pinned bar, which occupies top: 48px on this same right
-     edge (it can be up to ~2 rows tall when expanded). The rail used to sit at
-     76px, so an expanded pinned bar overlapped the search/display/terminal
-     icons. 116px clears the bar's band; the bar and rail never both need the
-     same pixels. */
-  top: 116px;
+  /* Top row of the rail. The pinned float sits on this same row to its left
+     (see .chat-pinned-float). Raised from 116px to 72px so the speed-dial stack
+     has room to expand upward without clipping. */
+  top: 72px;
   right: 18px;
   z-index: 8;
   display: flex;

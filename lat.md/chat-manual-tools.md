@@ -26,6 +26,12 @@ Chat provides a floating log viewer beneath the search icon for troubleshooting 
 
 The trigger in [[src/renderer/src/screens/Chat/Chat.tsx]] opens [[src/renderer/src/screens/Chat/ChatLogsDialog.tsx#ChatLogsDialog]] with two tabs: Crash & Errors (reading `errors.log`) and Request Log (reading `agent.log`). The Request Log defaults to filtering API call requests and responses with model, provider, tokens, and retry countdowns, while supporting full agent log view and live search filtering.
 
+## Pinned chat bar
+
+The pinned bar sits in the same top row as the floating control rail, to its LEFT, so the two never overlap. The rail starts at `top: 72px`, which leaves room for the speed-dial stack to expand upward.
+
+[[src/renderer/src/screens/Chat/MessageList.tsx#PinnedMessagesBar]] starts COLLAPSED on every mount, showing only the pin-count pill. Expanding it is a user action; the bubbles are not rendered until then.
+
 ## Speed-dial FAB
 
 The floating control rail is collapsed behind a single grid-icon FAB (speed-dial pattern). Clicking the FAB expands all tool icons in a vertical animated stack; clicking FAB again or anywhere outside collapses it.

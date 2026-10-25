@@ -537,7 +537,7 @@ export function PinnedMessagesBar({
   className?: string;
 }): React.JSX.Element {
   const { t } = useI18n();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
 
   return (
     <div

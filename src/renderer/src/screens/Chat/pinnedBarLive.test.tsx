@@ -101,6 +101,14 @@ function Harness({ api }: { api: { renderCount: number } }): React.JSX.Element {
   );
 }
 
+/** The bar starts collapsed (pill). Expand it so the header and bubbles render. */
+function expandBar(): void {
+  const trigger = document.querySelector(".chat-pinned-bar-trigger");
+  if (trigger?.closest(".is-collapsed")) {
+    act(() => (trigger as HTMLButtonElement).click());
+  }
+}
+
 describe("pinned bar updates live", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -120,6 +128,7 @@ describe("pinned bar updates live", () => {
     act(() => {
       screen.getByText("pin-m1").click();
     });
+    expandBar();
 
     // Same component instance (no remount / reopen) now renders the bar.
     expect(screen.getByText("Pinned")).toBeTruthy();
@@ -132,6 +141,7 @@ describe("pinned bar updates live", () => {
 
     act(() => screen.getByText("pin-m1").click());
     act(() => screen.getByText("pin-m2").click());
+    expandBar();
 
     expect(screen.getByText("first question")).toBeTruthy();
     expect(screen.getByText("an answer worth pinning")).toBeTruthy();
@@ -145,6 +155,7 @@ describe("pinned bar updates live", () => {
 
     act(() => screen.getByText("pin-m1").click());
     act(() => screen.getByText("pin-m2").click());
+    expandBar();
     expect(screen.getByText("first question")).toBeTruthy();
 
     act(() => screen.getByText("unpin-m1").click());
@@ -158,6 +169,7 @@ describe("pinned bar updates live", () => {
     renderWithI18n(<Harness api={api} />);
 
     act(() => screen.getByText("pin-m1").click());
+    expandBar();
     expect(screen.getByText("Pinned")).toBeTruthy();
 
     act(() => screen.getByText("unpin-m1").click());
@@ -172,7 +184,17 @@ describe("pinned bar updates live", () => {
 
     // A brand-new mount reads the store and renders the pinned row.
     renderWithI18n(<Harness api={api} />);
+    expandBar();
     expect(screen.getByText("first question")).toBeTruthy();
+  });
+
+  it("starts COLLAPSED on open — pill only, no pinned bubbles", () => {
+    renderWithI18n(<Harness api={{ renderCount: 0 }} />);
+    act(() => screen.getByText("pin-m1").click());
+    // Collapsed: the pill shows the count, the bubble text is not rendered.
+    expect(document.querySelector(".chat-pinned-bar.is-collapsed")).toBeTruthy();
+    expect(document.querySelector(".chat-pinned-cards")).toBeNull();
+    expect(screen.queryByText("first question")).toBeNull();
   });
 });
 
@@ -187,6 +209,11 @@ describe("pinned reader opens as a host-level dialog", () => {
 
   const openReader = (): void => {
     act(() => screen.getByText("pin-m1").click());
+    // The bar now opens collapsed. Expand it via its pill trigger, then reach
+    // the reader's "Show full" action.
+    act(() => {
+      (document.querySelector(".chat-pinned-bar-trigger") as HTMLButtonElement).click();
+    });
     act(() => {
       screen.getByLabelText("Show full").click();
     });
