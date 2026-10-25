@@ -35,3 +35,7 @@ The compact Key/Text form uses a native key select, not a datalist. The popup ch
 Fake timers exercise actual commandRun calls through the settled hook and ordered runner. Child events block execution, then permit the first launch at exactly 3000ms, never 2999ms.
 
 [[src/renderer/src/screens/Chat/useSettledOnFinish.test.tsx]] covers resumed work, retries, hidden tabs, interruption, session switch, unmount, asynchronous lookup races, rapid child lifecycles, per-launch cancellation, ordering and one-shot behavior. Existing runner and roster tests cover manual semantics and event/snapshot reconciliation.
+
+## Inline key picker
+
+Send key uses a five-row renderer listbox, not a native popup. Its viewport-aware height and outer dropdown scrolling keep every key reachable inside the renderer. Native listbox keyboard navigation preserves explicit Key and Literal text modes.

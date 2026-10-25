@@ -425,14 +425,7 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
 
     const scrollDivIdx = chatSource.indexOf('className="chat-messages"');
     expect(scrollDivIdx).toBeGreaterThan(-1);
-    expect(barIdx).toBeGreaterThan(scrollDivIdx);
-
-    const between = chatSource.slice(scrollDivIdx, barIdx);
-    const closes = between.match(/<\/div>/g) ?? [];
-    expect(closes.length).toBeGreaterThanOrEqual(2);
-    const lastCloseIdx = between.lastIndexOf("</div>");
-    const afterLastClose = between.slice(lastCloseIdx + "</div>".length);
-    expect(afterLastClose).not.toMatch(/<div[^>]*className="chat-messages"/);
+    expect(barIdx).toBeLessThan(chatSource.indexOf('className="chat-body"'));
 
     // And it must NOT still be rendered from inside the list.
     expect(messageListSource).not.toContain("<PinnedMessagesBar");
@@ -481,47 +474,18 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     if (worktreeIdx > -1) expect(readerIdx).toBeLessThan(worktreeIdx);
   });
 
-  it("starts the floating icon rail BELOW the pinned bar", () => {
-    // `.chat-pinned-float` occupies top: 48px on the right edge; the icon rail
-    // must start far enough down that an expanded bar cannot cover it.
-    // Read the DECLARATION, not prose: the rail's own comment quotes the bar's
-    // top value, so a naive first `top:` match reads the comment.
-    const declTop = (block: string): number => {
-      const m = block.match(/^\s*top:\s*(\d+)px;/m);
-      expect(m).not.toBeNull();
-      return Number(m![1]);
-    };
-
-    const floatStart = css.indexOf(".chat-pinned-float {");
-    expect(floatStart).toBeGreaterThan(-1);
-    const floatTop = declTop(
-      css.slice(floatStart, css.indexOf(".chat-pinned-bar {", floatStart)),
-    );
-
-    const railStart = css.indexOf(".chat-display-controls {");
-    expect(railStart).toBeGreaterThan(-1);
-    const railBlock = css.slice(
-      railStart,
-      css.indexOf(".chat-display-controls-menu {", railStart),
-    );
-    const railTop = declTop(railBlock);
-
-    expect(railTop).toBeGreaterThan(floatTop + 40);
-  });
-
-  it("keeps the pinned bar in the top-RIGHT, clear of the chip and DB counter", () => {
-    // The chip owns the top-LEFT band (left: 12px) and the DB counter the
-    // top-right of the SAME band (top: 12px; right: 18px). The pinned bar goes
-    // below that band on the right so all three can coexist.
-    const start = css.indexOf(".chat-pinned-float {");
-    expect(start).toBeGreaterThan(-1);
-    const block = css.slice(start, css.indexOf(".chat-pinned-bar {", start));
-    expect(block).toContain("position: absolute");
-    expect(block).toContain("right: 18px");
-    // Below the counter's band, not level with it.
-    const topMatch = block.match(/top:\s*(\d+)px/);
-    expect(topMatch).not.toBeNull();
-    expect(Number(topMatch![1])).toBeGreaterThanOrEqual(40);
+  it("anchors pins and FAB to the same chat-container row", () => {
+    const pin = chatSource.indexOf('className="chat-pinned-float"');
+    const rail = chatSource.indexOf('className="chat-display-controls"');
+    const body = chatSource.indexOf('className="chat-body"');
+    expect(pin).toBeGreaterThan(0);
+    expect(pin).toBeLessThan(rail);
+    expect(rail).toBeLessThan(body);
+    expect(css.replace(/\r\n/g, "\n")).toContain(".chat-pinned-float,\n.chat-display-controls { top: 72px; }");
+    const block = css.slice(css.indexOf(".chat-pinned-float {"), css.indexOf(".chat-pinned-float >"));
+    expect(block).toContain("right: 62px");
+    expect(block).toContain("calc(100% - 80px)");
+    expect(css).toContain(".chat-pinned-bar--floating .chat-pinned-bar-trigger { min-height: 30px; }");
   });
 
   it("caps the chip so it cannot reach the DB counter's lane", () => {

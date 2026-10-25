@@ -28,7 +28,7 @@ The trigger in [[src/renderer/src/screens/Chat/Chat.tsx]] opens [[src/renderer/s
 
 ## Pinned chat bar
 
-The pinned bar sits in the same top row as the floating control rail, to its LEFT, so the two never overlap. The rail starts at `top: 72px`, with tools expanding below its stationary trigger.
+The pinned bar and FAB share the chat-container containing block and one `top: 72px` rule. The collapsed trigger matches the FAB height; expanded cards remain in the bounded left lane, clear of the rail and DB counter.
 
 [[src/renderer/src/screens/Chat/MessageList.tsx#PinnedMessagesBar]] starts COLLAPSED on every mount, showing only the pin-count pill. Expanding it is a user action; the bubbles are not rendered until then.
 

@@ -248,7 +248,7 @@ export const OnFinishChip = memo(function OnFinishChip({
               </label>
               <label>{inputMode === "key" ? "Send key" : "Literal text"}
                 {inputMode === "key" ? (
-                  <select aria-label="On-Finish key" value={terminalKey} onChange={(e) => setTerminalKey(e.target.value)}>
+                  <select className="chat-onfinish-keys" size={5} aria-label="On-Finish key" value={terminalKey} onChange={(e) => setTerminalKey(e.target.value)}>
                     {Object.keys(TERMINAL_KEYS).filter((key) => key !== "r" && key !== "r + Enter").map((key) => <option key={key} value={key}>{key}</option>)}
                   </select>
                 ) : <input aria-label="On-Finish text" placeholder="e.g. r" value={terminalText} maxLength={MAX_TERMINAL_TEXT} onChange={(e) => setTerminalText(e.target.value)} />}

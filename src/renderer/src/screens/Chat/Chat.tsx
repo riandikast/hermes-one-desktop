@@ -2627,6 +2627,17 @@ function Chat({
         refreshing={refreshing}
         onRefresh={refreshSession}
       />
+      {/* Pins share the FAB containing block, outside the scrollport. */}
+      {pinnedMessages.length > 0 && (
+        <div className="chat-pinned-float">
+          <PinnedMessagesBar
+            messages={pinnedMessages}
+            onUnpin={(id) => handlePinToggle(id, false)}
+            onOpenMessage={setPinnedReaderId}
+            className="chat-pinned-bar--floating"
+          />
+        </div>
+      )}
       <div className="chat-display-controls">
         <SpeedDialFAB
           items={[
@@ -2906,23 +2917,6 @@ function Chat({
           containerRef={containerRef}
           scrolledUpAtom={scrolledUpAtom}
         />
-
-        {/* Pinned messages — a floating sibling of the scrollport, NOT a child.
-            Inside the scrolling content a sticky bar only sticks within its own
-            parent's bounds and scrolls away exactly when the user is scrolled up
-            (i.e. whenever they would want to reach it). Mounted here it is
-            immune to scrolling, the same reasoning as the chip above.
-            Top-RIGHT so it never collides with the chip (top-left). */}
-        {pinnedMessages.length > 0 && (
-          <div className="chat-pinned-float">
-            <PinnedMessagesBar
-              messages={pinnedMessages}
-              onUnpin={(id) => handlePinToggle(id, false)}
-              onOpenMessage={setPinnedReaderId}
-              className="chat-pinned-bar--floating"
-            />
-          </div>
-        )}
 
         {/* The pinned reader is mounted HERE, at the same level as the pinned
             bar's container rather than inside it. `.chat-pinned-float` is

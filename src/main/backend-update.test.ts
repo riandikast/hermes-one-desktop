@@ -28,6 +28,26 @@ it.each([['behind', 'available'], ['ahead', 'ahead'], ['diverged', 'diverged']])
   ]);
   expect(vi.mocked(execFile).mock.calls[0][1]).toEqual(["--no-optional-locks", "-C", "install", "rev-parse", "--verify", "HEAD^{commit}"]);
 });
+it.each([404, 422])("keeps unpublished local commits unknown after compare 404 and commit %s", async (status) => {
+  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ default_branch: "main" }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ sha: latest }) })
+    .mockResolvedValueOnce({ ok: false, status: 404 })
+    .mockResolvedValueOnce({ ok: false, status, json: async () => ({ message: `No commit found for SHA: ${installed}` }) });
+  expect(await checkBackendUpdate("install")).toMatchObject({ status: "unknown", installed, latest, branch: "main", detail: expect.stringContaining("review and update manually") });
+  expect(vi.mocked(execFile)).toHaveBeenCalledTimes(1);
+});
+it.each(["known", "offline", "forbidden", "invalid"])("preserves genuine comparison/probe errors: %s", async (kind) => {
+  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ default_branch: "main" }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ sha: latest }) })
+    .mockResolvedValueOnce({ ok: false, status: 404 });
+  if (kind === "offline") fetchMock.mockRejectedValueOnce(new Error("offline"));
+  else fetchMock.mockResolvedValueOnce(kind === "known" ? { ok: true, json: async () => ({ sha: installed }) } : { ok: false, status: kind === "forbidden" ? 403 : 422, json: async () => ({ message: "Validation failed" }) });
+  const result = await checkBackendUpdate("install");
+  expect(result).toMatchObject({ status: "unknown", installed, latest, branch: "main" });
+  expect(result.detail).toContain("Update check failed:");
+  expect(result.detail).not.toContain("not published");
+  expect(result.detail).toContain(kind === "known" ? "/compare/" : kind === "offline" ? "offline" : `HTTP ${kind === "forbidden" ? 403 : 422}`);
+});
 it("reports current only for matching official commit", async () => {
   fetchMock.mockResolvedValue({ ok: true, json: async () => ({ default_branch: "main", sha: installed }) });
   expect(await checkBackendUpdate("install")).toMatchObject({ status: "current" });
@@ -51,7 +71,7 @@ it.each([404, 403, 500])("never reports current for official HTTP %s", async (st
 });
 it("reports network failures honestly", async () => {
   fetchMock.mockRejectedValue(new Error("offline"));
-  expect(await checkBackendUpdate("install")).toEqual({ status: "unknown", detail: "Update check failed: offline" });
+  expect(await checkBackendUpdate("install")).toEqual({ status: "unknown", installed, detail: "Update check failed: offline" });
 });
 it("reports non-git installs without consulting stale tracking refs", async () => {
   vi.mocked(execFile).mockImplementation(((_c: unknown, _a: unknown, _o: unknown, cb: Function) => cb(new Error("not a git repository"))) as never);

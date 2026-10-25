@@ -9529,16 +9529,17 @@ body:has(.shell-vibrant),
    Mounted as a sibling of the scrollport (see Chat.tsx), so it does not scroll
    away. Top-RIGHT and below the DB counter's band (top: 12px, ~32px tall) so it
    never collides with the chip (top-left) or the counter (top-right, higher
-   z-index). `position: absolute` against .chat-body, like the chip. */
+   z-index). `position: absolute` against .chat-container, like the FAB. */
+.chat-pinned-float,
+.chat-display-controls { top: 72px; }
+.chat-pinned-bar--floating .chat-pinned-bar-trigger { min-height: 30px; }
 .chat-pinned-float {
   position: absolute;
-  /* Same top row as the floating rail (top: 72px), placed to the LEFT of its
-     32px-wide column (right: 18px) with a 12px gap, so the two never overlap. */
-  top: 72px;
+  /* Shares the chat-container coordinate system and row with the FAB. */
   right: 62px;
   z-index: 28;
   pointer-events: none;
-  max-width: min(360px, calc(100% - 36px));
+  max-width: min(360px, calc(100% - 80px));
   display: flex;
   justify-content: flex-end;
 }
@@ -10399,10 +10400,7 @@ body:has(.shell-vibrant),
    this element) opens to the side rather than over the icons. */
 .chat-display-controls {
   position: absolute;
-  /* Top row of the rail. The pinned float sits on this same row to its left
-     (see .chat-pinned-float). Raised from 116px to 72px so the speed-dial stack
-     has room to expand upward without clipping. */
-  top: 72px;
+  /* Shares the chat-container coordinate system and row with the pinned bar. */
   right: 18px;
   z-index: 8;
   display: flex;
@@ -23074,6 +23072,11 @@ body:has(.shell-vibrant),
   border-radius: var(--radius-sm);
   background: var(--bg-elevated);
   color: var(--text-primary);
+}
+.chat-onfinish-terminal-input select.chat-onfinish-keys {
+  height: auto;
+  max-height: min(110px, calc(100dvh - 32px));
+  overflow-y: auto;
 }
 .chat-onfinish-input-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 6px; align-items: end; }
 .chat-onfinish-terminal-input .chat-onfinish-enter { display: flex; align-items: center; gap: 4px; align-self: center; }

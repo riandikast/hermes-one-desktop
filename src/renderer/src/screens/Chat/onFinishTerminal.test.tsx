@@ -48,6 +48,9 @@ it("configures terminal input through the On-Finish dropdown", async () => {
   fireEvent.change(screen.getByLabelText("On-Finish key"), { target: { value: "Ctrl+R" } });
   fireEvent.click(screen.getByRole("button", { name: "Add terminal input" }));
   expect(decodeTerminalInput(readOnFinishSelection("chat")[0])).toEqual({ terminalId: target.id, title: target.title, key: "Ctrl+R", enter: false });
+  const { result } = renderHook(() => useOnFinishRunner(vi.fn(), () => [target]));
+  await act(async () => { await result.current.runQueue(readOnFinishSelection("chat"), []); });
+  expect(window.hermesAPI.terminalWrite).toHaveBeenCalledWith({ id: target.id, data: "\x12" });
 });
 
 it.each([false, true])("delivers literal text exactly, optional Enter %s", async (enter) => {
@@ -84,7 +87,8 @@ it("shows discoverable keys and disables unknown key configuration", async () =>
   fireEvent.click(screen.getByRole("button", { name: /On-Finish/ }));
   await screen.findByLabelText("On-Finish key");
   expect(container.querySelector("datalist")).toBeNull();
-  expect(screen.getByRole("combobox", { name: "On-Finish key" }).querySelectorAll("option")).toHaveLength(30);
+  expect(screen.getByRole("listbox", { name: "On-Finish key" }).getAttribute("size")).toBe("5");
+  expect(screen.getByRole("listbox", { name: "On-Finish key" }).querySelectorAll("option")).toHaveLength(30);
   fireEvent.change(screen.getByLabelText("On-Finish key"), { target: { value: "Ctrl+AA" } });
   expect((screen.getByRole("button", { name: "Add terminal input" }) as HTMLButtonElement).disabled).toBe(true);
 });
