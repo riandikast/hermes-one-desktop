@@ -2405,7 +2405,7 @@ describe("Knowledge envelope validation", () => {
     const prompt = "  /explain\n画像 😀\r\n ";
     const envelope = encodeKnowledgePrompt(prompt, "INDEX", prompt + "\nattachment ref");
     expect(originalKnowledgePrompt(envelope)).toBe(prompt);
-    for (const value of [prompt, "The user attached the following knowledge bundles.\n## ordinary\n- prose", envelope + " ", "quote: " + envelope, envelope.replace('"version":1', '"version":2'), envelope.replace('"context":"INDEX"', '"extra":true,"context":"INDEX"')]) {
+    for (const value of [prompt, "The user attached the following knowledge bundles.\n## ordinary\n- prose", envelope + " ", "quote: " + envelope, envelope.replace('"version":2', '"version":1'), envelope.replace('"context":"INDEX"', '"extra":true,"context":"INDEX"')]) {
       expect(originalKnowledgePrompt(value)).toBe(value);
       expect((dbItemsToChatMessages([{ id: 1, kind: "user", content: value }])[0] as { content: string }).content).toBe(value);
     }
@@ -2455,6 +2455,26 @@ describe("mid-session knowledge toggle", () => {
     for (const [, p] of dashboardMock.request.mock.calls.filter(([m]) => m === "session.create")) {
       expect((p.messages ?? []).some((m: { role: string }) => m.role === "system")).toBe(false);
     }
+  });
+
+  it.each([false, true])("does not resubmit or reseed during a backend tool loop (resume %s)", async (history) => {
+    const api: HarnessApi = {};
+    render(<Harness api={api} storedSessionId={history ? "stored-1" : null} initialKnowledgeBundles={["alpha"]} />);
+    await act(async () => { await api.send?.("one manual prompt"); });
+    const creates = dashboardMock.request.mock.calls.filter(([method]) => method === "session.create").length;
+    await act(async () => {
+      for (let i = 0; i < 30; i++) {
+        dashboardMock.onEvent?.({ type: "tool.start", session_id: "live-1", payload: { name: "read_file", tool_id: `audit-${i}`, args: { path: "fixture.txt" } } });
+        dashboardMock.onEvent?.({ type: "tool.complete", session_id: "live-1", payload: { name: "read_file", tool_id: `audit-${i}`, result: "fixture output ".repeat(200) } });
+      }
+      dashboardMock.onEvent?.({ type: "message.complete", session_id: "live-1", payload: { content: "done" } });
+    });
+    const submits = dashboardMock.request.mock.calls.filter(([method]) => method === "prompt.submit");
+    expect(submits).toHaveLength(1);
+    expect(Object.keys(submits[0][1]).sort()).toEqual(["session_id", "text"]);
+    expect(originalKnowledgePrompt(submits[0][1].text)).toBe("one manual prompt");
+    expect(dashboardMock.request.mock.calls.filter(([method]) => method === "session.create")).toHaveLength(creates);
+    expect(window.hermesAPI.getKnowledgeIndex).toHaveBeenCalledTimes(1);
   });
 
   it("re-fetches edited files each send with unchanged selection", async () => {

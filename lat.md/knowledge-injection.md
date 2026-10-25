@@ -10,7 +10,7 @@ Every dashboard submit fetches the selected index immediately before dispatch, i
 
 ## Text envelope and history
 
-[[src/shared/knowledge-envelope.ts#encodeKnowledgePrompt]] stores exact original text, reference context and attachment-expanded text in a versioned canonical JSON envelope.
+[[src/shared/knowledge-envelope.ts#encodeKnowledgePrompt]] stores exact original text and references in a canonical v2 envelope. Attachment-expanded text is included only when different, avoiding a second copy of ordinary prompts.
 
 The introduction labels references user-supplied data, not system instructions. [[src/shared/knowledge-envelope.ts#decodeKnowledgePrompt]] requires exact whole-string canonical validation, version, types and keys. Malformed, partial, embedded and suffixed lookalikes remain unchanged. This marker is not cryptographic provenance: deliberately copying a valid envelope is indistinguishable from desktop output.
 
@@ -39,6 +39,14 @@ Desktop deployment is separate; changes are not claimed to be loaded in the runn
 [[src/main/knowledge.ts#buildKnowledgeIndex]] remains unchanged: selected paths and short relevance hints, not full contents.
 
 Full contents require file tools and permissions. The model may ignore references. Delivery is not obedience; prior context persists and fresh indexes consume tokens under existing provider limits.
+
+## Prompt size and submission audit
+
+Normal tool events update the renderer transcript without resubmitting a prompt or sending that transcript to the dashboard again.
+
+Mounted tests drive thirty tool start/complete pairs after one manual send, for fresh and resumed sessions. They assert one `prompt.submit`, one index read, no new session creation during events, and no transcript field in the submit payload.
+
+Canonical v1 history remains readable. V2 only removes duplicate ordinary prompt text; it does not rewrite previous history, omit fresh indexes, alter backend compression, or prove the cause of historical provider usage. [[src/shared/knowledge-envelope.test.ts]] guards wire size, attachment expansion, old history and malformed envelopes.
 
 ## Synthetic transport diagnostics
 
