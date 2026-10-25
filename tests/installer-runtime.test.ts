@@ -326,6 +326,60 @@ it.skipIf(process.platform !== "win32")("preserves a nonzero installer failure e
   expect(childProcess.execFile).not.toHaveBeenCalled();
 });
 
+// @lat: [[backend-installation#Verified Windows launcher recovery]]
+it.skipIf(process.platform !== "win32").each([false, true])("recovers exit 1 with zero output only through a validated recorded managed Python (stamped=%s)", async (stamped) => {
+  const { home, repo, touch } = fixture();
+  const launcher = join(repo, ".hermes", "bin", "hermes.exe");
+  const store = join(home, stamped ? "custom-store" : "tools");
+  const python = join(store, "recorded-python", "python.exe");
+  touch(launcher);
+  touch(python);
+  touch(join(repo, "hermes_cli", "main.py"));
+  if (stamped) writeFileSync(join(repo, "install-stamp.json"), JSON.stringify({ runtimeDir: store }));
+  touch(join(store, "facts.json"));
+  writeFileSync(join(store, "facts.json"), JSON.stringify({ packages: { python: { entry: "recorded-python" } } }));
+  childProcess.execFileSync.mockImplementation((file) => {
+    if (file === launcher) throw Object.assign(new Error("launcher failed"), { status: 1, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) });
+    if (file === python) return JSON.stringify([python, "-I", "-c", "validated bootstrap"]);
+    throw new Error("unrecorded interpreter");
+  });
+  const installer = await import("../src/main/installer");
+  expect(installer.HERMES_PYTHON).toBe(python);
+  expect(installer.checkInstallStatus().installed).toBe(true);
+  expect(installer.hermesCliArgs()).toEqual(["-I", "-c", "validated bootstrap"]);
+  expect(childProcess.execFileSync).toHaveBeenCalledWith(python, ["-I", "-B", "-c", expect.stringContaining("import hermes_cli.main")], expect.objectContaining({ cwd: repo, windowsHide: true }));
+  const records = runtimeLog.info.mock.calls.map(([text]) => JSON.parse(text));
+  expect(records).toContainEqual(expect.objectContaining({ reason: "managed-runtime-recovered", failure: { status: 1, errno: null, signal: null, stdoutBytes: 0, stderrBytes: 0 } }));
+  childProcess.execFile.mockImplementation((_python, _args, _options, callback) => callback(new Error("CLI broken"), "", ""));
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  expect(await installer.verifyInstall()).toBe(false);
+  warn.mockRestore();
+});
+
+it.skipIf(process.platform !== "win32").each(["missing-facts", "malformed-facts", "traversal", "missing-python", "broken-import", "wrong-command", "malformed-stamp", "relative-store"])("rejects launcher recovery with %s", async (broken) => {
+  const { home, repo, touch } = fixture();
+  const launcher = join(repo, ".hermes", "bin", "hermes.exe");
+  const python = join(home, "tools", "recorded-python", "python.exe");
+  touch(launcher);
+  touch(join(repo, "venv", "Scripts", "python.exe"));
+  touch(join(repo, "hermes_cli", "main.py"));
+  if (broken !== "missing-python") touch(python);
+  if (broken === "malformed-stamp" || broken === "relative-store")
+    writeFileSync(join(repo, "install-stamp.json"), broken === "malformed-stamp" ? "{" : JSON.stringify({ runtimeDir: "relative-store" }));
+  if (broken !== "missing-facts") {
+    touch(join(home, "tools", "facts.json"));
+    writeFileSync(join(home, "tools", "facts.json"), broken === "malformed-facts" ? "{" : JSON.stringify({ packages: { python: { entry: broken === "traversal" ? "../other" : "recorded-python" } } }));
+  }
+  childProcess.execFileSync.mockImplementation((file) => {
+    if (file === launcher || broken === "broken-import") throw Object.assign(new Error("failed"), { status: 1, stdout: "", stderr: "" });
+    return JSON.stringify(["relative-python", "-I"]);
+  });
+  const installer = await import("../src/main/installer");
+  expect(installer.HERMES_PYTHON).toBe("");
+  expect(installer.checkInstallStatus().installed).toBe(false);
+  expect(await installer.verifyInstall()).toBe(false);
+});
+
 it("retries failed managed discovery when the install gate is checked again", async () => {
   const { home, repo, touch } = fixture();
   const launcher = join(repo, ".hermes", "bin", process.platform === "win32" ? "hermes.exe" : "hermes");

@@ -252,6 +252,54 @@ function installBinariesFor(home: string): {
         ? code : error instanceof SyntaxError ? "invalid-json" : "launcher-failed";
       // A broken published runtime must not fall back to stale in-tree dependencies.
     }
+    // Native Windows launcher failure is not evidence that its recorded runtime is broken.
+    // Reuse PM's command contract, but prove the selected tree imports before accepting it.
+    if (IS_WINDOWS && reason === "launcher-failed") {
+      try {
+        const readMetadata = (file: string) =>
+          JSON.parse(readFileSync(file, "utf8").replace(/^\uFEFF/, ""));
+        const stamp = join(repo, "install-stamp.json");
+        const runtimeDir: unknown = existsSync(stamp)
+          ? readMetadata(stamp).runtimeDir : undefined;
+        if (runtimeDir !== undefined &&
+            (typeof runtimeDir !== "string" || !isAbsolute(runtimeDir))) {
+          throw new Error("Invalid runtime directory");
+        }
+        const store = typeof runtimeDir === "string" ? runtimeDir : join(home, "tools");
+        const entry: unknown = readMetadata(join(store, "facts.json"))?.packages?.python?.entry;
+        if (typeof entry !== "string" || !entry || entry === "." || entry === ".." || /[\\/:]/.test(entry)) {
+          throw new Error("Invalid Python entry");
+        }
+        const python = join(store, entry, "python.exe");
+        if (!statSync(python).isFile()) throw new Error("Missing recorded Python");
+        const probe = [
+          "import pathlib, sys, json",
+          `root = pathlib.Path(${JSON.stringify(repo)}).resolve()`,
+          "sys.path.insert(0, str(root))",
+          "from hermes_cli import _launchers",
+          "assert pathlib.Path(_launchers.__file__).resolve() == root / 'hermes_cli' / '_launchers.py'",
+          "assert _launchers.resolve_store_python(root).resolve() == pathlib.Path(sys.executable).resolve()",
+          "import hermes_bootstrap",
+          "import hermes_cli.main",
+          "assert pathlib.Path(hermes_cli.main.__file__).resolve() == root / 'hermes_cli' / 'main.py'",
+          "print(json.dumps(_launchers.runtime_command(root)))",
+        ].join("\n");
+        const command: unknown = JSON.parse(execFileSync(python, ["-I", "-B", "-c", probe], {
+          cwd: repo,
+          env: { ...process.env, HERMES_HOME: home },
+          encoding: "utf8", timeout: 10000, maxBuffer: 64 * 1024,
+          stdio: "pipe", ...HIDDEN_SUBPROCESS_OPTIONS,
+        }));
+        if (Array.isArray(command) && command.length > 1 &&
+            command.every((part) => typeof part === "string") &&
+            isAbsolute(command[0]) && resolve(command[0]) === resolve(python)) {
+          report("managed-runtime-recovered", python);
+          return { venv, python, script: launcher, args: command.slice(1), managed: true };
+        }
+      } catch {
+        // Missing/malformed metadata, foreign module roots and broken imports fail closed.
+      }
+    }
     report(reason);
     return { venv, python: "", script: launcher, args: [], managed: true };
   }
