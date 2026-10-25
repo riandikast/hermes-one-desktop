@@ -322,7 +322,17 @@ function stripYamlQuotes(raw: string): string {
   return trimmed;
 }
 
-function quoteYamlScalar(value: string): string {
+function quoteYamlScalar(value: string, key?: string): string {
+  if (key === "compression.enabled") {
+    if (value !== "true" && value !== "false") throw new Error("Compression enabled must be true or false");
+    return value;
+  }
+  if (key === "compression.threshold_tokens") {
+    if (value !== "null" && (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)))) {
+      throw new Error("Compression token ceiling must be a positive integer or null");
+    }
+    return value;
+  }
   return JSON.stringify(value);
 }
 
@@ -336,7 +346,7 @@ function appendDirectNestedYamlValue(
   if (!parent || !child) return null;
 
   const newline = content.includes("\r\n") ? "\r\n" : "\n";
-  const quotedValue = quoteYamlScalar(value);
+  const quotedValue = quoteYamlScalar(value, segments.join("."));
   const parentRe = new RegExp(
     `^${escapeRegex(parent)}:[ \\t]*(#.*)?(?:\\r?\\n|$)`,
     "m",
@@ -714,6 +724,7 @@ export function setConfigValue(
   // the scalar-list branch: routing `fallback_providers` through
   // `setConfigListValue` stringifies each entry, and the backend then drops
   // the whole chain while the UI still shows it configured.
+  const scalar = quoteYamlScalar(value, key);
   const trimmedValue = value.trim();
   if (key === "fallback_providers" && trimmedValue.startsWith("[") && trimmedValue.endsWith("]")) {
     if (setConfigObjectListValue(key, trimmedValue, profile)) return;
@@ -742,7 +753,7 @@ export function setConfigValue(
   if (hit) {
     content =
       content.slice(0, hit.valueStart) +
-      quoteYamlScalar(value) +
+      scalar +
       content.slice(hit.valueEnd);
     safeWriteFile(configFile, content);
     return;
@@ -754,7 +765,7 @@ export function setConfigValue(
   // no-op to avoid guessing inside complex user-edited YAML.
   if (segments.length === 1) {
     const sep = content.endsWith("\n") || content === "" ? "" : "\n";
-    content = `${content}${sep}${key}: ${quoteYamlScalar(value)}\n`;
+    content = `${content}${sep}${key}: ${scalar}\n`;
     safeWriteFile(configFile, content);
     return;
   }

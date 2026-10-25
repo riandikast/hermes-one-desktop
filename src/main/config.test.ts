@@ -23,6 +23,28 @@ afterEach(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
+describe("native compression settings", () => {
+  it("writes a real boolean and integer without changing sibling settings", () => {
+    writeFileSync(configFile, "compression:\n  enabled: true\n  protect_last_n: 20\n  threshold_tokens: null\n");
+    config.setConfigValue("compression.enabled", "false");
+    config.setConfigValue("compression.threshold_tokens", "150000");
+    expect(readFileSync(configFile, "utf8")).toBe("compression:\n  enabled: false\n  protect_last_n: 20\n  threshold_tokens: 150000\n");
+    expect(config.getConfigValue("compression.enabled")).toBe("false");
+  });
+
+  it("appends native scalars and clears the cap with YAML null", () => {
+    config.setConfigValue("compression.enabled", "true");
+    config.setConfigValue("compression.threshold_tokens", "null");
+    expect(readFileSync(configFile, "utf8")).toContain("compression:\n  enabled: true\n  threshold_tokens: null\n");
+  });
+
+  it.each([["compression.enabled", "yes"], ["compression.threshold_tokens", "-1"], ["compression.threshold_tokens", "1.5"]])("rejects invalid %s=%s without changing the config", (key, value) => {
+    const before = readFileSync(configFile, "utf8");
+    expect(() => config.setConfigValue(key, value)).toThrow();
+    expect(readFileSync(configFile, "utf8")).toBe(before);
+  });
+});
+
 describe("config list round-trip (security pane)", () => {
   it("writes a top-level list and reads it back as JSON", () => {
     config.setConfigValue("command_allowlist", '["git status","ls -la"]');

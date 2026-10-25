@@ -1,3 +1,39 @@
+.chat-ctx-gauge .chat-ctx-tooltip {
+  min-width: 0;
+  width: min(288px, calc(100vw - 32px));
+  max-height: min(540px, calc(100dvh - 180px));
+  overflow-y: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.chat-ctx-hint {
+  margin: 6px 0;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.chat-ctx-settings {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.chat-ctx-enable {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  color: var(--text-primary);
+}
+
+.chat-ctx-settings .input {
+  width: 100%;
+  min-width: 0;
+}
+
 .chat-ctx-trigger {
   display: flex;
   align-items: center;

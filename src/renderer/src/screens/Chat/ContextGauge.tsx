@@ -1,4 +1,4 @@
-import { memo, useId, useState } from "react";
+import { memo, useId, useRef, useState, type ReactNode } from "react";
 import "./ContextGauge.css";
 import { useI18n } from "../../components/useI18n";
 
@@ -8,9 +8,12 @@ export interface ContextUsage {
   /** Model context window in tokens. */
   window: number;
   estimated?: boolean;
+  limitEstimated?: boolean;
+  settings?: ReactNode;
+  busy?: boolean;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
-  onCompact?: () => void;
+  onCompact?: () => void | Promise<void>;
   /** "New session with context" — mint a fresh session seeded with a
    *  handoff of this conversation's working state. */
   onNewSessionWithContext?: () => void;
@@ -31,8 +34,7 @@ function fmtTokens(n: number): string {
 /**
  * Small circular gauge showing how full the model's context window is, with a
  * hover/focus tooltip breaking down tokens used and prompt-cache hits. Mirrors
- * the webui's context indicator. Auto-compress threshold is intentionally
- * omitted — the gateway doesn't expose it over the chat API.
+ * the webui's context indicator. Settings mount only while opened.
  *
  * Always renders (even with no usage yet) so the user can see and click the
  * gauge immediately on app start. When `usage` is null/empty the ring is
@@ -43,6 +45,9 @@ export const ContextGauge = memo(function ContextGauge({
   used,
   window: ctxWindow,
   estimated = true,
+  limitEstimated = false,
+  settings,
+  busy = false,
   cacheReadTokens,
   cacheWriteTokens,
   onCompact,
@@ -50,6 +55,19 @@ export const ContextGauge = memo(function ContextGauge({
 }: ContextUsage): React.JSX.Element {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  const [compacting, setCompacting] = useState(false);
+  const compactingRef = useRef(false);
+  const compact = async (): Promise<void> => {
+    if (!onCompact || busy || compactingRef.current) return;
+    compactingRef.current = true;
+    setCompacting(true);
+    try { await onCompact(); } catch {
+      // The chat command pipeline renders its own error output.
+    } finally {
+      compactingRef.current = false;
+      setCompacting(false);
+    }
+  };
   const panelId = useId();
   const hasData =
     Number.isFinite(used) &&
@@ -150,14 +168,17 @@ export const ContextGauge = memo(function ContextGauge({
             limit.
           </div>
         )}
+        {limitEstimated && <p className="chat-ctx-hint">{t("chat.contextLimitEstimated")}</p>}
+        {open && settings}
         {onCompact && (
           <button
             type="button"
             className="btn btn-secondary btn-xs"
             onClick={(e) => {
               e.stopPropagation();
-              onCompact();
+              void compact();
             }}
+            disabled={busy || compacting}
             style={{
               marginTop: 6,
               width: "100%",
@@ -166,9 +187,10 @@ export const ContextGauge = memo(function ContextGauge({
               cursor: "pointer",
             }}
           >
-            Compress Context (/compact)
+            {t(compacting ? "chat.contextCompacting" : "chat.contextCompact")}
           </button>
         )}
+        {onCompact && <p className="chat-ctx-hint">{t("chat.contextCompactHint")}</p>}
         {onNewSessionWithContext && (
           <button
             type="button"
@@ -184,9 +206,10 @@ export const ContextGauge = memo(function ContextGauge({
               padding: "3px 6px",
               cursor: "pointer",
             }}
+            disabled={busy || compacting}
             title="Start a fresh session seeded with a handoff of this conversation's working state"
           >
-            New session with context
+            {t("chat.contextNewSession")}
           </button>
         )}
       </div>

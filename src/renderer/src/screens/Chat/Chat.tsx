@@ -123,6 +123,7 @@ import { knowledgeChangeNotice } from "./hooks/knowledgeChange";
 import { recoveryNoticeMessage } from "./recoveryEngine";
 
 import type { ContextUsage } from "./ContextGauge";
+import { ContextCompressionSettings } from "./ContextCompressionSettings";
 
 import { contextWindowForModel } from "./contextWindows";
 
@@ -2475,6 +2476,7 @@ function Chat({
     used: usage?.contextTokens ?? localContextTokens,
     window: usage?.contextWindowTokens ?? realContextWindow ?? contextWindowForModel(chatCurrentModel),
     estimated: usage?.contextTokens == null || usage.contextEstimated === true,
+    limitEstimated: usage?.contextWindowTokens == null && realContextWindow == null,
     cacheReadTokens: usage?.cacheReadTokens,
     cacheWriteTokens: usage?.cacheWriteTokens,
   };
@@ -3085,9 +3087,8 @@ function Chat({
                   icons that open dialogs — see .chat-display-controls. */}
                 </>
               }
-              onCompactContext={() => {
-                void actions.handleSend("/compact");
-              }}
+              onCompactContext={() => actions.handleSend("/compact")}
+              contextSettings={connectionModeLoaded && connectionMode === "local" ? <ContextCompressionSettings key={`${connectionMode}:${profile ?? "default"}`} profile={profile} /> : undefined}
               onNewSessionWithContext={() => {
                 // Build the compact handoff from the live transcript and hand it
                 // to Layout, which mints the seeded tab. Guarded upstream: the

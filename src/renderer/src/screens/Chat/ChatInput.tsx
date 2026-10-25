@@ -85,7 +85,8 @@ interface ChatInputProps {
   profile?: string;
   /** Context-window occupancy, using a local estimate before provider usage arrives. */
   contextUsage?: ContextUsage | null;
-  onCompactContext?: () => void;
+  onCompactContext?: () => void | Promise<void>;
+  contextSettings?: React.ReactNode;
   /** "New session with context" — surfaced inside the context gauge. */
   onNewSessionWithContext?: () => void;
   /** Pre-send validation state. When `ok` is false, Send is disabled
@@ -111,6 +112,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       profile,
       contextUsage,
       onCompactContext,
+      contextSettings,
       onNewSessionWithContext,
       readiness,
       toolbarExtras,
@@ -1231,6 +1233,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               used={0}
               window={0}
               {...contextUsage}
+              busy={isLoading}
+              settings={contextSettings}
               onCompact={onCompactContext}
               onNewSessionWithContext={onNewSessionWithContext}
             />
