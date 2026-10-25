@@ -21,6 +21,7 @@ import { getActiveProfileNameSync, profileHome, stripAnsi } from "./utils";
 import { setupAskpass, AskpassHandle } from "./askpass";
 import { precacheSudoCredentials } from "./sudoCreds";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
+import { updaterLogger } from "./updater-log";
 
 const IS_WINDOWS = process.platform === "win32";
 
@@ -137,11 +138,17 @@ export function normalizeHermesHome(dir: string): string {
     : absolute;
 }
 
+const inheritedHermesHome = process.env.HERMES_HOME?.trim();
+const storedHermesHome = readHermesHomeOverride();
 export const HERMES_HOME = normalizeHermesHome(
-  process.env.HERMES_HOME?.trim() ||
-  readHermesHomeOverride() ||
-  defaultHermesHome(),
+  inheritedHermesHome || storedHermesHome || defaultHermesHome(),
 );
+updaterLogger.info(JSON.stringify({
+  event: "runtime-home",
+  source: inheritedHermesHome ? "environment" : storedHermesHome ? "stored-override" : "default",
+  home: HERMES_HOME,
+  cwd: process.cwd(),
+}));
 export const HERMES_REPO = join(HERMES_HOME, "hermes-agent");
 let installBinaries = installBinariesFor(HERMES_HOME);
 export let HERMES_VENV = installBinaries.venv;
@@ -175,7 +182,13 @@ function installBinariesFor(home: string): {
     "bin",
     IS_WINDOWS ? "hermes.exe" : "hermes",
   );
+  const report = (reason: string, python = ""): void => {
+    updaterLogger.info(JSON.stringify({
+      event: "runtime-discovery", home, repo, launcher, python, reason,
+    }));
+  };
   if (existsSync(launcher)) {
+    let reason = "invalid-runtime-command";
     try {
       // Ask this installation, not PATH or a dependency generation that PM can remove.
       const command: unknown = JSON.parse(
@@ -185,6 +198,7 @@ function installBinariesFor(home: string): {
           encoding: "utf8",
           timeout: 10000,
           maxBuffer: 64 * 1024,
+          stdio: "pipe",
           ...HIDDEN_SUBPROCESS_OPTIONS,
         }),
       );
@@ -195,6 +209,7 @@ function installBinariesFor(home: string): {
         isAbsolute(command[0]) &&
         existsSync(command[0])
       ) {
+        report("managed-runtime-valid", command[0]);
         return {
           venv,
           python: command[0],
@@ -204,18 +219,24 @@ function installBinariesFor(home: string): {
         };
       }
     } catch (error) {
-      // Do not log command output: launchers can inherit credential-bearing env.
-      console.warn("[installer] Managed runtime discovery failed", {
-        home, repo, launcher,
-        code: (error as NodeJS.ErrnoException).code ?? "invalid-runtime-command",
-      });
+      // Never persist command output, arguments or arbitrary exception messages.
+      const code = (error as NodeJS.ErrnoException).code;
+      reason = typeof code === "string" &&
+        ["ENOENT", "EACCES", "EPERM", "ETIMEDOUT", "ENOBUFS"].includes(code)
+        ? code : error instanceof SyntaxError ? "invalid-json" : "launcher-failed";
       // A broken published runtime must not fall back to stale in-tree dependencies.
     }
+    report(reason);
     return { venv, python: "", script: launcher, args: [], managed: true };
   }
   const script = IS_WINDOWS
     ? join(venv, "Scripts", "hermes.exe")
     : join(repo, "hermes");
+  report(
+    !existsSync(pythonIn(venv)) ? "legacy-python-missing" :
+      !existsSync(script) ? "legacy-launcher-missing" : "legacy-runtime-valid",
+    pythonIn(venv),
+  );
   return {
     venv,
     python: pythonIn(venv),

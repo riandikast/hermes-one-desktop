@@ -14,6 +14,14 @@ Installer completion refreshes runtime paths and clears verification/version cac
 
 [[src/main/installer.ts#checkInstallStatus]] retries discovery when the selected interpreter or launcher is missing. Recheck can recover from a transient cold-launch failure without changing the selected home or borrowing PATH dependencies.
 
+## Startup runtime diagnostics
+
+Startup records selected-home provenance and runtime discovery results in the existing desktop diagnostic log, without subprocess output, bootstrap arguments or environment dumps.
+
+`runtime-home` reports `environment`, `stored-override` or `default`, normalized home and cwd. `runtime-discovery` reports installation paths and fixed validation reasons. Records use `<userData>/logs/updater.log` through [[src/main/updater-log.ts#updaterLogger]]. Compare these events after a normal-terminal launch and an exported `-NoProfile` launch; successful isolated discovery probes do not prove the reported desktop failure is fixed.
+
+`tests/installer-runtime.test.ts` verifies source reporting and exclusion of arbitrary exception codes, messages and subprocess output. Existing exports are unchanged; no backend configuration is logged.
+
 ## Existing checkout selection
 
 [[src/main/installer.ts#normalizeHermesHome]] accepts the Hermes data home or its `hermes-agent` checkout. A checkout must contain `hermes_cli/main.py`; selecting it never appends a second `hermes-agent` directory.

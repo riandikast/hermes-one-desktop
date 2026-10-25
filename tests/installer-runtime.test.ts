@@ -27,6 +27,30 @@ vi.mock("node:child_process", () => ({
 }));
 import { execFileSync } from "child_process";
 
+const runtimeLog = vi.hoisted(() => ({ info: vi.fn() }));
+vi.mock("../src/main/updater-log", () => ({ updaterLogger: runtimeLog }));
+
+// @lat: [[backend-installation#Startup runtime diagnostics]]
+it("records selected-home source and rejects unsafe discovery diagnostics", async () => {
+  const { home, repo, touch } = fixture();
+  touch(join(repo, ".hermes", "bin", process.platform === "win32" ? "hermes.exe" : "hermes"));
+  childProcess.execFileSync.mockImplementation(() => {
+    throw Object.assign(new Error("private stderr password"), {
+      code: "private-code", stdout: "private stdout", stderr: "private stderr",
+    });
+  });
+  await import("../src/main/installer");
+  const entries = runtimeLog.info.mock.calls.map(([text]) => JSON.parse(text));
+  expect(entries).toContainEqual(expect.objectContaining({
+    event: "runtime-home", source: "environment", home,
+  }));
+  expect(entries).toContainEqual(expect.objectContaining({
+    event: "runtime-discovery", home, reason: "launcher-failed",
+  }));
+  expect(JSON.stringify(entries)).not.toContain("private");
+  expect(JSON.stringify(entries)).not.toContain("password");
+});
+
 const homes: string[] = [];
 function fixture(): {
   home: string;
@@ -96,6 +120,7 @@ it("accepts a published managed runtime without an in-tree venv", async () => {
     expect.objectContaining({
       cwd: repo,
       env: expect.objectContaining({ HERMES_HOME: home }),
+      stdio: "pipe",
       windowsHide: true,
     }),
   );
