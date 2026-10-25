@@ -152,6 +152,34 @@ it("preserves credential editing and pool add/remove across redesigned panels", 
   );
 });
 
+// @lat: [[provider-setup#Provider setup#Default model surface action]]
+it("keeps the default model action inside its surface, including the empty state", async () => {
+  const view = render(<Providers visible />);
+  const change = await screen.findByRole("button", { name: "common.change" });
+  const summary = screen.getByText("gpt-a").closest(".provider-summary");
+  expect(summary).not.toBeNull();
+  expect(summary).toContainElement(change);
+  fireEvent.click(change);
+  expect(
+    await screen.findByRole("button", { name: "providers.model.use" }),
+  ).toBeInTheDocument();
+  view.unmount();
+
+  vi.mocked(window.hermesAPI.getModelConfig).mockResolvedValueOnce({
+    provider: "",
+    model: "",
+    baseUrl: "",
+  });
+  render(<Providers visible />);
+  const empty = await screen.findByText("providers.model.emptyHint");
+  const select = screen.getByRole("button", { name: "providers.model.select" });
+  expect(empty.closest(".provider-summary")).toContainElement(select);
+  fireEvent.click(select);
+  expect(
+    await screen.findByRole("button", { name: "providers.model.use" }),
+  ).toBeInTheDocument();
+});
+
 // @lat: [[provider-setup#Provider setup#Focused settings tabs]]
 it("separates all settings into keyboard-accessible tabs without the account card", async () => {
   render(<Providers visible />);

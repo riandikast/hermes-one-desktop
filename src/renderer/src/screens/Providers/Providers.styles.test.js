@@ -7,6 +7,41 @@ const expect = (value) => ({
   toMatch: (pattern) => assert.match(value, pattern),
 });
 
+// @lat: [[provider-setup#Provider setup#Flat theme-aware surfaces]]
+it("matches Auxiliary's surface hierarchy without translucent section wrappers", () => {
+  const css = readFileSync(
+    "src/renderer/src/screens/Providers/Providers.css",
+    "utf8",
+  );
+  assert.ok(css.length > 1000);
+  const section = css.match(
+    /\.providers-page \.provider-settings-panel > \.settings-section \{([^}]+)\}/,
+  )[1];
+  assert.match(section, /background:\s*transparent/);
+  const surfaces = [
+    "settings-key-list",
+    "provider-summary",
+    "settings-pool-group",
+    "provider-config-card",
+    "provider-key-card",
+    "provider-add-card",
+    "settings-pool-add",
+  ];
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]+)\}/g)];
+  for (const surface of surfaces) {
+    const rule = rules.find(
+      ([, selector, body]) =>
+        selector.includes(`.${surface}`) && /background:/.test(body),
+    );
+    assert.ok(rule, surface);
+    assert.match(rule[2], /background:\s*var\(--bg-secondary\)/, surface);
+  }
+  assert.match(
+    css,
+    /\.providers-page \.provider-settings-panel \.provider-summary\s*\{[^}]*flex-wrap:\s*wrap/,
+  );
+});
+
 it("insets native and custom carets within Providers, restores forced colors", () => {
   const css = readFileSync(
     "src/renderer/src/screens/Providers/Providers.css",

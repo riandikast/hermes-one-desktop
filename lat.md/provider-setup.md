@@ -50,6 +50,18 @@ Non-Auxiliary tabs reuse Auxiliary's bordered surfaces, readable theme tokens, 1
 
 [[src/renderer/src/screens/Providers/Providers.test.tsx]] exercises editing in all four credential categories, exact profile-scoped writes, pool add/remove payloads and existing tab/model/Auxiliary interactions. [[src/renderer/src/screens/Providers/Providers.styles.test.js]] checks scoped caret spacing and responsive rules. Visual/theme/breakpoint inspection still requires an approved running renderer; DOM tests do not prove pixel geometry or contrast.
 
+## Flat theme-aware surfaces
+
+Non-Auxiliary section wrappers are transparent, matching Auxiliary's canvas and bordered `--bg-secondary` lists/cards without another translucent gray layer. Existing foreground tokens preserve light-theme readability.
+
+[[src/renderer/src/screens/Providers/Providers.styles.test.js]] pins transparent wrappers and secondary surface tokens for all non-Auxiliary tabs. Default Model wraps its content and action on narrow screens rather than clipping them.
+
+## Default model surface action
+
+The Default Model Change button lives inside the bordered model summary, not its heading. The empty state uses the same surface and Select action; both open the existing picker without changing persistence.
+
+[[src/renderer/src/screens/Providers/Providers.test.tsx]] checks button ancestry and picker opening in configured and empty states.
+
 ## Auxiliary routing editor
 
 Auxiliary Tasks uses compact task rows with readable routing summaries and separate edit actions, keeping model settings available below the list.

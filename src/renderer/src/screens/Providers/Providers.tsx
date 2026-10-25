@@ -767,41 +767,43 @@ function Providers({
                     </span>
                   )}
                 </span>
-                <div className="settings-section-title-actions">
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => void openModelPicker()}
-                  >
-                    {isConfigured
-                      ? t("common.change")
-                      : t("providers.model.select")}
-                  </button>
-                </div>
               </div>
 
-              {isConfigured ? (
-                <div className="provider-summary">
-                  <BrandLogo
-                    provider={modelProvider}
-                    modelId={modelName}
-                    size={26}
-                    matchTheme={true}
-                  />
-                  <div className="provider-summary-text">
-                    <div className="provider-summary-name">
-                      {t(PROVIDERS.labels[modelProvider] ?? modelProvider)}
+              <div className="provider-summary">
+                {isConfigured ? (
+                  <>
+                    <BrandLogo
+                      provider={modelProvider}
+                      modelId={modelName}
+                      size={26}
+                      matchTheme={true}
+                    />
+                    <div className="provider-summary-text">
+                      <div className="provider-summary-name">
+                        {t(PROVIDERS.labels[modelProvider] ?? modelProvider)}
+                      </div>
+                      {summaryMeta && (
+                        <div className="provider-summary-meta">
+                          {summaryMeta}
+                        </div>
+                      )}
                     </div>
-                    {summaryMeta && (
-                      <div className="provider-summary-meta">{summaryMeta}</div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <p className="settings-section-hint">
-                  {t("providers.model.emptyHint")}
-                </p>
-              )}
+                  </>
+                ) : (
+                  <p className="settings-section-hint">
+                    {t("providers.model.emptyHint")}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => void openModelPicker()}
+                >
+                  {isConfigured
+                    ? t("common.change")
+                    : t("providers.model.select")}
+                </button>
+              </div>
             </div>
 
             {/* Provider configuration (keys + models). Placed above the

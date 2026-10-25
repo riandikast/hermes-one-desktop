@@ -9,7 +9,32 @@
   margin: 0;
   padding: 0;
   border: 0;
+  background: transparent;
   min-width: 0;
+}
+
+.providers-page .provider-settings-panel .provider-summary {
+  flex-wrap: wrap;
+  padding: 16px;
+  gap: 16px;
+}
+
+.providers-page .provider-settings-panel .provider-summary-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.providers-page .provider-settings-panel .provider-summary > button {
+  margin-left: auto;
+}
+
+.providers-page
+  .provider-settings-panel
+  .provider-summary
+  > .settings-section-hint {
+  flex: 1;
+  margin: 0;
 }
 
 .providers-page .provider-settings-panel .settings-section-title {
