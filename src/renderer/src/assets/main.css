@@ -10789,6 +10789,192 @@ body:has(.shell-vibrant),
   color: var(--text-primary);
 }
 
+/* ── Speed-dial FAB ─────────────────────────────────────────────────────────
+   Wraps the floating rail icons. One visible FAB (grid icon); click expands
+   items in a vertical stack with CSS keyframe animations. Items slide in from
+   the FAB downward; the FAB rotates 45° while open. */
+.speed-dial {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Collapsed: items hidden, no space taken. */
+.speed-dial-items {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  /* Reserve space only when open so the FAB doesn't jump. */
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  /* Collapse animation: shrink height, fade. */
+  transition: max-height 0.22s ease, opacity 0.18s ease;
+  pointer-events: none;
+}
+
+/* Items appear ABOVE the FAB (padding-bottom adds gap between items and FAB). */
+.speed-dial-items {
+  padding-bottom: 4px;
+  /* Items are ordered top-to-bottom in the DOM so the stack reads naturally. */
+}
+
+/* Expanded state. */
+.speed-dial--open .speed-dial-items {
+  /* 7 items × 38px each = 266px. A generous max so new items just work. */
+  max-height: 320px;
+  opacity: 1;
+  pointer-events: auto;
+  transition: max-height 0.26s ease, opacity 0.2s ease;
+}
+
+/* Per-item entrance: slide down + fade in, staggered by --item-index. */
+.speed-dial--open .speed-dial-item {
+  animation: speed-dial-item-in 0.22s ease both;
+  animation-delay: calc(var(--item-index, 0) * 40ms);
+}
+
+@keyframes speed-dial-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.88);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* FAB icon rotates when open — signals the close gesture. */
+.speed-dial-icon {
+  transition: transform 0.2s ease;
+}
+.speed-dial-icon--open {
+  transform: rotate(45deg);
+}
+
+/* ── On-Finish keyboard banner ──────────────────────────────────────────────
+   Small overlay anchored to the bottom of the terminal dialog. Appears after
+   an on-finish command completes, offering Enter/Y (continue), N/Ctrl+C
+   (interrupt) and R (re-run) shortcuts. */
+.on-finish-banner-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+  /* Invisible; only catches outside clicks. */
+  background: transparent;
+}
+
+.on-finish-banner {
+  position: fixed;
+  /* Anchored just above the chat input area. */
+  bottom: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--bg-elevated, #17171b);
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
+  font-size: 12px;
+  color: var(--text-secondary);
+  /* Slide up entrance. */
+  animation: on-finish-banner-in 0.18s ease both;
+  white-space: nowrap;
+}
+
+@keyframes on-finish-banner-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.on-finish-banner-label {
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-right: 4px;
+}
+
+.on-finish-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.on-finish-banner-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.on-finish-banner-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent, #8b7cf6);
+  background: color-mix(in srgb, var(--accent, #8b7cf6) 10%, transparent);
+}
+
+.on-finish-banner-btn kbd {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--hover, rgba(127, 127, 127, 0.1));
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+  font-family: inherit;
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.on-finish-banner-btn--confirm:hover kbd,
+.on-finish-banner-btn--rerun:hover kbd {
+  background: color-mix(in srgb, var(--accent, #8b7cf6) 18%, transparent);
+  border-color: var(--accent, #8b7cf6);
+  color: var(--accent-text, #4fc1ff);
+}
+
+.on-finish-banner-btn--interrupt:hover kbd {
+  background: color-mix(in srgb, #ef4444 18%, transparent);
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.on-finish-banner-btn--interrupt:hover {
+  border-color: #ef4444;
+  background: color-mix(in srgb, #ef4444 10%, transparent);
+  color: #ef4444;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .speed-dial--open .speed-dial-item {
+    animation: none;
+  }
+  .speed-dial-icon {
+    transition: none;
+  }
+  .on-finish-banner {
+    animation: none;
+  }
+}
+
 /* Accordion: grid-template-rows 0fr -> 1fr animates height without hardcoding
    a max-height (which would need a magic number and break on long content).
    `min-height: 0` on the inner element is REQUIRED — without it the child's

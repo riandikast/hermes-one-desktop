@@ -26,6 +26,58 @@ Chat provides a floating log viewer beneath the search icon for troubleshooting 
 
 The trigger in [[src/renderer/src/screens/Chat/Chat.tsx]] opens [[src/renderer/src/screens/Chat/ChatLogsDialog.tsx#ChatLogsDialog]] with two tabs: Crash & Errors (reading `errors.log`) and Request Log (reading `agent.log`). The Request Log defaults to filtering API call requests and responses with model, provider, tokens, and retry countdowns, while supporting full agent log view and live search filtering.
 
+## Speed-dial FAB
+
+The floating control rail is collapsed behind a single grid-icon FAB (speed-dial pattern). Clicking the FAB expands all tool icons in a vertical animated stack; clicking FAB again or anywhere outside collapses it.
+
+[[src/renderer/src/screens/Chat/SpeedDialFAB.tsx]] wraps any number of `items` (each a React node). It owns open/close state, outside-click dismissal, and Escape handling. CSS keyframe `speed-dial-item-in` staggers item entrance via `--item-index`. No new dependencies added.
+
+### Collapsed by default
+
+The FAB renders collapsed on mount; `aria-expanded` is false and no items are interactive.
+
+### Expands on FAB click
+
+Clicking the FAB button adds `.speed-dial--open` to the wrapper, making items visible and pointer-interactive.
+
+### Collapses on second FAB click
+
+A second FAB click removes `.speed-dial--open`, returning to the collapsed state.
+
+### Escape closes
+
+Pressing Escape while expanded collapses the FAB.
+
+### aria-expanded reflects state
+
+The FAB button's `aria-expanded` attribute tracks the open/closed state accurately.
+
+## On-finish keyboard banner
+
+After an on-finish command queue completes, a small notification banner appears above the chat input while the terminal dock is open. It forwards keyboard input to the active terminal session without requiring the user to click into it.
+
+[[src/renderer/src/screens/Chat/OnFinishBanner.tsx]] renders when `visible` is true. It registers a `keydown` listener for Enter/Y (sends `\n`), N/Ctrl+C (sends SIGINT `\x03`), R (re-run queue), and Escape (dismiss). `TerminalDockHandle.getActiveSessionId()` exposes the active session id to the banner. Clicking outside the banner dismisses it via an invisible backdrop.
+
+### Renders when visible
+
+When `visible` is true, the banner shows Continue, Interrupt, and Re-run action buttons.
+
+### Enter sends newline
+
+Pressing Enter (or clicking Continue) writes `\n` to the active terminal session and dismisses the banner.
+
+### N sends SIGINT
+
+Pressing N (or Ctrl+C) writes `\x03` to the active terminal session and dismisses the banner.
+
+### R triggers rerun
+
+Pressing R dismisses the banner and calls `onRerun` without writing to the terminal.
+
+### Escape dismisses
+
+Pressing Escape dismisses the banner without writing to the terminal.
+
 ## Focused verification
 
 ChatLogsDialog.test.tsx tests tab switching between errors and requests, request-only line filtering, real-time query matching, copy to clipboard, and modal dismissal.
@@ -33,3 +85,5 @@ ChatLogsDialog.test.tsx tests tab switching between errors and requests, request
 TerminalDock.complete.test.tsx drives mocked xterm input, verifying listing, explicit execution with saved cwd, cancellation and directory completion. No real user command executes.
 
 TerminalDock.newSession.test.tsx verifies empty opening and reopen preservation. chatWiring.test.ts checks real chat props, single-flight creation, retry and dark/light token contrast. useSessionRefresh.test.tsx covers history refresh races and failures.
+
+chatPanels.speedDial.test.tsx covers SpeedDialFAB collapse/expand/Escape/aria states, and OnFinishBanner keyboard shortcuts (Enter, N, R, Escape), click actions, and visibility.

@@ -35,6 +35,8 @@ import { useOnFinishRunner } from "./useOnFinishRunner";
 import { useSettledOnFinish } from "./useSettledOnFinish";
 import { OnFinishChip } from "./OnFinishChip";
 import { FloatingDialog } from "./FloatingDialog";
+import { OnFinishBanner } from "./OnFinishBanner";
+import { SpeedDialFAB } from "./SpeedDialFAB";
 import type { TerminalDockHandle } from "../Command/TerminalDock";
 import { TerminalDock } from "../Command/TerminalDock";
 
@@ -706,6 +708,19 @@ function Chat({
     [],
   );
   const onFinishRunner = useOnFinishRunner(attachOnFinishSession);
+
+  // Show the keyboard-shortcut banner briefly after an on-finish queue finishes.
+  // The banner lets the user send Enter/N/R to the active terminal without clicking.
+  const [onFinishBannerVisible, setOnFinishBannerVisible] = useState(false);
+  const prevOnFinishRunningRef = useRef(false);
+  useEffect(() => {
+    const wasRunning = prevOnFinishRunningRef.current;
+    prevOnFinishRunningRef.current = onFinishRunner.state.running;
+    // Transition: running → idle = queue just finished.
+    if (wasRunning && !onFinishRunner.state.running && onFinishDockOpen) {
+      setOnFinishBannerVisible(true);
+    }
+  }, [onFinishRunner.state.running, onFinishDockOpen]);
 
   /**
    * New terminal from the dialog's "+" button.
@@ -2623,160 +2638,191 @@ function Chat({
         onRefresh={refreshSession}
       />
       <div className="chat-display-controls">
-        <ChatSearch
-          key={searchSessionId ?? "unsaved"}
-          onQueryChange={() => { searchNavigationRef.current++; setSearchPage(null); setSearchRevealId(null); }}
-          messages={messages}
-          containerRef={containerRef}
-          open={chatSearchOpen}
-          onOpenChange={(next) => {
-            setChatSearchOpen(next);
-            if (next) setDisplayControlsOpen(false);
-          }}
-          searchHistory={searchHistory}
-          onRevealMessage={revealSearchMessage}
-          onBeforeScroll={stopFollow}
+        <SpeedDialFAB
+          items={[
+            {
+              key: "search",
+              element: (
+                <ChatSearch
+                  key={searchSessionId ?? "unsaved"}
+                  onQueryChange={() => { searchNavigationRef.current++; setSearchPage(null); setSearchRevealId(null); }}
+                  messages={messages}
+                  containerRef={containerRef}
+                  open={chatSearchOpen}
+                  onOpenChange={(next) => {
+                    setChatSearchOpen(next);
+                    if (next) setDisplayControlsOpen(false);
+                  }}
+                  searchHistory={searchHistory}
+                  onRevealMessage={revealSearchMessage}
+                  onBeforeScroll={stopFollow}
+                />
+              ),
+            },
+            {
+              key: "logs",
+              element: (
+                <button
+                  type="button"
+                  className={`chat-display-controls-trigger${logsModalOpen ? " is-active" : ""}`}
+                  aria-label={t("chat.logs.title", { defaultValue: "Logs" })}
+                  title={t("chat.logs.title", { defaultValue: "Logs" })}
+                  aria-haspopup="dialog"
+                  aria-expanded={logsModalOpen}
+                  onClick={() => {
+                    setLogsModalOpen((open) => !open);
+                    setDisplayControlsOpen(false);
+                    setChatSearchOpen(false);
+                  }}
+                >
+                  <FileText size={15} />
+                </button>
+              ),
+            },
+            {
+              key: "display-controls",
+              element: (
+                <>
+                  <button
+                    type="button"
+                    className="chat-display-controls-trigger"
+                    aria-label="Display controls"
+                    aria-expanded={displayControlsOpen}
+                    onClick={() => {
+                      setDisplayControlsOpen((open) => !open);
+                      setChatSearchOpen(false);
+                    }}
+                  >
+                    <SlidersHorizontal size={16} />
+                  </button>
+                  {displayControlsOpen && (
+                    <div
+                      className="chat-display-controls-menu"
+                      role="dialog"
+                      aria-label="Display controls"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !showAllThoughts;
+                          setShowAllThoughts(next);
+                          setChatDisplayControls({ thoughts: next ? "show" : "hide" });
+                        }}
+                      >
+                        {showAllThoughts ? "Hide all thoughts" : "Show all thoughts"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !showAllTools;
+                          setShowAllTools(next);
+                          setChatDisplayControls({ tools: next ? "show" : "hide" });
+                        }}
+                      >
+                        {showAllTools ? "Hide all tools" : "Show all tools"}
+                      </button>
+                    </div>
+                  )}
+                </>
+              ),
+            },
+            ...(webPreviewUrl
+              ? [
+                  {
+                    key: "web-preview",
+                    element: (
+                      <button
+                        type="button"
+                        className={`chat-display-controls-trigger${webPreviewVisible ? " is-active" : ""}`}
+                        onClick={() => {
+                          setWebPreviewVisible((v) => !v);
+                          setDisplayControlsOpen(false);
+                          setChatSearchOpen(false);
+                        }}
+                        aria-label="Web preview"
+                        aria-expanded={webPreviewVisible}
+                        title="Web preview"
+                      >
+                        <Globe size={15} />
+                      </button>
+                    ),
+                  },
+                ]
+              : []),
+            ...(contextFolders.length > 0
+              ? [
+                  {
+                    key: "file-explorer",
+                    element: (
+                      <button
+                        type="button"
+                        className={`chat-display-controls-trigger${worktreeVisible ? " is-active" : ""}`}
+                        onClick={() => {
+                          setWorktreeVisible((v) => !v);
+                          setDisplayControlsOpen(false);
+                          setChatSearchOpen(false);
+                        }}
+                        aria-label="File explorer"
+                        aria-expanded={worktreeVisible}
+                        title="File explorer"
+                      >
+                        <FolderSearch size={15} />
+                      </button>
+                    ),
+                  },
+                ]
+              : []),
+            {
+              key: "file-history",
+              element: (
+                <button
+                  type="button"
+                  className={`chat-display-controls-trigger${fileChangeHistoryOpen ? " is-active" : ""}`}
+                  aria-label={t("chat.fileChangeHistory.title")}
+                  title={t("chat.fileChangeHistory.title")}
+                  aria-haspopup="dialog"
+                  aria-expanded={fileChangeHistoryOpen}
+                  onClick={() => {
+                    setFileChangeHistoryOpen(true);
+                    setDisplayControlsOpen(false);
+                    setChatSearchOpen(false);
+                  }}
+                >
+                  <History size={15} />
+                </button>
+              ),
+            },
+            {
+              key: "terminal",
+              element: (
+                <button
+                  type="button"
+                  className={`chat-display-controls-trigger chat-onfinish-trigger${
+                    onFinishDockOpen ? " is-active" : ""
+                  }${onFinishRunner.state.running ? " is-running" : ""}`}
+                  onClick={() => {
+                    setOnFinishDockOpen((v) => !v);
+                    setDisplayControlsOpen(false);
+                    setChatSearchOpen(false);
+                  }}
+                  aria-label="Terminal"
+                  aria-expanded={onFinishDockOpen}
+                  title={
+                    onFinishRunner.state.running
+                      ? `On-Finish: running ${onFinishRunner.state.current}/${onFinishRunner.state.total}`
+                      : "Terminal"
+                  }
+                >
+                  {onFinishRunner.state.running ? (
+                    <Spinner size={15} className="chat-onfinish-spin" />
+                  ) : (
+                    <Terminal size={15} />
+                  )}
+                </button>
+              ),
+            },
+          ]}
         />
-        <button
-          type="button"
-          className={`chat-display-controls-trigger${logsModalOpen ? " is-active" : ""}`}
-          aria-label={t("chat.logs.title", { defaultValue: "Logs" })}
-          title={t("chat.logs.title", { defaultValue: "Logs" })}
-          aria-haspopup="dialog"
-          aria-expanded={logsModalOpen}
-          onClick={() => {
-            setLogsModalOpen((open) => !open);
-            setDisplayControlsOpen(false);
-            setChatSearchOpen(false);
-          }}
-        >
-          <FileText size={15} />
-        </button>
-        <button
-          type="button"
-          className="chat-display-controls-trigger"
-          aria-label="Display controls"
-          aria-expanded={displayControlsOpen}
-          onClick={() => {
-            setDisplayControlsOpen((open) => !open);
-            setChatSearchOpen(false);
-          }}
-        >
-          <SlidersHorizontal size={16} />
-        </button>
-        {displayControlsOpen && (
-          <div
-            className="chat-display-controls-menu"
-            role="dialog"
-            aria-label="Display controls"
-          >
-            <button
-              type="button"
-              onClick={() => {
-                const next = !showAllThoughts;
-                setShowAllThoughts(next);
-                setChatDisplayControls({ thoughts: next ? "show" : "hide" });
-              }}
-            >
-              {showAllThoughts ? "Hide all thoughts" : "Show all thoughts"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const next = !showAllTools;
-                setShowAllTools(next);
-                setChatDisplayControls({ tools: next ? "show" : "hide" });
-              }}
-            >
-              {showAllTools ? "Hide all tools" : "Show all tools"}
-            </button>
-          </div>
-        )}
-        {/* Web preview: floating icon, opens a dialog. Shown only when a URL
-            has actually been previewed, since there is nothing to show
-            otherwise (the panel needs an initial URL). */}
-        {webPreviewUrl && (
-          <button
-            type="button"
-            className={`chat-display-controls-trigger${webPreviewVisible ? " is-active" : ""}`}
-            onClick={() => {
-              setWebPreviewVisible((v) => !v);
-              setDisplayControlsOpen(false);
-              setChatSearchOpen(false);
-            }}
-            aria-label="Web preview"
-            aria-expanded={webPreviewVisible}
-            title="Web preview"
-          >
-            <Globe size={15} />
-          </button>
-        )}
-
-        {/* File explorer: floating icon, opens a dialog. Only rendered when a
-            context folder is attached — with no folder there is no tree to
-            show, and an icon that opens an empty panel reads as broken. */}
-        {contextFolders.length > 0 && (
-          <button
-            type="button"
-            className={`chat-display-controls-trigger${worktreeVisible ? " is-active" : ""}`}
-            onClick={() => {
-              setWorktreeVisible((v) => !v);
-              setDisplayControlsOpen(false);
-              setChatSearchOpen(false);
-            }}
-            aria-label="File explorer"
-            aria-expanded={worktreeVisible}
-            title="File explorer"
-          >
-            <FolderSearch size={15} />
-          </button>
-        )}
-
-        <button
-          type="button"
-          className={`chat-display-controls-trigger${fileChangeHistoryOpen ? " is-active" : ""}`}
-          aria-label={t("chat.fileChangeHistory.title")}
-          title={t("chat.fileChangeHistory.title")}
-          aria-haspopup="dialog"
-          aria-expanded={fileChangeHistoryOpen}
-          onClick={() => {
-            setFileChangeHistoryOpen(true);
-            setDisplayControlsOpen(false);
-            setChatSearchOpen(false);
-          }}
-        >
-          <History size={15} />
-        </button>
-
-        {/* Terminal: a floating icon in the SAME group as the search and
-            display-controls icons. Always visible — it is a general terminal,
-            not only the On-Finish runner, so it must not depend on a queue
-            being armed. When the queue IS armed its title also carries the
-            live progress, and the spinner replaces the glyph while running. */}
-        <button
-          type="button"
-          className={`chat-display-controls-trigger chat-onfinish-trigger${
-            onFinishDockOpen ? " is-active" : ""
-          }${onFinishRunner.state.running ? " is-running" : ""}`}
-          onClick={() => {
-            setOnFinishDockOpen((v) => !v);
-            setDisplayControlsOpen(false);
-            setChatSearchOpen(false);
-          }}
-          aria-label="Terminal"
-          aria-expanded={onFinishDockOpen}
-          title={
-            onFinishRunner.state.running
-              ? `On-Finish: running ${onFinishRunner.state.current}/${onFinishRunner.state.total}`
-              : "Terminal"
-          }
-        >
-          {onFinishRunner.state.running ? (
-            <Spinner size={15} className="chat-onfinish-spin" />
-          ) : (
-            <Terminal size={15} />
-          )}
-        </button>
       </div>
 
       <div className="chat-body">
@@ -3125,6 +3171,21 @@ function Chat({
           onClose={() => setLogsModalOpen(false)}
         />
       )}
+
+      {/* On-finish keyboard shortcut banner — appears when a queue completes
+          while the terminal dock is open. Lets the user send Enter/N/R to the
+          active session without clicking. */}
+      <OnFinishBanner
+        visible={onFinishBannerVisible}
+        sessionId={onFinishDockRef.current?.getActiveSessionId() ?? null}
+        onDismiss={() => setOnFinishBannerVisible(false)}
+        onRerun={() => {
+          // Re-trigger settled-on-finish by momentarily re-arming; simplest
+          // path is to just call the runner directly with the current selection.
+          const ids = readOnFinishSelection(onFinishIdentityRef.current);
+          if (ids.length > 0) void onFinishRunner.runQueue(ids, []);
+        }}
+      />
 
       {/* The dialog lives outside the floating control group so its overlay is
           not clipped by that group's stacking context. Mounted unconditionally

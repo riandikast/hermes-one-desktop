@@ -48,6 +48,8 @@ export interface TerminalDockHandle {
    * the wrong column count until the next resize.
    */
   refit(): void;
+  /** Returns the id of the currently active terminal session, or null. */
+  getActiveSessionId(): string | null;
 }
 
 interface SessionState {
@@ -448,7 +450,7 @@ export const TerminalDock = forwardRef<
     });
   }, [activeId]);
 
-  useImperativeHandle(ref, () => ({ attachSession, findSessionByCwd, focusSession, refit }), [
+  useImperativeHandle(ref, () => ({ attachSession, findSessionByCwd, focusSession, refit, getActiveSessionId: () => activeIdRef.current }), [
     attachSession,
     findSessionByCwd,
     focusSession,
