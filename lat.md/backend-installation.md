@@ -20,7 +20,11 @@ Startup records selected-home provenance and runtime discovery results in the ex
 
 `runtime-home` reports `environment`, `stored-override` or `default`, normalized home and cwd. `runtime-discovery` reports installation paths and fixed validation reasons. Records use `<userData>/logs/updater.log` through [[src/main/updater-log.ts#updaterLogger]]. Compare these events after a normal-terminal launch and an exported `-NoProfile` launch; successful isolated discovery probes do not prove the reported desktop failure is fixed.
 
-`tests/installer-runtime.test.ts` verifies source reporting and exclusion of arbitrary exception codes, messages and subprocess output. Existing exports are unchanged; no backend configuration is logged.
+Failure records include integer exit status/errno, allowlisted signals and stdout/stderr byte counts, never content. Boundary flags record Electron, `ELECTRON_RUN_AS_NODE=1`, npm/init-cwd and PowerShell environment presence plus `windowsHide`; no environment values are dumped.
+
+`tests/installer-runtime.test.ts` verifies source reporting, typed failure metadata and exclusion of arbitrary exception codes, signals, messages and subprocess output. Existing exports are unchanged; no backend configuration is logged. Re-exporting scripts is unnecessary; new main-process diagnostics require a later rebuild/restart.
+
+Node, Electron-as-Node and `-NoProfile` probes of the installed launcher succeeded with hidden/visible consoles and `ELECTRON_RUN_AS_NODE` toggled. These do not reproduce the GUI main-process failure. Chromium cache permission errors remain unlinked; no runtime behavior fix is claimed.
 
 ## Existing checkout selection
 

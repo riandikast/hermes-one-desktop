@@ -182,9 +182,18 @@ function installBinariesFor(home: string): {
     "bin",
     IS_WINDOWS ? "hermes.exe" : "hermes",
   );
+  let failure: Record<string, number | string | null> | undefined;
   const report = (reason: string, python = ""): void => {
     updaterLogger.info(JSON.stringify({
-      event: "runtime-discovery", home, repo, launcher, python, reason,
+      event: "runtime-discovery", home, repo, launcher, python, reason, failure,
+      boundary: {
+        electron: Boolean(process.versions.electron),
+        electronRunAsNode: process.env.ELECTRON_RUN_AS_NODE === "1",
+        npmLifecycle: Boolean(process.env.npm_lifecycle_event),
+        npmInitCwd: Boolean(process.env.INIT_CWD),
+        powershell: Boolean(process.env.PSModulePath),
+        windowsHide: HIDDEN_SUBPROCESS_OPTIONS.windowsHide,
+      },
     }));
   };
   if (existsSync(launcher)) {
@@ -220,7 +229,24 @@ function installBinariesFor(home: string): {
       }
     } catch (error) {
       // Never persist command output, arguments or arbitrary exception messages.
-      const code = (error as NodeJS.ErrnoException).code;
+      const detail = error as NodeJS.ErrnoException & {
+        status?: unknown; signal?: unknown; stdout?: unknown; stderr?: unknown;
+      };
+      const numeric = (value: unknown): number | null =>
+        typeof value === "number" && Number.isSafeInteger(value) ? value : null;
+      const bytes = (value: unknown): number | null =>
+        typeof value === "string" ? Buffer.byteLength(value) :
+          Buffer.isBuffer(value) ? value.length : null;
+      failure = {
+        status: numeric(detail.status),
+        errno: numeric(detail.errno),
+        signal: typeof detail.signal === "string" &&
+          ["SIGTERM", "SIGKILL", "SIGINT", "SIGABRT", "SIGSEGV"].includes(detail.signal)
+          ? detail.signal : null,
+        stdoutBytes: bytes(detail.stdout),
+        stderrBytes: bytes(detail.stderr),
+      };
+      const code = detail.code;
       reason = typeof code === "string" &&
         ["ENOENT", "EACCES", "EPERM", "ETIMEDOUT", "ENOBUFS"].includes(code)
         ? code : error instanceof SyntaxError ? "invalid-json" : "launcher-failed";

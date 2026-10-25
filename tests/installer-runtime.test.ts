@@ -37,6 +37,7 @@ it("records selected-home source and rejects unsafe discovery diagnostics", asyn
   childProcess.execFileSync.mockImplementation(() => {
     throw Object.assign(new Error("private stderr password"), {
       code: "private-code", stdout: "private stdout", stderr: "private stderr",
+      status: 3221225794, signal: "private-signal", errno: -4092,
     });
   });
   await import("../src/main/installer");
@@ -46,9 +47,34 @@ it("records selected-home source and rejects unsafe discovery diagnostics", asyn
   }));
   expect(entries).toContainEqual(expect.objectContaining({
     event: "runtime-discovery", home, reason: "launcher-failed",
+    failure: { status: 3221225794, errno: -4092, signal: null, stdoutBytes: 14, stderrBytes: 14 },
+    boundary: {
+      electron: Boolean(process.versions.electron),
+      electronRunAsNode: process.env.ELECTRON_RUN_AS_NODE === "1",
+      npmLifecycle: Boolean(process.env.npm_lifecycle_event),
+      npmInitCwd: Boolean(process.env.INIT_CWD),
+      powershell: Boolean(process.env.PSModulePath), windowsHide: true,
+    },
   }));
   expect(JSON.stringify(entries)).not.toContain("private");
   expect(JSON.stringify(entries)).not.toContain("password");
+});
+
+it("allowlists discovery failure metadata without coercing arbitrary values", async () => {
+  const { repo, touch } = fixture();
+  touch(join(repo, ".hermes", "bin", process.platform === "win32" ? "hermes.exe" : "hermes"));
+  childProcess.execFileSync.mockImplementation(() => {
+    throw Object.assign(new Error("private"), {
+      status: "private", errno: Infinity, signal: "SIGTERM",
+      stdout: Buffer.from("private"), stderr: { private: true },
+    });
+  });
+  await import("../src/main/installer");
+  const entries = runtimeLog.info.mock.calls.map(([text]) => JSON.parse(text));
+  expect(entries.find((entry) => entry.event === "runtime-discovery").failure).toEqual({
+    status: null, errno: null, signal: "SIGTERM", stdoutBytes: 7, stderrBytes: null,
+  });
+  expect(JSON.stringify(entries)).not.toContain("private");
 });
 
 const homes: string[] = [];
