@@ -1,3 +1,4 @@
+import type { SessionModelOverride } from "../../../../shared/model-override";
 import type { ChatMessage } from "../Chat/Chat";
 
 /**
@@ -21,7 +22,7 @@ export interface ChatRun {
   /** Workspace context folders to pre-attach when mounting. */
   initialContextFolders?: string[];
   /** Session-specific model override to pre-attach when mounting. */
-  initialModelOverride?: { model: string; provider: string; baseUrl?: string };
+  initialModelOverride?: SessionModelOverride;
   /** Knowledge bundles to pre-attach when mounting. */
   initialKnowledgeBundles?: string[];
   /**

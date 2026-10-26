@@ -1,9 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import Chat from "../Chat/Chat";
-import {
-  dbItemsToChatMessages,
-  type DbHistoryItem,
-} from "../Chat/sessionHistory";
+import { dbItemsToChatMessages } from "../Chat/sessionHistory";
 import type { ChatMessage } from "../Chat/types";
 import {
   type ChatRun,
@@ -1098,6 +1095,7 @@ function Layout({
     id: string;
     messages: ReturnType<typeof dbItemsToChatMessages>;
     oldestId: number | null;
+    newestId: number | null;
     hasMore: boolean;
   } | null>(null);
   useEffect(() => {
@@ -1112,6 +1110,7 @@ function Layout({
             id: latest.id,
             messages: dbItemsToChatMessages(page.items),
             oldestId: page.oldestId,
+            newestId: page.newestId,
             hasMore: page.hasMore,
           };
         } catch {

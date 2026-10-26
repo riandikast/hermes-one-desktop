@@ -17,7 +17,14 @@ export interface SessionHistoryRow {
   args?: string;
   timestamp?: number;
   attachments?: Attachment[];
-  fileChanges?: unknown;
+  fileChanges?: Array<{
+    path: string;
+    before: string | null;
+    after: string | null;
+    beforeKnown?: boolean;
+    removed?: string[];
+    added?: string[];
+  }>;
 }
 
 /**

@@ -65,7 +65,7 @@ function Harness(): null {
   const chatCurrentProvider = sessionModelOverride?.provider ?? modelConfig.currentProvider;
   const chatCurrentBaseUrl = sessionModelOverride?.baseUrl ?? modelConfig.currentBaseUrl;
   // Trusted repository source only, never external or user-provided code.
-  const bind = (body: string, transport?: unknown) => new Function("addAgentMessage", "recoveryNoticeMessage", "toast", "modelConfig", "sessionModelOverrideRef", "setSessionModelOverride", "isLoading", "dashboardTransport", "effectiveProviderForModel", "effectiveOverrideBaseUrl", `return ${body}`)((message: string) => notices.push(message), recoveryNoticeMessage, notifications, modelConfig, sessionModelOverrideRef, setSessionModelOverride, isLoading, transport, effectiveProviderForModel, effectiveOverrideBaseUrl);
+  const bind = (body: string, transport?: unknown) => new Function("addAgentMessage", "recoveryNoticeMessage", "toast", "modelConfig", "sessionModelOverrideRef", "setSessionModelOverride", "isLoading", "dashboardTransport", "effectiveProviderForModel", "effectiveOverrideBaseUrl", "cancelPendingOnFinish", `return ${body}`)((message: string) => notices.push(message), recoveryNoticeMessage, notifications, modelConfig, sessionModelOverrideRef, setSessionModelOverride, isLoading, transport, effectiveProviderForModel, effectiveOverrideBaseUrl, vi.fn());
   const onSwitchModel = bind(automaticSource);
   const dashboardTransport = useDashboardChatTransport({
     active: false, enabled: true, fallbackOnUnavailable: false, connectionMode: "local", activeTurnRef,
@@ -235,8 +235,9 @@ it.each(["belowThreshold", "atThreshold"] as const)("ordinary pick after complet
     console.info(JSON.stringify({ scenario, status: trace.status, slash: trace.slash, submitted }));
     expect(submitted).toEqual(["primary", "cx/gpt-6.1-sol"]);
     const sets = wire.request.mock.calls.filter(([method]) => method === "config.set");
-    expect(sets).toHaveLength(scenario === "atThreshold" ? 2 : 1);
-    if (scenario === "atThreshold") expect(sets[1][1].confirm_expensive_model).toBe(true);
+    const confirmationRequired = trace.config.initial.confirm_required === true;
+    expect(sets).toHaveLength(confirmationRequired ? 2 : 1);
+    if (confirmationRequired) expect(sets[1][1].confirm_expensive_model).toBe(true);
     expect(wire.request.mock.calls.some(([method]) => method === "slash.exec")).toBe(false);
   } finally { view.unmount(); }
 });

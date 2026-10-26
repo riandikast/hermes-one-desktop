@@ -6,7 +6,6 @@ import { FileChangesRow } from "./MessageList";
 import { FileChangesDialog } from "./FileChangesDialog";
 import type { ChatMessage, FileChange } from "./types";
 import { resolveHistoryExplorerTarget } from "./fileChangeHistory";
-// @ts-expect-error Renderer tsconfig excludes Node types; Vitest runs in Node.
 import { readFileSync } from "node:fs";
 
 const readDirectory = vi.fn();

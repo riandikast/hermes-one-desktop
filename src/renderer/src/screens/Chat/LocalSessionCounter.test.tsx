@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import { LocalSessionCounter } from "./LocalSessionCounter";
 import chatSource from "./Chat.tsx?raw";
 import inputSource from "./ChatInput.tsx?raw";
-// @ts-expect-error -- node types are intentionally outside the web tsconfig
 const nodeModule = (await import("node:module")) as unknown as {
   createRequire: (url: string) => (id: string) => { readFileSync: (path: string, encoding: string) => string };
 };

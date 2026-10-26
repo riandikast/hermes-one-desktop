@@ -15,26 +15,7 @@
  *    re-injects; the original main.css values apply again.
  */
 
-import mainCssRaw from "../assets/main.css?raw";
-import fs from "node:fs";
-import path from "node:path";
-
-// In vite (dev + build) the ?raw import inlines the stylesheet. In the vitest
-// jsdom environment the vite pipeline can return an empty string, so fall back
-// to reading the file directly (works in tests and inside electron's asar).
-function loadMainCss(): string {
-  if (mainCssRaw && mainCssRaw.length > 0) return mainCssRaw;
-  try {
-    return fs.readFileSync(
-      path.resolve(__dirname, "../assets/main.css"),
-      "utf-8",
-    );
-  } catch {
-    return "";
-  }
-}
-
-const mainCss = loadMainCss();
+import mainCss from "../assets/main.css?raw";
 
 export interface EditableTheme {
   id: string;
@@ -289,7 +270,7 @@ export function applyCustomThemeStyles(store: CustomThemeStore): void {
 /** A fresh theme seeded from a source theme's current effective values. */
 export function seedCustomFrom(
   sourceId: string,
-  newId: string,
+  _newId: string,
   newName: string,
   custom: CustomThemeStore,
 ): CustomThemeEntry {

@@ -1,4 +1,3 @@
-// @ts-expect-error -- Node-only test; web tsconfig intentionally excludes Node types.
 import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 it("anchors tools below an unchanged normal-flow trigger without clipping popovers", () => {

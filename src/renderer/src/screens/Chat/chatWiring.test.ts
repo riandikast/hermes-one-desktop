@@ -11,17 +11,17 @@
 // narrow: it only checks that props which are known no-ops in this file are not
 // passed as placeholders.
 //
-// Read via Vite's `?raw` import rather than node:fs: the web tsconfig does not
-// include node types, so `readFileSync` fails typecheck.
+// Read component source through Vite's raw import for wiring assertions.
 
 import { describe, expect, it, vi } from "vitest";
 import chatSource from "./Chat.tsx?raw";
+import layoutSource from "../Layout/Layout.tsx?raw";
 import chipSource from "./LastPromptChip.tsx?raw";
 import pickerSource from "./ModelPicker.tsx?raw";
 import messageListSource from "./MessageList.tsx?raw";
 import transportSource from "./hooks/useDashboardChatTransport.ts?raw";
 // CSS ?raw is stubbed by Vitest; read actual tokens for the contrast check.
-// @ts-expect-error -- node types are intentionally outside the web tsconfig
+
 const nodeModule = (await import("node:module")) as unknown as {
   createRequire: (url: string) => (id: string) => {
     readFileSync: (path: string, encoding: string) => string;
@@ -97,12 +97,12 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
   // time via `?raw` — never user, remote, or runtime input — so `new Function`
   // cannot be reached with attacker-controlled code here.
   const handlerBody = (): string => {
-    const marker = "const handleNewOnFinishSession = useCallback((): void => {";
+    const marker = "const handleNewOnFinishSession = useCallback(";
     const start = chatSource.indexOf(marker);
     expect(start).toBeGreaterThan(-1);
-    const end = chatSource.indexOf("}, [contextFolders]);", start);
-    expect(end).toBeGreaterThan(start);
-    return chatSource.slice(start + marker.length, end);
+    const match = chatSource.slice(start).match(/=> \{([\s\S]*?)\},\s*\[contextFolders\],?\s*\);/);
+    expect(match).not.toBeNull();
+    return match![1];
   };
 
   it("coalesces concurrent creation and releases the lock after failure", async () => {
@@ -123,7 +123,7 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
       "onFinishDockRef",
       "toast",
       "contextFolders",
-      `return () => {${body}}`,
+      `return (options) => {${body}}`,
     )(
       { hermesAPI: { terminalCreate } },
       { current: false },
@@ -167,7 +167,7 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
       "onFinishDockRef",
       "toast",
       "contextFolders",
-      `return () => {${body}}`,
+      `return (options) => {${body}}`,
     )(
       { hermesAPI: { terminalCreate } },
       { current: false },
@@ -199,7 +199,7 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
       "onFinishDockRef",
       "toast",
       "contextFolders",
-      `return () => {${body}}`,
+      `return (options) => {${body}}`,
     )(
       { hermesAPI: { terminalCreate } },
       { current: false },
@@ -207,7 +207,7 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
       { error: vi.fn() },
       ["C:/proj"],
     );
-    create();
+    create({ reuseExisting: true });
     await Promise.resolve();
     await Promise.resolve();
     expect(findSessionByCwd).toHaveBeenCalledWith("C:/proj");
@@ -215,6 +215,11 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     // No duplicate pty for a directory that already has a terminal.
     expect(terminalCreate).not.toHaveBeenCalled();
     expect(attachSession).not.toHaveBeenCalled();
+    create();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(terminalCreate).toHaveBeenCalledTimes(1);
+    expect(attachSession).toHaveBeenCalledWith("term-new", "proj", "C:/proj");
   });
   it("does not pass a no-op as onNewSession", () => {
     const values = propValues(chatSource, "onNewSession");
@@ -481,15 +486,24 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     expect(pin).toBeGreaterThan(0);
     expect(pin).toBeLessThan(rail);
     expect(rail).toBeLessThan(body);
-    expect(css.replace(/\r\n/g, "\n")).toContain(".chat-pinned-float,\n.chat-display-controls { top: 72px; }");
-    const block = css.slice(css.indexOf(".chat-pinned-float {"), css.indexOf(".chat-pinned-float >"));
+    expect(css.replace(/\r\n/g, "\n")).toContain(
+      ".chat-pinned-float,\n.chat-display-controls { top: 72px; }",
+    );
+    const block = css.slice(
+      css.indexOf(".chat-pinned-float {"),
+      css.indexOf(".chat-pinned-float >"),
+    );
     expect(block).toContain("right: 62px");
     expect(block).toContain("calc(100% - 80px)");
-    const collapsed = css.match(/\.chat-pinned-bar\.chat-pinned-bar--floating\.is-collapsed \{([^}]+)/)?.[1];
+    const collapsed = css.match(
+      /\.chat-pinned-bar\.chat-pinned-bar--floating\.is-collapsed \{([^}]+)/,
+    )?.[1];
     expect(collapsed).toContain("margin: 0");
     expect(collapsed).toContain("height: 32px");
     expect(collapsed).toContain("box-sizing: border-box");
-    const trigger = css.match(/\.chat-pinned-bar\.chat-pinned-bar--floating\.is-collapsed \.chat-pinned-bar-trigger \{([^}]+)/)?.[1];
+    const trigger = css.match(
+      /\.chat-pinned-bar\.chat-pinned-bar--floating\.is-collapsed \.chat-pinned-bar-trigger \{([^}]+)/,
+    )?.[1];
     expect(trigger).toContain("height: 100%");
     expect(trigger).toContain("box-sizing: border-box");
   });
@@ -504,7 +518,10 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     expect(block).toContain("right: 232px");
     // ...so the pill fills the free space instead of a viewport-relative cap.
     const pillStart = css.indexOf(".chat-last-prompt {");
-    const pillBlock = css.slice(pillStart, css.indexOf(".chat-last-prompt:hover", pillStart));
+    const pillBlock = css.slice(
+      pillStart,
+      css.indexOf(".chat-last-prompt:hover", pillStart),
+    );
     expect(pillBlock).toContain("max-width: 100%");
     expect(pillBlock).not.toContain("72vw");
   });
@@ -556,7 +573,10 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
   it("styles the fallback rows with the app palette, not hardcoded colors", () => {
     const start = css.indexOf(".chat-model-fallback {");
     expect(start).toBeGreaterThan(-1);
-    const block = css.slice(start, css.indexOf(".chat-model-group-menu", start));
+    const block = css.slice(
+      start,
+      css.indexOf(".chat-model-group-menu", start),
+    );
     expect(block.length).toBeGreaterThan(400);
     // Uses design tokens so it follows the theme.
     expect(block).toContain("var(--text-muted)");
@@ -601,6 +621,14 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     expect(transportSource).toMatch(
       /finalizeFileChanges\(\);\s*\n\s*\/\/[^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*window\.dispatchEvent\(new Event\("hermes-session-db-synced"\)\)/,
     );
+  });
+
+  // @lat: [[resource-budget#Renderer typecheck and test boundaries]]
+  it("retains the newest DB cursor in the startup session cache", () => {
+    expect(layoutSource).toMatch(
+      /preloadedSessionRef\.current = \{[^}]*newestId: page\.newestId/s,
+    );
+    expect(layoutSource).toContain("run.newestLoadedId = preloaded.newestId");
   });
 
   it("tells the sidebar to re-sync when a prompt is SENT", () => {

@@ -7,10 +7,7 @@ import {
   setProjectSort,
   sortProjectGroups,
 } from "./projectSort";
-// The web tsconfig deliberately excludes node types, so importing node:fs
-// directly fails typecheck. chatWiring.test.ts uses the same escape hatch; read
-// the sidebar source for the WIRING assertions below.
-// @ts-expect-error -- node types are intentionally outside the web tsconfig
+// Read the sidebar source for the wiring assertions below.
 const nodeModule = (await import("node:module")) as unknown as {
   createRequire: (url: string) => (id: string) => {
     readFileSync: (path: string, encoding: string) => string;

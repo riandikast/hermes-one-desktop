@@ -1,4 +1,5 @@
-import type { ChatMessage } from "../types";
+import type { SessionModelOverride } from "../../../../shared/model-override";
+import type { ChatBubbleMessage, ChatMessage } from "./types";
 import { isBubbleMessage, normalizeMessageText } from "./chatMessages";
 
 /**
@@ -39,7 +40,7 @@ export interface HandoffSessionContext {
   /** Context folders attached to the outgoing session. */
   contextFolders?: string[];
   /** Session-specific model override (provider, model, baseUrl). */
-  modelOverride?: { model: string; provider: string; baseUrl?: string };
+  modelOverride?: SessionModelOverride;
   /** Reasoning effort level. */
   reasoningEffort?: string;
   /** Ticked command IDs to run on turn completion. */
@@ -52,7 +53,7 @@ export interface HandoffSessionContext {
 
 interface HandoffResult {
   /** The single seed bubble for the new session. */
-  message: ChatMessage;
+  message: ChatBubbleMessage;
   info: HandoffInfo;
 }
 
@@ -129,7 +130,7 @@ export function buildSessionHandoff(messages: readonly ChatMessage[]): HandoffRe
   const firstUser = turns.find((t) => normalizeMessageText(t.user))?.user ?? "";
   const title = firstLine(firstUser, 60) || "Continued session";
 
-  const message: ChatMessage = {
+  const message: ChatBubbleMessage = {
     id: `handoff-${Date.now()}`,
     role: "user",
     content: parts.join("\n"),

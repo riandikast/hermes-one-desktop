@@ -63,7 +63,7 @@ export function useChatIPC({
   activeTurnRef,
 }: UseChatIPCArgs): void {
   const reasoningSegmentClosedRef = useRef(false);
-  const dbPollRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
+  const dbPollRef = useRef<number | null>(null);
   const dbPollInFlightRef = useRef(false);
   const acceptedSessionIdRef = useRef<string | null>(sessionScopeId);
   /**

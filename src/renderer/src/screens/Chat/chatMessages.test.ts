@@ -115,7 +115,7 @@ describe("markActiveTurnFailed with silenced errors", () => {
     const out = markActiveTurnFailed(
       [userRow],
       "invalid params for prompt.submit: raw_system_prompt: Extra inputs are not permitted",
-      { turnId: "t1", userId: "u1" },
+      { turnId: "t1", userId: "u1", startIndex: 0, status: "running" },
     );
     expect(out.some((m) => "error" in m && (m as { error?: string }).error)).toBe(
       false,
@@ -127,6 +127,8 @@ describe("markActiveTurnFailed with silenced errors", () => {
     const out = markActiveTurnFailed([userRow], "Connection error", {
       turnId: "t1",
       userId: "u1",
+      startIndex: 0,
+      status: "running",
     });
     const withErr = out.filter(
       (m) => "error" in m && Boolean((m as { error?: string }).error),

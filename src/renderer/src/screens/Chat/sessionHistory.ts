@@ -1049,8 +1049,10 @@ export function dbTailShowsLiveTurnDone(
     m.role === "agent" &&
     String(m.content ?? "").trim().length > 0;
   const same = (a: ChatMessage, b: ChatMessage): boolean =>
+    isBubbleMessage(a) &&
+    isBubbleMessage(b) &&
     normalizeMessageText(String(a.content ?? "")) ===
-    normalizeMessageText(String(b.content ?? ""));
+      normalizeMessageText(String(b.content ?? ""));
 
   // Synthetic overlay rows (negative ids) are re-prepended on every read and
   // belong to the settled prefix — never part of the live turn.

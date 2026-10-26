@@ -21,9 +21,7 @@
 // `.css?raw` import to an EMPTY string (the stylesheet is processed as an
 // asset), which silently made every assertion below vacuous.
 //
-// Node APIs are reached through a require-style import typed inline, because
-// the web tsconfig has no node type declarations.
-// @ts-expect-error -- node types are intentionally outside this tsconfig
+// Node APIs read the actual stylesheet for source guards.
 const nodeModule = (await import("node:module")) as unknown as {
   createRequire: (url: string) => (id: string) => {
     readFileSync: (path: string, encoding: string) => string;

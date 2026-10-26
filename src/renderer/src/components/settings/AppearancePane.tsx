@@ -132,7 +132,6 @@ export default function AppearancePane(): React.JSX.Element {
     [customThemes],
   );
   const customOnly = allThemes.filter((th) => !th.builtin);
-  const newThemeId = `New theme${customOnly.length > 0 ? ` ${customOnly.length + 1}` : ""}`;
 
   return (
     <div className="settings-modal-pane">

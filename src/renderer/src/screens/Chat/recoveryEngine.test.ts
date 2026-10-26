@@ -16,10 +16,7 @@ import {
 } from "./recoveryEngine";
 import type { FallbackModel } from "./fallbackModels";
 
-// Top-level await is fine at MODULE scope (chatWiring.test.ts does the same):
-// the web tsconfig excludes node types, so importing node:module directly would
-// fail typecheck.
-// @ts-expect-error -- node types are intentionally outside the web tsconfig
+// Read the source at module scope for wiring assertions.
 const nodeModule = (await import("node:module")) as unknown as {
   createRequire: (url: string) => (id: string) => {
     readFileSync: (path: string, encoding: string) => string;

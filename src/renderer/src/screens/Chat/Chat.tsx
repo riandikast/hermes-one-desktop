@@ -550,7 +550,6 @@ function Chat({
   }, [runId, messages, onTitleChange, initialTitle]);
 
   const [toolProgress, setToolProgress] = useState<string | null>(null);
-  const [modelPickerOpenRequest, setModelPickerOpenRequest] = useState(0);
 
   const [displayControlsOpen, setDisplayControlsOpen] = useState(false);
   const [showAllThoughts, setShowAllThoughts] = useState(false);
@@ -2990,7 +2989,6 @@ function Chat({
               toolbarExtras={
                 <>
                   <ModelPicker
-                    openRequest={modelPickerOpenRequest}
                     active={active}
                     currentModel={runtimeModel?.model ?? chatCurrentModel}
                     currentProvider={runtimeModel?.provider ?? chatCurrentProvider}
