@@ -24,7 +24,8 @@ describe("contextWindowForModel", () => {
     expect(contextWindowForModel("LLAMA-3.1-8B-INSTANT")).toBe(131072);
   });
 
-  it("falls back to the default for unknown models and empty input", () => {
+  it("falls back to one million for unknown models and empty input", () => {
+    expect(DEFAULT_CONTEXT_WINDOW).toBe(1_000_000);
     expect(contextWindowForModel("some-unknown-model")).toBe(
       DEFAULT_CONTEXT_WINDOW,
     );

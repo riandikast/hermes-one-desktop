@@ -15,7 +15,8 @@
 
 .chat-ctx-settings {
   display: grid;
-  gap: 6px;
+  gap: 4px;
+  font-size: 11px;
   border-top: 1px solid var(--border);
   margin-top: 8px;
   padding-top: 8px;
@@ -25,13 +26,31 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
+  min-height: 20px;
   color: var(--text-primary);
 }
 
 .chat-ctx-settings .input {
   width: 100%;
   min-width: 0;
+  height: 24px;
+  min-height: 24px;
+  padding: 3px 6px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.chat-ctx-settings .btn {
+  min-height: 24px;
+  padding: 3px 6px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.chat-ctx-enable input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
 }
 
 .chat-ctx-trigger {

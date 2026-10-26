@@ -38,7 +38,7 @@ const CONTEXT_WINDOWS: Array<[RegExp, number]> = [
 ];
 
 /** Fallback when the model id doesn't match any known family. */
-export const DEFAULT_CONTEXT_WINDOW = 131072;
+export const DEFAULT_CONTEXT_WINDOW = 1_000_000;
 
 export function contextWindowForModel(model?: string | null): number {
   if (!model) return DEFAULT_CONTEXT_WINDOW;
