@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
+const toastSuccess = vi.hoisted(() => vi.fn());
+vi.mock("react-hot-toast", () => ({ default: { success: toastSuccess } }));
 import { KnowledgePackages } from "./KnowledgePackages";
 import { emptyKnowledgeSettings } from "../../../../shared/knowledge-package";
 vi.mock("../../components/modal/AppModal", () => ({
@@ -64,6 +66,7 @@ it("previews conflicts, maps external root, imports only after confirmation", as
   await screen.findByText("D:/Project");
   fireEvent.click(screen.getByText("Import bundles"));
   await waitFor(() => expect(imported).toHaveBeenCalledOnce());
+  expect(toastSuccess).toHaveBeenCalledWith("Imported 1 bundle(s).");
   expect(window.hermesAPI.importKnowledgePackage).toHaveBeenCalledWith({
     ticket: "preview",
     names: { guide: "guide-imported" },
@@ -81,6 +84,7 @@ it("cancels without importing; saves before exporting", async () => {
   await waitFor(() =>
     expect(window.hermesAPI.exportKnowledgePackage).toHaveBeenCalledOnce(),
   );
+  expect(toastSuccess).toHaveBeenCalledWith("Package exported: knowledge.zip");
   expect(save.mock.invocationCallOrder[0]).toBeLessThan(
     (window.hermesAPI.exportKnowledgePackage as ReturnType<typeof vi.fn>).mock
       .invocationCallOrder[0],

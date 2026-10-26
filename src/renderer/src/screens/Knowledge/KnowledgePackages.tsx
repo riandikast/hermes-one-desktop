@@ -1,4 +1,5 @@
 import { useState } from "react";
+import toast from "react-hot-toast";
 import {
   AppModal,
   AppModalTitle,
@@ -28,12 +29,10 @@ export function KnowledgePackages({
   const [sources, setSources] = useState<KnowledgeSource[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const run = async (action: () => Promise<void>): Promise<void> => {
     if (busy) return;
     setBusy(true);
     setError("");
-    setNotice("");
     try {
       await action();
     } catch (e) {
@@ -88,7 +87,7 @@ export function KnowledgePackages({
             await beforeExport();
             const path =
               await window.hermesAPI.exportKnowledgePackage(settings);
-            if (path) setNotice(`Package exported: ${path}`);
+            if (path) toast.success(`Package exported: ${path}`);
           })
         }
       >
@@ -109,11 +108,6 @@ export function KnowledgePackages({
       {!preview && !sources && error && (
         <span role="alert" className="knowledge-package-message">
           {error}
-        </span>
-      )}
-      {!preview && !sources && notice && (
-        <span role="status" className="knowledge-package-message">
-          {notice}
         </span>
       )}
       <AppModal
@@ -234,7 +228,7 @@ export function KnowledgePackages({
                   });
                   await onImported(result.settings);
                   setPreview(null);
-                  setNotice(`Imported ${result.bundles.length} bundle(s).`);
+                  toast.success(`Imported ${result.bundles.length} bundle(s).`);
                 })
               }
             >
