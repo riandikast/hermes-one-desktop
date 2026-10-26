@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { findMention } from "../Chat/mention";
+import { KnowledgePackages } from "./KnowledgePackages";
+import type { KnowledgeSourceSettings } from "../../../../shared/knowledge-package";
 import { searchHighlights } from "../Chat/editorSearch";
 import { basicSetup } from "codemirror";
 import { EditorView } from "@codemirror/view";
@@ -66,6 +68,14 @@ export function KnowledgeScreen(): React.JSX.Element {
   const [isEditing] = useState(true); // Always edit mode — preview removed
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [documentError, setDocumentError] = useState("");
+  const referencesRef = useRef<
+    { start: number; end: number; text: string; path: string }[]
+  >([]);
+  const documentGeneration = useRef(0);
+  const savedContentRef = useRef("");
+  const fileContentRef = useRef(fileContent);
+  fileContentRef.current = fileContent;
   const [newBundleName, setNewBundleName] = useState("");
   const [createBundleError, setCreateBundleError] = useState("");
   const [showNewBundleInput, setShowNewBundleInput] = useState(false);
@@ -238,7 +248,21 @@ export function KnowledgeScreen(): React.JSX.Element {
   }, [fileCustomFolderState]);
   const [disabledBundles, setDisabledBundles] = useState<
     Record<string, boolean>
-  >({});
+  >(() => {
+    try {
+      return JSON.parse(
+        localStorage.getItem("hermes.knowledge.disabled_bundles") || "{}",
+      );
+    } catch {
+      return {};
+    }
+  });
+  useEffect(() => {
+    localStorage.setItem(
+      "hermes.knowledge.disabled_bundles",
+      JSON.stringify(disabledBundles),
+    );
+  }, [disabledBundles]);
   const [showMentionSourcesPopover, setShowMentionSourcesPopover] =
     useState(false);
 
@@ -450,6 +474,12 @@ export function KnowledgeScreen(): React.JSX.Element {
             changes: { from, to, insert: item.path + " " },
             selection: { anchor: from + item.path.length + 1 },
           });
+          referencesRef.current.push({
+            start: from,
+            end: from + item.path.length,
+            text: item.path,
+            path: item.path,
+          });
         },
       }));
       // filter: false — CM6 otherwise fuzzy-matches option labels against the
@@ -491,6 +521,14 @@ export function KnowledgeScreen(): React.JSX.Element {
           }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
+              referencesRef.current = referencesRef.current.flatMap((ref) => {
+                const start = update.changes.mapPos(ref.start, 1);
+                const end = update.changes.mapPos(ref.end, -1);
+                return end > start &&
+                  update.state.doc.sliceString(start, end) === ref.text
+                  ? [{ ...ref, start, end }]
+                  : [];
+              });
               onEditorChange(update.state.doc.toString());
             }
           }),
@@ -536,14 +574,36 @@ export function KnowledgeScreen(): React.JSX.Element {
   useEffect(() => {
     const onFocus = () => {
       void reloadBundles();
-      // Re-read the currently selected file's content from disk.
-      if (selectedFile) {
+      // Native file/folder dialogs return focus. Never discard unsaved edits.
+      if (selectedFile && fileContentRef.current === savedContentRef.current) {
         void (async () => {
           try {
+            const generation = documentGeneration.current;
+            const unchanged = fileContentRef.current;
             const content = await window.hermesAPI.readKnowledgeFile(
               selectedFile.bundleName,
               selectedFile.fileName,
             );
+            const refs =
+              (await window.hermesAPI.getKnowledgeDocumentReferences?.(
+                `${selectedFile.bundleName}/${selectedFile.fileName}`,
+              )) ?? [];
+            if (
+              generation !== documentGeneration.current ||
+              unchanged !== fileContentRef.current
+            )
+              return;
+            const view = editorViewRef.current;
+            if (view && view.state.doc.toString() !== content)
+              view.dispatch({
+                changes: {
+                  from: 0,
+                  to: view.state.doc.length,
+                  insert: content ?? "",
+                },
+              });
+            referencesRef.current = refs;
+            savedContentRef.current = content ?? "";
             setFileContent(content ?? "");
           } catch {
             /* ignore */
@@ -560,6 +620,9 @@ export function KnowledgeScreen(): React.JSX.Element {
     fileName: string,
     path: string,
   ) => {
+    const generation = ++documentGeneration.current;
+    referencesRef.current = [];
+    setDocumentError("");
     setLoading(true);
     // Drilling into a file also opens its bundle, so "back" from the editor
     // lands on the file list rather than skipping to the grid.
@@ -570,26 +633,49 @@ export function KnowledgeScreen(): React.JSX.Element {
         bundleName,
         fileName,
       );
+      const refs =
+        (await window.hermesAPI.getKnowledgeDocumentReferences?.(
+          `${bundleName}/${fileName}`,
+        )) ?? [];
+      if (generation !== documentGeneration.current) return;
       setFileContent(content ?? "");
+      referencesRef.current = refs;
+      savedContentRef.current = content ?? "";
     } catch {
       setFileContent("");
     } finally {
-      setLoading(false);
+      if (generation === documentGeneration.current) setLoading(false);
     }
   };
 
   const handleSaveFile = async () => {
     if (!selectedFile) return;
     setSaving(true);
+    setDocumentError("");
     try {
-      await window.hermesAPI.writeKnowledgeFile(
-        selectedFile.bundleName,
-        selectedFile.fileName,
-        fileContent,
-      );
+      const key = `${selectedFile.bundleName}/${selectedFile.fileName}`;
+      const ok = window.hermesAPI.saveKnowledgeDocument
+        ? await window.hermesAPI.saveKnowledgeDocument(
+            key,
+            fileContent,
+            referencesRef.current,
+            [...mentionCustomFolders, ...(fileCustomFolders[key] ?? [])],
+          )
+        : await window.hermesAPI.writeKnowledgeFile(
+            selectedFile.bundleName,
+            selectedFile.fileName,
+            fileContent,
+          );
+      if (!ok) throw new Error("Knowledge file could not be saved");
+      savedContentRef.current = fileContent;
       await reloadBundles();
-    } catch {
-      /* ignore save error */
+    } catch (error) {
+      setDocumentError(
+        error instanceof Error
+          ? error.message
+          : "Knowledge file could not be saved",
+      );
+      throw error;
     } finally {
       setSaving(false);
     }
@@ -871,6 +957,45 @@ export function KnowledgeScreen(): React.JSX.Element {
           <h2>Knowledge Management</h2>
         </div>
         <div className="knowledge-actions">
+          <KnowledgePackages
+            settings={{
+              folders: mentionCustomFolders,
+              fileFolders: fileCustomFolders,
+              folderState: fileCustomFolderState,
+              disabledBundles,
+            }}
+            beforeExport={async () => {
+              if (selectedFile) await handleSaveFile();
+            }}
+            onImported={async (settings: KnowledgeSourceSettings) => {
+              setMentionCustomFolders((prev) => [
+                ...new Set([...prev, ...settings.folders]),
+              ]);
+              setFileCustomFolders((prev) => ({
+                ...prev,
+                ...settings.fileFolders,
+              }));
+              setFileCustomFolderState((prev) => ({
+                ...prev,
+                ...settings.folderState,
+              }));
+              setDisabledBundles((prev) => ({
+                ...prev,
+                ...settings.disabledBundles,
+              }));
+              await reloadBundles();
+            }}
+            onLocated={async (_id, root) => {
+              setMentionCustomFolders((prev) => [...new Set([...prev, root])]);
+              if (selectedFile)
+                await handleSelectFile(
+                  selectedFile.bundleName,
+                  selectedFile.fileName,
+                  selectedFile.path,
+                );
+              await reloadBundles();
+            }}
+          />
           <button
             type="button"
             className="btn btn-secondary"
@@ -1057,8 +1182,6 @@ export function KnowledgeScreen(): React.JSX.Element {
                             </button>
                           </div>
                         </div>
-
-
                       </li>
                     );
                   })
@@ -1266,25 +1389,68 @@ export function KnowledgeScreen(): React.JSX.Element {
         {view === "editor" && selectedFile && (
           <div className="knowledge-editor-pane">
             <div className="knowledge-editor-container">
-                <div className="knowledge-editor-toolbar">
-                  <div className="file-info">
-                    <button
-                      type="button"
-                      className="knowledge-back-btn"
-                      onClick={backFromEditor}
-                      aria-label="Back to file list"
-                      title="Back to file list"
-                    >
-                      <ArrowLeft size={14} />
-                      <span>{selectedFile.bundleName}</span>
-                    </button>
-                    <FileText size={16} />
-                    <span className="file-title">{selectedFile.fileName}</span>
-                  </div>
-                  <div
-                    className="toolbar-controls"
-                    style={{ position: "relative" }}
+              <div className="knowledge-editor-toolbar">
+                <div className="file-info">
+                  <button
+                    type="button"
+                    className="knowledge-back-btn"
+                    onClick={backFromEditor}
+                    aria-label="Back to file list"
+                    title="Back to file list"
                   >
+                    <ArrowLeft size={14} />
+                    <span>{selectedFile.bundleName}</span>
+                  </button>
+                  <FileText size={16} />
+                  <span className="file-title">{selectedFile.fileName}</span>
+                </div>
+                <div
+                  className="toolbar-controls"
+                  style={{ position: "relative" }}
+                >
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      const view = editorViewRef.current;
+                      const selection = view?.state.selection.main;
+                      if (!view || !selection || selection.empty) {
+                        setDocumentError(
+                          "Select a pasted absolute path first.",
+                        );
+                        return;
+                      }
+                      const path = view.state.sliceDoc(
+                        selection.from,
+                        selection.to,
+                      );
+                      if (!/^(?:[a-zA-Z]:[\\/]|\/)/.test(path)) {
+                        setDocumentError("Select an absolute file path.");
+                        return;
+                      }
+                      if (
+                        !confirm(
+                          `Register this exact path for portable export?\n${path}`,
+                        )
+                      )
+                        return;
+                      referencesRef.current = referencesRef.current.filter(
+                        (ref) =>
+                          ref.end <= selection.from ||
+                          ref.start >= selection.to,
+                      );
+                      referencesRef.current.push({
+                        start: selection.from,
+                        end: selection.to,
+                        text: path,
+                        path,
+                      });
+                      setDocumentError("");
+                    }}
+                  >
+                    Register selected path
+                  </button>
+                  {documentError && <span role="alert">{documentError}</span>}
                   <button
                     type="button"
                     className={`btn btn-secondary btn-sm ${
@@ -1402,7 +1568,7 @@ export function KnowledgeScreen(): React.JSX.Element {
                   <button
                     type="button"
                     className="btn btn-primary btn-sm ml-2"
-                    onClick={() => void handleSaveFile()}
+                    onClick={() => void handleSaveFile().catch(() => undefined)}
                     disabled={saving}
                   >
                     <Save size={13} />
@@ -1454,7 +1620,7 @@ export function KnowledgeScreen(): React.JSX.Element {
           </button>
         </div>
       )}
-</div>
+    </div>
   );
 }
 

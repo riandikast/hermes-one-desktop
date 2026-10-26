@@ -87,7 +87,7 @@ export async function createKnowledgeBundle(
   bundleName: string,
   homeOverride?: string,
 ): Promise<KnowledgeBundle> {
-  const safeName = bundleName.trim().replace(/[^a-zA-Z0-9_\-\.]/g, "-");
+  const safeName = bundleName.trim().replace(/[^a-zA-Z0-9_.-]/g, "-");
   if (!safeName) throw new Error("Invalid bundle name");
   const root = await ensureKnowledgeDir(homeOverride);
   const bundlePath = join(root, safeName);
@@ -103,14 +103,28 @@ export async function deleteKnowledgeBundle(
   bundleName: string,
   homeOverride?: string,
 ): Promise<boolean> {
-  const root = await ensureKnowledgeDir(homeOverride);
-  const bundlePath = join(root, bundleName);
-  try {
-    await rm(bundlePath, { recursive: true, force: true });
-    return true;
-  } catch {
-    return false;
-  }
+  const { forgetKnowledgeBundleUnlocked, serializeKnowledgePackageOperation } =
+    await import("./knowledge-package");
+  return serializeKnowledgePackageOperation(homeOverride, async () => {
+    if (
+      typeof bundleName !== "string" ||
+      !bundleName ||
+      bundleName === "." ||
+      bundleName === ".." ||
+      bundleName.includes("/") ||
+      bundleName.includes("\\")
+    )
+      return false;
+    const root = await ensureKnowledgeDir(homeOverride);
+    const bundlePath = join(root, bundleName);
+    try {
+      await forgetKnowledgeBundleUnlocked(bundleName, homeOverride);
+      await rm(bundlePath, { recursive: true, force: true });
+      return true;
+    } catch {
+      return false;
+    }
+  });
 }
 
 export async function renameKnowledgeBundle(
@@ -118,20 +132,30 @@ export async function renameKnowledgeBundle(
   newBundleName: string,
   homeOverride?: string,
 ): Promise<boolean> {
-  const safeName = newBundleName.trim().replace(/[^a-zA-Z0-9_\-\.]/g, "-");
-  if (!safeName || safeName === bundleName) return false;
-  const root = await ensureKnowledgeDir(homeOverride);
-  const oldPath = join(root, bundleName);
-  const newPath = join(root, safeName);
-  if (oldPath === newPath) return false;
-  try {
-    await rename(oldPath, newPath);
-    return true;
-  } catch {
-    return false;
-  }
+  const {
+    serializeKnowledgePackageOperation,
+    renameKnowledgeMetadataUnlocked,
+  } = await import("./knowledge-package");
+  return serializeKnowledgePackageOperation(homeOverride, async () => {
+    const safeName = newBundleName.trim().replace(/[^a-zA-Z0-9_.-]/g, "-");
+    if (!safeName || safeName === bundleName) return false;
+    const root = await ensureKnowledgeDir(homeOverride),
+      oldPath = join(root, bundleName),
+      newPath = join(root, safeName);
+    try {
+      await renameKnowledgeMetadataUnlocked(
+        bundleName,
+        safeName,
+        homeOverride,
+        async () => rename(oldPath, newPath),
+        async () => rename(newPath, oldPath),
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  });
 }
-
 export async function readKnowledgeFile(
   bundleName: string,
   fileName: string,
@@ -170,15 +194,39 @@ export async function renameKnowledgeFile(
   newFileName: string,
   homeOverride?: string,
 ): Promise<boolean> {
-  const root = await ensureKnowledgeDir(homeOverride);
-  const oldPath = join(root, bundleName, oldFileName);
-  const newPath = join(root, bundleName, newFileName);
-  try {
-    await rename(oldPath, newPath);
-    return true;
-  } catch {
-    return false;
-  }
+  const {
+    serializeKnowledgePackageOperation,
+    renameKnowledgeMetadataUnlocked,
+  } = await import("./knowledge-package");
+  return serializeKnowledgePackageOperation(homeOverride, async () => {
+    if (
+      [bundleName, oldFileName, newFileName].some(
+        (value) =>
+          typeof value !== "string" ||
+          !value ||
+          value === "." ||
+          value === ".." ||
+          value.includes("/") ||
+          value.includes("\\"),
+      )
+    )
+      return false;
+    const root = await ensureKnowledgeDir(homeOverride),
+      oldPath = join(root, bundleName, oldFileName),
+      newPath = join(root, bundleName, newFileName);
+    try {
+      await renameKnowledgeMetadataUnlocked(
+        `${bundleName}/${oldFileName}`,
+        `${bundleName}/${newFileName}`,
+        homeOverride,
+        async () => rename(oldPath, newPath),
+        async () => rename(newPath, oldPath),
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  });
 }
 
 export async function deleteKnowledgeFile(
@@ -186,9 +234,37 @@ export async function deleteKnowledgeFile(
   fileName: string,
   homeOverride?: string,
 ): Promise<boolean> {
+  const { serializeKnowledgePackageOperation } =
+    await import("./knowledge-package");
+  return serializeKnowledgePackageOperation(homeOverride, () =>
+    deleteKnowledgeFileInternal(bundleName, fileName, homeOverride),
+  );
+}
+async function deleteKnowledgeFileInternal(
+  bundleName: string,
+  fileName: string,
+  homeOverride?: string,
+): Promise<boolean> {
+  if (
+    [bundleName, fileName].some(
+      (value) =>
+        typeof value !== "string" ||
+        !value ||
+        value === "." ||
+        value === ".." ||
+        value.includes("/") ||
+        value.includes("\\"),
+    )
+  )
+    return false;
   const root = await ensureKnowledgeDir(homeOverride);
   const filePath = join(root, bundleName, fileName);
   try {
+    const { forgetKnowledgeFileUnlocked } = await import("./knowledge-package");
+    await forgetKnowledgeFileUnlocked(
+      `${bundleName}/${fileName}`,
+      homeOverride,
+    );
     await rm(filePath, { force: true });
     return true;
   } catch {
@@ -202,18 +278,42 @@ export async function moveKnowledgeFile(
   targetBundleName: string,
   homeOverride?: string,
 ): Promise<boolean> {
-  if (!targetBundleName || targetBundleName === bundleName) return false;
-  const root = await ensureKnowledgeDir(homeOverride);
-  const oldPath = join(root, bundleName, fileName);
-  const targetDir = join(root, targetBundleName);
-  const newPath = join(targetDir, fileName);
-  try {
-    await mkdir(targetDir, { recursive: true });
-    await rename(oldPath, newPath);
-    return true;
-  } catch {
-    return false;
-  }
+  const {
+    serializeKnowledgePackageOperation,
+    renameKnowledgeMetadataUnlocked,
+  } = await import("./knowledge-package");
+  return serializeKnowledgePackageOperation(homeOverride, async () => {
+    if (
+      [bundleName, fileName, targetBundleName].some(
+        (value) =>
+          typeof value !== "string" ||
+          !value ||
+          value === "." ||
+          value === ".." ||
+          value.includes("/") ||
+          value.includes("\\"),
+      ) ||
+      targetBundleName === bundleName
+    )
+      return false;
+    const root = await ensureKnowledgeDir(homeOverride),
+      oldPath = join(root, bundleName, fileName),
+      targetDir = join(root, targetBundleName),
+      newPath = join(targetDir, fileName);
+    try {
+      await mkdir(targetDir, { recursive: true });
+      await renameKnowledgeMetadataUnlocked(
+        `${bundleName}/${fileName}`,
+        `${targetBundleName}/${fileName}`,
+        homeOverride,
+        async () => rename(oldPath, newPath),
+        async () => rename(newPath, oldPath),
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  });
 }
 
 export async function importKnowledgeFolder(
@@ -221,8 +321,19 @@ export async function importKnowledgeFolder(
   bundleName: string,
   homeOverride?: string,
 ): Promise<KnowledgeBundle> {
+  const { serializeKnowledgePackageOperation } =
+    await import("./knowledge-package");
+  return serializeKnowledgePackageOperation(homeOverride, () =>
+    importKnowledgeFolderInternal(sourceFolderPath, bundleName, homeOverride),
+  );
+}
+async function importKnowledgeFolderInternal(
+  sourceFolderPath: string,
+  bundleName: string,
+  homeOverride?: string,
+): Promise<KnowledgeBundle> {
   const root = await ensureKnowledgeDir(homeOverride);
-  const safeName = bundleName.trim().replace(/[^a-zA-Z0-9_\-\.]/g, "-");
+  const safeName = bundleName.trim().replace(/[^a-zA-Z0-9_.-]/g, "-");
   const destDir = join(root, safeName);
   await mkdir(destDir, { recursive: true });
   await cp(sourceFolderPath, destDir, { recursive: true });
@@ -326,7 +437,9 @@ export async function buildKnowledgeIndex(
       // file); never drop a file while there is room for its path alone.
       const pathCost = fullPath.length + 4;
       if (budget < pathCost) {
-        lines.push(`- …and ${files.length - lines.length} more file(s) in this bundle (list the directory to see them all)`);
+        lines.push(
+          `- …and ${files.length - lines.length} more file(s) in this bundle (list the directory to see them all)`,
+        );
         break;
       }
 
@@ -350,7 +463,9 @@ export async function buildKnowledgeIndex(
           lines.push(pathOnly);
           budget -= pathOnly.length;
         } else {
-          lines.push(`- …and ${files.length - lines.length} more file(s) in this bundle (list the directory to see them all)`);
+          lines.push(
+            `- …and ${files.length - lines.length} more file(s) in this bundle (list the directory to see them all)`,
+          );
           break;
         }
       }

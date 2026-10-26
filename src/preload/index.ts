@@ -1833,6 +1833,13 @@ const hermesAPI = {
   ): Promise<{ path: string; matches: { line: number; text: string }[] }[]> =>
     ipcRenderer.invoke("search-in-files", roots, query, opts),
   listKnowledgeBundles: () => ipcRenderer.invoke("list-knowledge-bundles"),
+  exportKnowledgePackage: (settings: import("../shared/knowledge-package").KnowledgeSourceSettings) => ipcRenderer.invoke("knowledge:export-package", settings),
+  previewKnowledgePackage: (): Promise<import("../shared/knowledge-package").KnowledgePackagePreview | null> => ipcRenderer.invoke("knowledge:preview-package"),
+  importKnowledgePackage: (options: import("../shared/knowledge-package").KnowledgeImportOptions): Promise<import("../shared/knowledge-package").KnowledgeImportResult> => ipcRenderer.invoke("knowledge:import-package", options),
+  getKnowledgeDocumentReferences: (key: string): Promise<{ start: number; end: number; text: string; path: string }[]> => ipcRenderer.invoke("knowledge:document-references", key),
+  saveKnowledgeDocument: (key: string, content: string, refs: { start: number; end: number; text: string; path: string }[], roots: string[]): Promise<boolean> => ipcRenderer.invoke("knowledge:save-document", key, content, refs, roots),
+  listKnowledgeSources: (): Promise<import("../shared/knowledge-package").KnowledgeSource[]> => ipcRenderer.invoke("knowledge:portable-sources"),
+  locateKnowledgeSource: (id: string, root: string): Promise<import("../shared/knowledge-package").KnowledgeSourceSettings> => ipcRenderer.invoke("knowledge:locate-source", id, root),
   createKnowledgeBundle: (name: string) =>
     ipcRenderer.invoke("create-knowledge-bundle", name),
   deleteKnowledgeBundle: (name: string) =>

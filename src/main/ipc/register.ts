@@ -12,6 +12,7 @@ import {
 } from "electron";
 import { extname, join } from "path";
 import { GitHubAuth } from "../github-auth";
+import { registerKnowledgePackageHandlers } from "./knowledge-packages";
 import { listAgentUserProviders } from "../agent-config-providers";
 import { randomUUID } from "crypto";
 import { readdir, readFile, stat, writeFile } from "fs/promises";
@@ -3292,6 +3293,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     },
   );
 
+  registerKnowledgePackageHandlers();
   ipcMain.handle("list-knowledge-bundles", async () => {
     return listKnowledgeBundles();
   });

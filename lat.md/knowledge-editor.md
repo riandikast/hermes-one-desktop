@@ -22,7 +22,7 @@ The mounted regression in [[src/renderer/src/screens/Knowledge/KnowledgeScreen.d
 `@`-mention file search is a CodeMirror autocomplete source, not a custom dropdown.
 
 Typing `@` opens the standard autocomplete popup at the caret; picking a
-candidate inserts the path followed by a space. Candidates come from bundles +
+candidate inserts the path followed by a space, registering its exact span for [[knowledge-packages|portable packages]]. Candidates come from bundles +
 custom folders + Everything + recent folders; `findMention` (from the chat
 mention module) detects the token and its query.
 

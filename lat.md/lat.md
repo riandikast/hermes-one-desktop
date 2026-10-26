@@ -6,6 +6,7 @@ This directory defines the high-level concepts, business logic, and architecture
 - [[chat-manual-tools]] - manual terminal actions and history refresh.
 - [[chat-on-finish]] - child-aware automatic commands after three settled idle seconds.
 - [[knowledge-injection]] - knowledge bundle context injection.
+- [[knowledge-packages]] - portable ZIP import/export with registered reference relocation and device-local source mappings.
 - [[resource-budget]] - shared resource queue and bounded tests.
 - [[source-control]] - git status, staging, commit, and synchronization.
 - [[chat-commands]] — how typed slash commands are routed through the gateway's `slash.exec`/`command.dispatch` pipeline instead of being sent as prompt text.

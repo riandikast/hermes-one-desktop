@@ -1,0 +1,79 @@
+.knowledge-package-dialog {
+  width: min(620px, calc(100vw - 32px));
+  max-height: calc(100dvh - 96px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+.knowledge-package-dialog h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.knowledge-package-dialog h4 {
+  margin: 10px 0 4px;
+  font-size: 12px;
+}
+.knowledge-package-dialog p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.knowledge-package-dialog [role="alert"] {
+  color: var(--text-primary);
+}
+.knowledge-package-body {
+  min-height: 0;
+  overflow: auto;
+}
+.knowledge-package-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.knowledge-package-row > span:first-child {
+  flex: 1;
+  min-width: 120px;
+  overflow-wrap: anywhere;
+}
+.knowledge-package-row .input {
+  width: 210px;
+  max-width: 100%;
+  font-size: 12px;
+}
+.knowledge-package-path {
+  width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+}
+.knowledge-package-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.knowledge-package-message {
+  width: 100%;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.knowledge-header .knowledge-actions {
+  flex-wrap: wrap;
+}
+@media (max-width: 600px) {
+  .knowledge-package-dialog {
+    padding: 14px;
+  }
+  .knowledge-package-dialog .btn {
+    min-height: 44px;
+  }
+  .knowledge-package-row .input {
+    width: 100%;
+    min-height: 44px;
+  }
+}

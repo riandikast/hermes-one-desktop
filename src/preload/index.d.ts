@@ -1373,6 +1373,13 @@ interface HermesAPI {
     query: string,
     opts?: { maxFiles?: number; maxMatchesPerFile?: number },
   ) => Promise<{ path: string; matches: { line: number; text: string }[] }[]>;
+  exportKnowledgePackage: (settings: import("../shared/knowledge-package").KnowledgeSourceSettings) => Promise<string | null>;
+  previewKnowledgePackage: () => Promise<import("../shared/knowledge-package").KnowledgePackagePreview | null>;
+  importKnowledgePackage: (options: import("../shared/knowledge-package").KnowledgeImportOptions) => Promise<import("../shared/knowledge-package").KnowledgeImportResult>;
+  getKnowledgeDocumentReferences: (key: string) => Promise<{ start: number; end: number; text: string; path: string }[]>;
+  saveKnowledgeDocument: (key: string, content: string, refs: { start: number; end: number; text: string; path: string }[], roots: string[]) => Promise<boolean>;
+  listKnowledgeSources: () => Promise<import("../shared/knowledge-package").KnowledgeSource[]>;
+  locateKnowledgeSource: (id: string, root: string) => Promise<import("../shared/knowledge-package").KnowledgeSourceSettings>;
   listKnowledgeBundles: () => Promise<
     {
       name: string;
