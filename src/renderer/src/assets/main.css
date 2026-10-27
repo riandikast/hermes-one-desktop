@@ -8829,7 +8829,8 @@ body:has(.shell-vibrant),
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  max-width: 280px;
+  max-width: min(440px, 100%);
+  flex-wrap: wrap;
   padding: 2px 7px;
   background: var(--bg-tertiary, var(--bg-secondary));
   border: 1px solid var(--border);
@@ -8863,6 +8864,7 @@ body:has(.shell-vibrant),
 }
 
 .chat-mention-tag-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -21868,9 +21870,18 @@ body:has(.shell-vibrant),
 }
 .mention-menu-text {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
   min-width: 0;
   line-height: 1.25;
+}
+.mention-modified-time {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 .mention-menu-name {
   overflow: hidden;
@@ -21878,6 +21889,7 @@ body:has(.shell-vibrant),
   white-space: nowrap;
 }
 .mention-menu-path {
+  flex-basis: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

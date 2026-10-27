@@ -1766,6 +1766,8 @@ const hermesAPI = {
     };
   },
 
+  getPathModifiedTime: (path: string): Promise<number | null> =>
+    ipcRenderer.invoke("get-path-modified-time", path),
   listFilesRecursive: (
     folder: string,
   ): Promise<{ name: string; isDirectory: boolean; path: string }[] | null> =>

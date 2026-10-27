@@ -729,6 +729,7 @@ interface HermesAPI {
   getSessionContextFolder: (sessionId: string) => Promise<string[]>;
   watchContextFolder: (folder: string) => Promise<void>;
   onContextFolderChanged: (callback: () => void) => () => void;
+  getPathModifiedTime: (path: string) => Promise<number | null>;
   listFilesRecursive: (
     folder: string,
   ) => Promise<{ name: string; isDirectory: boolean; path: string }[] | null>;

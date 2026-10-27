@@ -10,7 +10,7 @@ import {
   clipboard,
   safeStorage,
 } from "electron";
-import { extname, join } from "path";
+import { extname, isAbsolute, join } from "path";
 import { GitHubAuth } from "../github-auth";
 import { registerKnowledgePackageHandlers } from "./knowledge-packages";
 import { listAgentUserProviders } from "../agent-config-providers";
@@ -3218,6 +3218,18 @@ export function registerIpcHandlers(context: IpcContext): void {
     "venv",
     "target",
   ]);
+  ipcMain.handle("get-path-modified-time", async (_event, path: unknown) => {
+    const conn = getConnectionConfig();
+    if (conn.mode === "ssh" || conn.mode === "remote") return null;
+    if (typeof path !== "string" || !isAbsolute(path) || path.includes("\0"))
+      return null;
+    try {
+      return (await stat(path)).mtimeMs;
+    } catch {
+      return null;
+    }
+  });
+
   const MENTION_MAX_ENTRIES = 10000;
   ipcMain.handle("list-files-recursive", async (_event, root: string) => {
     const conn = getConnectionConfig();

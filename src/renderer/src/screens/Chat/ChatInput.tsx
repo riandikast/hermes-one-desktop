@@ -51,6 +51,7 @@ import {
   type MentionEntry,
 } from "./mention";
 import { searchFiles } from "./fileSearch";
+import { MentionModifiedTime } from "./MentionModifiedTime";
 import { ContextGauge, type ContextUsage } from "./ContextGauge";
 import { SendConfirmDialog } from "./SendConfirmDialog";
 import type { Attachment } from "../../../../shared/attachments";
@@ -1073,6 +1074,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                   <span className="chat-mention-tag-name">
                     {truncatePath(tag.name, 16, 40)}
                   </span>
+                  {!remoteMode && <MentionModifiedTime path={tag.path} />}
                   <button
                     type="button"
                     className="chat-mention-tag-remove"
@@ -1133,6 +1135,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                         <span className="mention-menu-name">
                           {basename(en.name)}
                         </span>
+                        {!remoteMode && <MentionModifiedTime path={en.path} />}
                         {en.path && (
                           <span className="mention-menu-path">
                             {truncatePath(en.name)}
