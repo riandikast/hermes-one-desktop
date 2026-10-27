@@ -324,6 +324,86 @@ describe("useDashboardChatTransport recovery", () => {
     });
   });
 
+  it.each(["interrupt", "missing-again", "provider-error", "manual-pick"])("bounds missing-runtime recovery: %s", async (scenario) => {
+    let reaped = false;
+    let releaseResume!: () => void;
+    const resumeGate = new Promise<void>((resolve) => { releaseResume = resolve; });
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      if (method === "session.create") return { session_id: "old", stored_session_id: "stored" };
+      if (method === "session.resume") {
+        if (scenario === "interrupt") await resumeGate;
+        return { session_id: "resumed", stored_session_id: "stored" };
+      }
+      if (method === "session.status") {
+        if (reaped && (params.session_id === "old" || scenario === "missing-again")) {
+          throw new Error(scenario === "provider-error" ? "provider unavailable" : "session not found");
+        }
+        return { output: "Model: bad-model (bad-provider)" };
+      }
+      return {};
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness active={false} api={api} />);
+    try {
+      await act(async () => { await api.send!("first"); });
+      act(() => api.abort!());
+      reaped = true;
+      if (scenario === "manual-pick") {
+        await act(async () => { await api.applyModelOverride!("bad-provider", "bad-model"); });
+      } else {
+        let sending!: Promise<boolean>;
+        await act(async () => { sending = api.send!("next"); });
+        if (scenario === "interrupt") {
+          await waitFor(() => expect(dashboardMock.request.mock.calls.some(([method]) => method === "session.resume")).toBe(true));
+          act(() => api.abort!());
+          releaseResume();
+        }
+        await act(async () => { await sending; });
+      }
+      expect(dashboardMock.request.mock.calls.filter(([method]) => method === "session.resume")).toHaveLength(scenario === "provider-error" ? 0 : 1);
+      expect(dashboardMock.request.mock.calls.filter(([method]) => method === "prompt.submit")).toHaveLength(1);
+    } finally { releaseResume(); view.unmount(); }
+  });
+
+  // @lat: [[model-selection#Missing runtime before model validation]]
+  it.each(["session.status", "model.options", "config.set"])("resumes once when %s loses the runtime after Stop", async (missingMethod) => {
+    let reaped = false;
+    let missing = false;
+    let liveModel = "bad-model";
+    dashboardMock.request.mockImplementation(async (method, params) => {
+      if (method === "session.create") return { session_id: "old", stored_session_id: "stored" };
+      if (method === "session.resume") return { session_id: "resumed", stored_session_id: "stored" };
+      if (reaped && params?.session_id === "old" && method === missingMethod) {
+        missing = true;
+        throw new Error("session not found");
+      }
+      if (method === "session.status") return { output: `Model: ${liveModel} (bad-provider)` };
+      if (method === "config.set") {
+        liveModel = params.value.split(" ")[0];
+        return { key: "model", scope: "session" };
+      }
+      return {};
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness active={false} api={api} />);
+    try {
+      await act(async () => { await api.send!("first"); });
+      act(() => api.abort!());
+      reaped = true;
+      await act(async () => { api.setModel!("next-model"); });
+      await act(async () => { await api.send!("next"); });
+      expect(missing).toBe(true);
+      expect(dashboardMock.request.mock.calls.filter(([method]) => method === "session.resume")).toEqual([
+        ["session.resume", { session_id: "stored", cols: 96 }],
+      ]);
+      expect(dashboardMock.request.mock.calls.filter(([method]) => method === "prompt.submit")).toEqual([
+        ["prompt.submit", { session_id: "old", text: "first" }],
+        ["prompt.submit", { session_id: "resumed", text: "next" }],
+      ]);
+      expect(dashboardMock.request.mock.calls.some(([method]) => method === "session.close")).toBe(false);
+    } finally { view.unmount(); }
+  });
+
 // @lat: [[model-selection#Fresh runtime readiness]]
 it("waits for fresh custom inventory before a NAMED custom provider's first send", async () => {
   // The reported fallback failure: a fresh subagent session, provider named

@@ -81,6 +81,12 @@ Fresh sessions return before agent construction; model selection waits for live 
 
 Installed session.create schedules construction after returning. Explicit-provider config.set can pin model_override without an agent; status then reports Model: (unknown) (unknown). Selection polls only placeholder live status up to 20 times at 250 ms. Inventory can stay absent permanently: there is no discovery delay or retry. Existing generation, epoch, and application ceiling guards remain active. Missing/contradictory status fails closed.
 
+## Missing runtime before model validation
+
+A detached runtime may be reaped after Stop while its stored conversation survives. Model validation resumes that conversation once instead of requiring another manual send.
+
+`ensureSelectedModel` catches only session-not-found from status, inventory, or the session setter, clears runtime caches, resumes the stored ID, then revalidates the model within the same bounded queue. Cancellation and newer selections prevent replay; provider failures remain visible. No prompt is submitted until validation succeeds. The transport regression covers all three pre-submit RPC failures without closing a healthy session or duplicating a prompt.
+
 ## Endpoint-bound fallback without inventory
 
 Stored fallback entries retain raw `custom` plus `baseUrl`; display labels such as cbai/deepseek-v4.1-flash do not identify a backend route.

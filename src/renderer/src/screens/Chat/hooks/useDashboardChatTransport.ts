@@ -3252,18 +3252,36 @@ export function useDashboardChatTransport({
       options: { cancelOnSendAbort?: boolean } = {},
     ): Promise<string> => {
       const epoch = modelSelectionEpochRef.current;
+      const sendGeneration = sendGenerationRef.current;
       let expired = false;
       const chained = modelApplicationRef.current
         .catch(() => undefined)
-        .then(() => {
+        .then(async () => {
           // A newer explicit selection is already queued behind us: let it own
           // the outcome instead of applying an outdated model first.
           if (epoch !== modelSelectionEpochRef.current) return sessionId;
-          return applySelectedModel(client, sessionId, {
+          const applyOptions = {
             cancelOnSendAbort: options.cancelOnSendAbort ?? true,
             epoch,
             expired: () => expired,
-          });
+          };
+          try {
+            return await applySelectedModel(client, sessionId, applyOptions);
+          } catch (error) {
+            // A detached runtime can disappear before status/config validation,
+            // not only at prompt.submit. Resume once without replaying a prompt.
+            if (!isDashboardSessionNotFoundError(error) || expired ||
+                epoch !== modelSelectionEpochRef.current ||
+                (applyOptions.cancelOnSendAbort && sendGeneration !== sendGenerationRef.current)) throw error;
+            if (runtimeSessionIdRef.current === sessionId) runtimeSessionIdRef.current = null;
+            appliedModelRef.current = null;
+            modelOptionsCacheRef.current = null;
+            lastSyncedCwdRef.current = null;
+            const resumedId = await ensureRuntimeSession(client);
+            if (expired || epoch !== modelSelectionEpochRef.current ||
+                (applyOptions.cancelOnSendAbort && sendGeneration !== sendGenerationRef.current)) throw error;
+            return applySelectedModel(client, resumedId, applyOptions);
+          }
         });
       // Bound the application, including optional confirmation. Late continuations
       // are invalidated before the queue advances.
@@ -3283,7 +3301,7 @@ export function useDashboardChatTransport({
       modelApplicationRef.current = application.catch(() => undefined);
       return application;
     },
-    [applySelectedModel, closeModelControlClients],
+    [applySelectedModel, closeModelControlClients, ensureRuntimeSession],
   );
 
   const syncDashboardAttachments = useCallback(
