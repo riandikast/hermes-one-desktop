@@ -1,6 +1,6 @@
 import { app, ipcMain, type BrowserWindow } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import type { AppUpdater } from "electron-updater";
+import { autoUpdater, type AppUpdater } from "electron-updater";
 import { dirname, join } from "path";
 import { updaterLogger } from "../updater-log";
 import { setupDesktopReleases } from "./desktop-releases";
@@ -79,11 +79,6 @@ export function setupUpdater({ getMainWindow }: UpdaterDeps): void {
     return;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { autoUpdater } = require("electron-updater") as {
-    autoUpdater: AppUpdater;
-  };
-
   autoUpdaterInstance = autoUpdater;
   autoUpdater.logger = updaterLogger;
   autoUpdater.autoDownload = getAutoUpgradeEnabled();
@@ -108,15 +103,13 @@ export function setupUpdater({ getMainWindow }: UpdaterDeps): void {
     getMainWindow()?.webContents.send("update-error", err.message);
   });
 
-  const checkNormal = async () => {
+  const checkNormal = async (): Promise<string | null> => {
     if (manual.active() || normalBusy) return null;
     normalBusy = true;
     try {
       const result = await autoUpdater.checkForUpdates();
       if (result?.downloadPromise) await result.downloadPromise;
-      return result?.updateInfo?.version || null;
-    } catch {
-      return null;
+      return result?.isUpdateAvailable ? result.updateInfo.version : null;
     } finally {
       normalBusy = false;
     }
@@ -145,6 +138,6 @@ export function setupUpdater({ getMainWindow }: UpdaterDeps): void {
   });
 
   setTimeout(() => {
-    void checkNormal();
+    void checkNormal().catch((error: unknown) => updaterLogger.error(error));
   }, 5000);
 }

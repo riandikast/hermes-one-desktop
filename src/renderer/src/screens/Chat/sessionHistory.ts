@@ -315,7 +315,7 @@ function buildDbAssistantSplitSequences(
   };
 
   for (const m of items) {
-    if (!("kind" in m)) {
+    if (isBubbleMessage(m)) {
       const bubble = m as ChatBubbleMessage;
       if (bubble.role === "user") {
         flush();
@@ -375,7 +375,7 @@ function isCoveredByDbBubbleSplit(
 }
 
 function reconciliationKey(m: ChatMessage): string | null {
-  if ("kind" in m) {
+  if (!isBubbleMessage(m)) {
     switch (m.kind) {
       case "reasoning":
         return `reasoning:${normalizeWhitespace(m.text || "").slice(0, 200)}`;
@@ -431,7 +431,7 @@ function mergeDbMetadataIntoStreamed(
   db: ChatMessage,
 ): ChatMessage {
   // Only bubble messages carry mergeable metadata.
-  if ("kind" in streamed) return streamed;
+  if (!isBubbleMessage(streamed)) return streamed;
   const s = streamed as ChatBubbleMessage;
   const d = db as ChatBubbleMessage;
   // The canonical DB row carries the recorded timestamp the live stream
@@ -465,7 +465,7 @@ function seedSeenBubbleKeys(
   items: ReadonlyArray<ChatMessage>,
 ): void {
   for (const m of items) {
-    if (!("kind" in m)) {
+    if (isBubbleMessage(m)) {
       seen.add(bubbleContentKey(m as ChatBubbleMessage));
     }
   }
@@ -1282,7 +1282,7 @@ export function reconcileStreamedWithDb(
     if (consumedIds.has(m.id)) return false;
     if (consumeCanonicalToolMatch(canonicalToolMatchCounts, m)) return false;
     // Only bubble messages (user/agent content) need dedup and split checks.
-    if (!("kind" in m)) {
+    if (isBubbleMessage(m)) {
       const bubble = m as ChatBubbleMessage;
       const contentKey = bubbleContentKey(bubble);
       if (seenBubbleKeys.has(contentKey)) return false;
