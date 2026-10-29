@@ -224,7 +224,14 @@ describe("file change history dialog", () => {
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
   });
   // @lat: [[file-changes#Copy current file content]]
-  it.each(["\ufeff  unchanged\r\n\tcurrent content\n\n", ""])("copies the entire current file verbatim, including empty files (%j)", async (content) => {
+  it.each([
+    ["  unchanged\r\n\tcurrent content\n\n", "  unchanged\r\n\tcurrent content\n\n"],
+    ["\ufeff  content\r\n\n", "  content\r\n\n"],
+    ["\ufeff\ufeff\ufeff<?php\r\n", "<?php\r\n"],
+    ["\ufeff\ufeff", ""],
+    ["embedded\ufeffcontent\n", "embedded\ufeffcontent\n"],
+    ["", ""],
+  ])("copies full content without leading BOM characters (%j)", async (content, expected) => {
     let finishRead!: (value: { content: string; truncated: boolean }) => void;
     const readFile = vi.fn(() => new Promise<{ content: string; truncated: boolean }>((resolve) => { finishRead = resolve; }));
     const copyToClipboard = vi.fn().mockResolvedValue(undefined);
@@ -240,7 +247,7 @@ describe("file change history dialog", () => {
     expect(copyToClipboard).not.toHaveBeenCalled();
     finishRead({ content, truncated: false });
     await screen.findByText("File content copied.");
-    expect(copyToClipboard).toHaveBeenCalledExactlyOnceWith(content);
+    expect(copyToClipboard).toHaveBeenCalledExactlyOnceWith(expected);
     expect(button).not.toBeDisabled();
   });
   it.each([

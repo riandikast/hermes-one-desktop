@@ -70,7 +70,7 @@ export function FileChangeHistoryDialog({
       } else if (/[\u0000-\u0008\u000e-\u001f\ufffd]/.test(result.content)) {
         setActionStatus(t("chat.fileChangeHistory.contentBinary"));
       } else {
-        await window.hermesAPI.copyToClipboard(result.content);
+        await window.hermesAPI.copyToClipboard(result.content.replace(/^\uFEFF+/, ""));
         setActionStatus(t("chat.fileChangeHistory.contentCopied"));
       }
     } catch {

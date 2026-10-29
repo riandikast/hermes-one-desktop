@@ -40,8 +40,8 @@ Each expanded history prompt offers a separate collapsed model-answer disclosure
 
 ## Copy current file content
 
-The history dialog's Copy content action reads the entire current local file, not its stored diff, and preserves whitespace, newlines, and empty files when copying to the clipboard.
+The history dialog's Copy content action reads the entire current local file, not its stored diff. It strips leading U+FEFF BOM characters from clipboard text while preserving whitespace, newlines, embedded U+FEFF and empty files.
 
 [[src/renderer/src/screens/Chat/FileChangeHistoryDialog.tsx#FileChangeHistoryDialog]] resolves relative paths against the session working folder and requests an uncapped `readFile` using `Number.MAX_SAFE_INTEGER`. Pending copies disable content buttons and report progress through the existing status region. Missing/unreadable files, truncated reads, binary controls or replacement characters, and clipboard errors report explicit feedback without a diff fallback. Remote/SSH mode reports unavailable because the existing `read-file` IPC only reads local files; it never falls back to a matching local path. The button reuses themed 44px history actions beside Copy path; narrow layouts retain three action columns.
 
-[[src/renderer/src/screens/Chat/FileChangeHistoryDialog.test.tsx]] exercises the actual button with deterministic whole-file/empty fixtures, pending feedback, path resolution, read/clipboard errors, truncation, binary data, and remote refusal.
+[[src/renderer/src/screens/Chat/FileChangeHistoryDialog.test.tsx]] exercises the actual button with deterministic whole-file/empty fixtures, single/repeated leading BOM removal, embedded U+FEFF preservation, pending feedback, path resolution, read/clipboard errors, truncation, binary data, and remote refusal.
