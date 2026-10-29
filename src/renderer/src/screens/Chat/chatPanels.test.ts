@@ -49,6 +49,20 @@ describe("file explorer icon visibility", () => {
   });
 });
 
+describe("composer Source Control shortcut", () => {
+  it("sits between the folder picker and BUILD toggle and uses the live base folder", () => {
+    const folder = chatSource.indexOf("<ContextFolderChip");
+    const shortcut = chatSource.indexOf("<SourceControlShortcut");
+    const build = chatSource.indexOf("onClick={togglePlanMode}", shortcut);
+    expect(folder).toBeGreaterThan(-1);
+    expect(shortcut).toBeGreaterThan(folder);
+    expect(build).toBeGreaterThan(shortcut);
+    const control = chatSource.slice(shortcut, build);
+    expect(control).toContain('connectionMode === "local"');
+    expect(control).toContain("baseFolder={contextFolders[0]}");
+  });
+});
+
 describe("web preview icon", () => {
   it("is rendered in the floating rail with a dialog toggle", () => {
     const block = railButton("Web preview");

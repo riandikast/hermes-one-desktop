@@ -186,7 +186,7 @@ function TreeItem({
       </div>
       {entry.isDirectory && isExpanded && (
         <div className="worktree-children">
-          {isLoading ? (
+          {isLoading && children === null ? (
             <div
               className="worktree-loading"
               style={{ paddingLeft: paddingLeft + 12 }}
@@ -201,21 +201,77 @@ function TreeItem({
               {t("chat.worktree.emptyFolder")}
             </div>
           ) : (
-            children.map((child) => (
-              <TreeItem
-                key={`${fullPath}/${child.name}`}
-                entry={child}
-                parentPath={fullPath}
-                depth={depth + 1}
-                onFileClick={onFileClick}
-                onRowContextMenu={onRowContextMenu}
-                refreshVersion={refreshVersion}
-              />
-            ))
+            <TreeEntries
+              entries={children}
+              parentPath={fullPath}
+              depth={depth + 1}
+              onFileClick={onFileClick}
+              onRowContextMenu={onRowContextMenu}
+              refreshVersion={refreshVersion}
+            />
           )}
         </div>
       )}
     </div>
+  );
+}
+
+// ponytail: 100 rows per directory keep rendering bounded; use tree virtualization if continuous scrolling is required.
+const TREE_PAGE_SIZE = 100;
+
+function TreeEntries({
+  entries,
+  parentPath,
+  depth,
+  selectedPath,
+  onFileClick,
+  onRowContextMenu,
+  refreshVersion,
+}: Omit<TreeItemProps, "entry"> & { entries: FileEntry[] }): React.JSX.Element {
+  const { t } = useI18n();
+  const selectedIndex = selectedPath ? entries.findIndex((entry) => {
+    const path = `${parentPath.replace(/[\\/]+$/, "")}/${entry.name}`;
+    return /^[A-Za-z]:|^\/\//.test(path)
+      ? path.toLowerCase() === selectedPath.toLowerCase()
+      : path === selectedPath;
+  }) : -1;
+  const [page, setPage] = useState(() => Math.max(0, Math.floor(selectedIndex / TREE_PAGE_SIZE)));
+  useEffect(() => {
+    if (selectedIndex >= 0) setPage(Math.floor(selectedIndex / TREE_PAGE_SIZE));
+  }, [selectedIndex, selectedPath]);
+
+  const lastPage = Math.max(0, Math.ceil(entries.length / TREE_PAGE_SIZE) - 1);
+  const currentPage = Math.min(page, lastPage);
+  const start = currentPage * TREE_PAGE_SIZE;
+
+  return (
+    <>
+      {entries.slice(start, start + TREE_PAGE_SIZE).map((entry) => (
+        <TreeItem
+          key={`${parentPath}/${entry.name}`}
+          entry={entry}
+          parentPath={parentPath}
+          depth={depth}
+          selectedPath={selectedPath}
+          onFileClick={onFileClick}
+          onRowContextMenu={onRowContextMenu}
+          refreshVersion={refreshVersion}
+        />
+      ))}
+      {lastPage > 0 && (
+        <div className="worktree-pagination" style={{ paddingLeft: 8 + depth * 12 }}>
+          <button type="button" className="btn-ghost" aria-label={t("chat.worktree.previousPage")}
+            disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>
+            {t("chat.worktree.previous")}
+          </button>
+          <span>{t("chat.worktree.pageRange", { start: start + 1, end: Math.min(start + TREE_PAGE_SIZE, entries.length), total: entries.length })}</span>
+          <button type="button" className="btn-ghost" aria-label={t("chat.worktree.nextPage")}
+            disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}>
+            {t("chat.worktree.next")}
+          </button>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -333,17 +389,14 @@ function SearchResultRow({
               {t("chat.worktree.emptyFolder")}
             </div>
           ) : (
-            children.map((child) => (
-              <TreeItem
-                key={`${entry.path}/${child.name}`}
-                entry={child}
-                parentPath={entry.path}
-                depth={1}
-                onFileClick={onFileClick}
-                onRowContextMenu={onRowContextMenu}
-                refreshVersion={refreshVersion}
-              />
-            ))
+            <TreeEntries
+              entries={children}
+              parentPath={entry.path}
+              depth={1}
+              onFileClick={onFileClick}
+              onRowContextMenu={onRowContextMenu}
+              refreshVersion={refreshVersion}
+            />
           )}
         </div>
       )}
@@ -370,12 +423,12 @@ function RootSection({
     let cancelled = false;
     setIsLoading(true);
     setError(null);
-    setEntries(null);
 
     const loadRoot = async (): Promise<void> => {
       const result = await window.hermesAPI.readDirectory(folderPath).catch(() => null);
       if (cancelled) return;
       if (result === null) {
+        setEntries(null);
         setError(t("chat.worktree.errorLoading"));
       } else {
         // Sort: directories first, then files, both alphabetically
@@ -436,7 +489,7 @@ function RootSection({
       }) && <div className="worktree-error" role="status">{t("chat.worktree.errorLoading")}: {selectedPath}</div>}
       {isExpanded && (
         <div className="worktree-children">
-          {isLoading ? (
+          {isLoading && entries === null ? (
             <div className="worktree-loading">
               {t("chat.worktree.loading")}...
             </div>
@@ -445,18 +498,15 @@ function RootSection({
           ) : entries === null || entries.length === 0 ? (
             <div className="worktree-empty">{t("chat.worktree.empty")}</div>
           ) : (
-            entries.map((entry) => (
-              <TreeItem
-                key={`${folderPath}/${entry.name}`}
-                entry={entry}
-                parentPath={folderPath}
-                selectedPath={selectedPath}
-                depth={0}
-                onFileClick={onFileClick}
-                onRowContextMenu={onRowContextMenu}
-                refreshVersion={refreshVersion}
-              />
-            ))
+            <TreeEntries
+              entries={entries}
+              parentPath={folderPath}
+              selectedPath={selectedPath}
+              depth={0}
+              onFileClick={onFileClick}
+              onRowContextMenu={onRowContextMenu}
+              refreshVersion={refreshVersion}
+            />
           )}
         </div>
       )}

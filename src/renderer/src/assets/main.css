@@ -6023,6 +6023,42 @@ body:has(.shell-vibrant),
   padding: 8px 14px;
 }
 
+.worktree-pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.worktree-pagination button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.worktree-pagination button:focus-visible,
+.chat-source-control:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+.chat-source-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.chat-source-control:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* File viewer modal */
 /* File editor — rendered full-content-area in the "file" pane of the app
    layout (Layout.tsx). Tabs live in the top strip (ActiveSessionsBar) as

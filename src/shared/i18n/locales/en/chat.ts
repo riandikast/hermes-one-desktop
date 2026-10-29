@@ -1,5 +1,5 @@
 export default {
-  sourceControl: { stageAll: "Stage all changes" },
+  sourceControl: { stageAll: "Stage all changes", title: "Source Control", chooseFolder: "Select a base folder to open Source Control", remoteUnavailable: "Source Control is only available for local folders" },
   logs: {
     title: "Logs",
     description: "System diagnostics and provider request logs",
@@ -265,6 +265,11 @@ export default {
     loading: "Loading",
     empty: "Folder is empty",
     emptyFolder: "Empty folder",
+    previous: "Previous",
+    next: "Next",
+    previousPage: "Previous page",
+    nextPage: "Next page",
+    pageRange: "{{start}}–{{end}} of {{total}}",
     errorLoading: "Failed to load folder contents",
     closeFile: "Close",
     closeAllFiles: "Close all files",

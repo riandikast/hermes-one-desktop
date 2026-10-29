@@ -48,6 +48,7 @@ import type { MessageListModel } from "./MessageList";
 
 import { FileChangesDialog } from "./FileChangesDialog";
 import { FileChangeHistoryDialog } from "./FileChangeHistoryDialog";
+import { SourceControlShortcut } from "./SourceControlShortcut";
 import { ChatLogsDialog } from "./ChatLogsDialog";
 
 import { ModelPicker } from "./ModelPicker";
@@ -3026,6 +3027,11 @@ function Chat({
                     onSetBaseFolder={handleSetBaseFolder}
                     onToggleKnowledgeBundle={handleToggleKnowledgeBundle}
                     onSelectRecentFolder={handleSelectRecentFolder}
+                  />
+
+                  <SourceControlShortcut
+                    baseFolder={contextFolders[0]}
+                    available={active && connectionModeLoaded && connectionMode === "local"}
                   />
 
                   <button

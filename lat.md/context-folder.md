@@ -26,6 +26,18 @@ The context-folder tree panel uses a compact header and can be resized from its 
 
 [[src/renderer/src/screens/Chat/WorktreePanel.tsx#WorktreePanel]] stores its width in `localStorage` under `hermes:worktreePanelWidth`, clamps it between a usable minimum and the available chat width, and updates it through a pointer-drag handle styled by `.worktree-resize-handle`.
 
+## Large explorer directories
+
+The file explorer paginates each large directory to keep rendered tree rows bounded while retaining access to every entry.
+
+[[src/renderer/src/screens/Chat/WorktreePanel.tsx#WorktreePanel]] shows at most 100 immediate children per directory, with previous and next controls for root folders, nested folders and expanded search results. When file history requests a selected child, the explorer opens its page automatically. Live refresh preserves expanded folders and the current page. Directory enumeration and sorting still handle the complete listing.
+
+## Composer source control shortcut
+
+The composer provides a Source Control shortcut immediately after the folder picker, targeting the selected base folder.
+
+[[src/renderer/src/screens/Chat/Chat.tsx#Chat]] passes the first context folder to [[src/renderer/src/screens/Chat/SourceControlShortcut.tsx#SourceControlShortcut]], which opens [[src/renderer/src/screens/Chat/SourceControlDialog.tsx#SourceControlDialog]]. The control is disabled without a base folder or for remote connections because the existing Git IPC executes on the local machine.
+
 ## Folder index in the system prompt
 
 Session creation seeds a bounded folder index so the model can discover attached workspace files.

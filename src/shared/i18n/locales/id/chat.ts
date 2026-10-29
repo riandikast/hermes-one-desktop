@@ -1,4 +1,5 @@
 export default {
+  sourceControl: { title: "Kontrol Sumber", chooseFolder: "Pilih folder utama untuk membuka Kontrol Sumber", remoteUnavailable: "Kontrol Sumber hanya tersedia untuk folder lokal" },
   logs: {
     title: "Log",
     description: "Diagnostik sistem dan log permintaan provider",
@@ -119,6 +120,11 @@ export default {
     loading: "Memuat",
     empty: "Folder kosong",
     emptyFolder: "Folder kosong",
+    previous: "Sebelumnya",
+    next: "Berikutnya",
+    previousPage: "Halaman sebelumnya",
+    nextPage: "Halaman berikutnya",
+    pageRange: "{{start}}–{{end}} dari {{total}}",
     errorLoading: "Gagal memuat konten folder",
     openTerminal: "Buka terminal di sini",
     openTerminalFailed: "Tidak dapat membuka terminal untuk folder ini.",
