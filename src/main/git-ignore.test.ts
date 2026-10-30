@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, it } from "vitest";
-import { mkdtemp, rm, writeFile, readFile, mkdir } from "fs/promises";
+import { mkdtemp, rm, writeFile, readFile, mkdir, utimes } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { execFileSync } from "child_process";
@@ -50,6 +50,8 @@ it("searches beyond the first 100 collapsed paths while bounding the response", 
   const initial = await gitIgnoreList(repo);
   expect(initial.files).toHaveLength(100);
   expect(initial.hasMore).toBe(true);
+  await utimes(join(repo, "item-109.cache"), new Date("2099-01-01T00:00:00Z"), new Date("2099-01-01T00:00:00Z"));
+  expect((await gitIgnoreList(repo, 0, "", "date")).files[0]).toBe("item-109.cache");
   const found = await gitIgnoreList(repo, 0, "ITEM-109");
   expect(found.files).toEqual(["item-109.cache"]);
   expect(found.hasMore).toBe(false);
@@ -70,6 +72,19 @@ it("unignores literal root paths without deleting files and refuses external sou
   expect(failed.ok).toBe(false);
   expect(failed.error).toContain("at their source");
   expect((await gitIgnoreList(repo)).version).toBe(current.version);
+});
+it("date-sorts even when .gitignore itself is ignored", async () => {
+  await writeFile(join(repo, ".gitignore"), "*\n");
+  expect((await gitIgnoreList(repo, 0, "", "date")).ok).toBe(true);
+});
+it("sorts ignored paths by name or newest modification before truncating", async () => {
+  await writeFile(join(repo, ".gitignore"), "*.cache\n");
+  for (const path of ["a.cache", "z.cache"]) await writeFile(join(repo, path), "keep");
+  await utimes(join(repo, "a.cache"), 1000, 1000);
+  await utimes(join(repo, "z.cache"), 2000, 2000);
+  expect((await gitIgnoreList(repo, 0, "", "name")).files).toEqual(["a.cache", "z.cache"]);
+  expect((await gitIgnoreList(repo, 0, "", "date")).files).toEqual(["z.cache", "a.cache"]);
+  expect((await gitIgnoreList(repo, 0, "a.", "date")).files).toEqual(["a.cache"]);
 });
 it("adds a multi-selection in one write and skips duplicates", async () => {
   await writeFile(join(repo, ".gitignore"), "*.cache\n");

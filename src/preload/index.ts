@@ -1786,11 +1786,13 @@ const hermesAPI = {
     ipcRenderer.invoke("open-file-in-editor", filePath),
   openTerminal: (dirPath: string): Promise<boolean> =>
     ipcRenderer.invoke("open-terminal", dirPath),
-  gitIgnoreList: (dir: string, offset = 0, query = "") => ipcRenderer.invoke("git-ignore-list", dir, offset, query),
+  gitIgnoreList: (dir: string, offset = 0, query = "", sort: "name" | "date" = "name") => ipcRenderer.invoke("git-ignore-list", dir, offset, query, sort),
   gitIgnoreUnignore: (dir: string, path: string, version: string) => ipcRenderer.invoke("git-ignore-unignore", dir, path, version),
   gitIgnoreAdd: (dir: string, path: string) => ipcRenderer.invoke("git-ignore-add", dir, path),
   gitIgnoreAddMany: (dir: string, paths: string[]) => ipcRenderer.invoke("git-ignore-add-many", dir, paths),
   gitIgnoreRemove: (dir: string, line: number, pattern: string, version: string) => ipcRenderer.invoke("git-ignore-remove", dir, line, pattern, version),
+  gitBranches: (dir: string) => ipcRenderer.invoke("git-branches", dir),
+  gitBranchChange: (dir: string, action: import("../shared/git-branches").GitBranchAction, name: string, current: string | null) => ipcRenderer.invoke("git-branch-change", dir, action, name, current),
   gitRepoStatus: (dir: string) => ipcRenderer.invoke("git-repo-status", dir),
   gitLog: (dir: string, opts?: { max?: number; from?: string; to?: string }) =>
     ipcRenderer.invoke("git-log", dir, opts),

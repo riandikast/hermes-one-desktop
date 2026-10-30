@@ -147,7 +147,7 @@ describe("SourceControlDialog", () => {
     const onClose = vi.fn();
     openSettings.mockClear();
     renderDialog("/repo", onClose);
-    const credentials = await screen.findByRole("button", { name: "Manage GitHub credentials" });
+    const credentials = await screen.findByRole("button", { name: "Manage GitHub Credentials" });
     expect(credentials.closest(".source-control-header-actions")).not.toBeNull();
     fireEvent.click(credentials);
     expect(onClose).toHaveBeenCalledOnce();
@@ -215,6 +215,27 @@ describe("SourceControlDialog", () => {
     } finally {
       Object.defineProperty(window, "innerHeight", { configurable: true, value: originalHeight });
     }
+  });
+  it("opens the branch manager from the badge and Escape keeps source control open", async () => {
+    Object.assign(window.hermesAPI, { gitBranches: vi.fn().mockResolvedValue({ ok: true, current: "main", branches: [{ name: "main", current: true, checkedOut: true }] }) });
+    const onClose = vi.fn();
+    renderDialog("/repo", onClose);
+    fireEvent.click(await screen.findByRole("button", { name: "Manage local branches" }));
+    expect(await screen.findByRole("dialog", { name: "Local branches" })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+  it("closes Git output and shows it again after another result", async () => {
+    vi.mocked(window.hermesAPI.gitFetch).mockResolvedValue({ ok: true, output: "Fetched refs" });
+    renderDialog("/repo");
+    const fetch = await screen.findByRole("button", { name: /fetch/i });
+    fireEvent.click(fetch);
+    await screen.findByText("Fetched refs");
+    fireEvent.click(screen.getByRole("button", { name: "Close Git output" }));
+    expect(screen.queryByRole("region", { name: "Git output" })).toBeNull();
+    await waitFor(() => expect(fetch).not.toBeDisabled());
+    fireEvent.click(fetch);
+    expect(await screen.findByText("Fetched refs")).toBeTruthy();
   });
   it("drags the output divider within bounds and stops on cancellation", async () => {
     vi.mocked(window.hermesAPI.gitFetch).mockResolvedValue({ ok: true, output: "Fetched refs" });

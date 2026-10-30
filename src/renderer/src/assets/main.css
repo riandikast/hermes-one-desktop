@@ -23580,6 +23580,37 @@ body:has(.shell-vibrant),
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11.5px;
 }
+.source-control-branch { cursor: pointer; font-family: inherit; }
+.source-control-branch:hover:not(:disabled) { border-color: var(--accent); }
+.source-control-branch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.source-control-branches-overlay { z-index: 1300 !important; }
+.source-control-branches {
+  z-index: 1301 !important;
+  width: min(760px, calc(100vw - 32px));
+  height: fit-content;
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+.source-control-branches-header, .source-control-branch-row, .source-control-branch-create {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.source-control-branches-header { justify-content: space-between; }
+.source-control-branches-header h2 { margin: 0; font-size: 17px; }
+.source-control-branches p { color: var(--text-secondary); font-size: 13px; }
+.source-control-branch-create { flex-wrap: wrap; padding: 12px 0; }
+.source-control-branch-create input { flex: 1; min-width: 120px; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 5px; padding: 6px 8px; }
+.source-control-branch-list { max-height: 45vh; overflow: auto; }
+.source-control-branch-row { padding: 6px 0; flex-wrap: wrap; border-top: 1px solid var(--border); }
+.source-control-branch-row > span { flex: 1; min-width: 100px; overflow-wrap: anywhere; }
+.source-control-branches :is(input, button):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .source-control-branch-track {
   color: var(--text-secondary);
 }

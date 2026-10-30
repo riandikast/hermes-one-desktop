@@ -58,7 +58,9 @@ import {
   saveMedia,
   mediaFileExists,
 } from "../media";
-import { gitIgnoreList, gitIgnoreEdit, gitIgnoreAddMany } from "../git-ignore";
+import { gitIgnoreEdit, gitIgnoreList, gitIgnoreAddMany } from "../git-ignore";
+import { gitBranches, gitBranchChange } from "../git-branches";
+import type { GitBranchAction } from "../../shared/git-branches";
 import { openTerminalInDirectory } from "../terminal-launcher";
 import { getTerminalPreference, setTerminalPreference } from "../terminal-preference";
 import { exportCommand } from "../command-export";
@@ -3650,11 +3652,13 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("git-remote-host", async (_event, dir: string) =>
     gitRemoteHost(dir),
   );
-  ipcMain.handle("git-ignore-list", (_event, dir: string, offset: number, query?: string) => gitIgnoreList(dir, offset, query));
+  ipcMain.handle("git-ignore-list", (_event, dir: string, offset: number, query?: string, sort?: "name" | "date") => gitIgnoreList(dir, offset, query, sort));
   ipcMain.handle("git-ignore-unignore", (_event, dir: string, path: string, version: string) => gitIgnoreEdit(dir, { unignore: path, version }));
   ipcMain.handle("git-ignore-add", (_event, dir: string, path: string) => gitIgnoreEdit(dir, { path }));
   ipcMain.handle("git-ignore-add-many", (_event, dir: string, paths: string[]) => gitIgnoreAddMany(dir, paths));
   ipcMain.handle("git-ignore-remove", (_event, dir: string, line: number, pattern: string, version: string) => gitIgnoreEdit(dir, { line, pattern, version }));
+  ipcMain.handle("git-branches", (_event, dir: string) => gitBranches(dir));
+  ipcMain.handle("git-branch-change", (_event, dir: string, action: GitBranchAction, name: string, current: string | null) => gitBranchChange(dir, action, name, current));
   ipcMain.handle("git-repo-status", async (_event, dir: string) =>
     gitRepoStatus(dir),
   );

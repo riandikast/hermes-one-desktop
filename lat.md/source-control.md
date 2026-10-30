@@ -32,7 +32,7 @@ Stage all changes appears only in the Changes parent heading context menu (right
 
 The compact sidebar places commit controls first, collapsible change groups next, then lazy Ignored rules and paths. Local history lives only in the Graph tab.
 
-Ignored subsection headings use a 44px left margin; rule, empty labels, and ignored-path rows use 44px. Ignored loading animation renders below search tools. Rules and paths support Shift-range selection; unignore adds a literal root exception without deleting files. File status codes provide hover tooltips with secondary text coloring, and action buttons keep eye-ignore before stage controls.
+Ignored subsection headings use a 44px left margin; rule, empty labels, and ignored-path rows use 44px. Ignored loading animation renders below search tools. An icon-only toggle sorts by name or newest filesystem modification before the 100-path cap; metadata reads use batches of 32 and never recurse into ignored directories. Rules have no per-line timestamps, so date mode shows reverse rule-file order. Sorting resets range anchors; Shift selection follows displayed order. Rules and paths support Shift-range selection; unignore adds a literal root exception without deleting files. File status codes provide hover tooltips with secondary text coloring, and action buttons keep eye-ignore before stage controls.
 
 [[src/main/git-ignore.ts#gitIgnoreEdit]] edits only root .gitignore after explicit clicks, escapes literal anchored paths, rejects traversal and tracked paths, preserves line endings, and removes a selected rule only against its content version. No files are deleted or untracked. Existing broad rules require confirmation; nested, global and info/exclude rules are not edited. [[src/renderer/src/screens/Chat/IgnoredFiles.tsx#IgnoredFiles]] separates root rules from ignored paths, paging 100 paths with ignored directories collapsed. Git status has a 10-second timeout and shared Git output has an 8 MiB ceiling; pagination bounds returned paths, not the underlying status walk. Fixtures: [[src/main/git-ignore.test.ts]].
 
@@ -46,9 +46,17 @@ Per-file discard confirms before restoring tracked regular files without staged 
 
 Discard appears only in an eligible file's context menu (right-click, ContextMenu, Shift+F10), never inline. Cancellation performs no write; Escape restores file focus. Ignored uses the shared disclosure chevrons, indented rows, and named icon-only rule removal. Pull is text-only; the branch badge uses accent contrast. Graph loading hides the empty state, and text rows reserve the SVG lane gutter with an outer margin. Regression: [[src/renderer/src/screens/Chat/SourceControlDialog.test.tsx]].
 
+## Local branch manager
+
+The branch badge opens a local-only manager for checkout, create, merge into the current branch, and safe deletion. Each mutation confirms its direction and scope before running Git.
+
+[[src/renderer/src/screens/Chat/BranchDialog.tsx#BranchDialog]] uses the shared focus-trapped modal above Source Control. [[src/main/git-branches.ts#gitBranches]] lists local refs and linked-worktree ownership. [[src/main/git-branches.ts#gitBranchChange]] validates ref names and expected current branch, blocks unfinished Git operations, requires a clean worktree for checkout/merge, protects ignored files from overwrite, and refuses deletion unless merged into current HEAD and not checked out anywhere. Creation starts at HEAD without switching. No force flags, remote deletion or push. Conflicts remain visible for existing resolution tools; branch/status/history refresh follows every result. Real Git regressions: [[src/main/git-branches.test.ts]]; UI confirmations and locking: [[src/renderer/src/screens/Chat/BranchDialog.test.tsx]].
+
 ## Git output
 
 Git results appear in a themed, scrollable output panel with a draggable divider, keyboard-accessible separator, 14px monospace text, and live status or error announcements.
+
+Its icon-only close control clears visible output/error without cancelling Git; the next result shows the panel again.
 
 Pointer drag and separator ArrowUp/ArrowDown (10px), Home/End keys share a 40vh/400px maximum, with an 80px minimum; shrinking the viewport clamps the selected height. Regression: [[src/renderer/src/screens/Chat/SourceControlDialog.test.tsx]].
 

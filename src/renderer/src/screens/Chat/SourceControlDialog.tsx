@@ -18,6 +18,7 @@ import { useSettingsModal } from "../../components/settings/SettingsModalContext
 import { DiffViewer } from "./DiffViewer";
 import { CommitGraph } from "./CommitGraph";
 import { IgnoredFiles } from "./IgnoredFiles";
+import { BranchDialog } from "./BranchDialog";
 import type { GraphCommit } from "./gitGraph";
 
 interface GitFileEntry {
@@ -309,11 +310,12 @@ export function SourceControlDialog({
 }): React.JSX.Element {
   const { t } = useI18n();
   const { openSettings } = useSettingsModal();
+  const [branchesOpen, setBranchesOpen] = useState(false);
   useEffect(() => {
-    const close = (event: KeyboardEvent): void => { if (event.key === "Escape") onClose(); };
+    const close = (event: KeyboardEvent): void => { if (event.key === "Escape" && !branchesOpen) onClose(); };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
-  }, [onClose]);
+  }, [onClose, branchesOpen]);
   const [status, setStatus] = useState<GitStatusResult | null>(null);
   const [busy, setBusy] = useState(false);
   const actionInFlight = useRef(false);
@@ -688,7 +690,7 @@ export function SourceControlDialog({
           <span className="file-changes-title">
             Source Control — {repoName}
           </span>
-          <span className="source-control-branch" title={dir}>
+          <button type="button" className="source-control-branch" title="Manage local branches" aria-label="Manage local branches" disabled={busy} onClick={() => setBranchesOpen(true)}>
             <GitBranch size={13} />
             {status.branch ?? "(detached)"}
             {status.upstream && (
@@ -698,7 +700,7 @@ export function SourceControlDialog({
 
               </span>
             )}
-          </span>
+          </button>
           <div className="source-control-header-actions">
             {remoteHost?.toLowerCase() === "github.com" && (
               <button type="button" className="btn-ghost btn-sm" onClick={() => { onClose(); openSettings("github"); }}>
@@ -1046,6 +1048,13 @@ export function SourceControlDialog({
             </button>
           </div>
         )}
+        {branchesOpen && <BranchDialog dir={dir} onClose={() => setBranchesOpen(false)} onChanged={async (result) => {
+          setOutput(result.ok ? result.output ?? "Branch updated" : "");
+          setError(result.ok ? "" : result.error ?? "Branch operation failed");
+          setSelected(null); setDiff(""); setSelectedCommit(null); setCommitDiff("");
+          await refresh();
+          if (graphLoadedRef.current) await loadGraph();
+        }} />}
         {(output || error) && (
           <section className="source-control-output-panel" aria-label="Git output">
             <div
@@ -1079,7 +1088,7 @@ export function SourceControlDialog({
             />
             <div className="source-control-output-header">
               <span>Output</span>
-
+              <button type="button" className="btn-ghost btn-sm" aria-label="Close Git output" title="Close output" onClick={() => { setOutput(""); setError(""); outputDrag.current = null; }}><X size={14} aria-hidden="true" /></button>
             </div>
             <div className={`source-control-output${error ? " error" : ""}`} style={{ height: outputHeight }} tabIndex={0} role={error ? "alert" : "status"}>
               {error || output}

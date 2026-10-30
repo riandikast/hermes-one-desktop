@@ -24,9 +24,26 @@ it("selects rules, searches both groups through IPC, confirms file exceptions an
   expect(await screen.findByRole("alert")).toHaveTextContent("Edit external rules at their source");
   expect(unignore).toHaveBeenCalledWith("/repo", "one.cache", "version");
   fireEvent.change(screen.getByRole("searchbox"), { target: { value: "cache" } });
-  await waitFor(() => expect(list).toHaveBeenLastCalledWith("/repo", 0, "cache"));
+  await waitFor(() => expect(list).toHaveBeenLastCalledWith("/repo", 0, "cache", "name"));
 });
 
+it("toggles icon-only name/date sorting and follows sorted rule ranges", async () => {
+  const list = vi.fn().mockResolvedValue({ ok: true, rules: [{ line: 0, pattern: "a" }, { line: 1, pattern: "z" }], files: [], version: "v", hasMore: false });
+  Object.assign(window, { hermesAPI: { gitIgnoreList: list } });
+  const { container } = render(<IgnoredFiles dir="/repo" refresh={vi.fn()} />);
+  const details = container.querySelector("details")!;
+  details.open = true; fireEvent(details, new Event("toggle"));
+  await screen.findByRole("checkbox", { name: "Select ignore rule a" });
+  const sort = screen.getByRole("button", { name: "Sort ignored by date" });
+  expect(sort.textContent).toBe("");
+  fireEvent.click(sort);
+  await waitFor(() => expect(list).toHaveBeenLastCalledWith("/repo", 0, "", "date"));
+  const last = await screen.findByRole("checkbox", { name: "Select ignore rule a" });
+  const first = screen.getByRole("checkbox", { name: "Select ignore rule z" });
+  expect(first.compareDocumentPosition(last) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.click(first); fireEvent.click(last, { shiftKey: true });
+  expect(first).toBeChecked(); expect(last).toBeChecked();
+});
 it("supports shift-click range selection on rules and places loading below search tools", async () => {
   let resolveList: (val: unknown) => void = () => {};
   const list = vi.fn().mockImplementation(() => new Promise((resolve) => { resolveList = resolve; }));

@@ -1,5 +1,5 @@
 import { readFile, writeFile, lstat } from "fs/promises";
-import { join } from "path";
+import { dirname, join, resolve, relative, isAbsolute } from "path";
 import { createHash } from "crypto";
 import { runGit, type GitActionResult } from "./git";
 
@@ -22,17 +22,33 @@ async function ignoreFile(dir: string): Promise<{ path: string; text: string }> 
 function validatePath(path: string): void {
   if (typeof path !== "string" || !path || path.length > 4096 || /[\x00-\x1f\x7f\\:]/.test(path) || path.startsWith("/") || path.replace(/\/$/, "").split("/").some((part) => !part || part === "." || part === "..") || path === ".gitignore" || path.split("/").includes(".git")) throw new Error("Invalid repository-relative file path");
 }
-export async function gitIgnoreList(dir: string, offset = 0, query = ""): Promise<GitIgnoreResult> {
+export async function gitIgnoreList(dir: string, offset = 0, query = "", sort: "name" | "date" = "name"): Promise<GitIgnoreResult> {
   try {
     if (!Number.isInteger(offset) || offset < 0 || offset > 10000) throw new Error("Invalid ignored-file offset");
     if (typeof query !== "string" || query.length > 4096) throw new Error("Invalid ignore search");
     const needle = query.trim().toLowerCase();
-    const { text } = await ignoreFile(dir);
+    if (sort !== "name" && sort !== "date") throw new Error("Invalid ignored-file sort");
+    const { text, path: ignorePath } = await ignoreFile(dir);
     // Matching ignored directories stay collapsed: never recursively enumerate cache contents.
     const result = await runGit(dir, ["status", "--porcelain=v1", "--ignored=matching", "--untracked-files=normal", "-z"], 10_000);
     if (result.code !== 0) throw new Error(result.stderr || "Ignored files unavailable");
     // Filter before the response cap, not just the first page shown by the renderer.
     const files = result.stdout.split("\0").filter((line) => line.startsWith("!! ")).map((line) => line.slice(3)).filter((path) => path.toLowerCase().includes(needle));
+    const modified = new Map<string, number>();
+    if (sort === "date") {
+      // Only collapsed matching entries; never recurse into ignored caches.
+      for (let start = 0; start < files.length; start += 32) {
+        await Promise.all(files.slice(start, start + 32).map(async (path) => {
+          // Read-only metadata also permits .gitignore itself; edit-path validation is stricter.
+          const fullPath = resolve(dirname(ignorePath), path);
+          const within = relative(dirname(ignorePath), fullPath);
+          if (isAbsolute(within) || within.split(/[\\/]/).includes("..")) return;
+          const stat = await lstat(fullPath).catch(() => null);
+          modified.set(path, stat?.mtimeMs ?? 0);
+        }));
+      }
+    }
+    files.sort((a, b) => (sort === "date" ? (modified.get(b) ?? 0) - (modified.get(a) ?? 0) : 0) || a.localeCompare(b));
     return { ok: true, rules: text.split(/\r?\n/).flatMap((pattern, line) => pattern && !pattern.startsWith("#") ? [{ line, pattern }] : []), version: digest(text), files: files.slice(offset, offset + 100), hasMore: files.length > offset + 100 };
   } catch (err) { return { ok: false, rules: [], files: [], version: "", hasMore: false, error: String(err) }; }
 }
