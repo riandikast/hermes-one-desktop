@@ -419,7 +419,7 @@ const LOG_RECORD_SEP = "\u001e";
  */
 export async function gitLog(
   dir: string,
-  opts: { max?: number; path?: string } = {},
+  opts: { max?: number; path?: string; from?: string; to?: string } = {},
 ): Promise<{ ok: boolean; commits: GitCommitEntry[]; error?: string }> {
   if (!opts || (opts.max !== undefined && (!Number.isInteger(opts.max) || !Number.isFinite(opts.max)))) return { ok: false, commits: [], error: "Invalid history limit" };
   const max = Math.min(Math.max(opts.max ?? 50, 1), 200);
@@ -435,6 +435,13 @@ export async function gitLog(
     // %H hash, %h short, %P parents, %D ref names, %an author, %aI date, %s subject
     `--pretty=format:%H${LOG_FIELD_SEP}%h${LOG_FIELD_SEP}%P${LOG_FIELD_SEP}%D${LOG_FIELD_SEP}%an${LOG_FIELD_SEP}%aI${LOG_FIELD_SEP}%s${LOG_RECORD_SEP}`,
   ];
+  // UTC calendar-day bounds filter committer dates; validate before invoking Git.
+  for (const day of [opts.from, opts.to]) {
+    if (day !== undefined && (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(Date.parse(day)) || new Date(day).toISOString().slice(0, 10) !== day)) return { ok: false, commits: [], error: "Invalid history date" };
+  }
+  if (opts.from && opts.to && opts.from > opts.to) return { ok: false, commits: [], error: "From date must not exceed To date" };
+  if (opts.from) args.push(`--since-as-filter=${opts.from}T00:00:00Z`);
+  if (opts.to) args.push(`--until=${opts.to}T23:59:59Z`);
   // An optional pathspec scopes the history to the selected file/folder.
   if (opts.path) args.push("--", opts.path);
 

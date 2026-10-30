@@ -460,6 +460,31 @@ describe("SourceControlDialog", () => {
     expect(parseFloat((document.querySelector(".commit-graph-rows") as HTMLElement).style.marginLeft)).toBeGreaterThan(0);
   });
 
+  it("applies date filters only on Apply and refreshes the applied range", async () => {
+    gitLog.mockResolvedValue({ ok: true, commits: [commit("aaaaaaa1", [], "unfiltered")] });
+    renderDialog("/repo");
+    fireEvent.click(await screen.findByRole("button", { name: "Graph" }));
+    await screen.findByText("unfiltered");
+    expect(gitLog).toHaveBeenLastCalledWith("/repo", { max: 50 });
+    fireEvent.change(screen.getByLabelText("History from"), { target: { value: "2020-01-01" } });
+    fireEvent.change(screen.getByLabelText("History to"), { target: { value: "2020-01-02" } });
+    expect(gitLog).toHaveBeenCalledTimes(1);
+    gitLog.mockResolvedValue({ ok: true, commits: [] });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(gitLog).toHaveBeenLastCalledWith("/repo", { max: 50, from: "2020-01-01", to: "2020-01-02" }));
+    await screen.findByText("No commits yet");
+    fireEvent.change(screen.getByLabelText("History from"), { target: { value: "2020-01-02" } });
+    fireEvent.click(screen.getByRole("button", { name: "Refresh history" }));
+    await waitFor(() => expect(gitLog).toHaveBeenCalledTimes(3));
+    expect(gitLog).toHaveBeenLastCalledWith("/repo", { max: 50, from: "2020-01-01", to: "2020-01-02" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Apply" })).not.toBeDisabled());
+    fireEvent.change(screen.getByLabelText("History from"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("History to"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(gitLog).toHaveBeenCalledTimes(4));
+    expect(gitLog).toHaveBeenLastCalledWith("/repo", { max: 50 });
+  });
+
   it("loads and renders commits when the Graph tab is clicked", async () => {
     gitLog.mockResolvedValue({
       ok: true,
@@ -476,7 +501,7 @@ describe("SourceControlDialog", () => {
     });
 
     await waitFor(() =>
-      expect(gitLog).toHaveBeenCalledWith("/repo", { max: 60 }),
+      expect(gitLog).toHaveBeenCalledWith("/repo", { max: 50 }),
     );
     expect(await screen.findByText("newest work")).toBeTruthy();
     expect(screen.getByText("initial")).toBeTruthy();

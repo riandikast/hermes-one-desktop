@@ -23939,9 +23939,32 @@ body:has(.shell-vibrant),
 }
 .source-control-graph-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
+}
+.source-control-graph-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.source-control-graph-toolbar input {
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+}
+.source-control-graph-toolbar input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .source-control-graph-diff {
   flex: 1;

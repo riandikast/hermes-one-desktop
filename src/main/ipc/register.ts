@@ -3661,7 +3661,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   // Read-only history for the Source Control graph (bounded by max-count).
   ipcMain.handle(
     "git-log",
-    async (_event, dir: string, opts?: { max?: number }) => gitLog(dir, opts),
+    async (_event, dir: string, opts?: { max?: number; from?: string; to?: string }) => gitLog(dir, opts),
   );
   ipcMain.handle("git-commit-diff", async (_event, dir: string, hash: string) =>
     gitCommitDiff(dir, hash),

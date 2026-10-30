@@ -1334,7 +1334,7 @@ interface HermesAPI {
   gitIgnoreAddMany: (dir: string, paths: string[]) => Promise<GitActionResult>;
   gitIgnoreRemove: (dir: string, line: number, pattern: string, version: string) => Promise<GitActionResult>;
   gitRepoStatus: (dir: string) => Promise<GitStatusResult>;
-  gitLog: (dir: string, opts?: { max?: number }) => Promise<GitLogResult>;
+  gitLog: (dir: string, opts?: { max?: number; from?: string; to?: string }) => Promise<GitLogResult>;
   gitCommitDiff: (dir: string, hash: string) => Promise<GitActionResult>;
   gitRemoteHost: (dir: string) => Promise<string | null>;
   gitSetToken: (host: string, token: string) => Promise<boolean>;

@@ -413,12 +413,15 @@ export function SourceControlDialog({
     [dir],
   );
 
+  const [historyFrom, setHistoryFrom] = useState("");
+  const [historyTo, setHistoryTo] = useState("");
+  const historyFilter = useRef<{ from?: string; to?: string }>({});
   const loadGraph = useCallback(
-    async (max = 60) => {
+    async () => {
       setGraphLoading(true);
       setGraphError("");
       try {
-        const res = await window.hermesAPI.gitLog(dir, { max });
+        const res = await window.hermesAPI.gitLog(dir, { max: 50, ...historyFilter.current });
         setCommits(res.ok ? res.commits : []);
         if (!res.ok) setGraphError(res.error ?? "History unavailable");
       } catch (err) {
@@ -960,6 +963,21 @@ export function SourceControlDialog({
             <div className="source-control-graph-pane">
               <div className="source-control-graph-list">
                 {graphError && <p role="alert">{graphError}</p>}
+                <form className="source-control-graph-toolbar" onSubmit={(event) => {
+                  event.preventDefault();
+                  if (graphLoading) return;
+                  if (historyFrom && historyTo && historyFrom > historyTo) {
+                    setGraphError("From date must not exceed To date");
+                    return;
+                  }
+                  historyFilter.current = { ...(historyFrom ? { from: historyFrom } : {}), ...(historyTo ? { to: historyTo } : {}) };
+                  setSelectedCommit(null); setCommitDiff("");
+                  void loadGraph();
+                }}>
+                  <label title="Filter by committer date; row dates show author dates">From (UTC) <input aria-label="History from" type="date" value={historyFrom} onChange={(event) => setHistoryFrom(event.target.value)} /></label>
+                  <label title="Inclusive committer date in UTC">To (UTC) <input aria-label="History to" type="date" value={historyTo} min={historyFrom || undefined} onChange={(event) => setHistoryTo(event.target.value)} /></label>
+                  <button type="submit" className="btn-ghost btn-sm" disabled={graphLoading}>Apply</button>
+                </form>
                 <div className="source-control-graph-toolbar">
                   <button type="button" className="btn-ghost btn-sm" disabled={graphLoading} onClick={() => { void loadGraph(); void refresh(); }}>Refresh history</button>
                   {status?.reverting && <button

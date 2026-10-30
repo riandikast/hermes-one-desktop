@@ -1792,7 +1792,7 @@ const hermesAPI = {
   gitIgnoreAddMany: (dir: string, paths: string[]) => ipcRenderer.invoke("git-ignore-add-many", dir, paths),
   gitIgnoreRemove: (dir: string, line: number, pattern: string, version: string) => ipcRenderer.invoke("git-ignore-remove", dir, line, pattern, version),
   gitRepoStatus: (dir: string) => ipcRenderer.invoke("git-repo-status", dir),
-  gitLog: (dir: string, opts?: { max?: number }) =>
+  gitLog: (dir: string, opts?: { max?: number; from?: string; to?: string }) =>
     ipcRenderer.invoke("git-log", dir, opts),
   gitCommitDiff: (dir: string, hash: string) =>
     ipcRenderer.invoke("git-commit-diff", dir, hash),

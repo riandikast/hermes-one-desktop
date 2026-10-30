@@ -213,6 +213,35 @@ describe("git source control", () => {
   });
 
   describe("gitLog", () => {
+    it("filters inclusive UTC committer days before limiting, including non-monotonic history", async () => {
+      const dated = (date: string, message: string): void => {
+        execFileSync("git", ["commit", "--allow-empty", "-q", "-m", message], {
+          cwd: repo,
+          env: { ...process.env, GIT_AUTHOR_DATE: "2001-01-01T00:00:00Z", GIT_COMMITTER_DATE: date },
+          stdio: "pipe",
+        });
+      };
+      dated("2020-01-02T00:00:00Z", "start boundary");
+      dated("2020-01-02T23:59:59Z", "end boundary");
+      dated("2020-01-01T23:59:59Z", "old child");
+      dated("2020-01-03T00:00:00Z", "after range");
+      const result = await gitLog(repo, { from: "2020-01-02", to: "2020-01-02" });
+      expect(result.ok).toBe(true);
+      expect(result.commits.map((item) => item.subject)).toEqual(["end boundary", "start boundary"]);
+      expect((await gitLog(repo, { from: "2020-01-02", to: "2020-01-02", max: 1 })).commits).toHaveLength(1);
+      expect((await gitLog(repo, { to: "2020-01-01" })).commits.map((item) => item.subject)).toEqual(["old child"]);
+      expect((await gitLog(repo, { from: "2099-01-01" })).commits).toEqual([]);
+    });
+
+    it("rejects invalid or reversed calendar dates before querying Git", async () => {
+      for (const from of ["2020-02-30", "2020-13-01", "not-a-date", "2020-1-1", "", "2020-01-01; echo bad"]) {
+        expect((await gitLog(repo, { from })).ok).toBe(false);
+      }
+      expect((await gitLog(repo, { to: "2020-02-30" })).ok).toBe(false);
+      expect((await gitLog(repo, { from: "2020-02-02", to: "2020-02-01" })).ok).toBe(false);
+      expect((await gitLog(repo, { from: "2020-02-29", to: "2020-02-29" })).ok).toBe(true);
+    });
+
     it("returns commits newest-first with hash, parents, and refs", async () => {
       await writeFile(join(repo, "a.txt"), "second\n", "utf8");
       git(repo, "add", "a.txt");
