@@ -72,8 +72,8 @@ export function IgnoredFiles({ dir, refresh }: { dir: string; refresh: () => Pro
   };
   return <details className="source-control-section" onToggle={(event) => setOpened(event.currentTarget.open)}>
     <summary className="source-control-section-title"><ChevronRight className="source-control-chevron-closed" size={14} aria-hidden="true" /><ChevronDown className="source-control-chevron-open" size={14} aria-hidden="true" />Ignored</summary>
-    <div className="source-control-ignore-tools">
-      <label className="source-control-ignore-search"><Search size={14} aria-hidden="true" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ignored" aria-label="Search ignored paths" /></label>
+    <div className="source-control-ignore-tools mt-2 ml-2">
+      <label className="source-control-ignore-search "><Search size={14} aria-hidden="true" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ignored" aria-label="Search ignored paths" /></label>
       <button type="button" className="btn-ghost btn-sm" aria-label={sort === "name" ? "Sort ignored by date" : "Sort ignored by name"} aria-pressed={sort === "date"} title={sort === "name" ? "Sort by newest modification; rules use reverse file order" : "Sort by name"} onClick={() => setSort((current) => current === "name" ? "date" : "name")}>
         {sort === "name" ? <ArrowDownAZ size={14} aria-hidden="true" /> : <CalendarArrowDown size={14} aria-hidden="true" />}
       </button>
