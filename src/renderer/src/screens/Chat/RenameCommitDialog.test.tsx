@@ -1,0 +1,20 @@
+import { afterEach, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { RenameCommitDialog } from "./RenameCommitDialog";
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+it("loads full message, confirms rewrite, preserves body and reports errors", async () => {
+  Object.assign(window, { hermesAPI: { gitRenameCheck: vi.fn().mockResolvedValue({ ok: true, output: "subject\n\nbody" }) } });
+  const rename = vi.fn().mockRejectedValue(new Error("remote changed")); const close = vi.fn();
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  render(<RenameCommitDialog dir="/repo" hash={"a".repeat(40)} onClose={close} onRename={rename} />);
+  const input = screen.getByLabelText("Commit message");
+  await waitFor(() => expect(input).toHaveValue("subject\n\nbody"));
+  fireEvent.change(input, { target: { value: "renamed\n\nbody" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save message" }));
+  expect(rename).not.toHaveBeenCalled();
+  confirm.mockReturnValue(true);
+  fireEvent.click(screen.getByRole("button", { name: "Save message" }));
+  expect(rename).toHaveBeenCalledWith("renamed\n\nbody");
+  expect(await screen.findByRole("alert")).toHaveTextContent("remote changed");
+  expect(close).not.toHaveBeenCalled();
+});

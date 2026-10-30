@@ -23614,14 +23614,14 @@ body:has(.shell-vibrant),
 .source-control-branch-track {
   color: var(--text-secondary);
 }
-.source-control-workspace { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.source-control-workspace { display: grid; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
 .source-control-content { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .source-control-split { display: grid; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 .source-control-split > :is(.source-control-sidebar, .source-control-graph-list) { width: auto; min-width: 0; max-height: none; }
 .source-control-split > :is(.source-control-diff, .source-control-graph-diff) { min-width: 0; min-height: 0; }
 .source-control-split-handle { cursor: col-resize; touch-action: none; background: var(--border); }
 .source-control-split-handle:is(:hover, :focus-visible) { background: var(--accent); outline: none; }
-.source-control-terminals { width: 38%; min-width: 240px; min-height: 0; border-left: 1px solid var(--border); display: flex; flex-direction: column; }
+.source-control-terminals { width: 100%; min-width: 0; min-height: 0; border-left: 1px solid var(--border); display: flex; flex-direction: column; }
 .source-control-terminals[hidden] { display: none; }
 .source-control-terminals .terminal-dock { flex: 1; min-height: 0; height: 100%; }
 .source-control-terminals .terminal-dock-resize { display: none; }
@@ -23635,8 +23635,8 @@ body:has(.shell-vibrant),
 .source-control-git-doc small { color: var(--text-muted); min-width: 55px; }
 .source-control-git-doc dd { margin: 5px 0 0; font-size: 13px; }
 @media (max-width: 600px) {
-  .source-control-workspace { flex-direction: column; }
-  .source-control-terminals { width: 100%; min-width: 0; height: 40%; border-left: 0; border-top: 1px solid var(--border); }
+  .source-control-workspace { min-height: 0; }
+  .source-control-terminals { width: 100%; min-width: 0; height: 100%; border-left: 0; border-top: 1px solid var(--border); }
 }
 .source-control-body {
   display: flex;
@@ -23743,7 +23743,9 @@ body:has(.shell-vibrant),
   color: var(--text-secondary);
   font-size: 12px;
 }
-.source-control-loading-state svg { animation: sc-spin 0.8s linear infinite; }
+.source-control-loading-state svg, .worktree-loading svg { animation: sc-spin 0.8s linear infinite; }
+.worktree-loading { display: flex; align-items: center; gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .source-control-loading-state svg, .worktree-loading svg { animation: none; } }
 .source-control-empty {
   padding: 4px 12px 8px 32px;
   font-size: 12px;

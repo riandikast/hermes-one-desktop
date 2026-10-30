@@ -60,6 +60,7 @@ import {
 } from "../media";
 import { gitIgnoreEdit, gitIgnoreList, gitIgnoreAddMany } from "../git-ignore";
 import { gitBranches, gitBranchChange } from "../git-branches";
+import { gitRenameCheck, gitRenameCommit } from "../git-rename";
 import type { GitBranchAction } from "../../shared/git-branches";
 import { openTerminalInDirectory } from "../terminal-launcher";
 import { getTerminalPreference, setTerminalPreference } from "../terminal-preference";
@@ -3657,6 +3658,8 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("git-ignore-add", (_event, dir: string, path: string) => gitIgnoreEdit(dir, { path }));
   ipcMain.handle("git-ignore-add-many", (_event, dir: string, paths: string[]) => gitIgnoreAddMany(dir, paths));
   ipcMain.handle("git-ignore-remove", (_event, dir: string, line: number, pattern: string, version: string) => gitIgnoreEdit(dir, { line, pattern, version }));
+  ipcMain.handle("git-rename-check", (_event, dir: string, hash: string) => gitRenameCheck(dir, hash));
+  ipcMain.handle("git-rename-commit", (_event, dir: string, hash: string, message: string) => gitRenameCommit(dir, hash, message));
   ipcMain.handle("git-branches", (_event, dir: string) => gitBranches(dir));
   ipcMain.handle("git-branch-change", (_event, dir: string, action: GitBranchAction, name: string, current: string | null) => gitBranchChange(dir, action, name, current));
   ipcMain.handle("git-repo-status", async (_event, dir: string) =>

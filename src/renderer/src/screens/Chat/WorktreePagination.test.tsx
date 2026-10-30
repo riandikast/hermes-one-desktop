@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../components/I18nProvider";
 import { WorktreePanel } from "./WorktreePanel";
 
+vi.mock("../Command/TerminalDock", () => ({ TerminalDock: () => null }));
+
 const files = (count: number): Array<{ name: string; isDirectory: boolean }> => Array.from({ length: count }, (_, index) => ({
   name: `file-${String(index).padStart(3, "0")}.ts`,
   isDirectory: false,
@@ -35,6 +37,15 @@ function renderPanel(selectedPath?: string): ReturnType<typeof render> {
 }
 
 describe("large explorer folders", () => {
+  it("shows a spinner while a worktree root loads", async () => {
+    let finish!: (value: Array<{ name: string; isDirectory: boolean }>) => void;
+    readDirectory.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    renderPanel();
+    const loading = await screen.findByRole("status");
+    expect(loading.querySelector("svg.lucide-loader-circle")).not.toBeNull();
+    await act(async () => finish([]));
+    expect(screen.queryByRole("status")).toBeNull();
+  });
   it("bounds root rows while allowing every page to be opened", async () => {
     const view = renderPanel();
     await screen.findByText("file-000.ts");

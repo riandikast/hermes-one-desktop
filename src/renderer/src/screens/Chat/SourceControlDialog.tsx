@@ -13,7 +13,6 @@ import {
   Plus,
   Minus,
   BookOpen,
-  Terminal as TerminalIcon,
 } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import { useSettingsModal } from "../../components/settings/SettingsModalContext";
@@ -21,6 +20,7 @@ import { DiffViewer } from "./DiffViewer";
 import { CommitGraph } from "./CommitGraph";
 import { IgnoredFiles } from "./IgnoredFiles";
 import { BranchDialog } from "./BranchDialog";
+import { RenameCommitDialog } from "./RenameCommitDialog";
 import { GitDoc } from "./GitDoc";
 import { SourceControlSplit } from "./SourceControlSplit";
 import { useSourceControlTerminals } from "./useSourceControlTerminals";
@@ -317,16 +317,17 @@ export function SourceControlDialog({
   const { t } = useI18n();
   const { openSettings } = useSettingsModal();
   const [branchesOpen, setBranchesOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<GraphCommit | null>(null);
   const [terminalError, setTerminalError] = useState("");
   const terminals = useSourceControlTerminals(dir, onClose, setTerminalError);
   useEffect(() => {
     const close = (event: KeyboardEvent): void => {
       // Escape belongs to the shell/application when focus is inside its terminal.
-      if (event.key === "Escape" && !branchesOpen && !(event.target instanceof Element && event.target.closest(".source-control-terminals"))) void terminals.requestClose();
+      if (event.key === "Escape" && !branchesOpen && !renameTarget && !(event.target instanceof Element && event.target.closest(".source-control-terminals"))) void terminals.requestClose();
     };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
-  }, [terminals.requestClose, branchesOpen]);
+  }, [terminals.requestClose, branchesOpen, renameTarget]);
   const [status, setStatus] = useState<GitStatusResult | null>(null);
   const [busy, setBusy] = useState(false);
   const actionInFlight = useRef(false);
@@ -655,7 +656,7 @@ export function SourceControlDialog({
     return (
       <Shell>
         <div className="source-control-dialog">
-          <div className="source-control-loading">{t("worktree.loading")}…</div>
+          <div className="source-control-loading source-control-loading-state" role="status"><LoaderCircle size={24} aria-hidden="true" /><span>Loading repository…</span></div>
         </div>
       </Shell>
     );
@@ -713,7 +714,7 @@ export function SourceControlDialog({
             )}
           </button>
           <div className="source-control-header-actions">
-            <button type="button" className="btn-ghost btn-sm" disabled={terminals.creating} onClick={terminals.add}><TerminalIcon size={14} aria-hidden="true" />Terminal</button>
+            <button type="button" className="btn-ghost btn-sm" disabled={terminals.creating} onClick={terminals.add}>Terminal</button>
             {remoteHost?.toLowerCase() === "github.com" && (
               <button type="button" className="btn-ghost btn-sm" onClick={() => { void terminals.requestClose().then((closed) => { if (closed) openSettings("github"); }); }}>
                 Manage GitHub Credentials
@@ -801,7 +802,7 @@ export function SourceControlDialog({
           <button type="button" className={`source-control-tab${view === "docs" ? " active" : ""}`} onClick={() => setView("docs")}><BookOpen size={13} aria-hidden="true" />Git Doc</button>
         </div>
 
-        <div className="source-control-workspace">
+        <SourceControlSplit className="source-control-workspace" label="Terminal pane width" initial={62} collapsed={!terminals.visible}>
         <div className="source-control-content">
         <div className="source-control-body">
           {view === "changes" ? (
@@ -1013,6 +1014,7 @@ export function SourceControlDialog({
                   selectedHash={selectedCommit?.hash ?? null}
                   onSelect={(c) => void showCommit(c)}
                   onRevert={(c) => void revertCommit(c)}
+                  onRename={setRenameTarget}
                   busy={busy}
                 />}
               </div>
@@ -1063,6 +1065,18 @@ export function SourceControlDialog({
             </button>
           </div>
         )}
+        {renameTarget && <RenameCommitDialog dir={dir} hash={renameTarget.hash} onClose={() => setRenameTarget(null)} onRename={async (message) => {
+          if (actionInFlight.current) throw new Error("Another Git operation is in progress");
+          let failure = "";
+          await run(async () => {
+            const result = await window.hermesAPI.gitRenameCommit(dir, renameTarget.hash, message).catch((err) => ({ ok: false, error: String(err) }));
+            if (!result.ok) failure = result.error ?? "Rename failed";
+            else { setSelectedCommit(null); setCommitDiff(""); }
+            return result;
+          }, "Renamed commit");
+          await loadGraph();
+          if (failure) throw new Error(failure);
+        }} />}
         {branchesOpen && <BranchDialog dir={dir} onClose={() => setBranchesOpen(false)} onChanged={async (result) => {
           setOutput(result.ok ? result.output ?? "Branch updated" : "");
           setError(result.ok ? "" : result.error ?? "Branch operation failed");
@@ -1116,7 +1130,7 @@ export function SourceControlDialog({
           {terminals.visible && <TerminalDock ref={terminals.dock} onNewSession={terminals.add} onSessionClose={terminals.closed} disposeOnUnmount
             onResizeStart={() => undefined} onResizeMove={() => undefined} onResizeEnd={() => undefined} />}
         </aside>
-        </div>
+        </SourceControlSplit>
       </div>
     </Shell>
   );

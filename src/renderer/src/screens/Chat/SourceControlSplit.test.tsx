@@ -2,6 +2,14 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { SourceControlSplit } from "./SourceControlSplit";
 
+it("collapses its separator without unmounting child panes", () => {
+  const view = render(<SourceControlSplit label="Terminal" collapsed><div>Left</div><div>Right</div></SourceControlSplit>);
+  const right = screen.getByText("Right");
+  expect(screen.queryByRole("separator")).toBeNull();
+  view.rerender(<SourceControlSplit label="Terminal"><div>Left</div><div>Right</div></SourceControlSplit>);
+  expect(screen.getByRole("separator")).toBeTruthy();
+  expect(screen.getByText("Right")).toBe(right);
+});
 it("clamps drag and keyboard widths, stops after pointer cancellation", () => {
   const { container } = render(<SourceControlSplit label="Test width"><div>Left</div><div>Right</div></SourceControlSplit>);
   const handle = screen.getByRole("separator", { name: "Test width" });

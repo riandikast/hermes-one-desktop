@@ -1,17 +1,17 @@
 import { Children, useRef, useState } from "react";
 
 /** Two bounded panes; pointer and keyboard resizing share the same percentage. */
-export function SourceControlSplit({ children, label, initial = 40 }: {
-  children: React.ReactNode; label: string; initial?: number;
+export function SourceControlSplit({ children, label, initial = 40, collapsed = false, className = "" }: {
+  children: React.ReactNode; label: string; initial?: number; collapsed?: boolean; className?: string;
 }): React.JSX.Element {
   const [width, setWidth] = useState(initial);
   const host = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
   const panes = Children.toArray(children);
   const update = (value: number): void => setWidth(Math.max(20, Math.min(80, value)));
-  return <div ref={host} className="source-control-split" style={{ gridTemplateColumns: `minmax(0, ${width}fr) 6px minmax(0, ${100 - width}fr)` }}>
+  return <div ref={host} className={`source-control-split ${className}`} style={{ gridTemplateColumns: collapsed ? "minmax(0, 1fr) 0px 0px" : `minmax(0, ${width}fr) 6px minmax(0, ${100 - width}fr)` }}>
     {panes[0]}
-    <div className="source-control-split-handle" role="separator" tabIndex={0} aria-label={label} aria-orientation="vertical" aria-valuemin={20} aria-valuemax={80} aria-valuenow={Math.round(width)}
+    <div className="source-control-split-handle" hidden={collapsed} role="separator" tabIndex={0} aria-label={label} aria-orientation="vertical" aria-valuemin={20} aria-valuemax={80} aria-valuenow={Math.round(width)}
       onKeyDown={(event) => {
         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
         event.preventDefault();

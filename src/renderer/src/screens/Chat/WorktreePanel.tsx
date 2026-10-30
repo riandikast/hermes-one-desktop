@@ -11,6 +11,7 @@ import {
   Terminal,
   Tag,
   GitPullRequest,
+  LoaderCircle,
 } from "lucide-react";
 import { getIconForFile, getSVGStringFromFileType } from "@wesbos/code-icons";
 import { useI18n } from "../../components/useI18n";
@@ -188,10 +189,10 @@ function TreeItem({
         <div className="worktree-children">
           {isLoading && children === null ? (
             <div
-              className="worktree-loading"
+              className="worktree-loading" role="status"
               style={{ paddingLeft: paddingLeft + 12 }}
             >
-              {t("chat.worktree.loading")}...
+              <LoaderCircle size={14} aria-hidden="true" />{t("chat.worktree.loading")}…
             </div>
           ) : children === null ? null : children.length === 0 ? (
             <div
@@ -381,8 +382,8 @@ function SearchResultRow({
       {entry.isDirectory && isExpanded && (
         <div className="worktree-children">
           {isLoading ? (
-            <div className="worktree-loading" style={{ paddingLeft: 20 }}>
-              {t("chat.worktree.loading")}...
+            <div className="worktree-loading" role="status" style={{ paddingLeft: 20 }}>
+              <LoaderCircle size={14} aria-hidden="true" />{t("chat.worktree.loading")}…
             </div>
           ) : children === null ? null : children.length === 0 ? (
             <div className="worktree-empty" style={{ paddingLeft: 20 }}>
@@ -490,8 +491,8 @@ function RootSection({
       {isExpanded && (
         <div className="worktree-children">
           {isLoading && entries === null ? (
-            <div className="worktree-loading">
-              {t("chat.worktree.loading")}...
+            <div className="worktree-loading" role="status">
+              <LoaderCircle size={14} aria-hidden="true" />{t("chat.worktree.loading")}…
             </div>
           ) : error ? (
             <div className="worktree-error">{error}</div>
@@ -791,8 +792,8 @@ export const WorktreePanel = memo(function WorktreePanel({
       <div className="worktree-content">
         {showingSearch ? (
           searchResults === null ? (
-            <div className="worktree-loading">
-              {t("chat.worktree.searching")}...
+            <div className="worktree-loading" role="status">
+              <LoaderCircle size={14} aria-hidden="true" />{t("chat.worktree.searching")}…
             </div>
           ) : searchResults.length === 0 ? (
             <div className="worktree-empty">{t("chat.worktree.noResults")}</div>

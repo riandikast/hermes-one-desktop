@@ -12,4 +12,6 @@ Branch badge opens local-only checkout/create/merge/delete commands with confirm
 
 Source Control now has draggable/keyboard left-right splitters, Git Doc reference, and multiple owned shells using existing TerminalDock/PTY IPC. Closing through Close/Escape/credentials confirms and kills only Source Control terminals; late spawn replies and forced unmount also clean up. New code: `SourceControlSplit.tsx`, `GitDoc.tsx`, `useSourceControlTerminals.ts`. Do not unmount terminals on tab changes or kill other docks.
 
+Terminal header is text-only and its width reuses SourceControlSplit. Initial repository and explorer folder/search loaders use accessible spinners. Graph Rename commit is first; only attached unpublished HEAD is eligible. `git-rename.ts` rechecks clean state and advertised remote heads/tags before amend, fails closed for unknown remote history, preserves full message via RenameCommitDialog. Older commits need a separate rebase design.
+
 Preserve unrelated chat-search/zoom work. Commit owned changes only; do not push without confirmation. Follow `AGENTS.md` resource queue and documentation checks.

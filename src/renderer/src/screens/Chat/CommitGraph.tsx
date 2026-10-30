@@ -56,6 +56,7 @@ export function CommitGraph({
   commits,
   onSelect,
   onRevert,
+  onRename,
   selectedHash,
   limit = 50,
   busy = false,
@@ -63,6 +64,7 @@ export function CommitGraph({
   commits: import("./gitGraph").GraphCommit[];
   onSelect?: (commit: import("./gitGraph").GraphCommit) => void;
   onRevert?: (commit: import("./gitGraph").GraphCommit) => void;
+  onRename?: (commit: import("./gitGraph").GraphCommit) => void;
   selectedHash?: string | null;
   limit?: number;
   busy?: boolean;
@@ -161,6 +163,7 @@ export function CommitGraph({
                 selected={selectedHash === node.commit.hash}
                 onSelect={onSelect}
                 onRevert={onRevert}
+                onRename={onRename}
                 busy={busy}
               />
             ))}
@@ -177,6 +180,7 @@ function CommitRow({
   selected,
   onSelect,
   onRevert,
+  onRename,
   busy,
 }: {
   node: GraphNode;
@@ -184,6 +188,7 @@ function CommitRow({
   selected: boolean;
   onSelect?: (commit: import("./gitGraph").GraphCommit) => void;
   onRevert?: (commit: import("./gitGraph").GraphCommit) => void;
+  onRename?: (commit: import("./gitGraph").GraphCommit) => void;
   busy?: boolean;
 }): React.JSX.Element {
   const { commit } = node;
@@ -195,7 +200,7 @@ function CommitRow({
 
   useEffect(() => {
     if (!menu) return;
-    menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
     const dismiss = (event: PointerEvent) => {
       if (!menuRef.current?.contains(event.target as Node)) setMenu(null);
     };
@@ -225,7 +230,7 @@ function CommitRow({
   const openMenu = (x: number, y: number) =>
     setMenu({
       x: Math.max(0, Math.min(x, window.innerWidth - 210)),
-      y: Math.max(0, Math.min(y, window.innerHeight - 80)),
+      y: Math.max(0, Math.min(y, window.innerHeight - 116)),
     });
 
   return (
@@ -306,6 +311,10 @@ function CommitRow({
               }
             }}
           >
+            <button type="button" role="menuitem" className="worktree-context-menu-item"
+              disabled={busy || !onRename || !commit.refs.some((ref) => ref.startsWith("HEAD -> "))}
+              title="Rename latest unpublished commit; remote status is verified before editing"
+              onClick={() => { setMenu(null); rowRef.current?.focus(); onRename?.(commit); }}>Rename commit</button>
             <button
               type="button"
               role="menuitem"

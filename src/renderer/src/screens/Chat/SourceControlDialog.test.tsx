@@ -108,12 +108,51 @@ beforeEach(() => {
     gitResolveConflict: vi.fn().mockResolvedValue({ ok: true }),
     gitRevert,
     gitRevertAbort,
+    gitRenameCheck: vi.fn().mockResolvedValue({ ok: false, error: "published" }),
+    gitRenameCommit: vi.fn().mockResolvedValue({ ok: true }),
     terminalCreate: vi.fn().mockResolvedValue({ id: "source-term", shell: "pwsh" }),
     terminalKill: vi.fn().mockResolvedValue({ ok: true }),
   };
 });
 
 describe("SourceControlDialog", () => {
+  it("shows animated repository loading instead of a translation key", async () => {
+    let finish!: (value: unknown) => void;
+    gitRepoStatus.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    const view = renderDialog("/repo");
+    const loading = screen.getByRole("status");
+    expect(loading).toHaveTextContent("Loading repository");
+    expect(loading.querySelector("svg.lucide-loader-circle")).not.toBeNull();
+    view.unmount(); finish({ repo: false, staged: [], unstaged: [], conflicted: [], untracked: [] });
+  });
+  it("puts rename first and rejects published commits before opening an editor", async () => {
+    const target = { ...commit("a".repeat(40), [], "local tip"), refs: ["HEAD -> main"] };
+    gitLog.mockResolvedValue({ ok: true, commits: [target] });
+    renderDialog("/repo");
+    fireEvent.click(await screen.findByRole("button", { name: "Graph" }));
+    fireEvent.contextMenu(await screen.findByRole("listitem"));
+    expect(screen.getAllByRole("menuitem")[0]).toHaveTextContent("Rename commit");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename commit" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("published");
+    expect(window.hermesAPI.gitRenameCommit).not.toHaveBeenCalled();
+  });
+  it("saves a renamed local HEAD after confirmation and refreshes history", async () => {
+    const target = { ...commit("b".repeat(40), [], "original"), refs: ["HEAD -> main"] };
+    gitLog.mockResolvedValue({ ok: true, commits: [target] });
+    vi.mocked(window.hermesAPI.gitRenameCheck).mockResolvedValue({ ok: true, output: "original\n\nbody" });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderDialog("/repo");
+    fireEvent.click(await screen.findByRole("button", { name: "Graph" }));
+    fireEvent.contextMenu(await screen.findByRole("listitem"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename commit" }));
+    const input = await screen.findByLabelText("Commit message", { selector: "textarea[id]" });
+    await waitFor(() => expect(input).toHaveValue("original\n\nbody"));
+    fireEvent.change(input, { target: { value: "updated\n\nbody" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save message" }));
+    await waitFor(() => expect(window.hermesAPI.gitRenameCommit).toHaveBeenCalledWith("/repo", target.hash, "updated\n\nbody"));
+    await waitFor(() => expect(gitLog).toHaveBeenCalledTimes(2));
+    confirm.mockRestore();
+  });
   it("resizes both split tabs and opens reference docs without running Git", async () => {
     gitLog.mockResolvedValue({ ok: true, commits: [] });
     renderDialog("/repo");
@@ -135,6 +174,9 @@ describe("SourceControlDialog", () => {
     renderDialog("/repo", close);
     fireEvent.click(await screen.findByRole("button", { name: "Terminal" }));
     await screen.findByText("Close terminal source-term");
+    const terminalWidth = screen.getByRole("separator", { name: "Terminal pane width" });
+    fireEvent.keyDown(terminalWidth, { key: "ArrowLeft" });
+    expect(terminalWidth).toHaveAttribute("aria-valuenow", "60");
     fireEvent.click(screen.getByRole("button", { name: "Git Doc" }));
     expect(screen.getByText("Close terminal source-term")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
@@ -152,9 +194,13 @@ describe("SourceControlDialog", () => {
     renderDialog("/repo", close);
     const credentials = await screen.findByRole("button", { name: "Manage GitHub Credentials" });
     const terminal = screen.getByRole("button", { name: "Terminal" });
+    expect(terminal.querySelector("svg")).toBeNull();
     expect(terminal.compareDocumentPosition(credentials) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(terminal);
     await screen.findByText("Close terminal source-term");
+    const terminalWidth = screen.getByRole("separator", { name: "Terminal pane width" });
+    fireEvent.keyDown(terminalWidth, { key: "ArrowLeft" });
+    expect(terminalWidth).toHaveAttribute("aria-valuenow", "60");
     fireEvent.keyDown(screen.getByRole("button", { name: "New terminal session" }), { key: "Escape" });
     expect(confirm).not.toHaveBeenCalled();
     fireEvent.keyDown(terminal, { key: "Escape" });

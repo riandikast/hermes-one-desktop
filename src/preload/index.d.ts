@@ -1333,6 +1333,8 @@ interface HermesAPI {
   gitIgnoreAdd: (dir: string, path: string) => Promise<GitActionResult>;
   gitIgnoreAddMany: (dir: string, paths: string[]) => Promise<GitActionResult>;
   gitIgnoreRemove: (dir: string, line: number, pattern: string, version: string) => Promise<GitActionResult>;
+  gitRenameCheck: (dir: string, hash: string) => Promise<GitActionResult>;
+  gitRenameCommit: (dir: string, hash: string, message: string) => Promise<GitActionResult>;
   gitBranches: (dir: string) => Promise<import("../shared/git-branches").GitBranchListResult>;
   gitBranchChange: (dir: string, action: import("../shared/git-branches").GitBranchAction, name: string, current: string | null) => Promise<GitActionResult>;
   gitRepoStatus: (dir: string) => Promise<GitStatusResult>;
