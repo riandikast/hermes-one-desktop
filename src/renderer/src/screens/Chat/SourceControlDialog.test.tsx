@@ -1,3 +1,4 @@
+import { forwardRef, useImperativeHandle, useState } from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import { I18nProvider } from "../../components/I18nProvider";
@@ -5,6 +6,13 @@ import { SourceControlDialog } from "./SourceControlDialog";
 import sourceControlCss from "../../assets/main.css?raw";
 import { SettingsModalContext } from "../../components/settings/SettingsModalContext";
 
+vi.mock("../Command/TerminalDock", () => ({
+  TerminalDock: forwardRef(function MockDock({ onNewSession, onSessionClose }: { onNewSession: () => void; onSessionClose: (id: string) => void }, ref) {
+    const [ids, setIds] = useState<string[]>([]);
+    useImperativeHandle(ref, () => ({ attachSession: (id: string) => setIds((current) => [...current, id]) }));
+    return <div><button onClick={onNewSession}>New terminal session</button>{ids.map((id) => <button key={id} onClick={() => { setIds((current) => current.filter((item) => item !== id)); onSessionClose(id); }}>Close terminal {id}</button>)}</div>;
+  }),
+}));
 const openSettings = vi.fn();
 
 /** The dialog uses `t` from useI18n, which requires the provider. */
@@ -100,10 +108,66 @@ beforeEach(() => {
     gitResolveConflict: vi.fn().mockResolvedValue({ ok: true }),
     gitRevert,
     gitRevertAbort,
+    terminalCreate: vi.fn().mockResolvedValue({ id: "source-term", shell: "pwsh" }),
+    terminalKill: vi.fn().mockResolvedValue({ ok: true }),
   };
 });
 
 describe("SourceControlDialog", () => {
+  it("resizes both split tabs and opens reference docs without running Git", async () => {
+    gitLog.mockResolvedValue({ ok: true, commits: [] });
+    renderDialog("/repo");
+    const changes = await screen.findByRole("separator", { name: "Changes pane width" });
+    fireEvent.keyDown(changes, { key: "ArrowRight" });
+    expect(changes).toHaveAttribute("aria-valuenow", "37");
+    fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+    const graph = screen.getByRole("separator", { name: "Graph pane width" });
+    fireEvent.keyDown(graph, { key: "End" });
+    expect(graph).toHaveAttribute("aria-valuenow", "80");
+    fireEvent.click(screen.getByRole("button", { name: "Git Doc" }));
+    expect(screen.getByRole("heading", { name: "Common Git commands" })).toBeTruthy();
+    expect(screen.getByText("git status")).toBeTruthy();
+    expect(window.hermesAPI.terminalCreate).not.toHaveBeenCalled();
+  });
+  it("keeps terminals across tabs and confirms every Source Control exit", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const close = vi.fn();
+    renderDialog("/repo", close);
+    fireEvent.click(await screen.findByRole("button", { name: "Terminal" }));
+    await screen.findByText("Close terminal source-term");
+    fireEvent.click(screen.getByRole("button", { name: "Git Doc" }));
+    expect(screen.getByText("Close terminal source-term")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(close).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(close).toHaveBeenCalledOnce());
+    expect(window.hermesAPI.terminalKill).toHaveBeenCalledWith("source-term");
+    confirm.mockRestore();
+  });
+  it("protects terminals on Escape and credential navigation, but shell Escape stays in the shell", async () => {
+    vi.mocked(window.hermesAPI.gitRemoteHost).mockResolvedValue("github.com");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const close = vi.fn(); openSettings.mockClear();
+    renderDialog("/repo", close);
+    const credentials = await screen.findByRole("button", { name: "Manage GitHub Credentials" });
+    const terminal = screen.getByRole("button", { name: "Terminal" });
+    expect(terminal.compareDocumentPosition(credentials) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(terminal);
+    await screen.findByText("Close terminal source-term");
+    fireEvent.keyDown(screen.getByRole("button", { name: "New terminal session" }), { key: "Escape" });
+    expect(confirm).not.toHaveBeenCalled();
+    fireEvent.keyDown(terminal, { key: "Escape" });
+    expect(confirm).toHaveBeenCalledOnce();
+    fireEvent.click(credentials);
+    await act(async () => undefined);
+    expect(close).not.toHaveBeenCalled(); expect(openSettings).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    fireEvent.click(credentials);
+    await waitFor(() => expect(openSettings).toHaveBeenCalledWith("github"));
+    expect(window.hermesAPI.terminalKill).toHaveBeenCalledWith("source-term");
+    confirm.mockRestore();
+  });
   it("opens heading-only context actions by keyboard, bounds position, closes outside and Escape", async () => {
     const onClose = vi.fn();
     renderDialog("/repo", onClose);
@@ -150,8 +214,8 @@ describe("SourceControlDialog", () => {
     const credentials = await screen.findByRole("button", { name: "Manage GitHub Credentials" });
     expect(credentials.closest(".source-control-header-actions")).not.toBeNull();
     fireEvent.click(credentials);
-    expect(onClose).toHaveBeenCalledOnce();
-    expect(openSettings).toHaveBeenCalledWith("github");
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    await waitFor(() => expect(openSettings).toHaveBeenCalledWith("github"));
     expect(window.hermesAPI.gitGetToken).not.toHaveBeenCalled();
     expect(screen.queryByPlaceholderText("Personal access token")).toBeNull();
   });

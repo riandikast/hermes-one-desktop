@@ -94,13 +94,15 @@ export const TerminalDock = forwardRef<
      */
     dockHeight?: number;
     commandTemplates?: boolean;
+    disposeOnUnmount?: boolean;
+    onSessionClose?: (id: string) => void;
     open?: boolean;
     onResizeStart: (e: React.PointerEvent<HTMLDivElement>) => void;
     onResizeMove: (e: React.PointerEvent<HTMLDivElement>) => void;
     onResizeEnd: (e: React.PointerEvent<HTMLDivElement>) => void;
   }
 >(function TerminalDock(
-  { onNewSession, dockHeight, commandTemplates = false, open = false, onResizeStart, onResizeMove, onResizeEnd },
+  { onNewSession, dockHeight, commandTemplates = false, disposeOnUnmount = false, onSessionClose, open = false, onResizeStart, onResizeMove, onResizeEnd },
   ref,
 ): React.JSX.Element {
   const [pickerSession, setPickerSession] = useState<string | null>(null);
@@ -108,6 +110,14 @@ export const TerminalDock = forwardRef<
   const [activeId, setActiveId] = useState<string | null>(null);
   const sessionsRef = useRef<Map<string, DockSession>>(new Map());
   const containerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!disposeOnUnmount) return;
+    const owned = sessionsRef.current;
+    return () => {
+      for (const dock of owned.values()) { dock.cleanup?.(); dock.pane.remove(); dock.term.dispose(); }
+      owned.clear();
+    };
+  }, [disposeOnUnmount]);
   const tabsScrollRef = useRef<HTMLDivElement | null>(null);
   // Terminal panes live inside a floating overlay that fades in via
   // `visibility: hidden` -> `visible` (0.16s). A hidden element CANNOT take
@@ -512,6 +522,7 @@ export const TerminalDock = forwardRef<
         dock.pane.remove();
         dock.term.dispose();
       }
+      onSessionClose?.(id);
       setSessions((prev) => prev.filter((s) => s.id !== id));
       setActiveId((prev) => {
         if (prev !== id) return prev;
@@ -519,7 +530,7 @@ export const TerminalDock = forwardRef<
         return remaining.length > 0 ? remaining[0].id : null;
       });
     },
-    [sessions],
+    [sessions, onSessionClose],
   );
 
   return (

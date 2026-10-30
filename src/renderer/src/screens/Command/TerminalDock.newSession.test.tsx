@@ -101,6 +101,31 @@ describe("terminal right-click copy", () => {
 });
 
 describe('terminal dock "+" button', () => {
+  it("opt-in unmount disposes xterm/listeners while owner handles session lifetime", () => {
+    const dispose = vi.spyOn(Terminal.prototype, "dispose");
+    const closed = vi.fn();
+    const offData = vi.fn(); const offExit = vi.fn();
+    vi.mocked(window.hermesAPI.onTerminalData).mockReturnValue(offData);
+    vi.mocked(window.hermesAPI.onTerminalExit).mockReturnValue(offExit);
+    const ref = createRef<TerminalDockHandle>();
+    const view = render(<TerminalDock ref={ref} disposeOnUnmount onSessionClose={closed}
+      onNewSession={vi.fn()} onResizeStart={() => undefined} onResizeMove={() => undefined} onResizeEnd={() => undefined} />);
+    act(() => ref.current?.attachSession("owned", "Owned"));
+    view.unmount();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(offData).toHaveBeenCalledOnce(); expect(offExit).toHaveBeenCalledOnce();
+    expect(window.hermesAPI.terminalKill).not.toHaveBeenCalled();
+    dispose.mockRestore();
+  });
+  it("notifies the owner when a terminal tab closes", () => {
+    const ref = createRef<TerminalDockHandle>(); const closed = vi.fn();
+    render(<TerminalDock ref={ref} onSessionClose={closed} onNewSession={vi.fn()}
+      onResizeStart={() => undefined} onResizeMove={() => undefined} onResizeEnd={() => undefined} />);
+    act(() => ref.current?.attachSession("owned", "Owned"));
+    fireEvent.click(screen.getByRole("button", { name: "Close terminal" }));
+    expect(closed).toHaveBeenCalledWith("owned");
+    expect(window.hermesAPI.terminalKill).toHaveBeenCalledWith("owned");
+  });
   it("creates only on empty opening, preserves sessions on reopen, stays lazy closed", () => {
     const ref = createRef<TerminalDockHandle>();
     const onNewSession = vi.fn();

@@ -52,6 +52,14 @@ The branch badge opens a local-only manager for checkout, create, merge into the
 
 [[src/renderer/src/screens/Chat/BranchDialog.tsx#BranchDialog]] uses the shared focus-trapped modal above Source Control. [[src/main/git-branches.ts#gitBranches]] lists local refs and linked-worktree ownership. [[src/main/git-branches.ts#gitBranchChange]] validates ref names and expected current branch, blocks unfinished Git operations, requires a clean worktree for checkout/merge, protects ignored files from overwrite, and refuses deletion unless merged into current HEAD and not checked out anywhere. Creation starts at HEAD without switching. No force flags, remote deletion or push. Conflicts remain visible for existing resolution tools; branch/status/history refresh follows every result. Real Git regressions: [[src/main/git-branches.test.ts]]; UI confirmations and locking: [[src/renderer/src/screens/Chat/BranchDialog.test.tsx]].
 
+## Resizable panes, reference and terminals
+
+Changes and Graph have bounded left/right splitters. Git Doc lists common commands without executing them. Source Control owns its embedded terminal sessions and confirms before closing them.
+
+[[src/renderer/src/screens/Chat/SourceControlSplit.tsx#SourceControlSplit]] uses a 20–80 percent grid split with pointer capture, cancellation and ArrowLeft/ArrowRight/Home/End resizing. The document and terminal pane remain scrollable on narrow layouts.
+
+[[src/renderer/src/screens/Chat/GitDoc.tsx#GitDoc]] lists inspection, staging, branch, remote, stash and undo commands, including destructive-operation warnings. No commands run automatically. The Terminal header action precedes GitHub credentials and creates shells in the selected repository through existing PTY IPC. [[src/renderer/src/screens/Chat/useSourceControlTerminals.ts#useSourceControlTerminals]] tracks only owned IDs, guards duplicate creates, confirms Close/Escape/credential-navigation exits, awaits terminal kills, and kills late create replies after closure or unmount. Cancelling keeps terminals running. Escape inside the terminal belongs to the shell. Tab changes never unmount the terminal dock. [[src/renderer/src/screens/Command/TerminalDock.tsx#TerminalDock]] retains existing default behavior; Source Control opts into xterm/listener disposal on unmount and tab-close ownership notifications. Forced parent unmount cleans owned sessions without touching other docks. Regressions: [[src/renderer/src/screens/Chat/useSourceControlTerminals.test.tsx]], [[src/renderer/src/screens/Chat/SourceControlSplit.test.tsx]], [[src/renderer/src/screens/Chat/SourceControlDialog.test.tsx]], [[src/renderer/src/screens/Command/TerminalDock.newSession.test.tsx]].
+
 ## Git output
 
 Git results appear in a themed, scrollable output panel with a draggable divider, keyboard-accessible separator, 14px monospace text, and live status or error announcements.

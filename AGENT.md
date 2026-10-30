@@ -10,4 +10,6 @@ When date filters appear in the renderer but return unchanged data, inspect the 
 
 Branch badge opens local-only checkout/create/merge/delete commands with confirmation. Delete requires fully merged into current HEAD and not checked out in any worktree; checkout/merge require clean worktree and protect ignored content. New code: `src/main/git-branches.ts`, `src/renderer/src/screens/Chat/BranchDialog.tsx`. Ignored sort is icon-only (name or path modification time; rules use reverse file order). Git output has a close icon.
 
+Source Control now has draggable/keyboard left-right splitters, Git Doc reference, and multiple owned shells using existing TerminalDock/PTY IPC. Closing through Close/Escape/credentials confirms and kills only Source Control terminals; late spawn replies and forced unmount also clean up. New code: `SourceControlSplit.tsx`, `GitDoc.tsx`, `useSourceControlTerminals.ts`. Do not unmount terminals on tab changes or kill other docks.
+
 Preserve unrelated chat-search/zoom work. Commit owned changes only; do not push without confirmation. Follow `AGENTS.md` resource queue and documentation checks.

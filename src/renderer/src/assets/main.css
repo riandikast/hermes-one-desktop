@@ -23614,6 +23614,30 @@ body:has(.shell-vibrant),
 .source-control-branch-track {
   color: var(--text-secondary);
 }
+.source-control-workspace { display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.source-control-content { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.source-control-split { display: grid; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.source-control-split > :is(.source-control-sidebar, .source-control-graph-list) { width: auto; min-width: 0; max-height: none; }
+.source-control-split > :is(.source-control-diff, .source-control-graph-diff) { min-width: 0; min-height: 0; }
+.source-control-split-handle { cursor: col-resize; touch-action: none; background: var(--border); }
+.source-control-split-handle:is(:hover, :focus-visible) { background: var(--accent); outline: none; }
+.source-control-terminals { width: 38%; min-width: 240px; min-height: 0; border-left: 1px solid var(--border); display: flex; flex-direction: column; }
+.source-control-terminals[hidden] { display: none; }
+.source-control-terminals .terminal-dock { flex: 1; min-height: 0; height: 100%; }
+.source-control-terminals .terminal-dock-resize { display: none; }
+.source-control-terminals > p { padding: 8px; color: var(--text-primary); }
+.source-control-git-doc { overflow: auto; padding: 16px 20px; width: 100%; box-sizing: border-box; }
+.source-control-git-doc h2 { margin-top: 0; }
+.source-control-git-doc p, .source-control-git-doc dd { color: var(--text-secondary); }
+.source-control-git-doc dl > div { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.source-control-git-doc dt { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.source-control-git-doc code { color: var(--text-primary); user-select: text; overflow-wrap: anywhere; }
+.source-control-git-doc small { color: var(--text-muted); min-width: 55px; }
+.source-control-git-doc dd { margin: 5px 0 0; font-size: 13px; }
+@media (max-width: 600px) {
+  .source-control-workspace { flex-direction: column; }
+  .source-control-terminals { width: 100%; min-width: 0; height: 40%; border-left: 0; border-top: 1px solid var(--border); }
+}
 .source-control-body {
   display: flex;
   min-height: 0;

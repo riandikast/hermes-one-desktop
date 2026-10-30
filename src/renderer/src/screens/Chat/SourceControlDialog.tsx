@@ -12,6 +12,8 @@ import {
   ChevronDown,
   Plus,
   Minus,
+  BookOpen,
+  Terminal as TerminalIcon,
 } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import { useSettingsModal } from "../../components/settings/SettingsModalContext";
@@ -19,6 +21,10 @@ import { DiffViewer } from "./DiffViewer";
 import { CommitGraph } from "./CommitGraph";
 import { IgnoredFiles } from "./IgnoredFiles";
 import { BranchDialog } from "./BranchDialog";
+import { GitDoc } from "./GitDoc";
+import { SourceControlSplit } from "./SourceControlSplit";
+import { useSourceControlTerminals } from "./useSourceControlTerminals";
+import { TerminalDock } from "../Command/TerminalDock";
 import type { GraphCommit } from "./gitGraph";
 
 interface GitFileEntry {
@@ -311,11 +317,16 @@ export function SourceControlDialog({
   const { t } = useI18n();
   const { openSettings } = useSettingsModal();
   const [branchesOpen, setBranchesOpen] = useState(false);
+  const [terminalError, setTerminalError] = useState("");
+  const terminals = useSourceControlTerminals(dir, onClose, setTerminalError);
   useEffect(() => {
-    const close = (event: KeyboardEvent): void => { if (event.key === "Escape" && !branchesOpen) onClose(); };
+    const close = (event: KeyboardEvent): void => {
+      // Escape belongs to the shell/application when focus is inside its terminal.
+      if (event.key === "Escape" && !branchesOpen && !(event.target instanceof Element && event.target.closest(".source-control-terminals"))) void terminals.requestClose();
+    };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
-  }, [onClose, branchesOpen]);
+  }, [terminals.requestClose, branchesOpen]);
   const [status, setStatus] = useState<GitStatusResult | null>(null);
   const [busy, setBusy] = useState(false);
   const actionInFlight = useRef(false);
@@ -348,7 +359,7 @@ export function SourceControlDialog({
   const [token, setToken] = useState("");
   const [tokenSaved, setTokenSaved] = useState(false);
   // Tab view: the classic working-tree change list, or the commit graph.
-  const [view, setView] = useState<"changes" | "graph">("changes");
+  const [view, setView] = useState<"changes" | "graph" | "docs">("changes");
   const [commits, setCommits] = useState<GraphCommit[]>([]);
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphError, setGraphError] = useState("");
@@ -661,7 +672,7 @@ export function SourceControlDialog({
             <button
               type="button"
               className="btn-ghost"
-              onClick={onClose}
+              onClick={() => void terminals.requestClose()}
               aria-label="Close"
             >
               <X size={16} />
@@ -702,8 +713,9 @@ export function SourceControlDialog({
             )}
           </button>
           <div className="source-control-header-actions">
+            <button type="button" className="btn-ghost btn-sm" disabled={terminals.creating} onClick={terminals.add}><TerminalIcon size={14} aria-hidden="true" />Terminal</button>
             {remoteHost?.toLowerCase() === "github.com" && (
-              <button type="button" className="btn-ghost btn-sm" onClick={() => { onClose(); openSettings("github"); }}>
+              <button type="button" className="btn-ghost btn-sm" onClick={() => { void terminals.requestClose().then((closed) => { if (closed) openSettings("github"); }); }}>
                 Manage GitHub Credentials
               </button>
             )}
@@ -753,7 +765,7 @@ export function SourceControlDialog({
             <button
               type="button"
               className="btn-ghost"
-              onClick={onClose}
+              onClick={() => void terminals.requestClose()}
               aria-label="Close"
             >
               <X size={16} />
@@ -786,11 +798,14 @@ export function SourceControlDialog({
               <span className="source-control-tab-spinner" aria-hidden />
             )}
           </button>
+          <button type="button" className={`source-control-tab${view === "docs" ? " active" : ""}`} onClick={() => setView("docs")}><BookOpen size={13} aria-hidden="true" />Git Doc</button>
         </div>
 
+        <div className="source-control-workspace">
+        <div className="source-control-content">
         <div className="source-control-body">
           {view === "changes" ? (
-            <>
+            <SourceControlSplit key="changes" label="Changes pane width" initial={35}>
               <div className="source-control-sidebar">
                 <div className="source-control-footer">
                   <textarea className="source-control-commit-input" aria-label="Commit message" value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} placeholder="Commit message (Ctrl+Enter to commit)" rows={2} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !busy && stagedCount > 0) void commit(); }} />
@@ -960,9 +975,9 @@ export function SourceControlDialog({
                   staged={selected?.staged}
                 />
               </div>
-            </>
-          ) : (
-            <div className="source-control-graph-pane">
+            </SourceControlSplit>
+          ) : view === "graph" ? (
+            <SourceControlSplit key="graph" label="Graph pane width" initial={46}>
               <div className="source-control-graph-list">
                 {graphError && <p role="alert">{graphError}</p>}
                 <form className="source-control-graph-toolbar source-control-graph-filters" onSubmit={(event) => {
@@ -1013,8 +1028,8 @@ export function SourceControlDialog({
                   </div>
                 )}
               </div>
-            </div>
-          )}
+            </SourceControlSplit>
+          ) : <GitDoc />}
         </div>
 
 
@@ -1095,6 +1110,13 @@ export function SourceControlDialog({
             </div>
           </section>
         )}
+        </div>
+        <aside className="source-control-terminals" aria-label="Source Control terminals" hidden={!terminals.visible}>
+          {terminalError && <p role="alert">{terminalError}</p>}
+          {terminals.visible && <TerminalDock ref={terminals.dock} onNewSession={terminals.add} onSessionClose={terminals.closed} disposeOnUnmount
+            onResizeStart={() => undefined} onResizeMove={() => undefined} onResizeEnd={() => undefined} />}
+        </aside>
+        </div>
       </div>
     </Shell>
   );
