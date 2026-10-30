@@ -23,23 +23,31 @@ afterEach(() => {
 function transcript(messages: ToolCallMessage[], active = true, sessionKey = "parent"): React.JSX.Element {
   return <ToolEntryProvider active={active} sessionKey={sessionKey} messages={messages}>{messages.length > 0 && <ToolActivityGroup key={sessionKey} items={messages} />}</ToolEntryProvider>;
 }
+function drainMounts(): void {
+  for (let index = 0; vi.getTimerCount() && index < 1000; index++) act(() => vi.advanceTimersToNextTimer());
+}
 it("wires tab activation through the real transcript for parent and subagent sessions", () => {
   const messages = [call("transcript-parent")];
   const props = { messages, active: true, sessionKey: "parent", isLoading: false, toolProgress: null, onApprove: vi.fn(), onDeny: vi.fn(), onClarifyResolved: vi.fn() };
   const view = render(<MessageList {...props} />);
+  drainMounts();
   expect(view.container.querySelectorAll(".chat-tool-item-body")).toHaveLength(1);
   view.rerender(<MessageList {...props} active={false} />);
   const background = [...messages, call("transcript-background")];
   view.rerender(<MessageList {...props} messages={background} active={false} />);
   view.rerender(<MessageList {...props} messages={background} />);
+  drainMounts();
   expect(view.container.querySelectorAll(".chat-tool-item-body")).toHaveLength(2);
   view.rerender(<MessageList {...props} sessionKey="subagent" messages={[call("transcript-child")]} />);
+  drainMounts();
   expect(view.container.querySelectorAll(".chat-tool-item-body")).toHaveLength(1);
   expect([...view.container.querySelectorAll(".chat-tool-collapse")].every((panel) => panel.getAttribute("data-instant") === "true")).toBe(true);
 });
-it("opens every existing tool body on first paint without timers or stagger", () => {
+it("opens history without animation but keeps expensive body mounting interruptible", () => {
   const messages = Array.from({ length: 20 }, (_, index) => call(`entry-${index}`));
   const view = render(transcript(messages));
+  expect(view.container.querySelectorAll(".chat-tool-item-body")).toHaveLength(0);
+  drainMounts();
   expect(view.container.querySelectorAll(".chat-tool-item-body")).toHaveLength(20);
   const panels = [...view.container.querySelectorAll<HTMLElement>(".chat-tool-collapse")];
   expect(panels.every((panel) => panel.classList.contains("chat-tool-collapse--open") && panel.dataset.instant === "true" && !panel.style.transitionDelay)).toBe(true);
@@ -48,11 +56,14 @@ it("opens every existing tool body on first paint without timers or stagger", ()
 it("settles returning tabs including background arrivals, but animates subsequent live tools", () => {
   const original = call("return-original"); const background = call("return-background"); const live = call("return-live");
   const view = render(transcript([original]));
+  drainMounts();
   view.rerender(transcript([original], false));
   view.rerender(transcript([original, background], false));
   view.rerender(transcript([original, background], true));
+  drainMounts();
   expect(view.container.querySelectorAll(".chat-tool-item-body")).toHaveLength(2);
   view.rerender(transcript([original, background, live], true));
+  drainMounts();
   const panels = view.container.querySelectorAll<HTMLElement>(".chat-tool-item .chat-tool-collapse");
   expect(panels[2].dataset.instant).toBeUndefined();
   expect(panels[2]).not.toHaveClass("chat-tool-collapse--open");
@@ -63,6 +74,7 @@ it("settles returning tabs including background arrivals, but animates subsequen
 it("settles subagent session entry and later history hydration without changing manual collapse", () => {
   const view = render(transcript([], true, "subagent"));
   view.rerender(transcript([call("child-tool")], true, "subagent"));
+  drainMounts();
   expect(view.container.querySelectorAll(".chat-tool-item-body")).toHaveLength(1);
   fireEvent.click(view.container.querySelector(".chat-tool-item-header")!);
   expect(view.container.querySelector(".chat-tool-item-header")).toHaveAttribute("aria-expanded", "false");
@@ -70,5 +82,6 @@ it("settles subagent session entry and later history hydration without changing 
   view.rerender(transcript([call("child-tool")], true, "subagent"));
   expect(view.container.querySelector(".chat-tool-item-header")).toHaveAttribute("aria-expanded", "false");
   view.rerender(transcript([call("different-child")], true, "other-subagent"));
+  drainMounts();
   expect(view.container.querySelectorAll(".chat-tool-item-body")).toHaveLength(1);
 });

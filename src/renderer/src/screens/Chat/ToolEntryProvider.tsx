@@ -13,7 +13,9 @@ export function ToolEntryProvider({ active, sessionKey, messages, children }: {
   const [entry, setEntry] = useState(() => ({ active, sessionKey, ids: new Set(messages.map((message) => message.id)) }));
   let current = entry;
   if (entry.active !== active || entry.sessionKey !== sessionKey || (!entry.ids.size && messages.length > 0)) {
-    current = { active, sessionKey, ids: new Set(messages.map((message) => message.id)) };
+    const refresh = entry.sessionKey !== sessionKey || active || !entry.ids.size;
+    const unchanged = entry.ids.size === messages.length && messages.every((message) => entry.ids.has(message.id));
+    current = { active, sessionKey, ids: refresh && !unchanged ? new Set(messages.map((message) => message.id)) : entry.ids };
     setEntry(current);
   }
   return <ToolEntryContext.Provider value={current.ids}>{children}</ToolEntryContext.Provider>;

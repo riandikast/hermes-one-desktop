@@ -714,7 +714,7 @@ export function SourceControlDialog({
             )}
           </button>
           <div className="source-control-header-actions">
-            <button type="button" className="btn-ghost btn-sm" aria-expanded={terminals.visible} onClick={terminals.toggle}>Terminal</button>
+            <button type="button" className="btn-ghost btn-sm source-control-terminal-toggle" aria-expanded={terminals.visible} aria-pressed={terminals.visible} title={terminals.visible ? "Hide terminal pane (sessions keep running)" : "Show terminal pane"} onClick={terminals.toggle}>Terminal</button>
             {remoteHost?.toLowerCase() === "github.com" && (
               <button type="button" className="btn-ghost btn-sm" onClick={() => { void terminals.requestClose().then((closed) => { if (closed) openSettings("github"); }); }}>
                 Manage GitHub Credentials

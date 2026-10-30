@@ -66,9 +66,9 @@ The stall watchdog never fails a turn while a TOOL is in flight (a multi-minute 
 
 ### Tool disclosure on tab entry
 
-Existing tool rows open immediately when entering or returning to a chat or subagent tab. Newly arriving live tools retain batched mounting, stagger and accordion motion; manual collapse state remains unchanged.
+Existing tool rows skip opening animation on chat/subagent tab entry, but heavy bodies still mount through a yielding queue. Newly arriving tools retain motion. Unchanged tab returns reuse the context snapshot and mounted bodies.
 
-[[src/renderer/src/screens/Chat/ToolEntryProvider.tsx#ToolEntryProvider]] snapshots existing message IDs on activation/session changes and first history hydration. [[src/renderer/src/screens/Chat/MessageList.tsx#MessageList]] receives Chat's active state, shares the snapshot through context, and preserves the weighted transcript window. [[src/renderer/src/screens/Chat/HistoryRow.tsx#ToolActivityGroup]] and its items bypass the mount queue, frame priming, CSS transitions and reasoning wait for those existing IDs only. Later live IDs keep their usual animation. [[src/renderer/src/screens/Chat/ToolEntryProvider.test.tsx]] covers initial paint, background arrivals, parent/subagent entry, manual collapse and live animation.
+[[src/renderer/src/screens/Chat/ToolEntryProvider.tsx#ToolEntryProvider]] snapshots existing message IDs on activation/session changes and first history hydration, preserving snapshot identity when IDs are unchanged and on deactivation. [[src/renderer/src/screens/Chat/MessageList.tsx#MessageList]] receives Chat's active state and preserves the weighted transcript window. [[src/renderer/src/screens/Chat/HistoryRow.tsx#ToolActivityGroup]] and its items skip frame priming, CSS transitions and reasoning wait for existing IDs, never the shared mount queue. Bypassing that queue caused synchronous result formatting and tab-switch freezes. [[src/renderer/src/screens/Chat/ToolEntryProvider.test.tsx]] covers history, background arrivals, subagents, manual collapse and live animation. [[src/renderer/src/screens/Chat/ToolEntryProvider.performance.test.tsx]] verifies zero synchronous formatting, at most one body per queued tick, and no repeated formatting on unchanged tab returns; jsdom is not a live frame-time guarantee.
 
 ### Reasoning reconciliation
 

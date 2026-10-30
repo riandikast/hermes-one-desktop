@@ -175,7 +175,12 @@ describe("SourceControlDialog", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Terminal" }));
     await screen.findByText("Close terminal source-term");
     const dockNode = screen.getByText("Close terminal source-term");
+    expect(screen.getByRole("button", { name: "Terminal" })).toHaveAttribute("aria-pressed", "true");
+    expect(sourceControlCss).toMatch(/\.source-control-terminal-toggle\[aria-pressed="true"\]\s*\{[^}]*background:[^}]*box-shadow:/);
+    expect(screen.getByRole("button", { name: "Terminal" })).toHaveAttribute("title", "Hide terminal pane (sessions keep running)");
     fireEvent.click(screen.getByRole("button", { name: "Terminal" }));
+    expect(screen.getByRole("button", { name: "Terminal" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Terminal" })).toHaveAttribute("title", "Show terminal pane");
     expect(screen.getByLabelText("Source Control terminals")).not.toBeVisible();
     expect(window.hermesAPI.terminalKill).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Terminal" }));

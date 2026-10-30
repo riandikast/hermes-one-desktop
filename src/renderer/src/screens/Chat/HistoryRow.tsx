@@ -611,7 +611,7 @@ const ToolActivityItem = memo(function ToolActivityItem({
   }, []);
   // Animate this item's own panel, so expanding a single tool step is a
   // transition rather than a jump.
-  const bodyMounted = useToolDisclosure(open, 1, 1, instant) > 0;
+  const bodyMounted = useToolDisclosure(open) > 0;
   const openRendered = useAccordionOpen(bodyMounted, !instant);
   useEffect(() => {
     const handleDisplayControl = (event: Event): void => {
@@ -811,7 +811,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
   const detail = itemDetail(last);
   const title = toolActivityGroupTitle(items);
   const soloTool = singleToolName(items);
-  const visibleCount = useToolDisclosure(open && !waiting, items.length, 8, instant);
+  const visibleCount = useToolDisclosure(open && !waiting, items.length, 8);
   const openRendered = useAccordionOpen(visibleCount > 0, !instant);
   const orderedItems = useMemo(
     () => (open ? orderToolActivityItems(items) : []),

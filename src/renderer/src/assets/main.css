@@ -23831,6 +23831,12 @@ body:has(.shell-vibrant),
   align-items: center;
   gap: 4px;
 }
+
+.source-control-terminal-toggle[aria-pressed="true"] {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  box-shadow: inset 0 -2px var(--accent);
+}
 .source-control-action-hint { display: inline-flex; }
 .source-control-stage-btn {
   border: none;
