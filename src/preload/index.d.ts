@@ -1336,6 +1336,11 @@ interface HermesAPI {
   gitRenameCheck: (dir: string, hash: string) => Promise<GitActionResult>;
   gitRenameCommit: (dir: string, hash: string, message: string) => Promise<GitActionResult>;
   gitBranches: (dir: string) => Promise<import("../shared/git-branches").GitBranchListResult>;
+  gitStashList: (dir: string) => Promise<import("../shared/git-stash").GitStashListResult>;
+  gitStashCreate: (dir: string, paths: string[]) => Promise<GitActionResult>;
+  gitStashApply: (dir: string, hashes: string[]) => Promise<GitActionResult>;
+  gitStashDrop: (dir: string, hashes: string[]) => Promise<GitActionResult>;
+  gitStashDiff: (dir: string, hash: string) => Promise<GitActionResult>;
   gitBranchChange: (dir: string, action: import("../shared/git-branches").GitBranchAction, name: string, current: string | null) => Promise<GitActionResult>;
   gitRepoStatus: (dir: string) => Promise<GitStatusResult>;
   gitLog: (dir: string, opts?: { max?: number; from?: string; to?: string }) => Promise<GitLogResult>;

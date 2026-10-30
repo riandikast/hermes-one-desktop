@@ -16,4 +16,6 @@ Terminal header is text-only and its width reuses SourceControlSplit. Initial re
 
 Terminal header toggles visibility without unmount/kill; pressed styling and Show/Hide hints expose its state. Final session closure and initial spawn failure hide the empty pane. Dock new-session action remains separate. ToolEntryProvider snapshots existing IDs on tab activation/session entry; existing tool groups/items skip animation but MUST retain the shared mount queue (bulk synchronous bodies caused freezes). Preserve snapshot identity on unchanged tab returns/deactivation to avoid context-wide rerenders. New live tools retain motion. Chat forwards active to MessageList for parent/subagent tabs.
 
+Stash section above Staged reuses section/row styles, ordered hash multi-selection, Shift ranges, diff previews, confirmed apply/drop. Changes/Staged selected files can be stashed (both staged and unstaged edits, selected untracked included, ignored excluded). Apply keeps saved copies; drop resolves current refs by immutable hash. New Electron IPC/preload requires user-controlled rebuild/restart.
+
 Preserve unrelated chat-search/zoom work. Commit owned changes only; do not push without confirmation. Follow `AGENTS.md` resource queue and documentation checks.

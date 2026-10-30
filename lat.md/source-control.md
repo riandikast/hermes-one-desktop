@@ -40,6 +40,14 @@ Ignored subsection headings use a 44px left margin; rule, empty labels, and igno
 
 Design direction: requested VS Code familiarity, ENERGY 1 / RHYTHM 1 / MOTION 1. Existing theme tokens preserve app identity; compact rows and right-aligned status aid scanning, the eye-off icon means ignore, monospace is reserved for paths and history. Native details provide keyboard collapse with lucide right/down chevrons and themed hover; narrow layouts stack the sidebar and diff. Live visual verification remains manual because this task forbids launch/build/browser actions.
 
+## Stash management
+
+Stash appears above Staged with matching collapsible rows, checkboxes, Shift-range selection, diff previews, and confirmed apply/drop actions. Changes and Staged selections can create a stash.
+
+[[src/renderer/src/screens/Chat/StashSection.tsx#StashSection]] keeps ordered hash selections independent of shifting `stash@{n}` labels; refresh prunes deleted entries. Plain row clicks preview, Shift-clicking rows or checkboxes extends the anchored range. Selected apply runs in selection order and keeps every saved stash. Drop confirms permanent loss; batch processing stops on failure. Loading, empty, and error states remain visible. Shared Source Control operation locking disables mutations while busy.
+
+[[src/main/git-stash.ts]] validates selected paths and stash membership before Git operations. Creation saves both staged and unstaged versions of selected paths, including untracked files but never ignored content. Apply requires a clean starting worktree and preserves saved copies if conflicts occur. Drop resolves current refs from hashes after each removal, avoiding index-renumbering mistakes. Staged deletions and rename source paths are rejected before mutation with an unstage instruction. Apply restores content without restoring the staged/unstaged split (`--index` is omitted). External Git clients can race ref lookup during drop; avoid concurrent stash edits. No pop, clear-all, force, remote operation, or Python backend change. Regressions: [[src/main/git-stash.test.ts]], [[src/renderer/src/screens/Chat/StashSection.test.tsx]], [[src/renderer/src/screens/Chat/SourceControlDialog.test.tsx]].
+
 ## Discard changes
 
 Per-file discard confirms before restoring tracked regular files without staged changes. [[src/main/git.ts#gitDiscard]] rejects conflicts, untracked paths, traversal and symlinks; literal pathspecs protect other files.

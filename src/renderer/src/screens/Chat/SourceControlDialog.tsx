@@ -19,6 +19,7 @@ import { useSettingsModal } from "../../components/settings/SettingsModalContext
 import { DiffViewer } from "./DiffViewer";
 import { CommitGraph } from "./CommitGraph";
 import { IgnoredFiles } from "./IgnoredFiles";
+import { StashSection } from "./StashSection";
 import { BranchDialog } from "./BranchDialog";
 import { RenameCommitDialog } from "./RenameCommitDialog";
 import { GitDoc } from "./GitDoc";
@@ -339,6 +340,8 @@ export function SourceControlDialog({
   const [batchSelection, setBatchSelection] = useState<string[]>([]);
   const selectionAnchorRef = useRef<{ path: string; staged: boolean } | null>(null);
   const [diff, setDiff] = useState<string>("");
+  const [stashRevision, setStashRevision] = useState(0);
+  const [stashPreview, setStashPreview] = useState<string | null>(null);
   const [commitMessage, setCommitMessage] = useState("");
   const [output, setOutput] = useState<string>("");
   const [outputHeight, setOutputHeight] = useState(120);
@@ -394,6 +397,7 @@ export function SourceControlDialog({
   const refresh = useCallback(async () => {
     const next = await window.hermesAPI.gitRepoStatus(dir);
     setStatus(next);
+    setStashRevision((value) => value + 1);
     const selectable = new Set([
       ...next.staged.map((file) => `staged:${file.path}`),
       ...next.unstaged.map((file) => `changes:${file.path}`),
@@ -420,6 +424,7 @@ export function SourceControlDialog({
 
   const showDiff = useCallback(
     async (path: string, staged: boolean) => {
+      setStashPreview(null);
       setSelected({ path, staged });
       const res = await window.hermesAPI.gitDiff(dir, path, staged);
       setDiff(res.ok ? (res.output ?? "") : (res.error ?? ""));
@@ -568,6 +573,12 @@ export function SourceControlDialog({
     const untracked = new Set(status?.untracked ?? []);
     return selectedPaths(false).filter((path) => untracked.has(path));
   }, [selectedPaths, status]);
+
+  const stashSelected = (staged: boolean): void => {
+    const paths = selectedPaths(staged);
+    if (!paths.length || !window.confirm(`Stash selected ${paths.length} file(s)? Both staged and unstaged edits of these files will be saved and removed from the working tree. Untracked selected files are included; ignored files are not.`)) return;
+    void run(() => window.hermesAPI.gitStashCreate(dir, paths), "Stashed selected");
+  };
 
   const commit = useCallback(async () => {
     const message = commitMessage.trim();
@@ -835,6 +846,8 @@ export function SourceControlDialog({
                     ))
                   )}
                 </Section>
+                <StashSection dir={dir} revision={stashRevision} busy={busy} run={run}
+                  onPreview={(raw, label) => { setSelected(null); setStashPreview(label); setDiff(raw); }} />
                 <Section
                   title={`Staged (${stagedCount})`}
                   toolbar={selectedPaths(true).length > 0 ? (
@@ -850,6 +863,7 @@ export function SourceControlDialog({
                       >
                         Unstage selected ({selectedPaths(true).length})
                       </button>
+                      <button type="button" className="btn-ghost btn-sm" disabled={busy} onClick={() => stashSelected(true)}>Stash selected ({selectedPaths(true).length})</button>
                       <button
                         type="button"
                         className="btn-ghost btn-sm"
@@ -900,6 +914,7 @@ export function SourceControlDialog({
                         >
                           Stage selected ({selectedPaths(false).length})
                         </button>
+                        <button type="button" className="btn-ghost btn-sm" disabled={busy} onClick={() => stashSelected(false)}>Stash selected ({selectedPaths(false).length})</button>
                         <button
                           type="button"
                           className="btn-ghost btn-sm"
@@ -975,8 +990,8 @@ export function SourceControlDialog({
               <div className="source-control-diff">
                 <DiffViewer
                   raw={diff}
-                  path={selected?.path ?? null}
-                  staged={selected?.staged}
+                  path={stashPreview ?? selected?.path ?? null}
+                  staged={stashPreview ? undefined : selected?.staged}
                 />
               </div>
             </SourceControlSplit>

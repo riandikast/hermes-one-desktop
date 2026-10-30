@@ -90,6 +90,11 @@ beforeEach(() => {
 
   (window as unknown as { hermesAPI: unknown }).hermesAPI = {
     gitRepoStatus,
+    gitStashList: vi.fn().mockResolvedValue({ ok: true, entries: [] }),
+    gitStashCreate: vi.fn().mockResolvedValue({ ok: true }),
+    gitStashApply: vi.fn().mockResolvedValue({ ok: true }),
+    gitStashDrop: vi.fn().mockResolvedValue({ ok: true }),
+    gitStashDiff: vi.fn().mockResolvedValue({ ok: true, output: "" }),
     gitLog,
     gitDiff,
     gitCommitDiff,
@@ -116,6 +121,32 @@ beforeEach(() => {
 });
 
 describe("SourceControlDialog", () => {
+  it("places Stash above Staged and creates a stash from selected changes", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderDialog("/repo");
+    const stash = await screen.findByText("Stash (0)");
+    const staged = screen.getByText("Staged (0)");
+    expect(stash.compareDocumentPosition(staged) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Select a.ts"));
+    fireEvent.click(screen.getByRole("button", { name: "Stash selected (1)" }));
+    await waitFor(() => expect(window.hermesAPI.gitStashCreate).toHaveBeenCalledWith("/repo", ["a.ts"]));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Both staged and unstaged"));
+    await waitFor(() => expect(window.hermesAPI.gitStashList).toHaveBeenCalledTimes(2));
+    confirm.mockRestore();
+  });
+  it("can stash staged selections and cancellation never calls Git", async () => {
+    const status = await window.hermesAPI.gitRepoStatus("/repo");
+    gitRepoStatus.mockResolvedValue({ ...status, staged: [{ index: "M", worktree: " ", path: "staged.ts" }] });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderDialog("/repo");
+    fireEvent.click(await screen.findByLabelText("Select staged.ts"));
+    fireEvent.click(screen.getByRole("button", { name: "Stash selected (1)" }));
+    expect(window.hermesAPI.gitStashCreate).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "Stash selected (1)" }));
+    await waitFor(() => expect(window.hermesAPI.gitStashCreate).toHaveBeenCalledWith("/repo", ["staged.ts"]));
+    confirm.mockRestore();
+  });
   it("shows animated repository loading instead of a translation key", async () => {
     let finish!: (value: unknown) => void;
     gitRepoStatus.mockReturnValue(new Promise((resolve) => { finish = resolve; }));

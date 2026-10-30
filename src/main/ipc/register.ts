@@ -60,6 +60,7 @@ import {
 } from "../media";
 import { gitIgnoreEdit, gitIgnoreList, gitIgnoreAddMany } from "../git-ignore";
 import { gitBranches, gitBranchChange } from "../git-branches";
+import { gitStashList, gitStashCreate, gitStashApply, gitStashDrop, gitStashDiff } from "../git-stash";
 import { gitRenameCheck, gitRenameCommit } from "../git-rename";
 import type { GitBranchAction } from "../../shared/git-branches";
 import { openTerminalInDirectory } from "../terminal-launcher";
@@ -3661,6 +3662,11 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("git-rename-check", (_event, dir: string, hash: string) => gitRenameCheck(dir, hash));
   ipcMain.handle("git-rename-commit", (_event, dir: string, hash: string, message: string) => gitRenameCommit(dir, hash, message));
   ipcMain.handle("git-branches", (_event, dir: string) => gitBranches(dir));
+  ipcMain.handle("git-stash-list", (_event, dir: string) => gitStashList(dir));
+  ipcMain.handle("git-stash-create", (_event, dir: string, paths: string[]) => gitStashCreate(dir, paths));
+  ipcMain.handle("git-stash-apply", (_event, dir: string, hashes: string[]) => gitStashApply(dir, hashes));
+  ipcMain.handle("git-stash-drop", (_event, dir: string, hashes: string[]) => gitStashDrop(dir, hashes));
+  ipcMain.handle("git-stash-diff", (_event, dir: string, hash: string) => gitStashDiff(dir, hash));
   ipcMain.handle("git-branch-change", (_event, dir: string, action: GitBranchAction, name: string, current: string | null) => gitBranchChange(dir, action, name, current));
   ipcMain.handle("git-repo-status", async (_event, dir: string) =>
     gitRepoStatus(dir),
