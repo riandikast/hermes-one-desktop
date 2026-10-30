@@ -136,6 +136,19 @@ describe("SourceControlDialog", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("published");
     expect(window.hermesAPI.gitRenameCommit).not.toHaveBeenCalled();
   });
+  it("explains ineligible commits instead of silently disabling rename", async () => {
+    const target = { ...commit("c".repeat(40), [], "older local commit"), refs: ["local-branch"] };
+    gitLog.mockResolvedValue({ ok: true, commits: [target] });
+    vi.mocked(window.hermesAPI.gitRenameCheck).mockResolvedValue({ ok: false, error: "Only the latest commit on the current local branch can be renamed" });
+    renderDialog("/repo");
+    fireEvent.click(await screen.findByRole("button", { name: "Graph" }));
+    fireEvent.contextMenu(await screen.findByRole("listitem"));
+    const rename = screen.getByRole("menuitem", { name: "Rename commit" });
+    expect(rename).toBeEnabled();
+    fireEvent.click(rename);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Only the latest commit on the current local branch can be renamed");
+    expect(window.hermesAPI.gitRenameCommit).not.toHaveBeenCalled();
+  });
   it("saves a renamed local HEAD after confirmation and refreshes history", async () => {
     const target = { ...commit("b".repeat(40), [], "original"), refs: ["HEAD -> main"] };
     gitLog.mockResolvedValue({ ok: true, commits: [target] });

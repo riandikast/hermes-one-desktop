@@ -48,7 +48,7 @@ Discard appears only in an eligible file's context menu (right-click, ContextMen
 
 ## Rename unpublished commit
 
-The first graph context action edits the latest unpublished commit message with confirmation. Older commits stay disabled because renaming them would rewrite descendants through a rebase.
+The first graph context action opens rename eligibility feedback for any commit. Only the latest unpublished HEAD can be edited with confirmation; older or published commits show an explanation instead of a silently disabled menu item.
 
 [[src/renderer/src/screens/Chat/RenameCommitDialog.tsx#RenameCommitDialog]] loads the full message, preserving its body, and warns that the commit ID changes. [[src/main/git-rename.ts#gitRenameCheck]] requires clean worktree/index, attached HEAD matching the full ID, no unfinished Git operation, and no remote-tracking reachability. It also checks advertised heads/tags with `ls-remote`, refusing unavailable remote objects or unreachable remotes instead of assuming unpublished status. [[src/main/git-rename.ts#gitRenameCommit]] revalidates before `commit --amend --only -m`, preventing unrelated staged paths from being included. Remote publication can race the check; no push or force-push occurs. Tests: [[src/main/git-rename.test.ts]], [[src/renderer/src/screens/Chat/RenameCommitDialog.test.tsx]].
 

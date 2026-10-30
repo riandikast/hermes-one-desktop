@@ -312,7 +312,7 @@ function CommitRow({
             }}
           >
             <button type="button" role="menuitem" className="worktree-context-menu-item"
-              disabled={busy || !onRename || !commit.refs.some((ref) => ref.startsWith("HEAD -> "))}
+              disabled={busy || !onRename}
               title="Rename latest unpublished commit; remote status is verified before editing"
               onClick={() => { setMenu(null); rowRef.current?.focus(); onRename?.(commit); }}>Rename commit</button>
             <button
