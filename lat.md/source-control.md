@@ -18,7 +18,7 @@ All git work runs in the main process ([[src/main/git.ts]]) by spawning the `git
 
 Optional per-host tokens support HTTPS network operations on newly configured machines.
 
-A Personal Access Token (GitHub/GitLab PAT) lets a fresh PC push without the interactive credential flow. The dialog's token row (auto-detects the remote host from `git remote -v`) saves a token via `git-set-token`; the main process persists it per host in `userData/git-tokens.json`, each value encrypted with Electron `safeStorage` (DPAPI on Windows, plain base64 fallback when unavailable). [[src/main/git-credentials.ts]] owns the store, host extraction, and the `http.https://<host>/.extraHeader=Authorization: Bearer <token>` arg builder; the IPC layer wires a token provider into git.ts (`setGitTokenProvider`), and push/pull/fetch prepend those auth args whenever a token exists for the remote's host ([[src/main/git.ts#gitNetworkAuthArgs]]). Covered by [[src/main/git-credentials.test.ts]] (host parsing, auth-arg building, encrypted round-trip).
+For github.com remotes, the top-header credential action opens GitHub credential manager settings and network operations defer to the configured Git credential helper. Existing app-specific GitHub tokens remain stored but are not used or deleted. Other hosts retain per-host tokens. The main process persists tokens in `userData/git-tokens.json`, encrypted with Electron `safeStorage` (DPAPI on Windows, plain base64 fallback when unavailable). [[src/main/git-credentials.ts]] owns the store, host extraction and bearer-header argument builder; [[src/main/git.ts#gitNetworkAuthArgs]] applies stored tokens only to non-GitHub hosts. Regressions: [[src/main/git-network-auth.test.ts]] and [[src/main/git-credentials.test.ts]].
 
 Bearer auth works for both classic and **fine-grained** GitHub PATs. A fine-grained token must have **Contents: Read and write** (read for pull/fetch only) scoped to the target repos, plus the auto-granted **Metadata: Read**; otherwise push fails with 403. SSH remotes (`git@host:...`) never use the token — they use SSH keys. Status uses `git status --porcelain=v1 -b -z` (NUL-separated records — paths with spaces are safe; the `## branch...` header record is dropped before file parsing); ahead/behind come from the `-b` branch header. Conflict detection covers `U` statuses plus the `DD/AA/AU/UA/DU/UD` pairs. Staging is `git add`, unstaging `git restore --staged`, commit `git commit -m <message>`. Resolving a conflict runs `checkout --ours|--theirs` followed by `git add` (checkout alone leaves the index unmerged). IPC handlers live in [[src/main/ipc/register.ts]], exposed on `hermesAPI` via [[src/preload/index.ts]].
 
@@ -26,7 +26,7 @@ Bearer auth works for both classic and **fine-grained** GitHub PATs. A fine-grai
 
 The Changes heading stages displayed tracked edits, deletions, and untracked files together through the existing gitStage API, leaving conflicts explicit.
 
-The native themed button is disabled when empty or busy. A synchronous action lock prevents duplicate requests and stays held through status refresh; staging and refresh errors remain visible. No commit or push occurs. Mocked regression: [[src/renderer/src/screens/Chat/SourceControlDialog.test.tsx]].
+Stage all changes appears only in the Changes parent heading context menu (right-click, ContextMenu, or Shift+F10), disabled when empty or busy. The bounded menu focuses its action and closes on outside pointer or Escape; Escape restores heading focus. A synchronous action lock prevents duplicate requests and stays held through status refresh; staging and refresh errors remain visible. No commit or push occurs. Mocked regression: [[src/renderer/src/screens/Chat/SourceControlDialog.test.tsx]].
 
 ## Ignore management and local graph
 
@@ -36,7 +36,17 @@ The compact sidebar places commit controls first, collapsible change groups next
 
 [[src/main/git.ts#gitLog]] reads all local refs in topological order, defaults to 60 commits in the UI and caps at 200. HEAD, branches, tags and remote-tracking refs stay visible. Existing [[src/renderer/src/screens/Chat/CommitGraph.tsx#CommitGraph]] lanes and commit diffs are reused; no login or network request is needed. Loading, failure and retry controls are explicit. Mocked regression: [[src/renderer/src/screens/Chat/SourceControlDialog.test.tsx]].
 
-Design direction: requested VS Code familiarity, ENERGY 1 / RHYTHM 1 / MOTION 1. Existing theme tokens preserve app identity; compact rows and right-aligned status aid scanning, the eye-off icon means ignore, monospace is reserved for paths and history. Native details provide keyboard collapse; narrow layouts stack the sidebar and diff. Live visual verification remains manual because this task forbids launch/build/browser actions.
+Design direction: requested VS Code familiarity, ENERGY 1 / RHYTHM 1 / MOTION 1. Existing theme tokens preserve app identity; compact rows and right-aligned status aid scanning, the eye-off icon means ignore, monospace is reserved for paths and history. Native details provide keyboard collapse with lucide right/down chevrons and themed hover; narrow layouts stack the sidebar and diff. Live visual verification remains manual because this task forbids launch/build/browser actions.
+
+## Discard changes
+
+Per-file discard confirms before restoring tracked regular files without staged changes. [[src/main/git.ts#gitDiscard]] rejects conflicts, untracked paths, traversal and symlinks; literal pathspecs protect other files.
+
+## Git output
+
+Git results appear in a themed, scrollable output panel with a draggable divider, keyboard-accessible separator, 14px monospace text, and live status or error announcements.
+
+Pointer drag and separator ArrowUp/ArrowDown (10px), Home/End keys share a 40vh/400px maximum, with an 80px minimum; shrinking the viewport clamps the selected height. Regression: [[src/renderer/src/screens/Chat/SourceControlDialog.test.tsx]].
 
 ## Design notes
 
@@ -51,6 +61,6 @@ File selection, staging, and conflict resolution remain explicit.
 
 File rows carry a checkbox; a plain row click still opens the diff. Shift-clicking a checkbox or a row selects the contiguous range within the same visible group (Staged or Changes), anchored on the last plain selection.
 
-Selection is an ordered `string[]` keyed `staged:<path>` / `changes:<path>`, pruned on every status refresh so a vanished file cannot be acted on, and never spans groups. A selection swaps the section action from "Stage all changes" to "Stage selected (n)" plus "Ignore selected (n)"; the Staged section offers "Unstage selected (n)".
+Selection is an ordered `string[]` keyed `staged:<path>` / `changes:<path>`, pruned on every status refresh so a vanished file cannot be acted on, and never spans groups. A selection shows toolbar actions "Stage selected (n)" plus "Ignore selected (n)" without replacing the heading context menu; the Staged section offers "Unstage selected (n)".
 
 Batch ignore goes through [[src/main/git-ignore.ts#gitIgnoreAddMany]] — one validated `.gitignore` write for the whole selection rather than one rewrite per row. Git can never ignore a path it already tracks, and a range selection normally mixes modified rows with untracked ones, so tracked paths are **skipped and reported** while the untracked part is written; the batch is refused only when every selected path is already tracked. Rules already present are skipped, and existing content and line endings are preserved. Regressions: [[src/main/git-ignore.test.ts]] and [[src/renderer/src/screens/Chat/SourceControlDialog.test.tsx]].

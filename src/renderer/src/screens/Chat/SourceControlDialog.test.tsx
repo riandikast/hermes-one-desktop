@@ -2,6 +2,9 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import { I18nProvider } from "../../components/I18nProvider";
 import { SourceControlDialog } from "./SourceControlDialog";
+import { SettingsModalContext } from "../../components/settings/SettingsModalContext";
+
+const openSettings = vi.fn();
 
 /** The dialog uses `t` from useI18n, which requires the provider. */
 function renderDialog(
@@ -10,7 +13,9 @@ function renderDialog(
 ): ReturnType<typeof render> {
   return render(
     <I18nProvider>
-      <SourceControlDialog dir={dir} onClose={onClose} />
+      <SettingsModalContext.Provider value={{ openSettings, closeSettings: vi.fn() }}>
+        <SourceControlDialog dir={dir} onClose={onClose} />
+      </SettingsModalContext.Provider>
     </I18nProvider>,
   );
 }
@@ -79,6 +84,7 @@ beforeEach(() => {
     gitGetToken: vi.fn().mockResolvedValue(null),
     gitSetToken: vi.fn().mockResolvedValue(true),
     gitStage: vi.fn().mockResolvedValue({ ok: true }),
+    gitDiscard: vi.fn().mockResolvedValue({ ok: true }),
     gitIgnoreAdd: vi.fn().mockResolvedValue({ ok: true }),
     gitIgnoreAddMany: vi.fn().mockResolvedValue({ ok: true }),
     gitUnstage: vi.fn().mockResolvedValue({ ok: true }),
@@ -91,6 +97,134 @@ beforeEach(() => {
 });
 
 describe("SourceControlDialog", () => {
+  it("opens heading-only context actions by keyboard, bounds position, closes outside and Escape", async () => {
+    const onClose = vi.fn();
+    renderDialog("/repo", onClose);
+    const heading = await screen.findByText(/^Changes \(/);
+    expect(screen.queryByRole("menuitem")).toBeNull();
+    expect(heading.querySelector(".lucide-chevron-right")).not.toBeNull();
+    expect(heading.querySelector(".lucide-chevron-down")).not.toBeNull();
+    fireEvent.contextMenu(screen.getByText("a.ts"));
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.keyDown(heading, { key: "F10", shiftKey: true });
+    expect(screen.getByRole("menuitem")).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menuitem"), { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(heading).toHaveFocus();
+    fireEvent.keyDown(heading, { key: "ContextMenu" });
+    expect(screen.getByRole("menu")).toBeTruthy();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.contextMenu(heading, { clientX: 9999, clientY: 9999 });
+    expect(screen.getByRole("menu")).toHaveStyle({ left: `${window.innerWidth - 210}px`, top: `${window.innerHeight - 48}px` });
+  });
+  it("confirms before discarding a tracked change and refreshes", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+    renderDialog("/repo");
+    const button = await screen.findByRole("button", { name: "Discard changes to a.ts" });
+    fireEvent.click(button);
+    expect(window.hermesAPI.gitDiscard).not.toHaveBeenCalled();
+    fireEvent.click(button);
+    await waitFor(() => expect(window.hermesAPI.gitDiscard).toHaveBeenCalledWith("/repo", "a.ts"));
+    await waitFor(() => expect(gitRepoStatus).toHaveBeenCalledTimes(2));
+    confirm.mockRestore();
+  });
+  it("opens GitHub credential settings without reading the legacy token", async () => {
+    vi.mocked(window.hermesAPI.gitRemoteHost).mockResolvedValue("github.com");
+    const onClose = vi.fn();
+    openSettings.mockClear();
+    renderDialog("/repo", onClose);
+    const credentials = await screen.findByRole("button", { name: "Manage GitHub credentials" });
+    expect(credentials.closest(".source-control-header-actions")).not.toBeNull();
+    fireEvent.click(credentials);
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(openSettings).toHaveBeenCalledWith("github");
+    expect(window.hermesAPI.gitGetToken).not.toHaveBeenCalled();
+    expect(screen.queryByPlaceholderText("Personal access token")).toBeNull();
+  });
+
+  it("retains per-host token entry for non-GitHub remotes", async () => {
+    vi.mocked(window.hermesAPI.gitRemoteHost).mockResolvedValue("gitlab.com");
+    renderDialog("/repo");
+    const input = await screen.findByPlaceholderText("Personal access token");
+    fireEvent.change(input, { target: { value: "example-token" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save token" }));
+    expect(window.hermesAPI.gitSetToken).toHaveBeenCalledWith("gitlab.com", "example-token");
+  });
+  it("shows readable output with a keyboard-adjustable height and announces errors", async () => {
+    vi.mocked(window.hermesAPI.gitFetch).mockResolvedValueOnce({ ok: true, output: "Fetched refs" }).mockResolvedValueOnce({ ok: false, error: "Fetch failed" });
+    renderDialog("/repo");
+    const fetch = await screen.findByRole("button", { name: /fetch/i });
+    await act(async () => fetch.click());
+    const output = await screen.findByRole("status");
+    expect(output).toHaveTextContent("Fetched refs");
+    expect(output).toHaveStyle({ height: "120px" });
+    fireEvent.keyDown(screen.getByRole("separator", { name: "Output height" }), { key: "End" });
+    fireEvent.keyDown(screen.getByRole("separator", { name: "Output height" }), { key: "Home" });
+    for (let i = 0; i < 16; i++) fireEvent.keyDown(screen.getByRole("separator", { name: "Output height" }), { key: "ArrowUp" });
+    expect(screen.queryByRole("slider")).toBeNull();
+    expect(output).toHaveStyle({ height: "240px" });
+    await act(async () => fetch.click());
+    expect(await screen.findByRole("alert")).toHaveTextContent("Fetch failed");
+    expect(screen.getByRole("separator", { name: "Output height" })).toHaveAttribute("aria-valuenow", "240");
+  });
+  it("keeps keyboard and drag bounds aligned with viewport resizing", async () => {
+    const originalHeight = window.innerHeight;
+    try {
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 });
+      vi.mocked(window.hermesAPI.gitFetch).mockResolvedValue({ ok: true, output: "Fetched refs" });
+      renderDialog("/repo");
+      const fetch = await screen.findByRole("button", { name: /fetch/i });
+      await act(async () => fetch.click());
+      const output = await screen.findByRole("status");
+      const slider = screen.getByRole("separator", { name: "Output height" });
+      expect(slider).toHaveAttribute("aria-valuemax", "240");
+      fireEvent.keyDown(slider, { key: "End" });
+      expect(output).toHaveStyle({ height: "240px" });
+      const divider = document.querySelector(".source-control-output-divider") as HTMLElement;
+      divider.setPointerCapture = vi.fn();
+      fireEvent(divider, new MouseEvent("pointerdown", { bubbles: true, button: 0, clientY: 200 }));
+      fireEvent(divider, new MouseEvent("pointermove", { bubbles: true, button: 0, clientY: -500 }));
+      expect(output).toHaveStyle({ height: "240px" });
+      act(() => {
+        Object.defineProperty(window, "innerHeight", { configurable: true, value: 400 });
+        window.dispatchEvent(new Event("resize"));
+      });
+      expect(slider).toHaveAttribute("aria-valuemax", "160");
+      expect(slider).toHaveAttribute("aria-valuenow", "160");
+      expect(output).toHaveStyle({ height: "160px" });
+      act(() => {
+        Object.defineProperty(window, "innerHeight", { configurable: true, value: 1000 });
+        window.dispatchEvent(new Event("resize"));
+      });
+      expect(slider).toHaveAttribute("aria-valuemax", "400");
+      expect(slider).toHaveAttribute("aria-valuenow", "160");
+    } finally {
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: originalHeight });
+    }
+  });
+  it("drags the output divider within bounds and stops on cancellation", async () => {
+    vi.mocked(window.hermesAPI.gitFetch).mockResolvedValue({ ok: true, output: "Fetched refs" });
+    renderDialog("/repo");
+    const fetch = await screen.findByRole("button", { name: /fetch/i });
+    await act(async () => fetch.click());
+    const output = await screen.findByRole("status");
+    const divider = document.querySelector(".source-control-output-divider") as HTMLElement;
+    divider.setPointerCapture = vi.fn();
+    // jsdom does not implement PointerEvent; use MouseEvent for pointer coordinates.
+    const pointer = (type: string, y: number) => fireEvent(divider, new MouseEvent(type, { bubbles: true, button: 0, clientY: y }));
+    pointer("pointerdown", 200);
+    pointer("pointermove", 100);
+    expect(output).toHaveStyle({ height: "220px" });
+    pointer("pointermove", -500);
+    expect(output).toHaveStyle({ height: `${Math.min(400, Math.floor(window.innerHeight * 0.4))}px` });
+    pointer("pointermove", 500);
+    expect(output).toHaveStyle({ height: "80px" });
+    pointer("pointercancel", 500);
+    pointer("pointermove", 100);
+    expect(output).toHaveStyle({ height: "80px" });
+  });
   it("ignores only untracked rows and refreshes status without staging or deleting", async () => {
     const initial = await gitRepoStatus();
     gitRepoStatus.mockResolvedValue({ ...initial, untracked: ["new.txt"] });
@@ -135,18 +269,23 @@ describe("SourceControlDialog", () => {
     vi.mocked(window.hermesAPI.gitStage).mockImplementation(() => new Promise((resolve) => { finishStage = resolve; }));
     gitRepoStatus.mockImplementationOnce(() => new Promise((resolve) => { finishRefresh = resolve; }));
     renderDialog("/repo");
-    const button = await screen.findByRole("button", { name: "Stage all changes" });
+    const heading = await screen.findByText(/^Changes \(/);
+    fireEvent.contextMenu(heading);
+    const button = screen.getByRole("menuitem", { name: "Stage all changes" });
     await act(async () => { button.click(); button.click(); });
     expect(window.hermesAPI.gitStage).toHaveBeenCalledWith("/repo", paths);
-    expect(button).toBeDisabled();
+    fireEvent.contextMenu(heading);
+    expect(screen.getByRole("menuitem", { name: "Stage all changes" })).toBeDisabled();
     await act(async () => finishStage({ ok: true }));
-    expect(button).toBeDisabled();
+    fireEvent.contextMenu(heading);
+    expect(screen.getByRole("menuitem", { name: "Stage all changes" })).toBeDisabled();
     await act(async () => finishRefresh({ ...initial,
       staged: paths.map((path) => ({ index: "M", worktree: " ", path })),
       unstaged: [], untracked: [],
     }));
     expect(await screen.findByText("Staged (3)")).toBeTruthy();
-    expect(button).toBeDisabled();
+    fireEvent.contextMenu(heading);
+    expect(screen.getByRole("menuitem", { name: "Stage all changes" })).toBeDisabled();
     expect(window.hermesAPI.gitStage).toHaveBeenCalledTimes(1);
     expect(window.hermesAPI.gitPush).not.toHaveBeenCalled();
   });
@@ -157,20 +296,26 @@ describe("SourceControlDialog", () => {
       return { ok: false, error: "index locked" };
     });
     renderDialog("/repo");
-    const button = await screen.findByRole("button", { name: "Stage all changes" });
+    const heading = await screen.findByText(/^Changes \(/);
+    fireEvent.contextMenu(heading);
+    const button = screen.getByRole("menuitem", { name: "Stage all changes" });
     await act(async () => button.click());
     expect(await screen.findByText(/index locked/)).toBeTruthy();
-    expect(button).not.toBeDisabled();
+    fireEvent.contextMenu(heading);
+    expect(screen.getByRole("menuitem", { name: "Stage all changes" })).not.toBeDisabled();
     expect(gitRepoStatus).toHaveBeenCalledTimes(2);
   });
 
   it("surfaces a refresh failure without leaving staging busy", async () => {
     gitRepoStatus.mockResolvedValueOnce(await gitRepoStatus()).mockRejectedValueOnce(new Error("refresh failed"));
     renderDialog("/repo");
-    const button = await screen.findByRole("button", { name: "Stage all changes" });
+    const heading = await screen.findByText(/^Changes \(/);
+    fireEvent.contextMenu(heading);
+    const button = screen.getByRole("menuitem", { name: "Stage all changes" });
     await act(async () => button.click());
     expect(await screen.findByText(/refresh failed/)).toBeTruthy();
-    expect(button).not.toBeDisabled();
+    fireEvent.contextMenu(heading);
+    expect(screen.getByRole("menuitem", { name: "Stage all changes" })).not.toBeDisabled();
   });
   it("selects an ordered shift range without opening diffs, then stages only that range", async () => {
     gitRepoStatus.mockResolvedValue({
@@ -219,7 +364,7 @@ describe("SourceControlDialog", () => {
     expect(screen.getByRole("button", { name: "Clear selection" })).toBeTruthy();
     await act(async () => screen.getByRole("button", { name: "Clear selection" }).click());
     expect(screen.queryByRole("button", { name: "Stage selected (2)" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Stage all changes" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Stage all changes" })).toBeNull();
   });
 
   it("counts only untracked rows as ignorable in a mixed selection", async () => {

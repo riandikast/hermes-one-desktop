@@ -1,6 +1,6 @@
 import { spawn } from "child_process";
-import { readFile } from "fs/promises";
-import { relative, join } from "path";
+import { readFile, lstat } from "fs/promises";
+import { relative, join, isAbsolute } from "path";
 import { extractHostFromRemoteUrl, gitTokenAuthArgs } from "./git-credentials";
 
 /**
@@ -217,6 +217,30 @@ export async function gitRepoStatus(dir: string): Promise<GitStatusResult> {
     }
   }
   return result;
+}
+
+// Restore only an existing tracked regular file from the index, never HEAD.
+export async function gitDiscard(dir: string, path: string): Promise<GitActionResult> {
+  const fail = { ok: false, error: "Only unstaged changes to tracked regular files can be discarded." };
+  if (typeof path !== "string" || !path || isAbsolute(path) || path.includes("\\") || path.split("/").some((part) => !part || part === "." || part === "..")) return fail;
+  const rootResult = await runGit(dir, ["rev-parse", "--show-toplevel"]);
+  if (rootResult.code !== 0) return fail;
+  const root = rootResult.stdout.trim();
+  const status = await gitRepoStatus(root);
+  const entry = status.unstaged.find((item) => item.path === path);
+  if (status.error || !entry || entry.index !== " " || entry.worktree !== "M") return fail;
+  const index = await runGit(root, ["--literal-pathspecs", "ls-files", "--stage", "-z", "--", path]);
+  if (index.code !== 0 || !/^100(?:644|755) [0-9a-f]+ 0\t/.test(index.stdout) || index.stdout.split("\0").filter(Boolean).length !== 1) return fail;
+  try {
+    let current = root;
+    for (const part of path.split("/")) {
+      current = join(current, part);
+      const stat = await lstat(current);
+      if (stat.isSymbolicLink()) return fail;
+    }
+    if (!(await lstat(current)).isFile()) return fail;
+  } catch { return fail; }
+  return runGitAction(root, ["--literal-pathspecs", "restore", "--worktree", "--", path], 60_000);
 }
 
 export async function gitDiff(
@@ -471,7 +495,7 @@ export async function gitCommitDiff(
 async function gitNetworkAuthArgs(dir: string): Promise<string[]> {
   if (!tokenProvider) return [];
   const host = await gitRemoteHost(dir);
-  if (!host) return [];
+  if (!host || host.toLowerCase() === "github.com") return [];
   return gitTokenAuthArgs(host, tokenProvider(host));
 }
 

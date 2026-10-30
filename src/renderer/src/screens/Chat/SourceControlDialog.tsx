@@ -8,8 +8,11 @@ import {
   GitCommitHorizontal,
   FileDiff,
   EyeOff,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
+import { useSettingsModal } from "../../components/settings/SettingsModalContext";
 import { DiffViewer } from "./DiffViewer";
 import { CommitGraph } from "./CommitGraph";
 import { IgnoredFiles } from "./IgnoredFiles";
@@ -69,22 +72,72 @@ function Shell({ children }: { children: React.ReactNode }): React.JSX.Element {
   );
 }
 
-function Section({
-  title,
-  action,
-  toolbar,
-  children,
-}: {
+function Section({ title, toolbar, children, contextAction, contextDisabled = false }: {
   title: string;
-  action?: React.ReactNode;
   toolbar?: React.ReactNode;
   children: React.ReactNode;
+  contextAction?: () => void;
+  contextDisabled?: boolean;
 }): React.JSX.Element {
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const heading = useRef<HTMLElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menu) return;
+    menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const outside = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenu(null);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setMenu(null);
+        heading.current?.focus();
+      }
+    };
+    window.addEventListener("pointerdown", outside);
+    window.addEventListener("keydown", escape, true);
+    return () => {
+      window.removeEventListener("pointerdown", outside);
+      window.removeEventListener("keydown", escape, true);
+    };
+  }, [menu]);
+  const openMenu = (x: number, y: number) => setMenu({
+    x: Math.max(0, Math.min(x, window.innerWidth - 210)),
+    y: Math.max(0, Math.min(y, window.innerHeight - 48)),
+  });
   return (
     <details className="source-control-section" open>
-      <summary className="source-control-section-title">{title}{action}</summary>
+      <summary ref={heading} className="source-control-section-title"
+        aria-haspopup={contextAction ? "menu" : undefined}
+        onContextMenu={contextAction ? (event) => { event.preventDefault(); openMenu(event.clientX, event.clientY); } : undefined}
+        onKeyDown={contextAction ? (event) => {
+          if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+            event.preventDefault();
+            const rect = event.currentTarget.getBoundingClientRect();
+            openMenu(rect.left, rect.bottom);
+          }
+        } : undefined}>
+        <ChevronRight className="source-control-chevron-closed" size={14} aria-hidden="true" />
+        <ChevronDown className="source-control-chevron-open" size={14} aria-hidden="true" />
+        {title}
+      </summary>
       {toolbar && <div className="source-control-section-toolbar">{toolbar}</div>}
       {children}
+      {menu && createPortal(
+        <div ref={menuRef} role="menu" aria-label="Changes actions" className="worktree-context-menu"
+          style={{ position: "fixed", left: menu.x, top: menu.y, width: 210, maxWidth: "100vw", zIndex: 2000 }}
+          onKeyDown={(event) => {
+            if (event.key === "Tab") { setMenu(null); heading.current?.focus(); }
+            if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) event.preventDefault();
+          }}>
+          <button type="button" role="menuitem" className="worktree-context-menu-item" disabled={contextDisabled}
+            onClick={() => { setMenu(null); heading.current?.focus(); contextAction?.(); }}>
+            Stage all changes
+          </button>
+        </div>, document.body,
+      )}
     </details>
   );
 }
@@ -107,6 +160,7 @@ function FileRow({
   onToggleStaged,
   onResolveConflict,
   onIgnore,
+  onDiscard,
 }: {
   path: string;
   entry?: { index: string; worktree: string };
@@ -120,6 +174,7 @@ function FileRow({
   onToggleStaged: (path: string, staged: boolean) => void;
   onResolveConflict: (path: string, side: "ours" | "theirs") => void;
   onIgnore: (path: string) => void;
+  onDiscard: (path: string) => void;
 }): React.JSX.Element {
   return (
     <div className={`source-control-file${active ? " active" : ""}${selectedForBatch ? " selected" : ""}`}>
@@ -152,6 +207,9 @@ function FileRow({
         <span className="source-control-file-code">{isConflict ? "U" : entry ? statusCode(entry) : "?"}</span>
       </button>
       <div className="source-control-file-actions">
+        {!isConflict && !staged && entry?.index === " " && entry.worktree === "M" && (
+          <button type="button" className="source-control-stage-btn" disabled={busy} aria-label={`Discard changes to ${path}`} onClick={() => onDiscard(path)}>Discard</button>
+        )}
         {!isConflict && <button type="button" className="source-control-stage-btn" disabled={busy || !!entry || staged}
           aria-label={`Ignore ${path}`} title={entry || staged ? "Tracked files cannot be ignored; no files will be untracked" : "Add literal path to .gitignore"}
           onClick={() => onIgnore(path)}><EyeOff size={14} /></button>}
@@ -201,6 +259,7 @@ export function SourceControlDialog({
   onClose: () => void;
 }): React.JSX.Element {
   const { t } = useI18n();
+  const { openSettings } = useSettingsModal();
   useEffect(() => {
     const close = (event: KeyboardEvent): void => { if (event.key === "Escape") onClose(); };
     window.addEventListener("keydown", close);
@@ -219,6 +278,20 @@ export function SourceControlDialog({
   const [diff, setDiff] = useState<string>("");
   const [commitMessage, setCommitMessage] = useState("");
   const [output, setOutput] = useState<string>("");
+  const [outputHeight, setOutputHeight] = useState(120);
+  const [outputMaxHeight, setOutputMaxHeight] = useState(() => Math.max(80, Math.min(400, Math.floor(window.innerHeight * 0.4))));
+  const outputDrag = useRef<{ y: number; height: number } | null>(null);
+
+  useEffect(() => {
+    const resize = () => {
+      const max = Math.max(80, Math.min(400, Math.floor(window.innerHeight * 0.4)));
+      setOutputMaxHeight(max);
+      setOutputHeight((height) => Math.min(height, max));
+    };
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
   const [error, setError] = useState<string>("");
   const [remoteHost, setRemoteHost] = useState<string | null>(null);
   const [token, setToken] = useState("");
@@ -239,7 +312,7 @@ export function SourceControlDialog({
     void (async () => {
       const host = await window.hermesAPI.gitRemoteHost(dir);
       setRemoteHost(host);
-      if (host) {
+      if (host && host.toLowerCase() !== "github.com") {
         const stored = await window.hermesAPI.gitGetToken(host);
         if (stored) {
           setToken(stored);
@@ -459,6 +532,15 @@ export function SourceControlDialog({
   const fileRowHandlers = {
     busy,
     onIgnore: (path: string) => void run(() => window.hermesAPI.gitIgnoreAdd(dir, path), "Ignored"),
+    onDiscard: (path: string) => {
+      if (window.confirm(`Discard unstaged changes to ${path}? This cannot be undone.`)) {
+        void run(async () => {
+          const result = await window.hermesAPI.gitDiscard(dir, path);
+          if (result.ok && selected?.path === path && !selected.staged) { setSelected(null); setDiff(""); }
+          return result;
+        }, "Discarded");
+      }
+    },
     onShowDiff: (path: string, staged: boolean) => void showDiff(path, staged),
     onSelectForBatch: (path: string, staged: boolean, shift: boolean) =>
       selectForBatch(path, staged, shift),
@@ -536,6 +618,12 @@ export function SourceControlDialog({
             )}
           </span>
           <div className="source-control-header-actions">
+            {remoteHost?.toLowerCase() === "github.com" && (
+              <button type="button" className="btn-ghost btn-sm" onClick={() => { onClose(); openSettings("github"); }}>
+                Manage GitHub credentials
+              </button>
+            )}
+
             <button
               type="button"
               className="btn-ghost"
@@ -737,25 +825,13 @@ export function SourceControlDialog({
                       </>
                     ) : undefined
                   }
-                  action={
-                    changeCount > 0 ? (
-                      <button
-                        type="button"
-                        className="btn-ghost btn-sm source-control-stage-all"
-                        disabled={busy}
-                        aria-busy={busy}
-                        onClick={() => void run(
-                          () => window.hermesAPI.gitStage(dir, [
-                            ...status.unstaged.map((file) => file.path),
-                            ...status.untracked,
-                          ]),
-                          t("chat.sourceControl.stageAll"),
-                        )}
-                      >
-                        {t("chat.sourceControl.stageAll")}
-                      </button>
-                    ) : undefined
-                  }
+                  contextDisabled={busy || changeCount === 0}
+                  contextAction={() => void run(
+                    () => window.hermesAPI.gitStage(dir, [
+                      ...status.unstaged.map((file) => file.path),
+                      ...status.untracked,
+                    ]), t("chat.sourceControl.stageAll"),
+                  )}
                 >
                   {status.unstaged.length === 0 &&
                   status.untracked.length === 0 ? (
@@ -793,7 +869,7 @@ export function SourceControlDialog({
                 </Section>
                 <IgnoredFiles dir={dir} refresh={refresh} />
                 <details className="source-control-section" onToggle={(event) => { if (event.currentTarget.open && !graphLoadedRef.current) { graphLoadedRef.current = true; void loadGraph(); } }}>
-                  <summary className="source-control-section-title">Graph</summary>
+                  <summary className="source-control-section-title"><ChevronRight className="source-control-chevron-closed" size={14} aria-hidden="true" /><ChevronDown className="source-control-chevron-open" size={14} aria-hidden="true" />Graph</summary>
                   <p className="source-control-empty">Local history. No GitHub login required.</p>
                   {graphLoading && <p role="status">Loading history…</p>}
                   {graphError && <p role="alert">{graphError}</p>}
@@ -838,7 +914,7 @@ export function SourceControlDialog({
         </div>
 
 
-        {remoteHost && (
+        {remoteHost && remoteHost.toLowerCase() !== "github.com" && (
           <div className="source-control-token-row">
             <span className="source-control-token-label" title={remoteHost}>
               Token ({remoteHost})
@@ -869,9 +945,44 @@ export function SourceControlDialog({
           </div>
         )}
         {(output || error) && (
-          <div className={`source-control-output${error ? " error" : ""}`}>
-            {error || output}
-          </div>
+          <section className="source-control-output-panel" aria-label="Git output">
+            <div
+              className="source-control-output-divider"
+              role="separator"
+              tabIndex={0}
+              aria-label="Output height"
+              aria-orientation="horizontal"
+              aria-valuemin={80}
+              aria-valuemax={outputMaxHeight}
+              aria-valuenow={outputHeight}
+              onKeyDown={(event) => {
+                if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+                event.preventDefault();
+                setOutputHeight((height) => event.key === "Home" ? 80 : event.key === "End" ? outputMaxHeight
+                  : Math.max(80, Math.min(outputMaxHeight, height + (event.key === "ArrowUp" ? 10 : -10))));
+              }}
+              onPointerDown={(event) => {
+                if (event.button !== 0) return;
+                const output = event.currentTarget.parentElement?.querySelector(".source-control-output");
+                outputDrag.current = { y: event.clientY, height: output?.getBoundingClientRect().height || outputHeight };
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (!outputDrag.current) return;
+                setOutputHeight(Math.max(80, Math.min(outputMaxHeight, outputDrag.current.height + outputDrag.current.y - event.clientY)));
+              }}
+              onPointerUp={() => { outputDrag.current = null; }}
+              onPointerCancel={() => { outputDrag.current = null; }}
+              onLostPointerCapture={() => { outputDrag.current = null; }}
+            />
+            <div className="source-control-output-header">
+              <span>Output</span>
+
+            </div>
+            <div className={`source-control-output${error ? " error" : ""}`} style={{ height: outputHeight }} tabIndex={0} role={error ? "alert" : "status"}>
+              {error || output}
+            </div>
+          </section>
         )}
       </div>
     </Shell>

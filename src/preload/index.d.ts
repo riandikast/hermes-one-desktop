@@ -1343,6 +1343,7 @@ interface HermesAPI {
     path: string,
     staged: boolean,
   ) => Promise<GitActionResult>;
+  gitDiscard: (dir: string, path: string) => Promise<GitActionResult>;
   gitStage: (dir: string, paths: string[]) => Promise<GitActionResult>;
   gitUnstage: (dir: string, paths: string[]) => Promise<GitActionResult>;
   gitCommit: (dir: string, message: string) => Promise<GitActionResult>;

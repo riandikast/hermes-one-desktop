@@ -65,6 +65,7 @@ import { exportCommand } from "../command-export";
 import {
   gitRepoStatus,
   gitDiff,
+  gitDiscard,
   gitStage,
   gitUnstage,
   gitCommit,
@@ -3667,6 +3668,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     async (_event, dir: string, path: string, staged: boolean) =>
       gitDiff(dir, path, staged),
   );
+  ipcMain.handle("git-discard", async (_event, dir: string, path: string) => gitDiscard(dir, path));
   ipcMain.handle("git-stage", async (_event, dir: string, paths: string[]) =>
     gitStage(dir, paths),
   );

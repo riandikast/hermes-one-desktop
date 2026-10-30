@@ -1801,6 +1801,7 @@ const hermesAPI = {
   gitGetToken: (host: string) => ipcRenderer.invoke("git-get-token", host),
   gitDiff: (dir: string, path: string, staged: boolean) =>
     ipcRenderer.invoke("git-diff", dir, path, staged),
+  gitDiscard: (dir: string, path: string) => ipcRenderer.invoke("git-discard", dir, path),
   gitStage: (dir: string, paths: string[]) =>
     ipcRenderer.invoke("git-stage", dir, paths),
   gitUnstage: (dir: string, paths: string[]) =>
