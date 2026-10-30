@@ -64,6 +64,12 @@ The stall watchdog never fails a turn while a TOOL is in flight (a multi-minute 
 
 [[src/renderer/src/screens/Chat/HistoryRow.tsx#ReasoningRow]] renders the `Thought` / `Thinking…` row and [[src/renderer/src/screens/Chat/HistoryRow.tsx#ToolActivityGroup]] folds a contiguous run of tool calls/results into one row titled by [[src/renderer/src/screens/Chat/HistoryRow.tsx#toolActivityGroupTitle]]. Each row is collapsed by default and borderless (Codex-style): dim at rest, it brightens and reveals an expand chevron beside the title on hover/focus, and clicking toggles the body open. While the turn is still streaming the leading icon is a thinking-orbs [[loading-indicators|OrbLoader]] (`solving` for reasoning, `working` for tools); once finished it shows the brain/tool glyph.
 
+### Tool disclosure on tab entry
+
+Existing tool rows open immediately when entering or returning to a chat or subagent tab. Newly arriving live tools retain batched mounting, stagger and accordion motion; manual collapse state remains unchanged.
+
+[[src/renderer/src/screens/Chat/ToolEntryProvider.tsx#ToolEntryProvider]] snapshots existing message IDs on activation/session changes and first history hydration. [[src/renderer/src/screens/Chat/MessageList.tsx#MessageList]] receives Chat's active state, shares the snapshot through context, and preserves the weighted transcript window. [[src/renderer/src/screens/Chat/HistoryRow.tsx#ToolActivityGroup]] and its items bypass the mount queue, frame priming, CSS transitions and reasoning wait for those existing IDs only. Later live IDs keep their usual animation. [[src/renderer/src/screens/Chat/ToolEntryProvider.test.tsx]] covers initial paint, background arrivals, parent/subagent entry, manual collapse and live animation.
+
 ### Reasoning reconciliation
 
 The live reasoning stream is best-effort — dropped delta chunks leave the streamed row garbled — while state.db holds the canonical text. The DB refresh must collapse the two, or the user sees both stacked in one Thought block.

@@ -24,6 +24,7 @@ import {
 import { TerminalCommand, TerminalOutput } from "./TerminalView";
 import { useAccordionOpen } from "./useAccordionOpen";
 import { useToolDisclosure } from "./useToolDisclosure";
+import { useInstantToolEntry } from "./ToolEntryProvider";
 
 /* ── Reasoning ────────────────────────────────────────────────────────── */
 // Collapse/expand state persists across unmounts (module-scoped, like
@@ -566,6 +567,7 @@ const ToolActivityItem = memo(function ToolActivityItem({
    */
   staggerIndex?: number;
 }): React.JSX.Element {
+  const [instant, animateManually] = useInstantToolEntry(msg.id);
   const [open, setOpen] = useState(() => {
     try {
       return (
@@ -609,8 +611,8 @@ const ToolActivityItem = memo(function ToolActivityItem({
   }, []);
   // Animate this item's own panel, so expanding a single tool step is a
   // transition rather than a jump.
-  const bodyMounted = useToolDisclosure(open) > 0;
-  const openRendered = useAccordionOpen(bodyMounted, true);
+  const bodyMounted = useToolDisclosure(open, 1, 1, instant) > 0;
+  const openRendered = useAccordionOpen(bodyMounted, !instant);
   useEffect(() => {
     const handleDisplayControl = (event: Event): void => {
       const detail = (event as CustomEvent<Partial<ChatDisplayControls>>)
@@ -647,7 +649,7 @@ const ToolActivityItem = memo(function ToolActivityItem({
         type="button"
         className="chat-tool-item-header"
         aria-expanded={open}
-        onClick={toggleOpen}
+        onClick={() => { animateManually(); toggleOpen(); }}
       >
         <ChevronRight
           size={12}
@@ -669,12 +671,14 @@ const ToolActivityItem = memo(function ToolActivityItem({
       </button>
       <div
         className={`chat-tool-collapse${openRendered ? " chat-tool-collapse--open" : ""}`}
+        data-instant={instant || undefined}
         inert={!open}
         style={
+          // Existing tool rows settle without stagger on tab entry.
           // Stagger only while opening, and cap it: an unbounded index would
           // delay the 20th item by a second. The first few get a visible
           // cascade; the rest open together once the cap is reached.
-          staggerIndex > 0 && openRendered
+          !instant && staggerIndex > 0 && openRendered
             ? { transitionDelay: `${Math.min(staggerIndex, 4) * 0.04}s` }
             : undefined
         }
@@ -733,6 +737,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
   waitForReasoningId?: string;
 }): React.JSX.Element {
   const groupKey = items[0]?.id;
+  const [instant, animateManually] = useInstantToolEntry(groupKey);
   const [open, setOpen] = useState(() => {
     try {
       return (
@@ -798,7 +803,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
       );
   }, []);
   const { waiting } = useReasoningGate({
-    waitForReasoningId,
+    waitForReasoningId: instant ? undefined : waitForReasoningId,
     hasContent: items.length > 0,
     isLoading: Boolean(isLoading),
   });
@@ -806,8 +811,8 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
   const detail = itemDetail(last);
   const title = toolActivityGroupTitle(items);
   const soloTool = singleToolName(items);
-  const visibleCount = useToolDisclosure(open && !waiting, items.length, 8);
-  const openRendered = useAccordionOpen(visibleCount > 0, true);
+  const visibleCount = useToolDisclosure(open && !waiting, items.length, 8, instant);
+  const openRendered = useAccordionOpen(visibleCount > 0, !instant);
   const orderedItems = useMemo(
     () => (open ? orderToolActivityItems(items) : []),
     [open, items],
@@ -841,7 +846,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
           type="button"
           className="chat-tool-group-summary"
           aria-expanded={open}
-          onClick={toggleOpen}
+          onClick={() => { animateManually(); toggleOpen(); }}
         >
           {active ? (
             <OrbLoader
@@ -870,6 +875,7 @@ export const ToolActivityGroup = memo(function ToolActivityGroup({
         </button>
         <div
           className={`chat-tool-collapse${openRendered ? " chat-tool-collapse--open" : ""}`}
+          data-instant={instant || undefined}
           inert={!open}
         >
           <div className="chat-tool-collapse-inner">

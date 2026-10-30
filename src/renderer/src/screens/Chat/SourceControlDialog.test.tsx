@@ -174,6 +174,13 @@ describe("SourceControlDialog", () => {
     renderDialog("/repo", close);
     fireEvent.click(await screen.findByRole("button", { name: "Terminal" }));
     await screen.findByText("Close terminal source-term");
+    const dockNode = screen.getByText("Close terminal source-term");
+    fireEvent.click(screen.getByRole("button", { name: "Terminal" }));
+    expect(screen.getByLabelText("Source Control terminals")).not.toBeVisible();
+    expect(window.hermesAPI.terminalKill).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Terminal" }));
+    expect(screen.getByText("Close terminal source-term")).toBe(dockNode);
+    expect(window.hermesAPI.terminalCreate).toHaveBeenCalledOnce();
     const terminalWidth = screen.getByRole("separator", { name: "Terminal pane width" });
     fireEvent.keyDown(terminalWidth, { key: "ArrowLeft" });
     expect(terminalWidth).toHaveAttribute("aria-valuenow", "60");

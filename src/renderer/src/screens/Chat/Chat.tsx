@@ -2845,6 +2845,7 @@ function Chat({
               <ChatEmptyState onSelectSuggestion={handleSuggestion} />
             ) : (
               <MessageList
+                active={active}
                 messages={chatSearchOpen && searchPage ? searchPage : messages}
                 olderAvailable={!searchPage && hasMoreHistory}
                 onLoadEarlier={loadEarlierHistory}

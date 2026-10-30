@@ -5,7 +5,9 @@ import type { TerminalDockHandle } from "../Command/TerminalDock";
 export function useSourceControlTerminals(dir: string, onClose: () => void, report: (error: string) => void): {
   dock: React.RefObject<TerminalDockHandle | null>;
   visible: boolean;
+  mounted: boolean;
   creating: boolean;
+  toggle: () => void;
   add: () => void;
   closed: (id: string) => void;
   requestClose: () => Promise<boolean>;
@@ -16,6 +18,7 @@ export function useSourceControlTerminals(dir: string, onClose: () => void, repo
   const pending = useRef(false);
   const closing = useRef(false);
   const [visible, setVisible] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [creating, setCreating] = useState(false);
   useEffect(() => {
     alive.current = true;
@@ -28,7 +31,7 @@ export function useSourceControlTerminals(dir: string, onClose: () => void, repo
   }, []);
   const add = useCallback((): void => {
     if (pending.current || closing.current) return;
-    pending.current = true; setCreating(true); setVisible(true);
+    pending.current = true; setCreating(true); setMounted(true); setVisible(true);
     void (async () => {
       let created: string | undefined;
       try {
@@ -49,7 +52,7 @@ export function useSourceControlTerminals(dir: string, onClose: () => void, repo
         if (alive.current) report(String(err));
       } finally {
         pending.current = false;
-        if (alive.current) setCreating(false);
+        if (alive.current) { setCreating(false); if (!ids.current.size) setVisible(false); }
       }
     })();
   }, [dir, report]);
@@ -72,5 +75,13 @@ export function useSourceControlTerminals(dir: string, onClose: () => void, repo
       closing.current = false; report(String(err)); return false;
     }
   }, [onClose, report]);
-  return { dock, visible, creating, add, closed: (id) => { ids.current.delete(id); }, requestClose };
+  const toggle = (): void => {
+    if (visible) setVisible(false);
+    else if (ids.current.size || pending.current) setVisible(true);
+    else add();
+  };
+  return { dock, visible, mounted, creating, toggle, add, closed: (id) => {
+    ids.current.delete(id);
+    if (!ids.current.size && !pending.current) setVisible(false);
+  }, requestClose };
 }

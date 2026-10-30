@@ -11,6 +11,42 @@ beforeEach(() => {
   } });
 });
 afterEach(() => vi.restoreAllMocks());
+
+it("toggles without killing or recreating shells, hides after the last close", async () => {
+  const hook = renderHook(() => useSourceControlTerminals("/repo", vi.fn(), vi.fn()));
+  attach(hook.result.current.dock);
+  await act(async () => hook.result.current.toggle());
+  expect(hook.result.current.visible).toBe(true);
+  act(() => hook.result.current.toggle());
+  expect(hook.result.current.visible).toBe(false);
+  expect(hook.result.current.mounted).toBe(true);
+  expect(window.hermesAPI.terminalKill).not.toHaveBeenCalled();
+  act(() => hook.result.current.toggle());
+  expect(hook.result.current.visible).toBe(true);
+  expect(window.hermesAPI.terminalCreate).toHaveBeenCalledOnce();
+  await act(async () => hook.result.current.add());
+  act(() => hook.result.current.closed("owned-1"));
+  expect(hook.result.current.visible).toBe(true);
+  act(() => hook.result.current.closed("owned-2"));
+  expect(hook.result.current.visible).toBe(false);
+  await act(async () => hook.result.current.toggle());
+  expect(window.hermesAPI.terminalCreate).toHaveBeenCalledTimes(3);
+});
+
+it("allows hiding a pending spawn and hides on spawn failure", async () => {
+  let finish!: (value: { id: string; shell: string }) => void;
+  vi.mocked(window.hermesAPI.terminalCreate).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  const hook = renderHook(() => useSourceControlTerminals("/repo", vi.fn(), vi.fn()));
+  attach(hook.result.current.dock);
+  act(() => hook.result.current.toggle());
+  act(() => hook.result.current.toggle());
+  await act(async () => finish({ id: "pending-hidden", shell: "pwsh" }));
+  expect(hook.result.current.visible).toBe(false);
+  act(() => hook.result.current.closed("pending-hidden"));
+  vi.mocked(window.hermesAPI.terminalCreate).mockRejectedValueOnce(new Error("spawn failed"));
+  await act(async () => hook.result.current.toggle());
+  expect(hook.result.current.visible).toBe(false);
+});
 function attach(ref: React.RefObject<TerminalDockHandle | null>): ReturnType<typeof vi.fn> {
   const attachSession = vi.fn();
   ref.current = { attachSession } as unknown as TerminalDockHandle;

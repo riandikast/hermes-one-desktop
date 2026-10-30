@@ -49,5 +49,5 @@ export function useAccordionOpen(targetOpen: boolean, animate: boolean): boolean
     };
   }, [targetOpen, animate, rendered]);
 
-  return rendered;
+  return animate ? rendered : targetOpen;
 }

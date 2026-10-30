@@ -14,4 +14,6 @@ Source Control now has draggable/keyboard left-right splitters, Git Doc referenc
 
 Terminal header is text-only and its width reuses SourceControlSplit. Initial repository and explorer folder/search loaders use accessible spinners. Graph Rename commit is first; only attached unpublished HEAD is eligible. `git-rename.ts` rechecks clean state and advertised remote heads/tags before amend, fails closed for unknown remote history, preserves full message via RenameCommitDialog. Older commits need a separate rebase design.
 
+Terminal header toggles visibility without unmount/kill; final session closure and initial spawn failure hide the empty pane. Dock new-session action remains separate. ToolEntryProvider snapshots existing IDs on tab activation/session entry; existing tool groups/items bypass mount queues and animation, new live tools keep their transitions. Chat forwards active to MessageList for parent/subagent tabs.
+
 Preserve unrelated chat-search/zoom work. Commit owned changes only; do not push without confirmation. Follow `AGENTS.md` resource queue and documentation checks.

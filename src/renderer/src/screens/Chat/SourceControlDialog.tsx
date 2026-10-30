@@ -714,7 +714,7 @@ export function SourceControlDialog({
             )}
           </button>
           <div className="source-control-header-actions">
-            <button type="button" className="btn-ghost btn-sm" disabled={terminals.creating} onClick={terminals.add}>Terminal</button>
+            <button type="button" className="btn-ghost btn-sm" aria-expanded={terminals.visible} onClick={terminals.toggle}>Terminal</button>
             {remoteHost?.toLowerCase() === "github.com" && (
               <button type="button" className="btn-ghost btn-sm" onClick={() => { void terminals.requestClose().then((closed) => { if (closed) openSettings("github"); }); }}>
                 Manage GitHub Credentials
@@ -802,6 +802,7 @@ export function SourceControlDialog({
           <button type="button" className={`source-control-tab${view === "docs" ? " active" : ""}`} onClick={() => setView("docs")}><BookOpen size={13} aria-hidden="true" />Git Doc</button>
         </div>
 
+        {terminalError && <p role="alert">{terminalError}</p>}
         <SourceControlSplit className="source-control-workspace" label="Terminal pane width" initial={62} collapsed={!terminals.visible}>
         <div className="source-control-content">
         <div className="source-control-body">
@@ -1126,8 +1127,7 @@ export function SourceControlDialog({
         )}
         </div>
         <aside className="source-control-terminals" aria-label="Source Control terminals" hidden={!terminals.visible}>
-          {terminalError && <p role="alert">{terminalError}</p>}
-          {terminals.visible && <TerminalDock ref={terminals.dock} onNewSession={terminals.add} onSessionClose={terminals.closed} disposeOnUnmount
+          {terminals.mounted && <TerminalDock ref={terminals.dock} onNewSession={terminals.add} onSessionClose={terminals.closed} disposeOnUnmount
             onResizeStart={() => undefined} onResizeMove={() => undefined} onResizeEnd={() => undefined} />}
         </aside>
         </SourceControlSplit>

@@ -26,6 +26,7 @@ import { HermesAvatar, MessageRow } from "./MessageRow";
 import type { AgentAvatarInfo } from "./MessageRow";
 import type { ChatBubbleMessage } from "./types";
 import { ReasoningRow, ToolActivityGroup } from "./HistoryRow";
+import { ToolEntryProvider } from "./ToolEntryProvider";
 import { ClarifyCard } from "./ClarifyCard";
 import type {
   ChatMessage,
@@ -218,6 +219,7 @@ export interface MessageListModel {
 }
 
 interface MessageListProps {
+  active?: boolean;
   messages: ChatMessage[];
   isLoading: boolean;
   toolProgress: string | null;
@@ -610,6 +612,7 @@ export function PinnedMessagesBar({
 }
 
 export const MessageList = memo(function MessageList({
+  active = true,
   messages,
   isLoading,
   toolProgress,
@@ -862,7 +865,7 @@ export const MessageList = memo(function MessageList({
   ]);
 
   return (
-    <>
+    <ToolEntryProvider active={active} sessionKey={sessionKey} messages={messages}>
       <StickyTodoPanel todos={stickyTodos} />
       {(realHiddenCount > 0 || olderAvailableProp) && (
         <button
@@ -889,6 +892,6 @@ export const MessageList = memo(function MessageList({
       {isLoading && toolProgress && lastMessageIsAgent && (
         <div className="chat-tool-progress-inline">{toolProgress}</div>
       )}
-    </>
+    </ToolEntryProvider>
   );
 });

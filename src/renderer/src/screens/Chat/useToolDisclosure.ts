@@ -18,9 +18,10 @@ function schedule(): void {
 }
 
 // ponytail: bounds mount breadth, not the cost of one unusually large result.
-export function useToolDisclosure(open: boolean, total = 1, batch = 1): number {
+export function useToolDisclosure(open: boolean, total = 1, batch = 1, immediate = false): number {
   const [count, setCount] = useState(0);
   useEffect(() => {
+    if (immediate) { setCount(open ? total : 0); return; }
     if (!open) {
       setCount(0);
       return;
@@ -37,6 +38,6 @@ export function useToolDisclosure(open: boolean, total = 1, batch = 1): number {
         timer = undefined;
       }
     };
-  }, [open, count, total, batch]);
-  return open ? Math.min(count, total) : 0;
+  }, [open, count, total, batch, immediate]);
+  return open ? immediate ? total : Math.min(count, total) : 0;
 }

@@ -11040,6 +11040,10 @@ body:has(.shell-vibrant),
   opacity: 1;
 }
 
+.chat-tool-collapse[data-instant="true"] {
+  transition: none !important;
+}
+
 /* Nested collapses (a group containing items) must not animate simultaneously
    in lockstep. MEASURED: adding a per-item stagger reduced the worst
    single-frame height step from 16px to 10px and raised the number of
