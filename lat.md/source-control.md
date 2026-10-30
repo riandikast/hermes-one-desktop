@@ -32,6 +32,8 @@ Stage all changes appears only in the Changes parent heading context menu (right
 
 The compact sidebar places commit controls first, collapsible change groups next, then lazy Ignored rules and paths. Local history lives only in the Graph tab.
 
+Ignored subsection headings use a 32px left inset; rule and ignored-path rows use 44px. Search filters the current 100-path page, preserving pagination. Ignored paths support checkbox and Shift-range selection; refresh and history loading use visible spinners.
+
 [[src/main/git-ignore.ts#gitIgnoreEdit]] edits only root .gitignore after explicit clicks, escapes literal anchored paths, rejects traversal and tracked paths, preserves line endings, and removes a selected rule only against its content version. No files are deleted or untracked. Existing broad rules require confirmation; nested, global and info/exclude rules are not edited. [[src/renderer/src/screens/Chat/IgnoredFiles.tsx#IgnoredFiles]] separates root rules from ignored paths, paging 100 paths with ignored directories collapsed. Git status has a 10-second timeout and shared Git output has an 8 MiB ceiling; pagination bounds returned paths, not the underlying status walk. Fixtures: [[src/main/git-ignore.test.ts]].
 
 [[src/main/git.ts#gitLog]] reads all local refs in topological order, defaults to 60 commits in the UI and caps at 200. HEAD, branches, tags and remote-tracking refs stay visible. Existing [[src/renderer/src/screens/Chat/CommitGraph.tsx#CommitGraph]] lanes and commit diffs are reused; no login or network request is needed. Loading, failure and retry controls are explicit. Mocked regression: [[src/renderer/src/screens/Chat/SourceControlDialog.test.tsx]].

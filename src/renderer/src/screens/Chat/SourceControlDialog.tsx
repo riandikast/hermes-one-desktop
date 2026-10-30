@@ -7,6 +7,7 @@ import {
   GitCommitHorizontal,
   FileDiff,
   EyeOff,
+  LoaderCircle,
   ChevronRight,
   ChevronDown,
 } from "lucide-react";
@@ -249,9 +250,12 @@ function FileRow({
         <span className="source-control-file-code">{isConflict ? "U" : entry ? statusCode(entry) : "?"}</span>
       </button>
       <div className="source-control-file-actions">
-        {!isConflict && <button type="button" className="source-control-stage-btn" disabled={busy || !!entry || staged}
-          aria-label={`Ignore ${path}`} title={entry || staged ? "Tracked files cannot be ignored; no files will be untracked" : "Add literal path to .gitignore"}
-          onClick={() => onIgnore(path)}><EyeOff size={14} /></button>}
+        {!isConflict && (
+          <span className="source-control-action-hint" title={entry || staged ? "Tracked files cannot be ignored; no files will be untracked" : "Add literal path to .gitignore"}>
+            <button type="button" className="source-control-stage-btn" disabled={busy || !!entry || staged}
+              aria-label={`Ignore ${path}`} onClick={() => onIgnore(path)}><EyeOff size={14} /></button>
+          </span>
+        )}
         {isConflict && (
           <>
             <button
@@ -652,7 +656,7 @@ export function SourceControlDialog({
               <span className="source-control-branch-track">
                 {status.ahead > 0 ? `↑${status.ahead}` : ""}
                 {status.behind > 0 ? `↓${status.behind}` : ""}
-                {status.ahead === 0 && status.behind === 0 ? "✓" : ""}
+
               </span>
             )}
           </span>
@@ -749,7 +753,7 @@ export function SourceControlDialog({
               <div className="source-control-sidebar">
                 <div className="source-control-footer">
                   <textarea className="source-control-commit-input" aria-label="Commit message" value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} placeholder="Commit message (Ctrl+Enter to commit)" rows={2} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !busy && stagedCount > 0) void commit(); }} />
-                  <button type="button" className="btn btn-primary btn-sm" disabled={busy || !stagedCount || !commitMessage.trim()} onClick={() => void commit()}>Commit</button>
+                  <button type="button" className="source-control-commit-btn btn-sm" disabled={busy || !stagedCount || !commitMessage.trim()} onClick={() => void commit()}>Commit</button>
                 </div>
                 <Section title={`Conflicts (${status.conflicted.length})`}>
                   {status.conflicted.length === 0 ? (
@@ -919,9 +923,9 @@ export function SourceControlDialog({
           ) : (
             <div className="source-control-graph-pane">
               <div className="source-control-graph-list">
-                {graphLoading && <p role="status">Loading history…</p>}
+                {graphLoading && <p className="source-control-loading-state" role="status"><LoaderCircle size={16} aria-hidden="true" />Loading history…</p>}
                 {graphError && <p role="alert">{graphError}</p>}
-                <button type="button" disabled={graphLoading} onClick={() => void loadGraph()}>Refresh history</button>
+                <button type="button" className="btn-ghost btn-sm" disabled={graphLoading} onClick={() => void loadGraph()}>Refresh history</button>
                 {!graphLoading && !graphError && <CommitGraph
                   commits={commits}
                   selectedHash={selectedCommit?.hash ?? null}
