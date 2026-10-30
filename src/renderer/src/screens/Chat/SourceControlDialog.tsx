@@ -576,7 +576,7 @@ export function SourceControlDialog({
 
   const stashSelected = (staged: boolean): void => {
     const paths = selectedPaths(staged);
-    if (!paths.length || !window.confirm(`Stash selected ${paths.length} file(s)? Both staged and unstaged edits of these files will be saved and removed from the working tree. Untracked selected files are included; ignored files are not.`)) return;
+    if (!paths.length || !window.confirm(`Stash selected ${paths.length} file(s)? Both staged and unstaged edits of these files will be saved and removed from the working tree. Untracked selected files are included; ignored files are not. Stashing source files of a running development app may trigger its watcher to reload or restart.`)) return;
     void run(() => window.hermesAPI.gitStashCreate(dir, paths), "Stashed selected");
   };
 

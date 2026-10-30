@@ -23,6 +23,20 @@ it("renames unpublished HEAD without changing tree, parents, or working files", 
   expect(git("rev-parse", "HEAD^{tree}")).toBe(tree);
   expect(git("status", "--porcelain")).toBe("");
 });
+it("keeps the branch HEAD eligible after stashing and leaves the saved stash unchanged on rename", async () => {
+  const head = git("rev-parse", "HEAD");
+  await writeFile(join(repo, "a.txt"), "saved edit");
+  git("stash", "push", "-m", "saved changes");
+  const stash = git("rev-parse", "refs/stash");
+  expect(git("rev-parse", "HEAD")).toBe(head);
+  expect((await gitRenameCheck(repo, head)).ok).toBe(true);
+  const result = await gitRenameCommit(repo, head, "renamed after stash");
+  expect(result.ok, result.error).toBe(true);
+  expect(git("log", "-1", "--format=%s")).toBe("renamed after stash");
+  expect(git("rev-parse", "refs/stash")).toBe(stash);
+  expect(git("show", `${stash}:a.txt`)).toBe("saved edit");
+});
+
 it("refuses non-HEAD, dirty, detached, active operations and invalid inputs", async () => {
   const hash = git("rev-parse", "HEAD");
   expect((await gitRenameCommit(repo, "--bad", "message")).ok).toBe(false);

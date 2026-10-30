@@ -263,6 +263,30 @@ describe("git source control", () => {
       ).toBe(true);
     });
 
+    it("excludes stash internals before limiting without hiding branch, tag or remote history", async () => {
+      const head = git(repo, "rev-parse", "HEAD").trim();
+      await writeFile(join(repo, "a.txt"), "saved changes\n", "utf8");
+      await writeFile(join(repo, "new.txt"), "saved untracked\n", "utf8");
+      git(repo, "stash", "push", "-u", "-m", "not branch history");
+      const stash = git(repo, "rev-parse", "refs/stash").trim();
+      const index = git(repo, "rev-parse", "refs/stash^2").trim();
+      const untracked = git(repo, "rev-parse", "refs/stash^3").trim();
+      const result = await gitLog(repo, { max: 1 });
+      expect(result.ok).toBe(true);
+      expect(result.commits.map((commit) => commit.hash)).toEqual([head]);
+      expect(result.commits[0].refs).toContain("HEAD -> main");
+      expect(git(repo, "rev-parse", "HEAD").trim()).toBe(head);
+      const branchTip = git(repo, "commit-tree", `${head}^{tree}`, "-p", head, "-m", "branch only").trim();
+      const tagTip = git(repo, "commit-tree", `${head}^{tree}`, "-p", head, "-m", "tag only").trim();
+      const remoteTip = git(repo, "commit-tree", `${head}^{tree}`, "-p", head, "-m", "remote only").trim();
+      git(repo, "update-ref", "refs/heads/other", branchTip);
+      git(repo, "update-ref", "refs/tags/retained", tagTip);
+      git(repo, "update-ref", "refs/remotes/origin/other", remoteTip);
+      const hashes = (await gitLog(repo)).commits.map((commit) => commit.hash);
+      expect(hashes).toEqual(expect.arrayContaining([head, branchTip, tagTip, remoteTip]));
+      for (const hash of [stash, index, untracked]) expect(hashes).not.toContain(hash);
+    });
+
     it("records both parents for a merge commit", async () => {
       git(repo, "checkout", "-q", "-b", "feature");
       await writeFile(join(repo, "f.txt"), "feature\n", "utf8");

@@ -428,6 +428,7 @@ export async function gitLog(
     "core.quotepath=false",
     "log",
     "--topo-order",
+    "--exclude=refs/stash",
     "--all",
     "--decorate=short",
     "--date=iso-strict",
