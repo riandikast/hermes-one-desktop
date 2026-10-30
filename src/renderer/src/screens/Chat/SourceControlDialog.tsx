@@ -963,7 +963,7 @@ export function SourceControlDialog({
             <div className="source-control-graph-pane">
               <div className="source-control-graph-list">
                 {graphError && <p role="alert">{graphError}</p>}
-                <form className="source-control-graph-toolbar" onSubmit={(event) => {
+                <form className="source-control-graph-toolbar source-control-graph-filters" onSubmit={(event) => {
                   event.preventDefault();
                   if (graphLoading) return;
                   if (historyFrom && historyTo && historyFrom > historyTo) {

@@ -23944,6 +23944,14 @@ body:has(.shell-vibrant),
   gap: 8px;
   padding: 6px 10px;
 }
+/* Align Apply with the inputs, not the combined label/input height. */
+.source-control-graph-filters {
+  align-items: flex-end;
+  flex-wrap: nowrap;
+}
+.source-control-graph-filters label { flex: 1 1 0; }
+.source-control-graph-filters input { width: 100%; box-sizing: border-box; height: 30px; }
+.source-control-graph-filters button { flex: 0 0 auto; height: 30px; }
 .source-control-graph-toolbar label {
   display: flex;
   flex-direction: column;

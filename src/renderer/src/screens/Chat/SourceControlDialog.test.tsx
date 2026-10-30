@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import { I18nProvider } from "../../components/I18nProvider";
 import { SourceControlDialog } from "./SourceControlDialog";
+import sourceControlCss from "../../assets/main.css?raw";
 import { SettingsModalContext } from "../../components/settings/SettingsModalContext";
 
 const openSettings = vi.fn();
@@ -465,6 +466,11 @@ describe("SourceControlDialog", () => {
     renderDialog("/repo");
     fireEvent.click(await screen.findByRole("button", { name: "Graph" }));
     await screen.findByText("unfiltered");
+    const filterForm = screen.getByRole("button", { name: "Apply" }).closest("form")!;
+    expect(filterForm).toHaveClass("source-control-graph-filters");
+    const filterStyle = sourceControlCss.match(/\.source-control-graph-filters\s*\{([^}]+)\}/)![1];
+    expect(filterStyle).toMatch(/align-items:\s*flex-end/);
+    expect(filterStyle).toMatch(/flex-wrap:\s*nowrap/);
     expect(gitLog).toHaveBeenLastCalledWith("/repo", { max: 50 });
     fireEvent.change(screen.getByLabelText("History from"), { target: { value: "2020-01-01" } });
     fireEvent.change(screen.getByLabelText("History to"), { target: { value: "2020-01-02" } });
