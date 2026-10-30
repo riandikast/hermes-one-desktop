@@ -962,15 +962,15 @@ export function SourceControlDialog({
                 {graphError && <p role="alert">{graphError}</p>}
                 <div className="source-control-graph-toolbar">
                   <button type="button" className="btn-ghost btn-sm" disabled={graphLoading} onClick={() => { void loadGraph(); void refresh(); }}>Refresh history</button>
-                  <button
+                  {status?.reverting && <button
                     type="button"
                     className="btn-ghost btn-sm"
-                    disabled={busy || !status?.reverting}
-                    title={status?.reverting ? "Cancel in-progress revert" : "No revert in progress"}
+                    disabled={busy}
+                    title="Cancel in-progress revert"
                     onClick={() => void cancelRevert()}
                   >
                     Cancel revert
-                  </button>
+                  </button>}
                 </div>
                 {graphLoading && <p className="source-control-loading-state" role="status"><LoaderCircle size={16} aria-hidden="true" />Loading history…</p>}
                 {!graphLoading && !graphError && <CommitGraph

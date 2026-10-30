@@ -482,6 +482,23 @@ describe("SourceControlDialog", () => {
     expect(screen.getByText("initial")).toBeTruthy();
   });
 
+  it("dismisses the commit menu when the graph scrolls, not an unrelated pane", async () => {
+    gitLog.mockResolvedValue({ ok: true, commits: [commit("abcdef12", [], "target commit")] });
+    const { unmount } = renderDialog("/repo");
+    fireEvent.click(await screen.findByRole("button", { name: "Graph" }));
+    const row = await screen.findByRole("listitem");
+    fireEvent.contextMenu(row);
+    fireEvent.scroll(document.querySelector(".source-control-graph-diff")!);
+    expect(screen.getByRole("menu")).toBeTruthy();
+    fireEvent.scroll(document.querySelector(".commit-graph-scroll")!);
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.contextMenu(row);
+    expect(screen.getByRole("menu")).toBeTruthy();
+    unmount();
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.scroll(document);
+  });
+
   it("right clicks a commit to copy hash or revert with confirmation, and supports cancel revert", async () => {
     gitLog.mockResolvedValue({
       ok: true,
@@ -496,7 +513,7 @@ describe("SourceControlDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Graph" }));
     const row = await screen.findByRole("listitem");
-    expect(screen.getByRole("button", { name: "Cancel revert" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Cancel revert" })).toBeNull();
 
     // Context menu on commit row
     fireEvent.contextMenu(row);
@@ -543,6 +560,7 @@ describe("SourceControlDialog", () => {
     confirm.mockReturnValue(true);
     fireEvent.click(cancelBtn);
     await waitFor(() => expect(gitRevertAbort).toHaveBeenCalledWith("/repo"));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Cancel revert" })).toBeNull());
 
     confirm.mockRestore();
   });

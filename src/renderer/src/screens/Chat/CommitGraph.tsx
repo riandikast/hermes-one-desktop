@@ -207,9 +207,16 @@ function CommitRow({
         rowRef.current?.focus();
       }
     };
+    const scroll = (event: Event) => {
+      if (event.target instanceof Node && event.target.contains(rowRef.current)) {
+        setMenu(null);
+      }
+    };
+    window.addEventListener("scroll", scroll, true);
     window.addEventListener("pointerdown", dismiss);
     window.addEventListener("keydown", key, true);
     return () => {
+      window.removeEventListener("scroll", scroll, true);
       window.removeEventListener("pointerdown", dismiss);
       window.removeEventListener("keydown", key, true);
     };
