@@ -23695,8 +23695,9 @@ body:has(.shell-vibrant),
   color: var(--text-muted);
   font-style: italic;
 }
-.source-control-ignore-heading {
-  margin: 8px 12px 4px 32px;
+.source-control-section > h4.source-control-ignore-heading {
+  /* Override the page's h4 margin reset; keep the label visibly inside its group. */
+  margin: 8px 12px 4px 44px;
   font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);

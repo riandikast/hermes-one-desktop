@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, ChevronDown, LoaderCircle, RefreshCw, Search, X } from "lucide-react";
 import type { GitIgnoreResult } from "../../../../shared/git-ignore";
 
@@ -7,20 +7,31 @@ export function IgnoredFiles({ dir, refresh }: { dir: string; refresh: () => Pro
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
-  const [offset, setOffset] = useState(0);
+  const [opened, setOpened] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const selectionAnchor = useRef<string | null>(null);
-  const load = async (page = offset): Promise<void> => {
+  const request = useRef(0);
+  const load = async (): Promise<void> => {
+    const id = ++request.current;
     setBusy(true); setError("");
     try {
-      const result = await window.hermesAPI.gitIgnoreList(dir, page);
+      const result = await window.hermesAPI.gitIgnoreList(dir, 0, query);
+      if (id !== request.current) return;
       if (!result.ok) throw new Error(result.error);
       setData(result);
-      setOffset(page);
-      setSelected((current) => current.filter((path) => result.files.includes(path)));
-    } catch (err) { setError(String(err)); }
-    finally { setBusy(false); }
+      setSelected([]);
+      selectionAnchor.current = null;
+    } catch (err) { if (id === request.current) setError(String(err)); }
+    finally { if (id === request.current) setBusy(false); }
   };
+  useEffect(() => {
+    if (!opened) return;
+    // Search the collapsed status before its 100-result cap, never stale pages.
+    ++request.current;
+    setData(null); setSelected([]);
+    const timer = window.setTimeout(() => void load(), 200);
+    return () => { window.clearTimeout(timer); ++request.current; };
+  }, [dir, query, opened]);
   const filteredFiles = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return data?.files.filter((path) => !needle || path.toLowerCase().includes(needle)) ?? [];
@@ -37,7 +48,7 @@ export function IgnoredFiles({ dir, refresh }: { dir: string; refresh: () => Pro
     });
     if (!shift || anchorIndex < 0) selectionAnchor.current = path;
   };
-  return <details className="source-control-section" onToggle={(event) => { if (event.currentTarget.open && !data) void load(); }}>
+  return <details className="source-control-section" onToggle={(event) => setOpened(event.currentTarget.open)}>
     <summary className="source-control-section-title"><ChevronRight className="source-control-chevron-closed" size={14} aria-hidden="true" /><ChevronDown className="source-control-chevron-open" size={14} aria-hidden="true" />Ignored</summary>
     {busy && <p className="source-control-loading-state" role="status"><LoaderCircle size={15} aria-hidden="true" />Loading ignored paths…</p>}
     {error && <p role="alert">{error}</p>}
@@ -47,7 +58,8 @@ export function IgnoredFiles({ dir, refresh }: { dir: string; refresh: () => Pro
     </div>
     <h4 className="source-control-ignore-heading">Root .gitignore rules</h4>
     {data?.rules.length === 0 && <p className="source-control-empty">No root rules</p>}
-    {data?.rules.map((rule) => <div className="source-control-file" key={rule.line}>
+    {data?.rules.filter((rule) => rule.pattern.toLowerCase().includes(query.trim().toLowerCase())).map((rule) => <div className={`source-control-file${selected.includes(`rule:${rule.line}`) ? " selected" : ""}`} key={rule.line}>
+      <input type="checkbox" className="source-control-file-select" aria-label={`Select ignore rule ${rule.pattern}`} checked={selected.includes(`rule:${rule.line}`)} disabled={busy} onChange={() => setSelected((current) => current.includes(`rule:${rule.line}`) ? current.filter((key) => key !== `rule:${rule.line}`) : [...current, `rule:${rule.line}`])} />
       <code className="source-control-file-name" title={rule.pattern}>{rule.pattern}</code>
       <button type="button" className="source-control-stage-btn" aria-label={`Remove ignore rule ${rule.pattern}`} disabled={busy} title={`Remove rule ${rule.pattern} from root .gitignore`} onClick={() => {
         if (!window.confirm(`Remove .gitignore rule “${rule.pattern}”? All paths matching this rule may become visible. Other ignore sources remain.`)) return;
@@ -67,10 +79,19 @@ export function IgnoredFiles({ dir, refresh }: { dir: string; refresh: () => Pro
     {filteredFiles.map((path) => <div className={`source-control-file${selected.includes(path) ? " selected" : ""}`} key={path}>
       <input type="checkbox" className="source-control-file-select" aria-label={`Select ignored ${path}`} checked={selected.includes(path)} disabled={busy} onChange={(event) => selectPath(path, (event.nativeEvent as MouseEvent).shiftKey)} />
       <code className="source-control-file-name" title={path}>{path}</code>
+      <button type="button" className="source-control-stage-btn" aria-label={`Stop ignoring ${path}`} disabled={busy} title="Add a literal root .gitignore exception; never delete files" onClick={() => {
+        if (!window.confirm(`Stop ignoring “${path}” by adding a root .gitignore exception? Directory contents may become visible. No disk files will be deleted. Nested, global and info/exclude rules cannot be changed here.`)) return;
+        setBusy(true); setError("");
+        void (async () => {
+          try {
+            const result = await window.hermesAPI.gitIgnoreUnignore(dir, path, data!.version);
+            if (!result.ok) throw new Error(result.error);
+            await refresh(); await load();
+          } catch (err) { setError(String(err)); }
+          finally { setBusy(false); }
+        })();
+      }}><X size={14} aria-hidden="true" /></button>
     </div>)}
-    <div className="source-control-ignore-tools">
-      <button type="button" className="btn-ghost btn-sm" disabled={busy || offset === 0} onClick={() => void load(offset - 100)}>Previous</button>
-      <button type="button" className="btn-ghost btn-sm" disabled={busy || !data?.hasMore} onClick={() => void load(offset + 100)}>Next 100</button>
-    </div>
+    {data?.hasMore && <p className="source-control-empty">Showing up to 100 matching paths. Refine search to find others.</p>}
   </details>;
 }

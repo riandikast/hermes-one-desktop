@@ -22,14 +22,17 @@ async function ignoreFile(dir: string): Promise<{ path: string; text: string }> 
 function validatePath(path: string): void {
   if (typeof path !== "string" || !path || path.length > 4096 || /[\x00-\x1f\x7f\\:]/.test(path) || path.startsWith("/") || path.replace(/\/$/, "").split("/").some((part) => !part || part === "." || part === "..") || path === ".gitignore" || path.split("/").includes(".git")) throw new Error("Invalid repository-relative file path");
 }
-export async function gitIgnoreList(dir: string, offset = 0): Promise<GitIgnoreResult> {
+export async function gitIgnoreList(dir: string, offset = 0, query = ""): Promise<GitIgnoreResult> {
   try {
     if (!Number.isInteger(offset) || offset < 0 || offset > 10000) throw new Error("Invalid ignored-file offset");
+    if (typeof query !== "string" || query.length > 4096) throw new Error("Invalid ignore search");
+    const needle = query.trim().toLowerCase();
     const { text } = await ignoreFile(dir);
     // Matching ignored directories stay collapsed: never recursively enumerate cache contents.
     const result = await runGit(dir, ["status", "--porcelain=v1", "--ignored=matching", "--untracked-files=normal", "-z"], 10_000);
     if (result.code !== 0) throw new Error(result.stderr || "Ignored files unavailable");
-    const files = result.stdout.split("\0").filter((line) => line.startsWith("!! ")).map((line) => line.slice(3));
+    // Filter before the response cap, not just the first page shown by the renderer.
+    const files = result.stdout.split("\0").filter((line) => line.startsWith("!! ")).map((line) => line.slice(3)).filter((path) => path.toLowerCase().includes(needle));
     return { ok: true, rules: text.split(/\r?\n/).flatMap((pattern, line) => pattern && !pattern.startsWith("#") ? [{ line, pattern }] : []), version: digest(text), files: files.slice(offset, offset + 100), hasMore: files.length > offset + 100 };
   } catch (err) { return { ok: false, rules: [], files: [], version: "", hasMore: false, error: String(err) }; }
 }
@@ -125,13 +128,23 @@ export async function gitIgnoreAddMany(
   }
 }
 
-export async function gitIgnoreEdit(dir: string, edit: { path: string } | { line: number; pattern: string; version: string }): Promise<GitActionResult> {
+export async function gitIgnoreEdit(dir: string, edit: { path: string } | { unignore: string; version: string } | { line: number; pattern: string; version: string }): Promise<GitActionResult> {
   if (editing) return { ok: false, error: "Ignore edit already in progress" };
   editing = true;
   try {
     const file = await ignoreFile(dir);
     let text = file.text;
-    if ("path" in edit) {
+    if ("unignore" in edit) {
+      validatePath(edit.unignore);
+      if (digest(text) !== edit.version) throw new Error("Ignore rules changed. Refresh before unignoring a path.");
+      const root = await runGit(dir, ["rev-parse", "--show-toplevel"], 10_000);
+      if (root.code !== 0) throw new Error("Not a working repository");
+      const source = await runGit(root.stdout.trim(), ["check-ignore", "-v", "--", edit.unignore], 10_000);
+      // Nested rules outrank root negations. Never claim those sources were removed.
+      if (source.code !== 0 || !source.stdout.startsWith(".gitignore:")) throw new Error("Only paths ignored by root .gitignore can be unignored here. Edit nested, global or info/exclude rules at their source.");
+      const eol = text.includes("\r\n") ? "\r\n" : "\n";
+      text += (text && !text.endsWith("\n") ? eol : "") + "!" + literalRule(edit.unignore) + eol;
+    } else if ("path" in edit) {
       validatePath(edit.path);
       const root = await runGit(dir, ["rev-parse", "--show-toplevel"], 10_000);
       const tracked = await runGit(root.stdout.trim(), ["ls-files", "-z", "--", `:(literal)${edit.path}`], 10_000);
@@ -148,6 +161,11 @@ export async function gitIgnoreEdit(dir: string, edit: { path: string } | { line
       text = lines.join("");
     }
     await writeFile(file.path, text, "utf8");
+    if ("unignore" in edit) {
+      const root = await runGit(dir, ["rev-parse", "--show-toplevel"], 10_000);
+      const check = await runGit(root.stdout.trim(), ["check-ignore", "--", edit.unignore], 10_000);
+      if (check.code !== 1) throw new Error("Root exception was added, but the path is still ignored or could not be verified. Edit the remaining ignore source manually.");
+    }
     return { ok: true, output: "Updated .gitignore only. Other rules may still ignore this path." };
   } catch (err) { return { ok: false, error: String(err) }; }
   finally { editing = false; }

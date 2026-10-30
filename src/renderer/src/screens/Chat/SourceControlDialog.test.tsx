@@ -435,6 +435,7 @@ describe("SourceControlDialog", () => {
     expect(screen.getByRole("button", { name: "Pull" }).querySelector("svg")).toBeNull();
     fireEvent.click(graph);
     expect(screen.getByRole("status").textContent).toBe("Loading history…");
+    expect(screen.getByRole("button", { name: "Refresh history" }).nextElementSibling).toBe(screen.getByRole("status"));
     expect(screen.queryByText("No commits yet")).toBeNull();
     await act(async () => resolve({ ok: true, commits: [commit("aaaaaaa1", [], "loaded")] }));
     expect(screen.getByText("loaded")).toBeTruthy();

@@ -44,6 +44,33 @@ it("shows ignored directories collapsed and keeps external rules effective after
   expect((await gitIgnoreEdit(repo, { ...list.rules[0], version: list.version })).ok).toBe(true);
   expect((await gitIgnoreList(repo)).files).toContain("x.cache");
 });
+it("searches beyond the first 100 collapsed paths while bounding the response", async () => {
+  await writeFile(join(repo, ".gitignore"), "*.cache\n");
+  for (let i = 0; i < 110; i++) await writeFile(join(repo, `item-${String(i).padStart(3, "0")}.cache`), "keep");
+  const initial = await gitIgnoreList(repo);
+  expect(initial.files).toHaveLength(100);
+  expect(initial.hasMore).toBe(true);
+  const found = await gitIgnoreList(repo, 0, "ITEM-109");
+  expect(found.files).toEqual(["item-109.cache"]);
+  expect(found.hasMore).toBe(false);
+});
+it("unignores literal root paths without deleting files and refuses external sources or stale versions", async () => {
+  await writeFile(join(repo, ".gitignore"), "*.cache\r\n");
+  await writeFile(join(repo, "[one].cache"), "keep");
+  const before = await gitIgnoreList(repo);
+  expect((await gitIgnoreEdit(repo, { unignore: "[one].cache", version: before.version })).ok).toBe(true);
+  expect((await gitIgnoreList(repo)).files).not.toContain("[one].cache");
+  expect(await readFile(join(repo, "[one].cache"), "utf8")).toBe("keep");
+  expect(await readFile(join(repo, ".gitignore"), "utf8")).toBe("*.cache\r\n!/\\[one\\].cache\r\n");
+  expect((await gitIgnoreEdit(repo, { unignore: "[one].cache", version: before.version })).ok).toBe(false);
+  await writeFile(join(repo, ".git", "info", "exclude"), "external.txt\n");
+  await writeFile(join(repo, "external.txt"), "keep");
+  const current = await gitIgnoreList(repo);
+  const failed = await gitIgnoreEdit(repo, { unignore: "external.txt", version: current.version });
+  expect(failed.ok).toBe(false);
+  expect(failed.error).toContain("at their source");
+  expect((await gitIgnoreList(repo)).version).toBe(current.version);
+});
 it("adds a multi-selection in one write and skips duplicates", async () => {
   await writeFile(join(repo, ".gitignore"), "*.cache\n");
   const paths = ["one.txt", "two words.txt", "!bang.txt", "one.txt"];

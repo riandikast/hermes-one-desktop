@@ -1328,7 +1328,8 @@ interface HermesAPI {
   openTerminal: (dirPath: string) => Promise<boolean>;
   getTerminalPreference: () => Promise<"powershell" | "cmd">;
   setTerminalPreference: (shell: "powershell" | "cmd") => Promise<boolean>;
-  gitIgnoreList: (dir: string, offset?: number) => Promise<import("../shared/git-ignore").GitIgnoreResult>;
+  gitIgnoreList: (dir: string, offset?: number, query?: string) => Promise<import("../shared/git-ignore").GitIgnoreResult>;
+  gitIgnoreUnignore: (dir: string, path: string, version: string) => Promise<GitActionResult>;
   gitIgnoreAdd: (dir: string, path: string) => Promise<GitActionResult>;
   gitIgnoreAddMany: (dir: string, paths: string[]) => Promise<GitActionResult>;
   gitIgnoreRemove: (dir: string, line: number, pattern: string, version: string) => Promise<GitActionResult>;

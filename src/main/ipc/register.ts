@@ -3648,7 +3648,8 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("git-remote-host", async (_event, dir: string) =>
     gitRemoteHost(dir),
   );
-  ipcMain.handle("git-ignore-list", (_event, dir: string, offset: number) => gitIgnoreList(dir, offset));
+  ipcMain.handle("git-ignore-list", (_event, dir: string, offset: number, query?: string) => gitIgnoreList(dir, offset, query));
+  ipcMain.handle("git-ignore-unignore", (_event, dir: string, path: string, version: string) => gitIgnoreEdit(dir, { unignore: path, version }));
   ipcMain.handle("git-ignore-add", (_event, dir: string, path: string) => gitIgnoreEdit(dir, { path }));
   ipcMain.handle("git-ignore-add-many", (_event, dir: string, paths: string[]) => gitIgnoreAddMany(dir, paths));
   ipcMain.handle("git-ignore-remove", (_event, dir: string, line: number, pattern: string, version: string) => gitIgnoreEdit(dir, { line, pattern, version }));

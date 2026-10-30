@@ -10,6 +10,8 @@ import {
   LoaderCircle,
   ChevronRight,
   ChevronDown,
+  Plus,
+  Minus,
 } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import { useSettingsModal } from "../../components/settings/SettingsModalContext";
@@ -251,6 +253,14 @@ function FileRow({
       </button>
       <div className="source-control-file-actions">
         {!isConflict && (
+          <span className="source-control-action-hint" title={busy ? `${staged ? "Unstage" : "Stage"} unavailable while an operation is in progress` : staged ? "Unstage" : "Stage"}>
+            <button type="button" className="source-control-stage-btn" disabled={busy}
+              aria-label={staged ? "Unstage" : "Stage"} onClick={() => onToggleStaged(path, staged)}>
+              {staged ? <Minus size={14} /> : <Plus size={14} />}
+            </button>
+          </span>
+        )}
+        {!isConflict && (
           <span className="source-control-action-hint" title={entry || staged ? "Tracked files cannot be ignored; no files will be untracked" : "Add literal path to .gitignore"}>
             <button type="button" className="source-control-stage-btn" disabled={busy || !!entry || staged}
               aria-label={`Ignore ${path}`} onClick={() => onIgnore(path)}><EyeOff size={14} /></button>
@@ -278,17 +288,7 @@ function FileRow({
             </button>
           </>
         )}
-        {!isConflict && (
-          <button
-            type="button"
-            className="source-control-stage-btn"
-            disabled={busy}
-            onClick={() => onToggleStaged(path, staged)}
-            title={staged ? "Unstage" : "Stage"}
-          >
-            {staged ? "Unstage" : "+"}
-          </button>
-        )}
+
       </div>
     </div>
   );
@@ -923,9 +923,9 @@ export function SourceControlDialog({
           ) : (
             <div className="source-control-graph-pane">
               <div className="source-control-graph-list">
-                {graphLoading && <p className="source-control-loading-state" role="status"><LoaderCircle size={16} aria-hidden="true" />Loading history…</p>}
                 {graphError && <p role="alert">{graphError}</p>}
                 <button type="button" className="btn-ghost btn-sm" disabled={graphLoading} onClick={() => void loadGraph()}>Refresh history</button>
+                {graphLoading && <p className="source-control-loading-state" role="status"><LoaderCircle size={16} aria-hidden="true" />Loading history…</p>}
                 {!graphLoading && !graphError && <CommitGraph
                   commits={commits}
                   selectedHash={selectedCommit?.hash ?? null}
