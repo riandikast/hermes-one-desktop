@@ -147,7 +147,7 @@ export function CommitGraph({
           </svg>
 
           {/* Text layer: subject, refs, meta. Positioned to the right of the gutter. */}
-          <div className="commit-graph-rows" style={{ paddingLeft: gutter }}>
+          <div className="commit-graph-rows" style={{ marginLeft: gutter }}>
             {nodes.map((node, row) => (
               <CommitRow
                 key={node.commit.hash}

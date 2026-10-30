@@ -30,7 +30,7 @@ Stage all changes appears only in the Changes parent heading context menu (right
 
 ## Ignore management and local graph
 
-The compact sidebar places commit controls first, collapsible change groups next, then lazy Ignored and Graph sections, matching the requested VS Code workflow.
+The compact sidebar places commit controls first, collapsible change groups next, then lazy Ignored rules and paths. Local history lives only in the Graph tab.
 
 [[src/main/git-ignore.ts#gitIgnoreEdit]] edits only root .gitignore after explicit clicks, escapes literal anchored paths, rejects traversal and tracked paths, preserves line endings, and removes a selected rule only against its content version. No files are deleted or untracked. Existing broad rules require confirmation; nested, global and info/exclude rules are not edited. [[src/renderer/src/screens/Chat/IgnoredFiles.tsx#IgnoredFiles]] separates root rules from ignored paths, paging 100 paths with ignored directories collapsed. Git status has a 10-second timeout and shared Git output has an 8 MiB ceiling; pagination bounds returned paths, not the underlying status walk. Fixtures: [[src/main/git-ignore.test.ts]].
 
@@ -41,6 +41,8 @@ Design direction: requested VS Code familiarity, ENERGY 1 / RHYTHM 1 / MOTION 1.
 ## Discard changes
 
 Per-file discard confirms before restoring tracked regular files without staged changes. [[src/main/git.ts#gitDiscard]] rejects conflicts, untracked paths, traversal and symlinks; literal pathspecs protect other files.
+
+Discard appears only in an eligible file's context menu (right-click, ContextMenu, Shift+F10), never inline. Cancellation performs no write; Escape restores file focus. Ignored uses the shared disclosure chevrons, indented rows, and named icon-only rule removal. Pull is text-only; the branch badge uses accent contrast. Graph loading hides the empty state, and text rows reserve the SVG lane gutter with an outer margin. Regression: [[src/renderer/src/screens/Chat/SourceControlDialog.test.tsx]].
 
 ## Git output
 

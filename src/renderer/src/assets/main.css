@@ -23569,6 +23569,9 @@ body:has(.shell-vibrant),
   margin-left: auto;
 }
 .source-control-branch {
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-primary));
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -23576,8 +23579,6 @@ body:has(.shell-vibrant),
   border-radius: 20px;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11.5px;
-  color: var(--text-muted);
-  background: var(--bg-elevated, rgba(255, 255, 255, 0.05));
 }
 .source-control-branch-track {
   color: var(--text-secondary);
@@ -23653,11 +23654,17 @@ body:has(.shell-vibrant),
   color: var(--text-muted);
   font-style: italic;
 }
+.source-control-ignore-heading {
+  margin: 8px 12px 4px 32px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
 .source-control-file {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 12px;
+  padding: 3px 12px 3px 32px;
 }
 .source-control-file:hover {
   background: rgba(255, 255, 255, 0.04);

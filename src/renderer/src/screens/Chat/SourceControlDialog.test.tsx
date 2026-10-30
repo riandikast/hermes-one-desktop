@@ -105,6 +105,8 @@ describe("SourceControlDialog", () => {
     expect(heading.querySelector(".lucide-chevron-right")).not.toBeNull();
     expect(heading.querySelector(".lucide-chevron-down")).not.toBeNull();
     fireEvent.contextMenu(screen.getByText("a.ts"));
+    expect(screen.getByRole("menuitem", { name: "Discard changes to a.ts" })).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
     fireEvent.keyDown(heading, { key: "F10", shiftKey: true });
     expect(screen.getByRole("menuitem")).toHaveFocus();
@@ -122,10 +124,13 @@ describe("SourceControlDialog", () => {
   it("confirms before discarding a tracked change and refreshes", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
     renderDialog("/repo");
-    const button = await screen.findByRole("button", { name: "Discard changes to a.ts" });
-    fireEvent.click(button);
+    const file = await screen.findByRole("button", { name: /a.ts M/ });
+    expect(screen.queryByRole("button", { name: "Discard changes to a.ts" })).toBeNull();
+    fireEvent.contextMenu(file);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Discard changes to a.ts" }));
     expect(window.hermesAPI.gitDiscard).not.toHaveBeenCalled();
-    fireEvent.click(button);
+    fireEvent.keyDown(file, { key: "F10", shiftKey: true });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Discard changes to a.ts" }));
     await waitFor(() => expect(window.hermesAPI.gitDiscard).toHaveBeenCalledWith("/repo", "a.ts"));
     await waitFor(() => expect(gitRepoStatus).toHaveBeenCalledTimes(2));
     confirm.mockRestore();
@@ -246,7 +251,7 @@ describe("SourceControlDialog", () => {
     await screen.findByText("Ignored");
     await act(async () => { screen.getByText("Ignored").click(); });
     expect(await screen.findByText("node_modules/")).toBeTruthy();
-    await act(async () => screen.getByRole("button", { name: "Remove from ignore" }).click());
+    await act(async () => screen.getByRole("button", { name: "Remove ignore rule *.cache" }).click());
     expect(window.hermesAPI.gitIgnoreRemove).toHaveBeenCalledWith("/repo", 2, "*.cache", "version");
     expect(window.confirm).toHaveBeenCalled();
     vi.mocked(window.confirm).mockRestore();
@@ -419,6 +424,21 @@ describe("SourceControlDialog", () => {
     renderDialog("/repo");
     await waitFor(() => expect(gitRepoStatus).toHaveBeenCalled());
     expect(gitLog).not.toHaveBeenCalled();
+  });
+
+  it("keeps graph loading separate from empty history and reserves its lane gutter", async () => {
+    let resolve!: (value: { ok: boolean; commits: ReturnType<typeof commit>[] }) => void;
+    gitLog.mockReturnValue(new Promise((done) => { resolve = done; }));
+    renderDialog("/repo");
+    const graph = await screen.findByRole("button", { name: "Graph" });
+    expect(document.querySelectorAll("summary")).not.toContainEqual(expect.objectContaining({ textContent: "Graph" }));
+    expect(screen.getByRole("button", { name: "Pull" }).querySelector("svg")).toBeNull();
+    fireEvent.click(graph);
+    expect(screen.getByRole("status").textContent).toBe("Loading history…");
+    expect(screen.queryByText("No commits yet")).toBeNull();
+    await act(async () => resolve({ ok: true, commits: [commit("aaaaaaa1", [], "loaded")] }));
+    expect(screen.getByText("loaded")).toBeTruthy();
+    expect(parseFloat((document.querySelector(".commit-graph-rows") as HTMLElement).style.marginLeft)).toBeGreaterThan(0);
   });
 
   it("loads and renders commits when the Graph tab is clicked", async () => {

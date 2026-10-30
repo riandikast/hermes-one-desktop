@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
-  GitPullRequest,
   GitBranch,
   RefreshCw,
   GitCommitHorizontal,
@@ -176,8 +175,51 @@ function FileRow({
   onIgnore: (path: string) => void;
   onDiscard: (path: string) => void;
 }): React.JSX.Element {
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const row = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const canDiscard = !isConflict && !staged && entry?.index === " " && entry.worktree === "M";
+  useEffect(() => {
+    if (!menu) return;
+    menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const dismiss = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenu(null);
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape" || event.key === "Tab") {
+        event.preventDefault(); event.stopImmediatePropagation();
+        setMenu(null); row.current?.querySelector<HTMLButtonElement>("button")?.focus();
+      }
+    };
+    window.addEventListener("pointerdown", dismiss);
+    window.addEventListener("keydown", key, true);
+    return () => {
+      window.removeEventListener("pointerdown", dismiss);
+      window.removeEventListener("keydown", key, true);
+    };
+  }, [menu]);
+  const openMenu = (x: number, y: number) => setMenu({
+    x: Math.max(0, Math.min(x, window.innerWidth - 210)),
+    y: Math.max(0, Math.min(y, window.innerHeight - 48)),
+  });
   return (
-    <div className={`source-control-file${active ? " active" : ""}${selectedForBatch ? " selected" : ""}`}>
+    <div ref={row} className={`source-control-file${active ? " active" : ""}${selectedForBatch ? " selected" : ""}`}
+      onContextMenu={canDiscard ? (event) => { event.preventDefault(); openMenu(event.clientX, event.clientY); } : undefined}
+      onKeyDown={canDiscard ? (event) => {
+        if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect(); openMenu(rect.left, rect.bottom);
+        }
+      } : undefined}>
+      {menu && createPortal(
+        <div ref={menuRef} role="menu" aria-label={`Actions for ${path}`} className="worktree-context-menu"
+          style={{ position: "fixed", left: menu.x, top: menu.y, width: 210, maxWidth: "100vw", zIndex: 2000 }}>
+          <button type="button" role="menuitem" className="worktree-context-menu-item" disabled={busy}
+            onClick={() => { setMenu(null); row.current?.querySelector<HTMLButtonElement>("button")?.focus(); onDiscard(path); }}>
+            Discard changes to {path}
+          </button>
+        </div>, document.body,
+      )}
       {!isConflict && (
         <input
           type="checkbox"
@@ -207,9 +249,6 @@ function FileRow({
         <span className="source-control-file-code">{isConflict ? "U" : entry ? statusCode(entry) : "?"}</span>
       </button>
       <div className="source-control-file-actions">
-        {!isConflict && !staged && entry?.index === " " && entry.worktree === "M" && (
-          <button type="button" className="source-control-stage-btn" disabled={busy} aria-label={`Discard changes to ${path}`} onClick={() => onDiscard(path)}>Discard</button>
-        )}
         {!isConflict && <button type="button" className="source-control-stage-btn" disabled={busy || !!entry || staged}
           aria-label={`Ignore ${path}`} title={entry || staged ? "Tracked files cannot be ignored; no files will be untracked" : "Add literal path to .gitignore"}
           onClick={() => onIgnore(path)}><EyeOff size={14} /></button>}
@@ -644,7 +683,7 @@ export function SourceControlDialog({
               }
               title="Pull"
             >
-              <GitPullRequest size={14} /> Pull
+              Pull
             </button>
             <button
               type="button"
@@ -868,14 +907,6 @@ export function SourceControlDialog({
                   )}
                 </Section>
                 <IgnoredFiles dir={dir} refresh={refresh} />
-                <details className="source-control-section" onToggle={(event) => { if (event.currentTarget.open && !graphLoadedRef.current) { graphLoadedRef.current = true; void loadGraph(); } }}>
-                  <summary className="source-control-section-title"><ChevronRight className="source-control-chevron-closed" size={14} aria-hidden="true" /><ChevronDown className="source-control-chevron-open" size={14} aria-hidden="true" />Graph</summary>
-                  <p className="source-control-empty">Local history. No GitHub login required.</p>
-                  {graphLoading && <p role="status">Loading history…</p>}
-                  {graphError && <p role="alert">{graphError}</p>}
-                  <button type="button" disabled={graphLoading} onClick={() => void loadGraph()}>Refresh history</button>
-                  <CommitGraph commits={commits} selectedHash={selectedCommit?.hash ?? null} onSelect={(c) => { void showCommit(c); setView("graph"); }} />
-                </details>
               </div>
               <div className="source-control-diff">
                 <DiffViewer
@@ -891,11 +922,11 @@ export function SourceControlDialog({
                 {graphLoading && <p role="status">Loading history…</p>}
                 {graphError && <p role="alert">{graphError}</p>}
                 <button type="button" disabled={graphLoading} onClick={() => void loadGraph()}>Refresh history</button>
-                <CommitGraph
+                {!graphLoading && !graphError && <CommitGraph
                   commits={commits}
                   selectedHash={selectedCommit?.hash ?? null}
                   onSelect={(c) => void showCommit(c)}
-                />
+                />}
               </div>
               <div className="source-control-graph-diff">
                 {selectedCommit ? (
