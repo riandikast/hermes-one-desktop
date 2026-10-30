@@ -125,28 +125,39 @@ describe("SourceControlDialog", () => {
     expect(loading.querySelector("svg.lucide-loader-circle")).not.toBeNull();
     view.unmount(); finish({ repo: false, staged: [], unstaged: [], conflicted: [], untracked: [] });
   });
-  it("puts rename first and rejects published commits before opening an editor", async () => {
+  it("hides rename for published HEAD and reports the validation reason", async () => {
     const target = { ...commit("a".repeat(40), [], "local tip"), refs: ["HEAD -> main"] };
     gitLog.mockResolvedValue({ ok: true, commits: [target] });
     renderDialog("/repo");
     fireEvent.click(await screen.findByRole("button", { name: "Graph" }));
     fireEvent.contextMenu(await screen.findByRole("listitem"));
-    expect(screen.getAllByRole("menuitem")[0]).toHaveTextContent("Rename commit");
-    fireEvent.click(screen.getByRole("menuitem", { name: "Rename commit" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("published");
+    expect(await screen.findByRole("status")).toHaveTextContent("published");
+    expect(screen.queryByRole("menuitem", { name: "Rename commit" })).toBeNull();
     expect(window.hermesAPI.gitRenameCommit).not.toHaveBeenCalled();
   });
-  it("explains ineligible commits instead of silently disabling rename", async () => {
+  it("keeps rename absent while validation is pending or local changes block it", async () => {
+    const target = { ...commit("d".repeat(40), [], "latest"), refs: ["HEAD -> main"] };
+    gitLog.mockResolvedValue({ ok: true, commits: [target] });
+    let finish!: (result: { ok: boolean; error: string }) => void;
+    vi.mocked(window.hermesAPI.gitRenameCheck).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    renderDialog("/repo");
+    fireEvent.click(await screen.findByRole("button", { name: "Graph" }));
+    fireEvent.contextMenu(await screen.findByRole("listitem"));
+    expect(await screen.findByRole("status")).toHaveTextContent("Checking rename eligibility");
+    expect(screen.queryByRole("menuitem", { name: "Rename commit" })).toBeNull();
+    await act(async () => finish({ ok: false, error: "Commit or stash local changes before renaming a commit" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Commit or stash local changes");
+    expect(screen.queryByLabelText("Commit message", { selector: "textarea[id]" })).toBeNull();
+  });
+  it("omits rename entirely on older local commits", async () => {
     const target = { ...commit("c".repeat(40), [], "older local commit"), refs: ["local-branch"] };
     gitLog.mockResolvedValue({ ok: true, commits: [target] });
     vi.mocked(window.hermesAPI.gitRenameCheck).mockResolvedValue({ ok: false, error: "Only the latest commit on the current local branch can be renamed" });
     renderDialog("/repo");
     fireEvent.click(await screen.findByRole("button", { name: "Graph" }));
     fireEvent.contextMenu(await screen.findByRole("listitem"));
-    const rename = screen.getByRole("menuitem", { name: "Rename commit" });
-    expect(rename).toBeEnabled();
-    fireEvent.click(rename);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Only the latest commit on the current local branch can be renamed");
+    expect(screen.queryByRole("menuitem", { name: "Rename commit" })).toBeNull();
+    expect(window.hermesAPI.gitRenameCheck).not.toHaveBeenCalled();
     expect(window.hermesAPI.gitRenameCommit).not.toHaveBeenCalled();
   });
   it("saves a renamed local HEAD after confirmation and refreshes history", async () => {
@@ -157,8 +168,10 @@ describe("SourceControlDialog", () => {
     renderDialog("/repo");
     fireEvent.click(await screen.findByRole("button", { name: "Graph" }));
     fireEvent.contextMenu(await screen.findByRole("listitem"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Rename commit" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename commit" }));
     const input = await screen.findByLabelText("Commit message", { selector: "textarea[id]" });
+    expect(input).toBeEnabled();
+    expect(input).toHaveFocus();
     await waitFor(() => expect(input).toHaveValue("original\n\nbody"));
     fireEvent.change(input, { target: { value: "updated\n\nbody" } });
     fireEvent.click(screen.getByRole("button", { name: "Save message" }));

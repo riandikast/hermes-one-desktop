@@ -6,8 +6,10 @@ it("loads full message, confirms rewrite, preserves body and reports errors", as
   Object.assign(window, { hermesAPI: { gitRenameCheck: vi.fn().mockResolvedValue({ ok: true, output: "subject\n\nbody" }) } });
   const rename = vi.fn().mockRejectedValue(new Error("remote changed")); const close = vi.fn();
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-  render(<RenameCommitDialog dir="/repo" hash={"a".repeat(40)} onClose={close} onRename={rename} />);
+  render(<RenameCommitDialog initialMessage={"subject\n\nbody"} hash={"a".repeat(40)} onClose={close} onRename={rename} />);
   const input = screen.getByLabelText("Commit message");
+  expect(input).toBeEnabled();
+  expect(input).toHaveFocus();
   await waitFor(() => expect(input).toHaveValue("subject\n\nbody"));
   fireEvent.change(input, { target: { value: "renamed\n\nbody" } });
   fireEvent.click(screen.getByRole("button", { name: "Save message" }));

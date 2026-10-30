@@ -36,6 +36,18 @@ it("refuses non-HEAD, dirty, detached, active operations and invalid inputs", as
   git("switch", "-q", "main"); await mkdir(join(repo, ".git", "sequencer"));
   expect((await gitRenameCommit(repo, current, "no")).ok).toBe(false);
 });
+it("parses multiple remotes and advertised refs with real whitespace", async () => {
+  const remote = join(repo, ".git", "remote.git");
+  execFileSync("git", ["init", "--bare", "-q", remote]);
+  git("remote", "add", "origin", remote); git("remote", "add", "backup", remote);
+  git("push", "-q", "origin", "main"); git("tag", "published-base"); git("push", "-q", "origin", "--tags");
+  git("commit", "--allow-empty", "-qm", "local only");
+  const hash = git("rev-parse", "HEAD");
+  const checked = await gitRenameCheck(repo, hash);
+  expect(checked.ok, checked.error).toBe(true);
+  expect(checked.output).toBe("local only\n");
+  expect((await gitRenameCommit(repo, hash, "bad\0message")).error).toBe("Invalid commit message");
+}, 15_000);
 it("rejects remote commits even when remote-tracking refs have not been fetched", async () => {
   const remote = join(repo, ".git", "remote.git");
   execFileSync("git", ["init", "--bare", "-q", remote]); git("remote", "add", "origin", remote);

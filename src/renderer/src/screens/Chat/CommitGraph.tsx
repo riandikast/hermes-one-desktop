@@ -57,6 +57,7 @@ export function CommitGraph({
   onSelect,
   onRevert,
   onRename,
+  checkRename,
   selectedHash,
   limit = 50,
   busy = false,
@@ -64,7 +65,8 @@ export function CommitGraph({
   commits: import("./gitGraph").GraphCommit[];
   onSelect?: (commit: import("./gitGraph").GraphCommit) => void;
   onRevert?: (commit: import("./gitGraph").GraphCommit) => void;
-  onRename?: (commit: import("./gitGraph").GraphCommit) => void;
+  onRename?: (commit: import("./gitGraph").GraphCommit, message: string) => void;
+  checkRename?: (hash: string) => Promise<{ ok: boolean; output?: string; error?: string }>;
   selectedHash?: string | null;
   limit?: number;
   busy?: boolean;
@@ -164,6 +166,7 @@ export function CommitGraph({
                 onSelect={onSelect}
                 onRevert={onRevert}
                 onRename={onRename}
+                checkRename={checkRename}
                 busy={busy}
               />
             ))}
@@ -181,6 +184,7 @@ function CommitRow({
   onSelect,
   onRevert,
   onRename,
+  checkRename,
   busy,
 }: {
   node: GraphNode;
@@ -188,7 +192,8 @@ function CommitRow({
   selected: boolean;
   onSelect?: (commit: import("./gitGraph").GraphCommit) => void;
   onRevert?: (commit: import("./gitGraph").GraphCommit) => void;
-  onRename?: (commit: import("./gitGraph").GraphCommit) => void;
+  onRename?: (commit: import("./gitGraph").GraphCommit, message: string) => void;
+  checkRename?: (hash: string) => Promise<{ ok: boolean; output?: string; error?: string }>;
   busy?: boolean;
 }): React.JSX.Element {
   const { commit } = node;
@@ -197,6 +202,16 @@ function CommitRow({
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const rowRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [renameCheck, setRenameCheck] = useState<{ message?: string; error?: string } | null>(null);
+  useEffect(() => {
+    setRenameCheck(null);
+    if (!menu || !onRename || !checkRename || busy || !commit.refs.some((ref) => ref.startsWith("HEAD -> "))) return;
+    let alive = true;
+    void Promise.resolve().then(() => checkRename(commit.hash)).then((result) => {
+      if (alive) setRenameCheck(result.ok ? { message: result.output ?? "" } : { error: result.error ?? "Commit cannot be renamed" });
+    }).catch((err) => { if (alive) setRenameCheck({ error: String(err) }); });
+    return () => { alive = false; };
+  }, [menu, commit.hash, commit.refs, onRename, checkRename, busy]);
 
   useEffect(() => {
     if (!menu) return;
@@ -311,10 +326,11 @@ function CommitRow({
               }
             }}
           >
-            <button type="button" role="menuitem" className="worktree-context-menu-item"
-              disabled={busy || !onRename}
-              title="Rename latest unpublished commit; remote status is verified before editing"
-              onClick={() => { setMenu(null); rowRef.current?.focus(); onRename?.(commit); }}>Rename commit</button>
+            {onRename && checkRename && commit.refs.some((ref) => ref.startsWith("HEAD -> ")) && !busy && (
+              renameCheck?.message !== undefined ? <button type="button" role="menuitem" className="worktree-context-menu-item"
+                onClick={() => { setMenu(null); onRename(commit, renameCheck.message!); }}>Rename commit</button>
+              : <p role="status" style={{ margin: 0, padding: "6px 10px", fontSize: 12 }}>{renameCheck?.error ?? "Checking rename eligibility…"}</p>
+            )}
             <button
               type="button"
               role="menuitem"

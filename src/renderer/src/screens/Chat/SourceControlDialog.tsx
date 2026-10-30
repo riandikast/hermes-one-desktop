@@ -317,7 +317,7 @@ export function SourceControlDialog({
   const { t } = useI18n();
   const { openSettings } = useSettingsModal();
   const [branchesOpen, setBranchesOpen] = useState(false);
-  const [renameTarget, setRenameTarget] = useState<GraphCommit | null>(null);
+  const [renameTarget, setRenameTarget] = useState<(GraphCommit & { message: string }) | null>(null);
   const [terminalError, setTerminalError] = useState("");
   const terminals = useSourceControlTerminals(dir, onClose, setTerminalError);
   useEffect(() => {
@@ -455,6 +455,8 @@ export function SourceControlDialog({
     graphLoadedRef.current = true;
     void loadGraph();
   }, [view, loadGraph]);
+
+  const checkRename = useCallback((hash: string) => window.hermesAPI.gitRenameCheck(dir, hash), [dir]);
 
   const showCommit = useCallback(
     async (commit: GraphCommit) => {
@@ -1015,7 +1017,8 @@ export function SourceControlDialog({
                   selectedHash={selectedCommit?.hash ?? null}
                   onSelect={(c) => void showCommit(c)}
                   onRevert={(c) => void revertCommit(c)}
-                  onRename={setRenameTarget}
+                  onRename={(commit, message) => setRenameTarget({ ...commit, message })}
+                  checkRename={checkRename}
                   busy={busy}
                 />}
               </div>
@@ -1066,7 +1069,7 @@ export function SourceControlDialog({
             </button>
           </div>
         )}
-        {renameTarget && <RenameCommitDialog dir={dir} hash={renameTarget.hash} onClose={() => setRenameTarget(null)} onRename={async (message) => {
+        {renameTarget && <RenameCommitDialog initialMessage={renameTarget.message} hash={renameTarget.hash} onClose={() => setRenameTarget(null)} onRename={async (message) => {
           if (actionInFlight.current) throw new Error("Another Git operation is in progress");
           let failure = "";
           await run(async () => {
