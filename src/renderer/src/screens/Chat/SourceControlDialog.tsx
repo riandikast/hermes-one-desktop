@@ -702,7 +702,7 @@ export function SourceControlDialog({
           <div className="source-control-header-actions">
             {remoteHost?.toLowerCase() === "github.com" && (
               <button type="button" className="btn-ghost btn-sm" onClick={() => { onClose(); openSettings("github"); }}>
-                Manage GitHub credentials
+                Manage GitHub Credentials
               </button>
             )}
 
@@ -974,8 +974,8 @@ export function SourceControlDialog({
                   setSelectedCommit(null); setCommitDiff("");
                   void loadGraph();
                 }}>
-                  <label title="Filter by committer date; row dates show author dates">From (UTC) <input aria-label="History from" type="date" value={historyFrom} onChange={(event) => setHistoryFrom(event.target.value)} /></label>
-                  <label title="Inclusive committer date in UTC">To (UTC) <input aria-label="History to" type="date" value={historyTo} min={historyFrom || undefined} onChange={(event) => setHistoryTo(event.target.value)} /></label>
+                  <label title="Filter by committer date; row dates show author dates">Start Date <input aria-label="History from" type="date" value={historyFrom} onChange={(event) => setHistoryFrom(event.target.value)} /></label>
+                  <label title="Inclusive committer date in UTC">End Date <input aria-label="History to" type="date" value={historyTo} min={historyFrom || undefined} onChange={(event) => setHistoryTo(event.target.value)} /></label>
                   <button type="submit" className="btn-ghost btn-sm" disabled={graphLoading}>Apply</button>
                 </form>
                 <div className="source-control-graph-toolbar">

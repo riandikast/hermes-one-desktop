@@ -2652,7 +2652,12 @@ function Chat({
                   open={chatSearchOpen}
                   onOpenChange={(next) => {
                     setChatSearchOpen(next);
-                    if (next) setDisplayControlsOpen(false);
+                    if (next) {
+                      setDisplayControlsOpen(false);
+                      setShowAllThoughts(false);
+                      setShowAllTools(false);
+                      setChatDisplayControls({ thoughts: "hide", tools: "hide" });
+                    }
                   }}
                   searchHistory={searchHistory}
                   onRevealMessage={revealSearchMessage}

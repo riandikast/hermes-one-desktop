@@ -23789,8 +23789,8 @@ body:has(.shell-vibrant),
   min-height: 30px;
   border: 1px solid color-mix(in srgb, #2b7da3 72%, var(--border));
   border-radius: 6px;
-  color: #fff;
-  background: #2b7da3;
+  color: var(--text-primary);
+  background: var(--accent);
   font-weight: 600;
   cursor: pointer;
 }
@@ -24242,7 +24242,7 @@ body:has(.shell-vibrant),
   gap: 8px;
   padding: 10px 16px;
   border-top: 1px solid var(--border);
-  background: var(--bg-primary);
+  background: var(--bg-secondary);
   /* Never let the body squeeze the commit controls: this row keeps its height
      so the textarea/button are never half-cropped at the dialog's bottom. */
   flex-shrink: 0;
@@ -24282,13 +24282,14 @@ body:has(.shell-vibrant),
   outline: none;
   border-color: var(--accent, #7aa2f7);
 }
+
 .source-control-commit-input {
   flex: 1;
   resize: none;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--bg-input, #1e1e2e);
+  background: var(--bg-primary, #1e1e2e);
   color: var(--text-primary);
   font-size: 12.5px;
   font-family: inherit;
