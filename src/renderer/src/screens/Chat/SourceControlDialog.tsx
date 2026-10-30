@@ -249,21 +249,26 @@ function FileRow({
         <span className="source-control-file-name" title={path}>
           {fileLabel(path)}
         </span>
-        <span className="source-control-file-code">{isConflict ? "U" : entry ? statusCode(entry) : "?"}</span>
+        <span
+          className={`source-control-file-code${isConflict ? " conflict" : ""}`}
+          title={isConflict ? "Conflicted (unmerged)" : entry ? (statusCode(entry) === "M" ? "Modified" : statusCode(entry) === "A" ? "Added" : statusCode(entry) === "D" ? "Deleted" : statusCode(entry) === "R" ? "Renamed" : statusCode(entry)) : "Untracked"}
+        >
+          {isConflict ? "U" : entry ? statusCode(entry) : "?"}
+        </span>
       </button>
       <div className="source-control-file-actions">
+        {!isConflict && (
+          <span className="source-control-action-hint" title={entry || staged ? "Tracked files cannot be ignored; no files will be untracked" : "Add literal path to .gitignore"}>
+            <button type="button" className="source-control-stage-btn" disabled={busy || !!entry || staged}
+              aria-label={`Ignore ${path}`} onClick={() => onIgnore(path)}><EyeOff size={14} /></button>
+          </span>
+        )}
         {!isConflict && (
           <span className="source-control-action-hint" title={busy ? `${staged ? "Unstage" : "Stage"} unavailable while an operation is in progress` : staged ? "Unstage" : "Stage"}>
             <button type="button" className="source-control-stage-btn" disabled={busy}
               aria-label={staged ? "Unstage" : "Stage"} onClick={() => onToggleStaged(path, staged)}>
               {staged ? <Minus size={14} /> : <Plus size={14} />}
             </button>
-          </span>
-        )}
-        {!isConflict && (
-          <span className="source-control-action-hint" title={entry || staged ? "Tracked files cannot be ignored; no files will be untracked" : "Add literal path to .gitignore"}>
-            <button type="button" className="source-control-stage-btn" disabled={busy || !!entry || staged}
-              aria-label={`Ignore ${path}`} onClick={() => onIgnore(path)}><EyeOff size={14} /></button>
           </span>
         )}
         {isConflict && (

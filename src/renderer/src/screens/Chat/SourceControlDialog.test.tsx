@@ -420,6 +420,17 @@ describe("SourceControlDialog", () => {
     expect(page?.parentElement).toBe(document.body);
   });
 
+  it("provides hover explanation for status codes and keeps eye before stage action", async () => {
+    renderDialog("/repo");
+    await waitFor(() => expect(gitRepoStatus).toHaveBeenCalled());
+    const code = screen.getByText("M");
+    expect(code).toHaveAttribute("title", "Modified");
+    const actions = code.closest(".source-control-file")!.querySelector(".source-control-file-actions")!;
+    const buttons = actions.querySelectorAll("button");
+    expect(buttons[0]).toHaveAttribute("aria-label", "Ignore a.ts");
+    expect(buttons[1]).toHaveAttribute("aria-label", "Stage");
+  });
+
   it("does not fetch history until the Graph tab is opened", async () => {
     renderDialog("/repo");
     await waitFor(() => expect(gitRepoStatus).toHaveBeenCalled());

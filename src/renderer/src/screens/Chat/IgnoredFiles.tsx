@@ -10,6 +10,7 @@ export function IgnoredFiles({ dir, refresh }: { dir: string; refresh: () => Pro
   const [opened, setOpened] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const selectionAnchor = useRef<string | null>(null);
+  const ruleAnchor = useRef<string | null>(null);
   const request = useRef(0);
   const load = async (): Promise<void> => {
     const id = ++request.current;
@@ -21,6 +22,7 @@ export function IgnoredFiles({ dir, refresh }: { dir: string; refresh: () => Pro
       setData(result);
       setSelected([]);
       selectionAnchor.current = null;
+      ruleAnchor.current = null;
     } catch (err) { if (id === request.current) setError(String(err)); }
     finally { if (id === request.current) setBusy(false); }
   };
@@ -29,13 +31,32 @@ export function IgnoredFiles({ dir, refresh }: { dir: string; refresh: () => Pro
     // Search the collapsed status before its 100-result cap, never stale pages.
     ++request.current;
     setData(null); setSelected([]);
+    selectionAnchor.current = null;
+    ruleAnchor.current = null;
     const timer = window.setTimeout(() => void load(), 200);
     return () => { window.clearTimeout(timer); ++request.current; };
   }, [dir, query, opened]);
+  const filteredRules = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return data?.rules.filter((rule) => !needle || rule.pattern.toLowerCase().includes(needle)) ?? [];
+  }, [data, query]);
   const filteredFiles = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return data?.files.filter((path) => !needle || path.toLowerCase().includes(needle)) ?? [];
   }, [data, query]);
+  const selectRule = (ruleKey: string, shift: boolean): void => {
+    const keys = filteredRules.map((rule) => `rule:${rule.line}`);
+    const anchorIndex = shift && ruleAnchor.current ? keys.indexOf(ruleAnchor.current) : -1;
+    const keyIndex = keys.indexOf(ruleKey);
+    setSelected((current) => {
+      if (anchorIndex >= 0 && keyIndex >= 0) {
+        const range = keys.slice(Math.min(anchorIndex, keyIndex), Math.max(anchorIndex, keyIndex) + 1);
+        return [...current.filter((item) => !range.includes(item)), ...range];
+      }
+      return current.includes(ruleKey) ? current.filter((item) => item !== ruleKey) : [...current, ruleKey];
+    });
+    if (!shift || anchorIndex < 0) ruleAnchor.current = ruleKey;
+  };
   const selectPath = (path: string, shift: boolean): void => {
     const anchorIndex = shift && selectionAnchor.current ? filteredFiles.indexOf(selectionAnchor.current) : -1;
     const pathIndex = filteredFiles.indexOf(path);
@@ -50,19 +71,19 @@ export function IgnoredFiles({ dir, refresh }: { dir: string; refresh: () => Pro
   };
   return <details className="source-control-section" onToggle={(event) => setOpened(event.currentTarget.open)}>
     <summary className="source-control-section-title"><ChevronRight className="source-control-chevron-closed" size={14} aria-hidden="true" /><ChevronDown className="source-control-chevron-open" size={14} aria-hidden="true" />Ignored</summary>
-    {busy && <p className="source-control-loading-state" role="status"><LoaderCircle size={15} aria-hidden="true" />Loading ignored paths…</p>}
-    {error && <p role="alert">{error}</p>}
     <div className="source-control-ignore-tools">
       <label className="source-control-ignore-search"><Search size={14} aria-hidden="true" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ignored" aria-label="Search ignored paths" /></label>
       <button type="button" className="btn-ghost btn-sm" aria-label="Refresh ignored" title="Refresh ignored" disabled={busy} onClick={() => void load()}><RefreshCw size={14} /></button>
     </div>
+    {busy && <p className="source-control-loading-state" role="status"><LoaderCircle size={15} aria-hidden="true" />Loading ignored paths…</p>}
+    {error && <p role="alert">{error}</p>}
     <h4 className="source-control-ignore-heading">Root .gitignore rules</h4>
     {data?.rules.length === 0 && <p className="source-control-empty">No root rules</p>}
-    {data?.rules.filter((rule) => rule.pattern.toLowerCase().includes(query.trim().toLowerCase())).map((rule) => <div className={`source-control-file${selected.includes(`rule:${rule.line}`) ? " selected" : ""}`} key={rule.line}>
-      <input type="checkbox" className="source-control-file-select" aria-label={`Select ignore rule ${rule.pattern}`} checked={selected.includes(`rule:${rule.line}`)} disabled={busy} onChange={() => setSelected((current) => current.includes(`rule:${rule.line}`) ? current.filter((key) => key !== `rule:${rule.line}`) : [...current, `rule:${rule.line}`])} />
+    {filteredRules.map((rule) => <div className={`source-control-file${selected.includes(`rule:${rule.line}`) ? " selected" : ""}`} key={rule.line}>
+      <input type="checkbox" className="source-control-file-select" aria-label={`Select ignore rule ${rule.pattern}`} checked={selected.includes(`rule:${rule.line}`)} disabled={busy} onChange={(event) => selectRule(`rule:${rule.line}`, (event.nativeEvent as MouseEvent).shiftKey)} />
       <code className="source-control-file-name" title={rule.pattern}>{rule.pattern}</code>
       <button type="button" className="source-control-stage-btn" aria-label={`Remove ignore rule ${rule.pattern}`} disabled={busy} title={`Remove rule ${rule.pattern} from root .gitignore`} onClick={() => {
-        if (!window.confirm(`Remove .gitignore rule “${rule.pattern}”? All paths matching this rule may become visible. Other ignore sources remain.`)) return;
+        if (!data || !window.confirm(`Remove .gitignore rule “${rule.pattern}”? All paths matching this rule may become visible. Other ignore sources remain.`)) return;
         setBusy(true);
         void (async () => {
           try {
