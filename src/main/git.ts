@@ -27,6 +27,7 @@ export interface GitStatusResult {
   staged: GitFileEntry[];
   unstaged: GitFileEntry[];
   untracked: string[];
+  reverting?: boolean;
   error?: string;
 }
 
@@ -192,11 +193,15 @@ export async function gitRepoStatus(dir: string): Promise<GitStatusResult> {
     staged: [],
     unstaged: [],
     untracked: [],
+    reverting: false,
   };
   if (status.code !== 0) {
     result.error = status.stderr.trim() || "git status failed";
     return result;
   }
+
+  const revertHead = await runGit(dir, ["rev-parse", "--verify", "-q", "REVERT_HEAD"]);
+  result.reverting = revertHead.code === 0;
 
   const records = status.stdout.split("\0").filter(Boolean);
   if (records.length > 0 && records[0].startsWith("## ")) {
@@ -565,4 +570,18 @@ export async function gitResolveConflict(
   );
   if (!checkout.ok) return checkout;
   return gitStage(dir, [path]);
+}
+
+export function gitRevert(
+  dir: string,
+  hash: string,
+): Promise<GitActionResult> {
+  if (typeof hash !== "string" || !/^[0-9a-fA-F]{4,40}$/.test(hash)) {
+    return Promise.resolve({ ok: false, error: "Invalid commit hash" });
+  }
+  return runGitAction(dir, ["revert", "--no-edit", hash], 60_000);
+}
+
+export function gitRevertAbort(dir: string): Promise<GitActionResult> {
+  return runGitAction(dir, ["revert", "--abort"], 60_000);
 }

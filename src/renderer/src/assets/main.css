@@ -23937,6 +23937,12 @@ body:has(.shell-vibrant),
   overflow: auto;
   border-right: 1px solid var(--border);
 }
+.source-control-graph-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+}
 .source-control-graph-diff {
   flex: 1;
   min-width: 0;

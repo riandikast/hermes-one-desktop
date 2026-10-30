@@ -13,6 +13,8 @@ import {
   gitLog,
   gitRepoStatus,
   gitResolveConflict,
+  gitRevert,
+  gitRevertAbort,
   gitStage,
   gitUnstage,
 } from "./git";
@@ -291,6 +293,42 @@ describe("git source control", () => {
       const res = await gitCommitDiff(repo, "HEAD; rm -rf /");
       expect(res.ok).toBe(false);
       expect(res.error).toContain("invalid commit hash");
+    });
+  });
+
+  describe("gitRevert and gitRevertAbort", () => {
+    it("reverts a commit cleanly and detects reverting state on conflicts", async () => {
+      await writeFile(join(repo, "a.txt"), "hello line 2\n", "utf8");
+      git(repo, "commit", "-q", "-am", "commit 2");
+      const hash2 = git(repo, "rev-parse", "HEAD").trim();
+
+      const res = await gitRevert(repo, hash2);
+      expect(res.ok).toBe(true);
+
+      const status = await gitRepoStatus(repo);
+      expect(status.reverting).toBe(false);
+
+      // Create a conflict scenario
+      await writeFile(join(repo, "a.txt"), "divergent line\n", "utf8");
+      git(repo, "commit", "-q", "-am", "divergent commit");
+      const conflictRes = await gitRevert(repo, hash2);
+      expect(conflictRes.ok).toBe(false);
+
+      const conflictStatus = await gitRepoStatus(repo);
+      expect(conflictStatus.reverting).toBe(true);
+
+      // Abort revert
+      const abortRes = await gitRevertAbort(repo);
+      expect(abortRes.ok).toBe(true);
+
+      const afterAbortStatus = await gitRepoStatus(repo);
+      expect(afterAbortStatus.reverting).toBe(false);
+    });
+
+    it("rejects a malformed hash for revert", async () => {
+      const res = await gitRevert(repo, "bad-hash; rm -rf");
+      expect(res.ok).toBe(false);
+      expect(res.error).toContain("Invalid commit hash");
     });
   });
 });

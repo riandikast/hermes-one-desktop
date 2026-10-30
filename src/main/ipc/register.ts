@@ -73,6 +73,8 @@ import {
   gitPush,
   gitFetch,
   gitResolveConflict,
+  gitRevert,
+  gitRevertAbort,
   gitRemoteHost,
   gitLog,
   gitCommitDiff,
@@ -3686,6 +3688,12 @@ export function registerIpcHandlers(context: IpcContext): void {
     "git-conflict-resolve",
     async (_event, dir: string, path: string, side: "ours" | "theirs") =>
       gitResolveConflict(dir, path, side),
+  );
+  ipcMain.handle("git-revert", async (_event, dir: string, hash: string) =>
+    gitRevert(dir, hash),
+  );
+  ipcMain.handle("git-revert-abort", async (_event, dir: string) =>
+    gitRevertAbort(dir),
   );
 
   // Read image file as data URL for preview

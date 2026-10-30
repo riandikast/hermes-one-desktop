@@ -37,6 +37,7 @@ interface GitStatusResult {
   staged: GitFileEntry[];
   unstaged: GitFileEntry[];
   untracked: string[];
+  reverting?: boolean;
   error?: string;
 }
 
@@ -556,6 +557,36 @@ export function SourceControlDialog({
     setCommitMessage("");
   }, [commitMessage, dir, run]);
 
+  const revertCommit = useCallback(
+    async (target: import("./gitGraph").GraphCommit) => {
+      if (
+        !window.confirm(
+          `Revert commit ${target.shortHash} ("${target.subject}")?`,
+        )
+      ) {
+        return;
+      }
+      await run(
+        () => window.hermesAPI.gitRevert(dir, target.hash),
+        `Reverted ${target.shortHash}`,
+      );
+      void loadGraph();
+    },
+    [dir, loadGraph, run],
+  );
+
+  const cancelRevert = useCallback(async () => {
+    if (
+      !window.confirm(
+        "Cancel in-progress revert? Uncommitted changes from this revert will be discarded.",
+      )
+    ) {
+      return;
+    }
+    await run(() => window.hermesAPI.gitRevertAbort(dir), "Cancelled revert");
+    void loadGraph();
+  }, [dir, loadGraph, run]);
+
   const resolveConflict = useCallback(
     async (path: string, side: "ours" | "theirs") => {
       await run(
@@ -929,12 +960,25 @@ export function SourceControlDialog({
             <div className="source-control-graph-pane">
               <div className="source-control-graph-list">
                 {graphError && <p role="alert">{graphError}</p>}
-                <button type="button" className="btn-ghost btn-sm" disabled={graphLoading} onClick={() => void loadGraph()}>Refresh history</button>
+                <div className="source-control-graph-toolbar">
+                  <button type="button" className="btn-ghost btn-sm" disabled={graphLoading} onClick={() => { void loadGraph(); void refresh(); }}>Refresh history</button>
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm"
+                    disabled={busy || !status?.reverting}
+                    title={status?.reverting ? "Cancel in-progress revert" : "No revert in progress"}
+                    onClick={() => void cancelRevert()}
+                  >
+                    Cancel revert
+                  </button>
+                </div>
                 {graphLoading && <p className="source-control-loading-state" role="status"><LoaderCircle size={16} aria-hidden="true" />Loading history…</p>}
                 {!graphLoading && !graphError && <CommitGraph
                   commits={commits}
                   selectedHash={selectedCommit?.hash ?? null}
                   onSelect={(c) => void showCommit(c)}
+                  onRevert={(c) => void revertCommit(c)}
+                  busy={busy}
                 />}
               </div>
               <div className="source-control-graph-diff">

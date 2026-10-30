@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { GitBranch, GitCommitHorizontal, GitMerge } from "lucide-react";
 import {
   layoutGraph,
@@ -54,13 +55,17 @@ function edgePath(x1: number, y1: number, x2: number, y2: number): string {
 export function CommitGraph({
   commits,
   onSelect,
+  onRevert,
   selectedHash,
   limit = 50,
+  busy = false,
 }: {
   commits: import("./gitGraph").GraphCommit[];
   onSelect?: (commit: import("./gitGraph").GraphCommit) => void;
+  onRevert?: (commit: import("./gitGraph").GraphCommit) => void;
   selectedHash?: string | null;
   limit?: number;
+  busy?: boolean;
 }): React.JSX.Element {
   const nodes = useMemo(
     () => layoutGraph(commits.slice(0, limit)),
@@ -155,6 +160,8 @@ export function CommitGraph({
                 row={row}
                 selected={selectedHash === node.commit.hash}
                 onSelect={onSelect}
+                onRevert={onRevert}
+                busy={busy}
               />
             ))}
           </div>
@@ -169,54 +176,157 @@ function CommitRow({
   row,
   selected,
   onSelect,
+  onRevert,
+  busy,
 }: {
   node: GraphNode;
   row: number;
   selected: boolean;
   onSelect?: (commit: import("./gitGraph").GraphCommit) => void;
+  onRevert?: (commit: import("./gitGraph").GraphCommit) => void;
+  busy?: boolean;
 }): React.JSX.Element {
   const { commit } = node;
   const isMerge = commit.parents.length > 1;
   const isRoot = commit.parents.length === 0;
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const rowRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menu) return;
+    menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const dismiss = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenu(null);
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape" || event.key === "Tab") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setMenu(null);
+        rowRef.current?.focus();
+      }
+    };
+    window.addEventListener("pointerdown", dismiss);
+    window.addEventListener("keydown", key, true);
+    return () => {
+      window.removeEventListener("pointerdown", dismiss);
+      window.removeEventListener("keydown", key, true);
+    };
+  }, [menu]);
+
+  const openMenu = (x: number, y: number) =>
+    setMenu({
+      x: Math.max(0, Math.min(x, window.innerWidth - 210)),
+      y: Math.max(0, Math.min(y, window.innerHeight - 80)),
+    });
+
   return (
-    <button
-      type="button"
-      role="listitem"
-      className={`commit-graph-row${selected ? " commit-graph-row--selected" : ""}`}
-      style={{ height: ROW_H, top: row * ROW_H }}
-      onClick={() => onSelect?.(commit)}
-      title={`${commit.shortHash} — ${commit.subject}`}
-    >
-      <span className="commit-graph-subject">
-        {commit.subject || "(no message)"}
-      </span>
-      {commit.refs.length > 0 && (
-        <span className="commit-graph-refs">
-          {commit.refs.map((ref) => (
-            <span key={ref} className="commit-graph-ref">
-              <GitBranch size={10} /> {ref}
-            </span>
-          ))}
+    <>
+      <button
+        ref={rowRef}
+        type="button"
+        role="listitem"
+        className={`commit-graph-row${selected ? " commit-graph-row--selected" : ""}`}
+        style={{ height: ROW_H, top: row * ROW_H }}
+        onClick={() => onSelect?.(commit)}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          openMenu(event.clientX, event.clientY);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+            event.preventDefault();
+            const rect = event.currentTarget.getBoundingClientRect();
+            openMenu(rect.left, rect.bottom);
+          }
+        }}
+        title={`${commit.shortHash} — ${commit.subject}`}
+      >
+        <span className="commit-graph-subject">
+          {commit.subject || "(no message)"}
         </span>
-      )}
-      {isMerge && (
-        <span
-          className="commit-graph-tag commit-graph-tag--merge"
-          title="Merge commit"
-        >
-          <GitMerge size={11} />
+        {commit.refs.length > 0 && (
+          <span className="commit-graph-refs">
+            {commit.refs.map((ref) => (
+              <span key={ref} className="commit-graph-ref">
+                <GitBranch size={10} /> {ref}
+              </span>
+            ))}
+          </span>
+        )}
+        {isMerge && (
+          <span
+            className="commit-graph-tag commit-graph-tag--merge"
+            title="Merge commit"
+          >
+            <GitMerge size={11} />
+          </span>
+        )}
+        {isRoot && (
+          <span className="commit-graph-tag" title="Root commit">
+            <GitCommitHorizontal size={11} />
+          </span>
+        )}
+        <span className="commit-graph-meta">
+          <span className="commit-graph-author">{commit.author}</span>
+          <span className="commit-graph-hash">{commit.shortHash}</span>
+          <span className="commit-graph-date">{relativeTime(commit.date)}</span>
         </span>
-      )}
-      {isRoot && (
-        <span className="commit-graph-tag" title="Root commit">
-          <GitCommitHorizontal size={11} />
-        </span>
-      )}
-      <span className="commit-graph-meta">
-        <span className="commit-graph-author">{commit.author}</span>
-        <span className="commit-graph-hash">{commit.shortHash}</span>
-        <span className="commit-graph-date">{relativeTime(commit.date)}</span>
-      </span>
-    </button>
+      </button>
+      {menu &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label={`Actions for commit ${commit.shortHash}`}
+            className="worktree-context-menu"
+            style={{
+              position: "fixed",
+              left: menu.x,
+              top: menu.y,
+              width: 210,
+              maxWidth: "100vw",
+              zIndex: 2000,
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Tab") {
+                setMenu(null);
+                rowRef.current?.focus();
+              }
+              if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+                event.preventDefault();
+              }
+            }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="worktree-context-menu-item"
+              onClick={() => {
+                setMenu(null);
+                rowRef.current?.focus();
+                void navigator.clipboard.writeText(commit.hash);
+              }}
+            >
+              Copy commit ID
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="worktree-context-menu-item"
+              disabled={busy}
+              onClick={() => {
+                setMenu(null);
+                rowRef.current?.focus();
+                onRevert?.(commit);
+              }}
+            >
+              Revert to this commit
+            </button>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }

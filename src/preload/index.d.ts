@@ -1356,6 +1356,8 @@ interface HermesAPI {
     path: string,
     side: "ours" | "theirs",
   ) => Promise<GitActionResult>;
+  gitRevert: (dir: string, hash: string) => Promise<GitActionResult>;
+  gitRevertAbort: (dir: string) => Promise<GitActionResult>;
   getGitWorkingTreeChanges: (
     dir: string,
     opts?: { maxFiles?: number },

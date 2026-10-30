@@ -1814,6 +1814,8 @@ const hermesAPI = {
   gitFetch: (dir: string) => ipcRenderer.invoke("git-fetch", dir),
   gitResolveConflict: (dir: string, path: string, side: "ours" | "theirs") =>
     ipcRenderer.invoke("git-conflict-resolve", dir, path, side),
+  gitRevert: (dir: string, hash: string) => ipcRenderer.invoke("git-revert", dir, hash),
+  gitRevertAbort: (dir: string) => ipcRenderer.invoke("git-revert-abort", dir),
   getGitWorkingTreeChanges: (
     dir: string,
     opts?: { maxFiles?: number },

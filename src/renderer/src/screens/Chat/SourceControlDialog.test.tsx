@@ -53,12 +53,16 @@ const gitLog = vi.fn();
 const gitRepoStatus = vi.fn();
 const gitDiff = vi.fn();
 const gitCommitDiff = vi.fn();
+const gitRevert = vi.fn();
+const gitRevertAbort = vi.fn();
 
 beforeEach(() => {
   gitLog.mockReset();
   gitRepoStatus.mockReset();
   gitDiff.mockReset();
   gitCommitDiff.mockReset();
+  gitRevert.mockReset().mockResolvedValue({ ok: true, output: "Revert succeeded" });
+  gitRevertAbort.mockReset().mockResolvedValue({ ok: true, output: "Revert aborted" });
 
   gitRepoStatus.mockResolvedValue({
     repo: true,
@@ -93,6 +97,8 @@ beforeEach(() => {
     gitPush: vi.fn().mockResolvedValue({ ok: true }),
     gitFetch: vi.fn().mockResolvedValue({ ok: true }),
     gitResolveConflict: vi.fn().mockResolvedValue({ ok: true }),
+    gitRevert,
+    gitRevertAbort,
   };
 });
 
@@ -446,7 +452,8 @@ describe("SourceControlDialog", () => {
     expect(screen.getByRole("button", { name: "Pull" }).querySelector("svg")).toBeNull();
     fireEvent.click(graph);
     expect(screen.getByRole("status").textContent).toBe("Loading history…");
-    expect(screen.getByRole("button", { name: "Refresh history" }).nextElementSibling).toBe(screen.getByRole("status"));
+    const refresh = screen.getByRole("button", { name: "Refresh history" });
+    expect(refresh.closest(".source-control-graph-toolbar")!.nextElementSibling).toBe(screen.getByRole("status"));
     expect(screen.queryByText("No commits yet")).toBeNull();
     await act(async () => resolve({ ok: true, commits: [commit("aaaaaaa1", [], "loaded")] }));
     expect(screen.getByText("loaded")).toBeTruthy();
@@ -473,6 +480,71 @@ describe("SourceControlDialog", () => {
     );
     expect(await screen.findByText("newest work")).toBeTruthy();
     expect(screen.getByText("initial")).toBeTruthy();
+  });
+
+  it("right clicks a commit to copy hash or revert with confirmation, and supports cancel revert", async () => {
+    gitLog.mockResolvedValue({
+      ok: true,
+      commits: [commit("abcdef12", [], "target commit")],
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    renderDialog("/repo");
+    await waitFor(() => expect(gitRepoStatus).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+    const row = await screen.findByRole("listitem");
+    expect(screen.getByRole("button", { name: "Cancel revert" })).toBeDisabled();
+
+    // Context menu on commit row
+    fireEvent.contextMenu(row);
+    const copyBtn = screen.getByRole("menuitem", { name: "Copy commit ID" });
+    expect(screen.getByRole("menuitem", { name: "Revert to this commit" })).toBeTruthy();
+
+    fireEvent.click(copyBtn);
+    expect(writeText).toHaveBeenCalledWith("abcdef12");
+
+    // Revert with rejection
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Revert to this commit" }));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Revert commit abcdef1"));
+    expect(gitRevert).not.toHaveBeenCalled();
+
+    // Revert confirmed
+    confirm.mockReturnValue(true);
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Revert to this commit" }));
+    await waitFor(() => expect(gitRevert).toHaveBeenCalledWith("/repo", "abcdef12"));
+
+    // Cancel revert button when reverting
+    gitRepoStatus.mockResolvedValueOnce({
+      repo: true,
+      root: "/repo",
+      branch: "main",
+      upstream: "origin/main",
+      ahead: 0,
+      behind: 0,
+      conflicted: [],
+      staged: [],
+      unstaged: [],
+      untracked: [],
+      reverting: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Refresh history" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cancel revert" })).not.toBeDisabled());
+    const cancelBtn = screen.getByRole("button", { name: "Cancel revert" });
+
+    confirm.mockReturnValue(false);
+    fireEvent.click(cancelBtn);
+    expect(gitRevertAbort).not.toHaveBeenCalled();
+
+    confirm.mockReturnValue(true);
+    fireEvent.click(cancelBtn);
+    await waitFor(() => expect(gitRevertAbort).toHaveBeenCalledWith("/repo"));
+
+    confirm.mockRestore();
   });
 
   it("shows the selected commit's diff", async () => {
