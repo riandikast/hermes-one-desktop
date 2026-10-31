@@ -55,6 +55,61 @@ beforeEach(() => {
 });
 
 describe("StashSection file rows", () => {
+  it("toggles all stash files or just one group, preserving selection order and other groups", async () => {
+    list.mockResolvedValue({ ok: true, entries });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<StashSection {...props} />);
+    fireEvent.click(await screen.findByLabelText("Select stash@{1}: c.ts"));
+    const group = screen.getByRole("button", { name: "Select all stash@{0}" });
+    expect(group.closest("summary")).toBeNull();
+    fireEvent.click(group);
+    expect(group).toHaveAttribute("aria-pressed", "true");
+    expect(group.closest("details")).toHaveAttribute("open");
+    fireEvent.click(screen.getByRole("button", { name: "Select all stash" }));
+    for (const entry of entries) for (const file of files) {
+      expect(screen.getByLabelText(`Select ${entry.ref}: ${file.path}`)).toBeChecked();
+    }
+    expect(restore).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled();
+    expect(diff).not.toHaveBeenCalled(); expect(confirm).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Restore selected (6)" }));
+    await waitFor(() => expect(restore).toHaveBeenCalledWith("/repo", [
+      { hash: entries[1].hash, paths: ["c.ts"] },
+      { hash: entries[0].hash, paths: ["src/a.ts", "b.ts", "c.ts"] },
+      { hash: entries[1].hash, paths: ["src/a.ts", "b.ts"] },
+    ]));
+    fireEvent.click(screen.getByRole("button", { name: "Unselect all stash@{0}" }));
+    for (const file of files) {
+      expect(screen.getByLabelText(`Select stash@{0}: ${file.path}`)).not.toBeChecked();
+      expect(screen.getByLabelText(`Select stash@{1}: ${file.path}`)).toBeChecked();
+    }
+    expect(screen.getByRole("button", { name: "Select all stash" })).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(screen.getByRole("button", { name: "Select all stash" }));
+    fireEvent.click(screen.getByRole("button", { name: "Unselect all stash" }));
+    expect(screen.queryByRole("button", { name: /Restore selected/ })).toBeNull();
+  });
+  it("resets only the toggled stash group's Shift anchor and disables busy/loading/empty toggles", async () => {
+    list.mockResolvedValue({ ok: true, entries });
+    const view = render(<StashSection {...props} />);
+    expect(screen.getByRole("button", { name: "Select all stash" })).toBeDisabled();
+    fireEvent.click(await screen.findByLabelText("Select stash@{0}: src/a.ts"));
+    fireEvent.click(screen.getByRole("button", { name: "Select all stash@{1}" }));
+    fireEvent.click(screen.getByLabelText("Select stash@{0}: c.ts"), { shiftKey: true });
+    expect(screen.getByLabelText("Select stash@{0}: b.ts")).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Unselect all stash@{0}" }));
+    fireEvent.click(screen.getByLabelText("Select stash@{0}: c.ts"), { shiftKey: true });
+    expect(screen.getByLabelText("Select stash@{0}: src/a.ts")).not.toBeChecked();
+    expect(screen.getByLabelText("Select stash@{0}: b.ts")).not.toBeChecked();
+    expect(screen.getByLabelText("Select stash@{0}: c.ts")).toBeChecked();
+    view.rerender(<StashSection {...props} busy />);
+    expect(screen.getByRole("button", { name: "Select all stash" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Select all stash@{0}" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Unselect all stash@{1}" })).toBeDisabled();
+    list.mockResolvedValue({ ok: true, entries: [] });
+    view.rerender(<StashSection {...props} revision={1} />);
+    await screen.findByText("No stashed files");
+    expect(screen.getByRole("button", { name: "Select all stash" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Select all stash" })).toHaveAttribute("aria-pressed", "false");
+  });
   it("shows filenames not stash messages, matching Staged styling and file status", async () => {
     render(<StashSection {...props} />);
     const first = await screen.findByLabelText("Select stash@{0}: src/a.ts");

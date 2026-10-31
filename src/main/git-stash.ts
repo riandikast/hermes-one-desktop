@@ -68,10 +68,36 @@ export async function mutate(action: () => Promise<GitActionResult>): Promise<Gi
 export function gitStashCreate(dir: string, paths: string[]): Promise<GitActionResult> {
   return mutate(async () => {
     if (!Array.isArray(paths) || !paths.length || paths.length > 200) throw new Error("Select 1–200 repository-relative files");
-    if (paths.some((path) => typeof path !== "string" || !path || path.length > 4096 || /[\\:]/.test(path) || [...path].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) || path.startsWith("/") || path.split("/").some((part) => !part || part === "." || part === ".." || part.toLowerCase() === ".git")) || paths.join("").length > 16000) throw new Error("Invalid repository-relative file path");
+    const validatePath = (path: string, directoryRow = false): void => {
+      const parts = typeof path === "string" ? (directoryRow ? path.slice(0, -1) : path).split("/") : [];
+      if (typeof path !== "string" || !path || path.length > 4096 || /[\\:]/.test(path) || [...path].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) || path.startsWith("/") || parts.some((part) => !part || part === "." || part === ".." || part.toLowerCase() === ".git" || /[. ]$/.test(part))) throw new Error(`Invalid repository-relative file path: ${JSON.stringify(path)}`);
+    };
+    for (const path of paths) validatePath(path, typeof path === "string" && path.endsWith("/"));
+    if (paths.join("").length > 16000) throw new Error("Selected paths exceed the 16000-character limit");
     paths = [...new Set(paths)];
     dir = await root(dir);
     await idle(dir);
+    const expanded: string[] = [];
+    for (const path of paths) {
+      if (!path.endsWith("/")) { expanded.push(path); continue; }
+      let current = dir;
+      for (const part of path.slice(0, -1).split("/")) {
+        current = join(current, part);
+        const stat = await lstat(current);
+        if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error(`Select directories without symlink ancestors: ${JSON.stringify(path)}`);
+      }
+      // Status collapses untracked folders. Expand only non-ignored contents;
+      // never include tracked edits merely because they share that directory.
+      const children = (await git(dir, ["--literal-pathspecs", "ls-files", "--others", "--exclude-standard", "-z", "--", path])).split("\0").filter(Boolean);
+      if (!children.length) throw new Error(`No non-ignored untracked files in ${JSON.stringify(path)}`);
+      for (const child of children) {
+        validatePath(child);
+        if (!child.startsWith(path)) throw new Error("Directory expansion escaped selected path");
+        expanded.push(child);
+      }
+    }
+    paths = [...new Set(expanded)];
+    if (paths.length > 200 || paths.join("").length > 16000) throw new Error("Expanded selection exceeds 200 files or 16000 path characters; select fewer files");
     for (const path of paths) {
       let current = dir;
       const parts = path.split("/");

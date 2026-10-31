@@ -95,7 +95,21 @@ export function StashSection({
     };
   }, [dir, revision]);
 
+  const allKeys = groups.flatMap((group) => group.files.map((file) => key(group.hash, file.path)));
+  const selectionToggle = (keys: string[], label: string): React.JSX.Element => {
+    const allSelected = keys.length > 0 && keys.every((item) => selection.includes(item));
+    return <button type="button" className="btn-ghost btn-sm"
+      aria-label={`${allSelected ? "Unselect" : "Select"} all ${label}`}
+      aria-pressed={allSelected} disabled={busy || loading || !keys.length}
+      onClick={() => {
+        setSelection((previous) => keys.every((item) => previous.includes(item))
+          ? previous.filter((item) => !keys.includes(item))
+          : [...previous, ...keys.filter((item) => !previous.includes(item))]);
+        if (anchor.current && keys.includes(anchor.current)) anchor.current = null;
+      }}>{allSelected ? "Unselect all" : "Select all"}</button>;
+  };
   const select = (group: StashGroup, path: string, shift: boolean): void => {
+    if (busy || loading) return;
     const target = key(group.hash, path);
     const keys = group.files.map((file) => key(group.hash, file.path));
     const from = shift && anchor.current ? keys.indexOf(anchor.current) : -1;
@@ -265,8 +279,9 @@ export function StashSection({
         {chevrons}Stash (
         {groups.reduce((count, group) => count + group.files.length, 0)})
       </summary>
-      {selection.length > 0 && (
-        <div className="source-control-section-toolbar">
+      <div className="source-control-section-toolbar">
+        {selectionToggle(allKeys, "stash")}
+        {selection.length > 0 && <>
           <button
             type="button"
             className="btn-ghost btn-sm"
@@ -294,8 +309,8 @@ export function StashSection({
           >
             Clear stash selection
           </button>
-        </div>
-      )}
+        </>}
+      </div>
       {loading && (
         <div className="source-control-empty worktree-loading" role="status">
           <LoaderCircle size={14} aria-hidden="true" />
@@ -323,6 +338,9 @@ export function StashSection({
                 {chevrons}
                 {group.ref} ({group.files.length})
               </summary>
+              <div className="source-control-section-toolbar">
+                {selectionToggle(group.files.map((file) => key(group.hash, file.path)), group.ref)}
+              </div>
               {rows(group)}
             </details>
           ),

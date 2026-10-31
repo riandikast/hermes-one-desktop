@@ -125,6 +125,97 @@ beforeEach(() => {
 });
 
 describe("SourceControlDialog", () => {
+  it("toggles each file section independently, appending missing paths in display order without running Git", async () => {
+    const initial = await gitRepoStatus();
+    gitRepoStatus.mockResolvedValue({ ...initial,
+      staged: ["s1.ts", "s2.ts", "s3.ts"].map((path) => ({ index: "M", worktree: " ", path })),
+      unstaged: ["a.ts", "b.ts"].map((path) => ({ index: " ", worktree: "M", path })),
+      untracked: ["new folder/"],
+      conflicted: ["x.ts", "y.ts"].map((path) => ({ index: "U", worktree: "U", path })),
+    });
+    renderDialog("/repo");
+    fireEvent.click(await screen.findByLabelText("Select s3.ts"));
+    fireEvent.click(screen.getByLabelText("Select new folder/"));
+    for (const section of ["staged", "changes", "conflicts"]) {
+      const toggle = screen.getByRole("button", { name: `Select all ${section}` });
+      expect(toggle).toHaveAttribute("aria-pressed", "false");
+      expect(toggle.closest("summary")).toBeNull();
+      fireEvent.click(toggle);
+      expect(toggle).toHaveAccessibleName(`Unselect all ${section}`);
+      expect(toggle).toHaveAttribute("aria-pressed", "true");
+      expect(toggle.closest("details")).toHaveAttribute("open");
+    }
+    for (const path of ["s1.ts", "s2.ts", "s3.ts", "a.ts", "b.ts", "new folder/", "x.ts", "y.ts"]) {
+      expect(screen.getByLabelText(`Select ${path}`)).toBeChecked();
+    }
+    expect(window.hermesAPI.gitStage).not.toHaveBeenCalled();
+    expect(window.hermesAPI.gitUnstage).not.toHaveBeenCalled();
+    expect(window.hermesAPI.gitResolveConflict).not.toHaveBeenCalled();
+    expect(window.hermesAPI.gitStashCreate).not.toHaveBeenCalled();
+    expect(window.hermesAPI.gitIgnoreAddMany).not.toHaveBeenCalled();
+    expect(gitDiff).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Unselect all conflicts" }));
+    expect(screen.getByLabelText("Select x.ts")).not.toBeChecked();
+    expect(screen.getByLabelText("Select new folder/")).toBeChecked();
+    expect(screen.getByLabelText("Select s3.ts")).toBeChecked();
+    await act(async () => screen.getByRole("button", { name: "Stage selected (3)" }).click());
+    expect(window.hermesAPI.gitStage).toHaveBeenCalledWith("/repo", ["new folder/", "a.ts", "b.ts"]);
+    await act(async () => screen.getByRole("button", { name: "Unstage selected (3)" }).click());
+    expect(window.hermesAPI.gitUnstage).toHaveBeenCalledWith("/repo", ["s3.ts", "s1.ts", "s2.ts"]);
+    fireEvent.click(screen.getByRole("button", { name: "Unselect all staged" }));
+    expect(screen.getByLabelText("Select s3.ts")).not.toBeChecked();
+    expect(screen.getByLabelText("Select new folder/")).toBeChecked();
+  });
+  it("resets bulk-selection anchors, supports conflict ranges, preserves conflict preview and resolution", async () => {
+    const initial = await gitRepoStatus();
+    const paths = ["x.ts", "y.ts", "z.ts"];
+    gitRepoStatus.mockResolvedValue({ ...initial,
+      conflicted: paths.map((path) => ({ index: "U", worktree: "U", path })),
+    });
+    renderDialog("/repo");
+    fireEvent.click(await screen.findByLabelText("Select x.ts"));
+    fireEvent.click(screen.getByRole("button", { name: "Select all conflicts" }));
+    fireEvent.click(screen.getByRole("button", { name: "Unselect all conflicts" }));
+    fireEvent.click(screen.getByLabelText("Select z.ts"), { shiftKey: true });
+    expect(screen.getByLabelText("Select x.ts")).not.toBeChecked();
+    expect(screen.getByLabelText("Select y.ts")).not.toBeChecked();
+    expect(screen.getByLabelText("Select z.ts")).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "x.ts U" }), { shiftKey: true });
+    for (const path of paths) expect(screen.getByLabelText(`Select ${path}`)).toBeChecked();
+    expect(gitDiff).not.toHaveBeenCalled();
+    expect(window.hermesAPI.gitResolveConflict).not.toHaveBeenCalled();
+    await act(async () => screen.getByRole("button", { name: "x.ts U" }).click());
+    expect(gitDiff).toHaveBeenCalledWith("/repo", "x.ts", false);
+    await act(async () => screen.getAllByRole("button", { name: "ours" })[0].click());
+    expect(window.hermesAPI.gitResolveConflict).toHaveBeenCalledWith("/repo", "x.ts", "ours");
+    await act(async () => screen.getAllByRole("button", { name: "theirs" })[1].click());
+    expect(window.hermesAPI.gitResolveConflict).toHaveBeenCalledWith("/repo", "y.ts", "theirs");
+    gitRepoStatus.mockResolvedValue({ ...initial, conflicted: [] });
+    await act(async () => screen.getByTitle("Refresh").click());
+    expect(screen.getByRole("button", { name: "Select all conflicts" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Select all conflicts" })).toHaveAttribute("aria-pressed", "false");
+  });
+  it("disables empty, busy and refreshing selection toggles", async () => {
+    renderDialog("/repo");
+    const changes = await screen.findByRole("button", { name: "Select all changes" });
+    expect(screen.getByRole("button", { name: "Select all staged" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Select all conflicts" })).toBeDisabled();
+    let finish!: (value: { ok: boolean }) => void;
+    vi.mocked(window.hermesAPI.gitFetch).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    fireEvent.click(screen.getByRole("button", { name: "Fetch" }));
+    expect(changes).toBeDisabled();
+    fireEvent.click(changes);
+    expect(screen.getByLabelText("Select a.ts")).not.toBeChecked();
+    await act(async () => finish({ ok: true }));
+    expect(changes).toBeEnabled();
+    const initial = await gitRepoStatus();
+    let finishRefresh!: (value: typeof initial) => void;
+    gitRepoStatus.mockReturnValueOnce(new Promise((resolve) => { finishRefresh = resolve; }));
+    fireEvent.click(screen.getByTitle("Refresh"));
+    expect(changes).toBeDisabled();
+    await act(async () => finishRefresh(initial));
+    expect(changes).toBeEnabled();
+  });
   it("places Stash above Staged and creates a stash from selected changes", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     renderDialog("/repo");
@@ -135,6 +226,7 @@ describe("SourceControlDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stash selected (1)" }));
     await waitFor(() => expect(window.hermesAPI.gitStashCreate).toHaveBeenCalledWith("/repo", ["a.ts"]));
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Both staged and unstaged"));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Selected untracked folders include their nonignored untracked contents"));
     await waitFor(() => expect(window.hermesAPI.gitStashList).toHaveBeenCalledTimes(2));
     confirm.mockRestore();
   });

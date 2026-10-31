@@ -94,6 +94,57 @@ it("captures literal untracked and newly staged names, includes untracked diff, 
   expect((await gitStashCreate(repo, ["ignored.txt"])).ok).toBe(false);
 });
 
+it("accepts collapsed untracked directory rows from status, expands only non-ignored files and preserves unrelated changes", async () => {
+  await mkdir(join(repo, "folder")); await mkdir(join(repo, "folder", "nested"));
+  await put("folder/tracked.txt", "tracked base\n"); git("add", "folder/tracked.txt"); git("commit", "-qm", "tracked neighbor");
+  await put("folder/tracked.txt", "tracked keep\n");
+  await put("folder/a.txt", "selected A\n"); await put("folder/nested/[b].txt", "selected B\n");
+  await put(".git/info/exclude", "folder/ignored.txt\n"); await put("folder/ignored.txt", "ignored keep\n");
+  await put("file.txt", "unrelated staged\n"); git("add", "file.txt");
+  const result = await gitStashCreate(repo, ["folder/"]);
+  expect(result.ok, result.error).toBe(true);
+  const hash = (await hashes())[0];
+  expect(git("show", `${hash}^3:folder/a.txt`)).toBe("selected A\n");
+  expect(git("show", `${hash}^3:folder/nested/[b].txt`)).toBe("selected B\n");
+  expect(git("ls-tree", "-r", "--name-only", `${hash}^3`)).not.toContain("ignored.txt");
+  expect(await read("folder/ignored.txt")).toBe("ignored keep\n");
+  expect(await read("folder/tracked.txt")).toBe("tracked keep\n");
+  expect(git("show", `${hash}:folder/tracked.txt`)).toBe("tracked base\n");
+  expect(git("show", ":file.txt")).toBe("unrelated staged\n");
+  expect(git("show", `${hash}^2:file.txt`)).toBe("base\n");
+  await expect(read("folder/a.txt")).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+it("caps expanded folders before any stash write", async () => {
+  await mkdir(join(repo, "folder"));
+  await put("file.txt", "precious\n");
+  const realRun = runner.runGit;
+  const calls: string[][] = [];
+  vi.spyOn(runner, "runGit").mockImplementation((dir, args, timeout) => {
+    calls.push(args);
+    if (args.includes("ls-files") && args.includes("--others") && !args.includes("--cached")) {
+      return Promise.resolve({ code: 0, stderr: "", stdout: Array.from({ length: 201 }, (_, i) => `folder/${i}.txt\0`).join("") });
+    }
+    return realRun(dir, args, timeout);
+  });
+  const result = await gitStashCreate(repo, ["folder/"]);
+  expect(result.ok).toBe(false); expect(result.error).toContain("200 files");
+  expect(calls.some((args) => args.includes("push"))).toBe(false);
+  expect(await read("file.txt")).toBe("precious\n"); expect(await hashes()).toEqual([]);
+});
+
+it("rejects malformed directory rows and symlink directories before mutation, naming the offending path", async () => {
+  await put("file.txt", "precious\n");
+  for (const path of ["../escape/", "folder//", "/", ".git/", "C:/folder/"]) {
+    const result = await gitStashCreate(repo, ["file.txt", path]);
+    expect(result.ok).toBe(false); expect(result.error).toContain(JSON.stringify(path));
+  }
+  await mkdir(join(repo, "target")); await put("target/keep.txt", "keep\n");
+  await symlink(join(repo, "target"), join(repo, "alias"), process.platform === "win32" ? "junction" : "dir");
+  expect((await gitStashCreate(repo, ["alias/"])).ok).toBe(false);
+  expect(await read("file.txt")).toBe("precious\n"); expect(await hashes()).toEqual([]);
+});
+
 it("validates full batches before mutation; rejects directories, traversal, refs, arbitrary commits and ignored paths", async () => {
   const hash = await stash("file.txt", "saved\n");
   await put("file.txt", "dirty keep\n");

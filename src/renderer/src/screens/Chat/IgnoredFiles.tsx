@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, ChevronDown, LoaderCircle, RefreshCw, Search, X, ArrowDownAZ, CalendarArrowDown } from "lucide-react";
 import type { GitIgnoreResult } from "../../../../shared/git-ignore";
 
-export function IgnoredFiles({ dir, refresh }: { dir: string; refresh: () => Promise<void> }): React.JSX.Element {
+export function IgnoredFiles({ dir, refresh, busy: parentBusy = false }: { dir: string; refresh: () => Promise<void>; busy?: boolean }): React.JSX.Element {
   const [data, setData] = useState<GitIgnoreResult | null>(null);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [working, setBusy] = useState(false);
+  const busy = working || parentBusy;
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"name" | "date">("name");
   const [opened, setOpened] = useState(false);
@@ -45,6 +46,20 @@ export function IgnoredFiles({ dir, refresh }: { dir: string; refresh: () => Pro
     const needle = query.trim().toLowerCase();
     return data?.files.filter((path) => !needle || path.toLowerCase().includes(needle)) ?? [];
   }, [data, query]);
+  const ruleKeys = filteredRules.map((rule) => `rule:${rule.line}`);
+  const selectionToggle = (keys: string[], label: string, scope: "rules" | "files" | "ignored"): React.JSX.Element => {
+    const allSelected = keys.length > 0 && keys.every((key) => selected.includes(key));
+    return <button type="button" className="btn-ghost btn-sm"
+      aria-label={`${allSelected ? "Unselect" : "Select"} all ${label}`}
+      aria-pressed={allSelected} disabled={busy || !data || !keys.length}
+      onClick={() => {
+        setSelected((previous) => keys.every((key) => previous.includes(key))
+          ? previous.filter((key) => !keys.includes(key))
+          : [...previous, ...keys.filter((key) => !previous.includes(key))]);
+        if (scope !== "files") ruleAnchor.current = null;
+        if (scope !== "rules") selectionAnchor.current = null;
+      }}>{allSelected ? "Unselect all" : "Select all"}</button>;
+  };
   const selectRule = (ruleKey: string, shift: boolean): void => {
     const keys = filteredRules.map((rule) => `rule:${rule.line}`);
     const anchorIndex = shift && ruleAnchor.current ? keys.indexOf(ruleAnchor.current) : -1;
@@ -72,6 +87,7 @@ export function IgnoredFiles({ dir, refresh }: { dir: string; refresh: () => Pro
   };
   return <details className="source-control-section" onToggle={(event) => setOpened(event.currentTarget.open)}>
     <summary className="source-control-section-title"><ChevronRight className="source-control-chevron-closed" size={14} aria-hidden="true" /><ChevronDown className="source-control-chevron-open" size={14} aria-hidden="true" />Ignored</summary>
+    <div className="source-control-section-toolbar">{selectionToggle([...ruleKeys, ...filteredFiles], "ignored", "ignored")}</div>
     <div className="source-control-ignore-tools mt-2 ml-2">
       <label className="source-control-ignore-search "><Search size={14} aria-hidden="true" /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ignored" aria-label="Search ignored paths" /></label>
       <button type="button" className="btn-ghost btn-sm" aria-label={sort === "name" ? "Sort ignored by date" : "Sort ignored by name"} aria-pressed={sort === "date"} title={sort === "name" ? "Sort by newest modification; rules use reverse file order" : "Sort by name"} onClick={() => setSort((current) => current === "name" ? "date" : "name")}>
@@ -79,9 +95,10 @@ export function IgnoredFiles({ dir, refresh }: { dir: string; refresh: () => Pro
       </button>
       <button type="button" className="btn-ghost btn-sm" aria-label="Refresh ignored" title="Refresh ignored" disabled={busy} onClick={() => void load()}><RefreshCw size={14} /></button>
     </div>
-    {busy && <p className="source-control-loading-state" role="status"><LoaderCircle size={15} aria-hidden="true" />Loading ignored paths…</p>}
+    {working && <p className="source-control-loading-state" role="status"><LoaderCircle size={15} aria-hidden="true" />Loading ignored paths…</p>}
     {error && <p role="alert">{error}</p>}
     <h4 className="source-control-ignore-heading">Root .gitignore rules</h4>
+    <div className="source-control-section-toolbar">{selectionToggle(ruleKeys, "ignored rules", "rules")}</div>
     {data?.rules.length === 0 && <p className="source-control-empty">No root rules</p>}
     {filteredRules.map((rule) => <div className={`source-control-file${selected.includes(`rule:${rule.line}`) ? " selected" : ""}`} key={rule.line}>
       <input type="checkbox" className="source-control-file-select" aria-label={`Select ignore rule ${rule.pattern}`} checked={selected.includes(`rule:${rule.line}`)} disabled={busy} onChange={(event) => selectRule(`rule:${rule.line}`, (event.nativeEvent as MouseEvent).shiftKey)} />
@@ -100,6 +117,7 @@ export function IgnoredFiles({ dir, refresh }: { dir: string; refresh: () => Pro
       }}><X size={14} aria-hidden="true" /></button>
     </div>)}
     <h4 className="source-control-ignore-heading">Ignored files / collapsed directories</h4>
+    <div className="source-control-section-toolbar">{selectionToggle(filteredFiles, "ignored files", "files")}</div>
     {data && filteredFiles.length === 0 && <p className="source-control-empty">{query ? "No ignored paths match" : "No ignored paths"}</p>}
     {filteredFiles.map((path) => <div className={`source-control-file${selected.includes(path) ? " selected" : ""}`} key={path}>
       <input type="checkbox" className="source-control-file-select" aria-label={`Select ignored ${path}`} checked={selected.includes(path)} disabled={busy} onChange={(event) => selectPath(path, (event.nativeEvent as MouseEvent).shiftKey)} />

@@ -83,12 +83,16 @@ function Shell({ children }: { children: React.ReactNode }): React.JSX.Element {
   );
 }
 
-function Section({ title, toolbar, children, contextAction, contextDisabled = false }: {
+function Section({ title, toolbar, children, contextAction, contextDisabled = false, selectionLabel, allSelected = false, selectionDisabled = false, onToggleSelection }: {
   title: string;
   toolbar?: React.ReactNode;
   children: React.ReactNode;
   contextAction?: () => void;
   contextDisabled?: boolean;
+  selectionLabel?: string;
+  allSelected?: boolean;
+  selectionDisabled?: boolean;
+  onToggleSelection?: () => void;
 }): React.JSX.Element {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const heading = useRef<HTMLElement>(null);
@@ -134,7 +138,14 @@ function Section({ title, toolbar, children, contextAction, contextDisabled = fa
         <ChevronDown className="source-control-chevron-open" size={14} aria-hidden="true" />
         {title}
       </summary>
-      {toolbar && <div className="source-control-section-toolbar">{toolbar}</div>}
+      {(toolbar || onToggleSelection) && <div className="source-control-section-toolbar">
+        {onToggleSelection && <button type="button" className="btn-ghost btn-sm"
+          aria-label={`${allSelected ? "Unselect" : "Select"} all ${selectionLabel}`}
+          aria-pressed={allSelected} disabled={selectionDisabled} onClick={onToggleSelection}>
+          {allSelected ? "Unselect all" : "Select all"}
+        </button>}
+        {toolbar}
+      </div>}
       {children}
       {menu && createPortal(
         <div ref={menuRef} role="menu" aria-label="Changes actions" className="worktree-context-menu"
@@ -181,7 +192,7 @@ function FileRow({
   selectedForBatch: boolean;
   busy: boolean;
   onShowDiff: (path: string, staged: boolean) => void;
-  onSelectForBatch: (path: string, staged: boolean, shift: boolean) => void;
+  onSelectForBatch: (path: string, staged: boolean, shift: boolean, isConflict?: boolean) => void;
   onToggleStaged: (path: string, staged: boolean) => void;
   onResolveConflict: (path: string, side: "ours" | "theirs") => void;
   onIgnore: (path: string) => void;
@@ -232,24 +243,22 @@ function FileRow({
           </button>
         </div>, document.body,
       )}
-      {!isConflict && (
-        <input
+      <input
           type="checkbox"
           className="source-control-file-select"
           aria-label={`Select ${path}`}
           checked={selectedForBatch}
           disabled={busy}
           onClick={(event) => event.stopPropagation()}
-          onChange={(event) => onSelectForBatch(path, staged, (event.nativeEvent as MouseEvent).shiftKey)}
+          onChange={(event) => onSelectForBatch(path, staged, (event.nativeEvent as MouseEvent).shiftKey, isConflict)}
         />
-      )}
       <button
         type="button"
         className="source-control-file-main"
         onClick={(event) => {
-          if (event.shiftKey && !isConflict) {
+          if (event.shiftKey) {
             event.preventDefault();
-            onSelectForBatch(path, staged, true);
+            onSelectForBatch(path, staged, true, isConflict);
             return;
           }
           onShowDiff(path, staged);
@@ -331,6 +340,7 @@ export function SourceControlDialog({
   }, [terminals.requestClose, branchesOpen, renameTarget]);
   const [status, setStatus] = useState<GitStatusResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const actionInFlight = useRef(false);
   const [selected, setSelected] = useState<{
     path: string;
@@ -338,7 +348,7 @@ export function SourceControlDialog({
   } | null>(null);
   // Ordered list: selection order is preserved for deterministic batch actions.
   const [batchSelection, setBatchSelection] = useState<string[]>([]);
-  const selectionAnchorRef = useRef<{ path: string; staged: boolean } | null>(null);
+  const selectionAnchorRef = useRef<{ path: string; group: "staged" | "changes" | "conflicts" } | null>(null);
   const [diff, setDiff] = useState<string>("");
   const [stashRevision, setStashRevision] = useState(0);
   const [stashPreview, setStashPreview] = useState<string | null>(null);
@@ -395,27 +405,33 @@ export function SourceControlDialog({
   }, [remoteHost, token]);
 
   const refresh = useCallback(async () => {
-    setStashRevision((value) => value + 1);
-    const next = await window.hermesAPI.gitRepoStatus(dir);
-    setStatus(next);
-    const selectable = new Set([
-      ...next.staged.map((file) => `staged:${file.path}`),
-      ...next.unstaged.map((file) => `changes:${file.path}`),
-      ...next.untracked.map((path) => `changes:${path}`),
-    ]);
-    setBatchSelection((previous) => previous.filter((key) => selectable.has(key)));
-    if (selectionAnchorRef.current && !selectable.has(`${selectionAnchorRef.current.staged ? "staged" : "changes"}:${selectionAnchorRef.current.path}`)) {
-      selectionAnchorRef.current = null;
+    setRefreshing(true);
+    try {
+      setStashRevision((value) => value + 1);
+      const next = await window.hermesAPI.gitRepoStatus(dir);
+      setStatus(next);
+      const selectable = new Set([
+        ...next.staged.map((file) => `staged:${file.path}`),
+        ...next.unstaged.map((file) => `changes:${file.path}`),
+        ...next.untracked.map((path) => `changes:${path}`),
+        ...next.conflicted.map((file) => `conflicts:${file.path}`),
+      ]);
+      setBatchSelection((previous) => previous.filter((key) => selectable.has(key)));
+      if (selectionAnchorRef.current && !selectable.has(`${selectionAnchorRef.current.group}:${selectionAnchorRef.current.path}`)) {
+        selectionAnchorRef.current = null;
+      }
+      setSelected((prev) => {
+        if (!prev) return prev;
+        const still =
+          next.staged.some((f) => f.path === prev.path) ||
+          next.unstaged.some((f) => f.path === prev.path) ||
+          next.conflicted.some((f) => f.path === prev.path) ||
+          next.untracked.includes(prev.path);
+        return still ? prev : null;
+      });
+    } finally {
+      setRefreshing(false);
     }
-    setSelected((prev) => {
-      if (!prev) return prev;
-      const still =
-        next.staged.some((f) => f.path === prev.path) ||
-        next.unstaged.some((f) => f.path === prev.path) ||
-        next.conflicted.some((f) => f.path === prev.path) ||
-        next.untracked.includes(prev.path);
-      return still ? prev : null;
-    });
   }, [dir]);
 
   useEffect(() => {
@@ -532,30 +548,42 @@ export function SourceControlDialog({
     [dir, run],
   );
 
-  const selectForBatch = useCallback((path: string, staged: boolean, shift: boolean) => {
-    const group = staged
-      ? (status?.staged.map((file) => file.path) ?? [])
-      : [
-          ...(status?.unstaged.map((file) => file.path) ?? []),
-          ...(status?.untracked ?? []),
-        ];
-    const key = `${staged ? "staged" : "changes"}:${path}`;
+  const sectionPaths = useMemo(() => ({
+    staged: status?.staged.map((file) => file.path) ?? [],
+    changes: [...(status?.unstaged.map((file) => file.path) ?? []), ...(status?.untracked ?? [])],
+    conflicts: status?.conflicted.map((file) => file.path) ?? [],
+  }), [status]);
+  const selectForBatch = useCallback((path: string, staged: boolean, shift: boolean, isConflict = false) => {
+    if (busy || refreshing) return;
+    const section = isConflict ? "conflicts" : staged ? "staged" : "changes";
+    const group = sectionPaths[section];
+    const key = `${section}:${path}`;
     const anchor = selectionAnchorRef.current;
-    const canRange = shift && anchor?.staged === staged;
+    const canRange = shift && anchor?.group === section;
     const anchorIndex = canRange ? group.indexOf(anchor.path) : -1;
     const targetIndex = group.indexOf(path);
     setBatchSelection((previous) => {
       if (anchorIndex >= 0 && targetIndex >= 0) {
         const range = group.slice(Math.min(anchorIndex, targetIndex), Math.max(anchorIndex, targetIndex) + 1)
-          .map((item) => `${staged ? "staged" : "changes"}:${item}`);
+          .map((item) => `${section}:${item}`);
         return [...previous.filter((item) => !range.includes(item)), ...range];
       }
       return previous.includes(key)
         ? previous.filter((item) => item !== key)
         : [...previous, key];
     });
-    if (!shift || anchorIndex < 0) selectionAnchorRef.current = { path, staged };
-  }, [status]);
+    if (!shift || anchorIndex < 0) selectionAnchorRef.current = { path, group: section };
+  }, [sectionPaths, busy, refreshing]);
+  const allSelected = (group: keyof typeof sectionPaths): boolean =>
+    sectionPaths[group].length > 0 && sectionPaths[group].every((path) => batchSelection.includes(`${group}:${path}`));
+  const toggleAll = (group: keyof typeof sectionPaths): void => {
+    if (busy || refreshing) return;
+    const keys = sectionPaths[group].map((path) => `${group}:${path}`);
+    setBatchSelection((previous) => keys.every((key) => previous.includes(key))
+      ? previous.filter((key) => !keys.includes(key))
+      : [...previous, ...keys.filter((key) => !previous.includes(key))]);
+    if (selectionAnchorRef.current?.group === group) selectionAnchorRef.current = null;
+  };
 
   const selectedPaths = useCallback((staged: boolean): string[] =>
     batchSelection
@@ -576,7 +604,7 @@ export function SourceControlDialog({
 
   const stashSelected = (staged: boolean): void => {
     const paths = selectedPaths(staged);
-    if (!paths.length || !window.confirm(`Stash selected ${paths.length} file(s)? Both staged and unstaged edits of these files will be saved and removed from the working tree. Untracked selected files are included; ignored files are not. Stashing source files of a running development app may trigger its watcher to reload or restart.`)) return;
+    if (!paths.length || !window.confirm(`Stash selected ${paths.length} file(s)? Both staged and unstaged edits of these files will be saved and removed from the working tree. Selected untracked folders include their nonignored untracked contents. Untracked selected files are included; ignored files are not. Stashing source files of a running development app may trigger its watcher to reload or restart.`)) return;
     void run(() => window.hermesAPI.gitStashCreate(dir, paths), "Stashed selected");
   };
 
@@ -639,7 +667,7 @@ export function SourceControlDialog({
   // The handler bundle every FileRow needs. Applied once per row via spread so
   // the row stays a module-scope component with a stable identity.
   const fileRowHandlers = {
-    busy,
+    busy: busy || refreshing,
     onIgnore: (path: string) => void run(() => window.hermesAPI.gitIgnoreAdd(dir, path), "Ignored"),
     onDiscard: (path: string) => {
       if (window.confirm(`Discard unstaged changes to ${path}? This cannot be undone.`)) {
@@ -651,8 +679,8 @@ export function SourceControlDialog({
       }
     },
     onShowDiff: (path: string, staged: boolean) => void showDiff(path, staged),
-    onSelectForBatch: (path: string, staged: boolean, shift: boolean) =>
-      selectForBatch(path, staged, shift),
+    onSelectForBatch: (path: string, staged: boolean, shift: boolean, isConflict?: boolean) =>
+      selectForBatch(path, staged, shift, isConflict),
     onToggleStaged: (path: string, staged: boolean) =>
       void toggleStaged(path, staged),
     onResolveConflict: (path: string, side: "ours" | "theirs") =>
@@ -826,7 +854,9 @@ export function SourceControlDialog({
                   <textarea className="source-control-commit-input" aria-label="Commit message" value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} placeholder="Commit message (Ctrl+Enter to commit)" rows={2} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !busy && stagedCount > 0) void commit(); }} />
                   <button type="button" className="source-control-commit-btn btn-sm" disabled={busy || !stagedCount || !commitMessage.trim()} onClick={() => void commit()}>Commit</button>
                 </div>
-                <Section title={`Conflicts (${status.conflicted.length})`}>
+                <Section title={`Conflicts (${status.conflicted.length})`}
+                  selectionLabel="conflicts" allSelected={allSelected("conflicts")}
+                  selectionDisabled={busy || refreshing || !status.conflicted.length} onToggleSelection={() => toggleAll("conflicts")}>
                   {status.conflicted.length === 0 ? (
                     <div className="source-control-empty">No conflicts</div>
                   ) : (
@@ -838,7 +868,7 @@ export function SourceControlDialog({
                         staged={false}
                         isConflict
                         {...fileRowHandlers}
-                        selectedForBatch={false}
+                        selectedForBatch={batchSelection.includes(`conflicts:${f.path}`)}
                         active={
                           selected?.path === f.path && selected.staged === false
                         }
@@ -846,10 +876,12 @@ export function SourceControlDialog({
                     ))
                   )}
                 </Section>
-                <StashSection dir={dir} revision={stashRevision} busy={busy} run={run}
+                <StashSection dir={dir} revision={stashRevision} busy={busy || refreshing} run={run}
                   onPreview={(raw, label) => { setSelected(null); setStashPreview(label); setDiff(raw); }} />
                 <Section
                   title={`Staged (${stagedCount})`}
+                  selectionLabel="staged" allSelected={allSelected("staged")}
+                  selectionDisabled={busy || refreshing || !stagedCount} onToggleSelection={() => toggleAll("staged")}
                   toolbar={selectedPaths(true).length > 0 ? (
                     <>
                       <button
@@ -900,6 +932,8 @@ export function SourceControlDialog({
                 </Section>
                 <Section
                   title={`Changes (${changeCount})`}
+                  selectionLabel="changes" allSelected={allSelected("changes")}
+                  selectionDisabled={busy || refreshing || !changeCount} onToggleSelection={() => toggleAll("changes")}
                   toolbar={
                     selectedPaths(false).length > 0 ? (
                       <>
@@ -985,7 +1019,7 @@ export function SourceControlDialog({
                     </>
                   )}
                 </Section>
-                <IgnoredFiles dir={dir} refresh={refresh} />
+                <IgnoredFiles dir={dir} refresh={refresh} busy={busy || refreshing} />
               </div>
               <div className="source-control-diff">
                 <DiffViewer

@@ -19,7 +19,7 @@ async function root(dir: string): Promise<string> {
   return (await git(dir, ["rev-parse", "--show-toplevel"])).trim();
 }
 function validPath(path: string): void {
-  if (typeof path !== "string" || !path || path.length > 4096 || /[\\:]/.test(path) || [...path].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) || path.startsWith("/") || path.split("/").some((part) => !part || part === "." || part === ".." || part.toLowerCase() === ".git" || /[. ]$/.test(part))) throw new Error("Invalid repository-relative file path");
+  if (typeof path !== "string" || !path || path.length > 4096 || /[\\:]/.test(path) || [...path].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) || path.startsWith("/") || path.split("/").some((part) => !part || part === "." || part === ".." || part.toLowerCase() === ".git" || /[. ]$/.test(part))) throw new Error(`Invalid repository-relative file path: ${JSON.stringify(path)}`);
 }
 async function safePath(dir: string, path: string): Promise<void> {
   validPath(path);

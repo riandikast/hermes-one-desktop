@@ -20,7 +20,7 @@ async function ignoreFile(dir: string): Promise<{ path: string; text: string }> 
   }
 }
 function validatePath(path: string): void {
-  if (typeof path !== "string" || !path || path.length > 4096 || /[\x00-\x1f\x7f\\:]/.test(path) || path.startsWith("/") || path.replace(/\/$/, "").split("/").some((part) => !part || part === "." || part === "..") || path === ".gitignore" || path.split("/").includes(".git")) throw new Error("Invalid repository-relative file path");
+  if (typeof path !== "string" || !path || path.length > 4096 || /[\x00-\x1f\x7f\\:]/.test(path) || path.startsWith("/") || path.replace(/\/$/, "").split("/").some((part) => !part || part === "." || part === "..") || path === ".gitignore" || path.split("/").includes(".git")) throw new Error(`Invalid repository-relative file path: ${JSON.stringify(path)}`);
 }
 export async function gitIgnoreList(dir: string, offset = 0, query = "", sort: "name" | "date" = "name"): Promise<GitIgnoreResult> {
   try {
