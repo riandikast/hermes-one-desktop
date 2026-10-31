@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile, readFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { gitBranches, gitBranchChange } from "./git-branches";
+import { gitBranches, gitBranchChange, gitRemoteAdd } from "./git-branches";
 import type { GitBranchAction } from "../shared/git-branches";
 
 let repo: string;
@@ -105,4 +105,20 @@ it("handles detached HEAD and blocks unfinished sequencers", async () => {
   expect((await gitBranchChange(repo, "create", "from-detached", null)).ok).toBe(true);
   await mkdir(join(repo, ".git", "sequencer"));
   expect((await gitBranchChange(repo, "checkout", "main", null)).ok).toBe(false);
+});
+
+it("adds new remotes with validation and rejects existing names or invalid arguments", async () => {
+  expect((await gitRemoteAdd(repo, "origin", "https://example.invalid/org/repo.git")).ok).toBe(true);
+  const remotes = (await gitBranches(repo)).remotes;
+  expect(remotes?.find((r) => r.name === "origin")?.fetchUrls).toEqual(["https://example.invalid/org/repo.git"]);
+
+  // Duplicate name rejection
+  const dup = await gitRemoteAdd(repo, "origin", "https://example.invalid/org/other.git");
+  expect(dup.ok).toBe(false);
+  expect(dup.error).toContain("already exists");
+
+  // Invalid names / URLs
+  expect((await gitRemoteAdd(repo, "-bad", "https://example.invalid")).ok).toBe(false);
+  expect((await gitRemoteAdd(repo, "upstream", "bad url with spaces")).ok).toBe(false);
+  expect((await gitRemoteAdd(repo, "", "https://example.invalid")).ok).toBe(false);
 });

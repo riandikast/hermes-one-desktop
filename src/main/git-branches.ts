@@ -36,6 +36,41 @@ export async function gitBranches(dir: string): Promise<GitBranchListResult> {
   return { ok: true, branches, current: branches.find((branch) => branch.current)?.name ?? null, remotes };
 }
 
+export async function gitRemoteAdd(dir: string, name: string, url: string): Promise<GitActionResult> {
+  if (changing) return { ok: false, error: "Remote operation already in progress" };
+  if (typeof dir !== "string" || !dir) return { ok: false, error: "Invalid repository" };
+  const cleanName = name.trim();
+  const cleanUrl = url.trim();
+  if (!cleanName || /[\s\x00-\x1f\x7f]/.test(cleanName) || cleanName.startsWith("-")) {
+    return { ok: false, error: "Invalid remote name" };
+  }
+  if (!cleanUrl || /\s/.test(cleanUrl) || cleanUrl.startsWith("-")) {
+    return { ok: false, error: "Invalid remote URL" };
+  }
+  changing = true;
+  try {
+    const root = await runGit(dir, ["rev-parse", "--show-toplevel"], 10_000);
+    if (root.code !== 0) return { ok: false, error: "Not a working repository" };
+    dir = root.stdout.trim();
+
+    const existingRemotes = await runGit(dir, ["remote"], 10_000);
+    if (existingRemotes.code === 0) {
+      const names = existingRemotes.stdout.trim().split(/\r?\n/).filter(Boolean);
+      if (names.includes(cleanName)) {
+        return { ok: false, error: `Remote "${cleanName}" already exists` };
+      }
+    }
+
+    const result = await runGit(dir, ["remote", "add", cleanName, cleanUrl], 15_000);
+    const text = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+    return result.code === 0 ? { ok: true, output: text || `Remote "${cleanName}" added` } : { ok: false, error: text || "Failed to add remote" };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  } finally {
+    changing = false;
+  }
+}
+
 // A single lock prevents overlapping branch mutations from separate renderer clicks.
 let changing = false;
 export async function gitBranchChange(dir: string, action: GitBranchAction, name: string, expectedCurrent: string | null): Promise<GitActionResult> {

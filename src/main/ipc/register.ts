@@ -59,7 +59,7 @@ import {
   mediaFileExists,
 } from "../media";
 import { gitIgnoreEdit, gitIgnoreList, gitIgnoreAddMany } from "../git-ignore";
-import { gitBranches, gitBranchChange } from "../git-branches";
+import { gitBranches, gitBranchChange, gitRemoteAdd } from "../git-branches";
 import { gitStashList, gitStashCreate, gitStashApply, gitStashDrop, gitStashDiff } from "../git-stash";
 import { gitStashFiles, gitStashFileDiff, gitStashRestoreFiles, gitStashDeleteFiles } from "../git-stash-files";
 import type { GitStashFileSelection } from "../../shared/git-stash";
@@ -3675,6 +3675,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("git-stash-restore-files", (_event, dir: string, selections: GitStashFileSelection[]) => gitStashRestoreFiles(dir, selections));
   ipcMain.handle("git-stash-delete-files", (_event, dir: string, selections: GitStashFileSelection[]) => gitStashDeleteFiles(dir, selections));
   ipcMain.handle("git-branch-change", (_event, dir: string, action: GitBranchAction, name: string, current: string | null) => gitBranchChange(dir, action, name, current));
+  ipcMain.handle("git-remote-add", (_event, dir: string, name: string, url: string) => gitRemoteAdd(dir, name, url));
   ipcMain.handle("git-init", (_event, dir: string) => gitInit(dir));
   ipcMain.handle("git-repo-status", async (_event, dir: string) =>
     gitRepoStatus(dir),

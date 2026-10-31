@@ -11,6 +11,8 @@ export function BranchDialog({ dir, onClose, onChanged }: {
 }): React.JSX.Element {
   const [data, setData] = useState<GitBranchListResult | null>(null);
   const [name, setName] = useState("");
+  const [remoteName, setRemoteName] = useState("");
+  const [remoteUrl, setRemoteUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const lock = useRef(false);
@@ -48,6 +50,27 @@ export function BranchDialog({ dir, onClose, onChanged }: {
     finally { lock.current = false; setBusy(false); }
   };
 
+  const addRemote = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    if (lock.current || !data || !remoteName.trim() || !remoteUrl.trim()) return;
+    const rName = remoteName.trim();
+    const rUrl = remoteUrl.trim();
+    const message = `Add remote "${rName}" pointing to "${rUrl}"?`;
+    lock.current = true; setBusy(true); setError("");
+    try {
+      if (!await appConfirm(message)) return;
+      const result = await window.hermesAPI.gitRemoteAdd(dir, rName, rUrl);
+      if (!result.ok) setError(result.error || "Failed to add remote");
+      else {
+        setRemoteName("");
+        setRemoteUrl("");
+      }
+      await load();
+      await onChanged(result);
+    } catch (err) { setError(String(err)); }
+    finally { lock.current = false; setBusy(false); }
+  };
+
   return <AppModal open onOpenChange={(open) => { if (!open && !lock.current) onClose(); }}
     overlayClassName="source-control-branches-overlay" className="source-control-branches" describedBy="branch-description">
     <div className="source-control-branches-header">
@@ -65,6 +88,13 @@ export function BranchDialog({ dir, onClose, onChanged }: {
         {remote.fetchUrls.map((url, index) => <p key={`fetch:${index}`} style={{ overflowWrap: "anywhere", userSelect: "text" }}>Fetch: <code>{url}</code></p>)}
         {remote.pushUrls.filter((url) => !remote.fetchUrls.includes(url)).map((url, index) => <p key={`push:${index}`} style={{ overflowWrap: "anywhere", userSelect: "text" }}>Push: <code>{url}</code></p>)}
       </div>)}
+      <form className="source-control-branch-create" onSubmit={addRemote} style={{ marginTop: 8 }}>
+        <label htmlFor="new-remote-name">Remote name</label>
+        <input id="new-remote-name" value={remoteName} maxLength={256} disabled={busy} onChange={(e) => setRemoteName(e.target.value)} placeholder="origin" style={{ maxWidth: 120 }} />
+        <label htmlFor="new-remote-url">Remote URL</label>
+        <input id="new-remote-url" value={remoteUrl} maxLength={2048} disabled={busy} onChange={(e) => setRemoteUrl(e.target.value)} placeholder="https://github.com/user/repo.git" style={{ flex: 2 }} />
+        <button type="submit" className="btn-ghost btn-sm" disabled={busy || !data || !remoteName.trim() || !remoteUrl.trim()}>Add remote</button>
+      </form>
     </section>}
     <form className="source-control-branch-create" onSubmit={(event) => { event.preventDefault(); void change("create", name.trim()); }}>
       <label htmlFor="new-local-branch">New branch name</label>

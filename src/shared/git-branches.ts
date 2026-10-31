@@ -12,4 +12,4 @@ export interface GitBranchListResult {
   error?: string;
 }
 
-export type GitBranchAction = "checkout" | "merge" | "create" | "delete";
+export type GitBranchAction = "checkout" | "merge" | "create" | "delete" | "add-remote";

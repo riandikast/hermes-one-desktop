@@ -44,6 +44,27 @@ it("shows remote URLs, names distinct push targets, and keeps the branch input e
   expect(input).toHaveFocus(); expect(input).toHaveValue("feature/test");
 });
 
+it("allows adding a new remote and validates inputs", async () => {
+  const remoteAdd = vi.fn().mockResolvedValue({ ok: true, output: "Added" });
+  const branches = vi.fn().mockResolvedValue({ ok: true, current: "main", branches: [], remotes: [] });
+  Object.assign(window, { hermesAPI: { gitBranches: branches, gitBranchChange: vi.fn(), gitRemoteAdd: remoteAdd } });
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  const changed = vi.fn().mockResolvedValue(undefined);
+  render(<BranchDialog dir="/repo" onClose={vi.fn()} onChanged={changed} />);
+
+  expect(await screen.findByRole("button", { name: "Add remote" })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Remote name"), { target: { value: "upstream" } });
+  fireEvent.change(screen.getByLabelText("Remote URL"), { target: { value: "https://example.invalid/upstream.git" } });
+  expect(screen.getByRole("button", { name: "Add remote" })).toBeEnabled();
+
+  fireEvent.click(screen.getByRole("button", { name: "Add remote" }));
+  await waitFor(() => expect(remoteAdd).toHaveBeenCalledWith("/repo", "upstream", "https://example.invalid/upstream.git"));
+  await waitFor(() => expect(changed).toHaveBeenCalled());
+  expect(screen.getByLabelText("Remote name")).toHaveValue("");
+  expect(screen.getByLabelText("Remote URL")).toHaveValue("");
+  confirm.mockRestore();
+});
+
 it("keeps command failures visible and blocks duplicate clicks", async () => {
   let finish!: (value: { ok: boolean; error: string }) => void;
   const change = vi.fn().mockReturnValue(new Promise((resolve) => { finish = resolve; }));

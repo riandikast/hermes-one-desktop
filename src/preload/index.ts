@@ -1804,6 +1804,7 @@ const hermesAPI = {
   gitStashRestoreFiles: (dir: string, selections: import("../shared/git-stash").GitStashFileSelection[]) => ipcRenderer.invoke("git-stash-restore-files", dir, selections),
   gitStashDeleteFiles: (dir: string, selections: import("../shared/git-stash").GitStashFileSelection[]) => ipcRenderer.invoke("git-stash-delete-files", dir, selections),
   gitBranchChange: (dir: string, action: import("../shared/git-branches").GitBranchAction, name: string, current: string | null) => ipcRenderer.invoke("git-branch-change", dir, action, name, current),
+  gitRemoteAdd: (dir: string, name: string, url: string) => ipcRenderer.invoke("git-remote-add", dir, name, url),
   gitInit: (dir: string) => ipcRenderer.invoke("git-init", dir),
   gitRepoStatus: (dir: string) => ipcRenderer.invoke("git-repo-status", dir),
   gitLog: (dir: string, opts?: { max?: number; from?: string; to?: string }) =>
