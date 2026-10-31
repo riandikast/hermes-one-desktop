@@ -395,9 +395,9 @@ export function SourceControlDialog({
   }, [remoteHost, token]);
 
   const refresh = useCallback(async () => {
+    setStashRevision((value) => value + 1);
     const next = await window.hermesAPI.gitRepoStatus(dir);
     setStatus(next);
-    setStashRevision((value) => value + 1);
     const selectable = new Set([
       ...next.staged.map((file) => `staged:${file.path}`),
       ...next.unstaged.map((file) => `changes:${file.path}`),

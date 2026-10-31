@@ -192,6 +192,17 @@ describe("StashSection file rows", () => {
     view.rerender(<StashSection {...props} revision={1} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("files failed");
   });
+  it("keeps readable stash files visible when another stash fails, without duplicated Error prefixes", async () => {
+    list.mockResolvedValue({ ok: true, entries });
+    fileList.mockImplementation(async (_dir: string, hash: string) => hash === entries[0].hash
+      ? { ok: false, files: [], error: "Error: Unsupported stash" }
+      : { ok: true, files });
+    render(<StashSection {...props} />);
+    expect(await screen.findByLabelText("Select stash@{1}: src/a.ts")).toBeTruthy();
+    expect(screen.getByRole("alert")).toHaveTextContent("stash@{0}: Unsupported stash");
+    expect(screen.getByRole("alert").textContent).not.toContain("Error: Error:");
+    expect(screen.queryByText("No stashed files")).toBeNull();
+  });
   it("ignores a late preview after unmount", async () => {
     let resolve!: (value: { ok: boolean; output: string }) => void;
     diff.mockReturnValue(

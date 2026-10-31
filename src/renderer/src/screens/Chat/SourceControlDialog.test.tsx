@@ -138,6 +138,20 @@ describe("SourceControlDialog", () => {
     await waitFor(() => expect(window.hermesAPI.gitStashList).toHaveBeenCalledTimes(2));
     confirm.mockRestore();
   });
+  it("reloads saved files after creating a stash without waiting for repository status", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderDialog("/repo");
+    await screen.findByText("No stashed files");
+    const hash = "c".repeat(40);
+    vi.mocked(window.hermesAPI.gitStashList).mockResolvedValue({ ok: true, entries: [{ hash, ref: "stash@{0}", subject: "saved" }] });
+    vi.mocked(window.hermesAPI.gitStashFiles).mockResolvedValue({ ok: true, files: [{ path: "a.ts", status: "M" }] });
+    let finish!: (value: unknown) => void;
+    gitRepoStatus.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    fireEvent.click(screen.getByLabelText("Select a.ts"));
+    fireEvent.click(screen.getByRole("button", { name: "Stash selected (1)" }));
+    try { expect(await screen.findByLabelText("Select stash@{0}: a.ts")).toBeTruthy(); }
+    finally { await act(async () => finish({ repo: true, staged: [], unstaged: [], conflicted: [], untracked: [] })); }
+  });
   it("previews and restores individual saved files without applying the whole stash", async () => {
     const hash = "a".repeat(40);
     vi.mocked(window.hermesAPI.gitStashList).mockResolvedValue({ ok: true, entries: [{ hash, ref: "stash@{0}", subject: "On custom: Selected files" }] });

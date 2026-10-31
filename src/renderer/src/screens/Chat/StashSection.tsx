@@ -15,6 +15,8 @@ import type {
 
 type ActionResult = { ok: boolean; output?: string; error?: string };
 type StashGroup = GitStashEntry & { files: GitStashFile[] };
+const errorMessage = (error: unknown): string =>
+  (error instanceof Error ? error.message : String(error)).replace(/^(?:Error: )+/, "");
 const key = (hash: string, path: string): string =>
   JSON.stringify([hash, path]);
 const statusLabel = (status: string): string =>
@@ -50,16 +52,21 @@ export function StashSection({
       const result = await window.hermesAPI.gitStashList(dir);
       if (!result.ok) throw new Error(result.error ?? "Stashes unavailable");
       const next: StashGroup[] = [];
+      const failures: string[] = [];
       // Bound simultaneous Git processes; never fan out across every stash.
       for (const entry of result.entries) {
         if (!alive) return;
-        const files = await window.hermesAPI.gitStashFiles(dir, entry.hash);
-        if (!files.ok)
-          throw new Error(files.error ?? `Files unavailable for ${entry.ref}`);
-        next.push({ ...entry, files: files.files });
+        try {
+          const files = await window.hermesAPI.gitStashFiles(dir, entry.hash);
+          if (!files.ok) throw new Error(files.error ?? "Saved files unavailable");
+          next.push({ ...entry, files: files.files });
+        } catch (err) {
+          failures.push(`${entry.ref}: ${errorMessage(err)}`);
+        }
       }
       if (!alive) return;
       setGroups(next);
+      setError(failures.join("\n"));
       const keys = new Set(
         next.flatMap((entry) =>
           entry.files.map((file) => key(entry.hash, file.path)),
@@ -73,7 +80,7 @@ export function StashSection({
     })()
       .catch((err: unknown) => {
         if (alive) {
-          setError(String(err));
+          setError(errorMessage(err));
           setGroups([]);
           setSelection([]);
           anchor.current = null;
@@ -145,9 +152,9 @@ export function StashSection({
       if (result.ok) {
         setError("");
         onPreview(result.output ?? "", file.path);
-      } else setError(result.error ?? "Saved file diff unavailable");
+      } else setError(errorMessage(result.error ?? "Saved file diff unavailable"));
     } catch (err) {
-      if (request === previewRequest.current) setError(String(err));
+      if (request === previewRequest.current) setError(errorMessage(err));
     }
   };
   const rows = (group: StashGroup): React.JSX.Element[] =>

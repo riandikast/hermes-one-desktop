@@ -39,9 +39,9 @@ async function safePath(dir: string, path: string): Promise<void> {
 async function tree(dir: string, ref: string): Promise<Map<string, Entry>> {
   const entries = new Map<string, Entry>();
   for (const record of (await git(dir, ["ls-tree", "-rz", ref])).split("\0").filter(Boolean)) {
-    const match = /^(\d+) blob ([a-f0-9]+)\t([\s\S]+)$/.exec(record);
-    if (match) entries.set(match[3], { mode: match[1], oid: match[2] });
-    else throw new Error("Stashes containing submodules are not supported");
+    const match = /^(\d+) (blob|commit) ([a-f0-9]+)\t([\s\S]+)$/.exec(record);
+    if (!match || (match[2] === "commit" && match[1] !== "160000")) throw new Error("Invalid stash tree entry");
+    entries.set(match[4], { mode: match[1], oid: match[3] });
   }
   return entries;
 }

@@ -5,7 +5,7 @@ import { homedir, tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import * as runner from "./git";
-import { gitStashList, mutate } from "./git-stash";
+import { gitStashCreate, gitStashList, mutate } from "./git-stash";
 import { gitStashFiles, gitStashFileDiff, gitStashRestoreFiles, gitStashDeleteFiles } from "./git-stash-files";
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 30_000 });
 let repo: string;
@@ -115,6 +115,32 @@ it("diffs/restores index-only changes without silently succeeding; removes index
 it("stops at existing Git operations and conflicts without touching worktree or saved copies", async () => {
   await put("edit.txt", "saved\n"); const hash = save(); await writeFile(join(repo, ".git", "MERGE_HEAD"), git("rev-parse", "HEAD"));
   const result = await gitStashRestoreFiles(repo, [{ hash, paths: ["edit.txt"] }]); expect(result.ok).toBe(false); expect(result.error).toContain("active Git operation"); expect(await read("edit.txt")).toBe("edit.txt base\n"); expect(await hashes()).toEqual([hash]);
+});
+
+it("lists, previews, restores and partially deletes regular files in repositories containing submodules", async () => {
+  await mkdir(join(repo, "vendor"));
+  const submodule = git("rev-parse", "HEAD").trim();
+  git("update-index", "--add", "--cacheinfo", `160000,${submodule},vendor`);
+  git("commit", "-qm", "submodule pointer");
+  await put("edit.txt", "saved edit\n"); await put("keep.txt", "saved keep\n");
+  const created = await gitStashCreate(repo, ["edit.txt", "keep.txt"]);
+  expect(created.ok, created.error).toBe(true);
+  const [hash] = await hashes();
+  const listed = await gitStashFiles(repo, hash);
+  expect(listed.ok, listed.error).toBe(true);
+  expect(listed.files.map((file) => file.path).sort()).toEqual(["edit.txt", "keep.txt"]);
+  const diff = await gitStashFileDiff(repo, hash, "edit.txt");
+  expect(diff.ok, diff.error).toBe(true); expect(diff.output).toContain("+saved edit");
+  const restored = await gitStashRestoreFiles(repo, [{ hash, paths: ["edit.txt"] }]);
+  expect(restored.ok, restored.error).toBe(true); expect(await read("edit.txt")).toBe("saved edit\n");
+  const removed = await gitStashDeleteFiles(repo, [{ hash, paths: ["edit.txt"] }]);
+  expect(removed.ok, removed.error).toBe(true);
+  const [remainder] = await hashes();
+  expect((await gitStashFiles(repo, remainder)).files).toEqual([{ path: "keep.txt", status: "M" }]);
+  for (const ref of [remainder, `${remainder}^1`, `${remainder}^2`, "HEAD"]) {
+    expect(git("ls-tree", ref, "vendor")).toBe(`160000 commit ${submodule}\tvendor\n`);
+  }
+  expect(await read("edit.txt")).toBe("saved edit\n");
 });
 
 it("shares the existing stash mutation lock", async () => {
