@@ -10470,6 +10470,15 @@ body:has(.shell-vibrant),
   right: calc(100% + 8px);
 }
 
+/* Shared chat badges use the assistant-bubble palette, independent of their
+   layout styles in feature-local stylesheets. */
+.chat-display-controls-trigger,
+.chat-pinned-bar--floating .chat-pinned-bar-trigger,
+.chat-container .chat-local-session-counter {
+  background: var(--agent-bubble);
+  color: var(--text-primary);
+}
+
 .chat-display-controls-trigger {
   display: grid;
   width: 32px;
@@ -10477,8 +10486,6 @@ body:has(.shell-vibrant),
   place-items: center;
   border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
   border-radius: 50%;
-  background: var(--agent-bubble);
-  color: var(--text-primary);
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
 }

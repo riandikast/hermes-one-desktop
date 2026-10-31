@@ -40,7 +40,7 @@ The floating control rail is collapsed behind a single grid-icon FAB (speed-dial
 
 [[src/renderer/src/screens/Chat/SpeedDialFAB.tsx]] wraps any number of `items` (each a React node). It owns open/close state, outside-click dismissal, and Escape handling. The trigger stays first in the DOM; absolute-positioned tools expand below it without changing its position. Collapsed tools are inert and invisible, not keyboard targets. Item actions do not collapse their own Search or display popovers; outside pointer dismissal never cancels item clicks. Escape restores trigger focus. CSS keyframe `speed-dial-item-in` staggers entrance. No new dependencies added.
 
-All floating rail buttons, including the FAB, share `.chat-display-controls-trigger` in [[src/renderer/src/assets/main.css]]; edit this single rule to change their shared background and icon colors.
+Floating rail buttons, the pinned badge, and the DB message counter share the assistant-bubble background and primary text colors in [[src/renderer/src/assets/main.css]]. Change that palette rule to update all three; feature-local CSS retains layout only.
 
 ### Collapsed by default
 

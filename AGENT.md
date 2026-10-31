@@ -6,7 +6,7 @@ Backend validates calendar dates and range order. `--since-as-filter` avoids dro
 
 Relevant files: `src/main/git.ts`, `src/renderer/src/screens/Chat/SourceControlDialog.tsx`, `lat.md/source-control.md`. Focused regressions: `src/main/git.test.ts`, `src/renderer/src/screens/Chat/SourceControlDialog.test.tsx`.
 
-Floating chat rail icons and the FAB share `.chat-display-controls-trigger` in `src/renderer/src/assets/main.css`; keep common colors there so the whole rail changes together.
+Floating chat rail icons, pinned badge, and DB message counter share assistant-bubble and primary text colors in `src/renderer/src/assets/main.css`; feature-local CSS must retain layout only.
 
 When date filters appear in the renderer but return unchanged data, inspect the running Electron main bundle before changing Git logic. Renderer hot reload does not update main-process IPC. The observed stale `out/main/index.js` omitted date options entirely; rebuild/restart is user-controlled. Apply uses a no-wrap, bottom-aligned filter row matching input/button height.
 

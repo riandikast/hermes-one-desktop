@@ -7,6 +7,7 @@ const nodeModule = (await import("node:module")) as unknown as {
   createRequire: (url: string) => (id: string) => { readFileSync: (path: string, encoding: string) => string };
 };
 const counterCss = nodeModule.createRequire(import.meta.url)("node:fs").readFileSync("src/renderer/src/screens/Chat/LocalSessionCounter.css", "utf8");
+const mainCss = nodeModule.createRequire(import.meta.url)("node:fs").readFileSync("src/renderer/src/assets/main.css", "utf8");
 
 describe("local session counter", () => {
   it("shows refresh beside DB count and disables it during streaming", async () => {
@@ -35,6 +36,17 @@ describe("local session counter", () => {
     expect(inputSource.indexOf("<ContextGauge")).toBeGreaterThan(inputSource.indexOf('className="chat-input-toolbar"'));
     expect(inputSource).toContain("onCompact={onCompactContext}");
     expect(inputSource).toContain("onNewSessionWithContext={onNewSessionWithContext}");
+  });
+  it("applies the same theme colors to floating icons, pinned badge and DB badge", () => {
+    const normalizedCss = mainCss.replace(/\r\n/g, "\n");
+    const start = normalizedCss.indexOf(
+      ".chat-display-controls-trigger,\n.chat-pinned-bar--floating .chat-pinned-bar-trigger,\n.chat-container .chat-local-session-counter {",
+    );
+    expect(start).toBeGreaterThan(-1);
+    const rule = normalizedCss.slice(start, normalizedCss.indexOf("}", start));
+    expect(rule).toContain("background: var(--agent-bubble);");
+    expect(rule).toContain("color: var(--text-primary);");
+    expect(counterCss).not.toMatch(/\.chat-local-session-counter\s*\{[^}]*\b(?:background|color):/);
   });
   it("reads persisted metadata beyond the first page, never model tokens", async () => {
     const listSessions = vi.fn().mockResolvedValueOnce(Array.from({ length: 200 }, (_, i) => ({ id: `other-${i}`, messageCount: 1 }))).mockResolvedValueOnce([{ id: "target", messageCount: 12345 }]);
