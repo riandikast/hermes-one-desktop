@@ -61,6 +61,8 @@ import {
 import { gitIgnoreEdit, gitIgnoreList, gitIgnoreAddMany } from "../git-ignore";
 import { gitBranches, gitBranchChange } from "../git-branches";
 import { gitStashList, gitStashCreate, gitStashApply, gitStashDrop, gitStashDiff } from "../git-stash";
+import { gitStashFiles, gitStashFileDiff, gitStashRestoreFiles, gitStashDeleteFiles } from "../git-stash-files";
+import type { GitStashFileSelection } from "../../shared/git-stash";
 import { gitRenameCheck, gitRenameCommit } from "../git-rename";
 import type { GitBranchAction } from "../../shared/git-branches";
 import { openTerminalInDirectory } from "../terminal-launcher";
@@ -3667,6 +3669,10 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("git-stash-apply", (_event, dir: string, hashes: string[]) => gitStashApply(dir, hashes));
   ipcMain.handle("git-stash-drop", (_event, dir: string, hashes: string[]) => gitStashDrop(dir, hashes));
   ipcMain.handle("git-stash-diff", (_event, dir: string, hash: string) => gitStashDiff(dir, hash));
+  ipcMain.handle("git-stash-files", (_event, dir: string, hash: string) => gitStashFiles(dir, hash));
+  ipcMain.handle("git-stash-file-diff", (_event, dir: string, hash: string, path: string) => gitStashFileDiff(dir, hash, path));
+  ipcMain.handle("git-stash-restore-files", (_event, dir: string, selections: GitStashFileSelection[]) => gitStashRestoreFiles(dir, selections));
+  ipcMain.handle("git-stash-delete-files", (_event, dir: string, selections: GitStashFileSelection[]) => gitStashDeleteFiles(dir, selections));
   ipcMain.handle("git-branch-change", (_event, dir: string, action: GitBranchAction, name: string, current: string | null) => gitBranchChange(dir, action, name, current));
   ipcMain.handle("git-repo-status", async (_event, dir: string) =>
     gitRepoStatus(dir),

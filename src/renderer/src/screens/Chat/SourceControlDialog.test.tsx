@@ -91,6 +91,10 @@ beforeEach(() => {
   (window as unknown as { hermesAPI: unknown }).hermesAPI = {
     gitRepoStatus,
     gitStashList: vi.fn().mockResolvedValue({ ok: true, entries: [] }),
+    gitStashFiles: vi.fn().mockResolvedValue({ ok: true, files: [] }),
+    gitStashFileDiff: vi.fn().mockResolvedValue({ ok: true, output: "" }),
+    gitStashRestoreFiles: vi.fn().mockResolvedValue({ ok: true }),
+    gitStashDeleteFiles: vi.fn().mockResolvedValue({ ok: true }),
     gitStashCreate: vi.fn().mockResolvedValue({ ok: true }),
     gitStashApply: vi.fn().mockResolvedValue({ ok: true }),
     gitStashDrop: vi.fn().mockResolvedValue({ ok: true }),
@@ -132,6 +136,22 @@ describe("SourceControlDialog", () => {
     await waitFor(() => expect(window.hermesAPI.gitStashCreate).toHaveBeenCalledWith("/repo", ["a.ts"]));
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Both staged and unstaged"));
     await waitFor(() => expect(window.hermesAPI.gitStashList).toHaveBeenCalledTimes(2));
+    confirm.mockRestore();
+  });
+  it("previews and restores individual saved files without applying the whole stash", async () => {
+    const hash = "a".repeat(40);
+    vi.mocked(window.hermesAPI.gitStashList).mockResolvedValue({ ok: true, entries: [{ hash, ref: "stash@{0}", subject: "On custom: Selected files" }] });
+    vi.mocked(window.hermesAPI.gitStashFiles).mockResolvedValue({ ok: true, files: [{ path: "saved.ts", status: "M" }] });
+    vi.mocked(window.hermesAPI.gitStashFileDiff).mockResolvedValue({ ok: true, output: "diff --git a/saved.ts b/saved.ts\n--- a/saved.ts\n+++ b/saved.ts\n@@ -1 +1 @@\n-old\n+saved content\n" });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderDialog("/repo");
+    fireEvent.click(await screen.findByRole("button", { name: "saved.ts M" }));
+    await waitFor(() => expect(document.querySelector(".diff-viewer-body")).toHaveTextContent("saved content"));
+    expect(window.hermesAPI.gitStashFileDiff).toHaveBeenCalledWith("/repo", hash, "saved.ts");
+    fireEvent.click(screen.getByRole("button", { name: "Restore stash@{0}: saved.ts" }));
+    await waitFor(() => expect(window.hermesAPI.gitStashRestoreFiles).toHaveBeenCalledWith("/repo", [{ hash, paths: ["saved.ts"] }]));
+    expect(window.hermesAPI.gitStashApply).not.toHaveBeenCalled();
+    expect(window.hermesAPI.gitStashDrop).not.toHaveBeenCalled();
     confirm.mockRestore();
   });
   it("can stash staged selections and cancellation never calls Git", async () => {

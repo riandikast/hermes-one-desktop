@@ -18,6 +18,6 @@ Terminal header toggles visibility without unmount/kill; pressed styling and Sho
 
 Graph excludes refs/stash before the history cap; stash internals are not branch HEAD and must not displace rename eligibility. Stashing dev source can trigger electron-vite watchers, so confirmation warns about reload/restart.
 
-Stash section above Staged reuses section/row styles, ordered hash multi-selection, Shift ranges, diff previews, confirmed apply/drop. Changes/Staged selected files can be stashed (both staged and unstaged edits, selected untracked included, ignored excluded). Apply keeps saved copies; drop resolves current refs by immutable hash. New Electron IPC/preload requires user-controlled rebuild/restart.
+Stash section above Staged displays filenames/status, not stash messages. Single stash is flat; multiple stashes use collapsible groups. Ordered hash/path multi-selection, group-local Shift ranges, file-only preview, confirmed Restore/Delete selected preserve unselected saved changes. New git-stash-files.ts owns file operations. Changes/Staged selected files can be stashed (both staged and unstaged edits, selected untracked included, ignored excluded). Apply keeps saved copies; drop resolves current refs by immutable hash. New Electron IPC/preload requires user-controlled rebuild/restart.
 
 Preserve unrelated chat-search/zoom work. Commit owned changes only; do not push without confirmation. Follow `AGENTS.md` resource queue and documentation checks.

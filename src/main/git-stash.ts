@@ -57,7 +57,7 @@ async function idle(dir: string): Promise<void> {
 
 // Serialize stash mutations across renderer requests, including repository aliases.
 let changing = false;
-async function mutate(action: () => Promise<GitActionResult>): Promise<GitActionResult> {
+export async function mutate(action: () => Promise<GitActionResult>): Promise<GitActionResult> {
   if (changing) return { ok: false, error: "Stash operation already in progress" };
   changing = true;
   try { return await action(); }
