@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { LocalSessionCounter } from "./LocalSessionCounter";
 import chatSource from "./Chat.tsx?raw";
 import inputSource from "./ChatInput.tsx?raw";
+import searchSource from "./ChatSearch.tsx?raw";
 const nodeModule = (await import("node:module")) as unknown as {
   createRequire: (url: string) => (id: string) => { readFileSync: (path: string, encoding: string) => string };
 };
@@ -40,12 +41,18 @@ describe("local session counter", () => {
   it("applies the same theme colors to floating icons, pinned badge and DB badge", () => {
     const normalizedCss = mainCss.replace(/\r\n/g, "\n");
     const start = normalizedCss.indexOf(
-      ".chat-display-controls-trigger,\n.chat-pinned-bar--floating .chat-pinned-bar-trigger,\n.chat-container .chat-local-session-counter {",
+      ".chat-display-controls-trigger,\n.chat-search-trigger,\n.chat-pinned-bar--floating .chat-pinned-bar-trigger,\n.chat-container .chat-local-session-counter {",
     );
     expect(start).toBeGreaterThan(-1);
     const rule = normalizedCss.slice(start, normalizedCss.indexOf("}", start));
     expect(rule).toContain("background: var(--agent-bubble);");
     expect(rule).toContain("color: var(--text-primary);");
+    expect(searchSource).toContain("chat-search-trigger chat-display-controls-trigger");
+    const searchRule = normalizedCss.match(/\.chat-search-trigger\s*\{([^}]+)\}/)?.[1] ?? "";
+    expect(searchRule).not.toMatch(/\b(?:background|color):/);
+    const pinnedBadgeRule = normalizedCss.match(/\.chat-pinned-bar\.chat-pinned-bar--floating\.is-collapsed\s*\{([^}]+)\}/)?.[1] ?? "";
+    expect(pinnedBadgeRule).toContain("background: transparent;");
+    expect(pinnedBadgeRule).toContain("border: 0;");
     expect(counterCss).not.toMatch(/\.chat-local-session-counter\s*\{[^}]*\b(?:background|color):/);
   });
   it("reads persisted metadata beyond the first page, never model tokens", async () => {

@@ -9577,6 +9577,10 @@ body:has(.shell-vibrant),
   margin: 0;
   height: 32px;
   box-sizing: border-box;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 .chat-pinned-bar.chat-pinned-bar--floating.is-collapsed .chat-pinned-bar-trigger {
   height: 100%;
@@ -10473,6 +10477,7 @@ body:has(.shell-vibrant),
 /* Shared chat badges use the assistant-bubble palette, independent of their
    layout styles in feature-local stylesheets. */
 .chat-display-controls-trigger,
+.chat-search-trigger,
 .chat-pinned-bar--floating .chat-pinned-bar-trigger,
 .chat-container .chat-local-session-counter {
   background: var(--agent-bubble);
@@ -10692,8 +10697,6 @@ body:has(.shell-vibrant),
   place-items: center;
   border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
   border-radius: 50%;
-  background: var(--bg-elevated, #17171b);
-  color: var(--text-secondary);
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
 }

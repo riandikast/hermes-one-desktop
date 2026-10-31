@@ -356,7 +356,7 @@ export function ChatSearch({
     <div className="chat-search">
       <button
         type="button"
-        className={`chat-search-trigger${open ? " chat-search-trigger--active" : ""}`}
+        className={`chat-search-trigger chat-display-controls-trigger${open ? " chat-search-trigger--active" : ""}`}
         aria-label="Search in chat"
         aria-expanded={open}
         title="Search in chat"
