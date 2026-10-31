@@ -19,6 +19,7 @@ import layoutSource from "../Layout/Layout.tsx?raw";
 import chipSource from "./LastPromptChip.tsx?raw";
 import pickerSource from "./ModelPicker.tsx?raw";
 import messageListSource from "./MessageList.tsx?raw";
+import messageRowSource from "./MessageRow.tsx?raw";
 import transportSource from "./hooks/useDashboardChatTransport.ts?raw";
 // CSS ?raw is stubbed by Vitest; read actual tokens for the contrast check.
 
@@ -38,6 +39,11 @@ function propValues(source: string, prop: string): string[] {
 }
 
 describe("Chat.tsx wiring: no silent placeholder handlers", () => {
+  it("rounds only the message pin action button", () => {
+    expect(messageRowSource).toContain("chat-bubble-copy chat-bubble-copy--pin");
+    expect(css).toMatch(/\.chat-bubble-copy--pin\s*\{\s*border-radius:\s*8px\s*;\s*\}/);
+  });
+
   it.each(["dark", "light"])(
     "keeps picker text above AA contrast in %s",
     (theme) => {

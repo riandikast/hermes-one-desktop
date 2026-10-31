@@ -360,7 +360,7 @@ export const MessageRow = memo(function MessageRow({
             {onPinToggle && (msg.role === "user" || msg.role === "agent") && !msg.isSlashLoader && (
               <button
                 type="button"
-                className={`chat-bubble-copy${(msg as ChatBubbleMessage).pinned ? " chat-bubble-copy--active" : ""}`}
+                className={`chat-bubble-copy chat-bubble-copy--pin${(msg as ChatBubbleMessage).pinned ? " chat-bubble-copy--active" : ""}`}
                 onClick={() => onPinToggle(msg.id, !(msg as ChatBubbleMessage).pinned)}
                 title={(msg as ChatBubbleMessage).pinned ? "Unpin" : "Pin to top"}
                 aria-label={(msg as ChatBubbleMessage).pinned ? "Unpin" : "Pin to top"}

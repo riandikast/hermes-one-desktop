@@ -20,6 +20,13 @@ it("uses an in-page dialog, defaults to Cancel, safely renders text and restores
   expect(await result).toBe(true); expect(native).not.toHaveBeenCalled();
   expect(input).toHaveFocus(); expect(dialog.isConnected).toBe(false); input.remove();
 });
+it("centers the confirmation against the viewport, independent of its owner", () => {
+  const css = readFileSync(join(process.cwd(), "src/renderer/src/assets/main.css"), "utf8");
+  const rule = css.match(/\.app-confirm\s*\{([^}]*)\}/)?.[1] ?? "";
+  expect(rule).toMatch(/position:\s*fixed/);
+  expect(rule).toMatch(/inset:\s*0/);
+  expect(rule).toMatch(/margin:\s*auto/);
+});
 it("cancels Escape without bubbling to the parent and rejects overlapping requests", async () => {
   const parentEscape = vi.fn(); window.addEventListener("keydown", parentEscape);
   const first = appConfirm("first"); expect(await appConfirm("second")).toBe(false);

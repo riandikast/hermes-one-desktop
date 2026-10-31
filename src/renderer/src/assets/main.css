@@ -7804,6 +7804,8 @@ body:has(.shell-vibrant),
   border-color: var(--border-focus, var(--accent));
 }
 
+.chat-bubble-copy--pin { border-radius: 8px; }
+
 .chat-error-message {
   color: var(--error);
   font-weight: 500;
@@ -24429,6 +24431,9 @@ body:has(.shell-vibrant),
 .source-control-not-repo { flex-wrap: wrap; padding: 16px; }
 
 .app-confirm {
+  position: fixed;
+  inset: 0;
+  margin: auto;
   width: min(480px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow: auto;

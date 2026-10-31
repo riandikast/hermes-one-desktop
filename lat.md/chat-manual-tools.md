@@ -42,6 +42,8 @@ The floating control rail is collapsed behind a single grid-icon FAB (speed-dial
 
 Floating rail buttons, chat search, the collapsed pin badge, and the DB message counter share the assistant-bubble background and primary text colors in [[src/renderer/src/assets/main.css]]. The collapsed pin's outer wrapper stays transparent so it does not create a double background; feature-local CSS retains layout only.
 
+The message pin action uses a circular hit-area; other bubble action buttons keep their shared corner radius.
+
 ### Collapsed by default
 
 The FAB renders collapsed on mount; `aria-expanded` is false and no items are interactive.
