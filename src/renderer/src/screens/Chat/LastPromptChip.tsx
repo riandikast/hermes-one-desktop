@@ -310,7 +310,7 @@ export const LastPromptChip = memo(function LastPromptChip({
           aria-label={`${t("chat.reader.showFullPrompt")}: ${preview}`}
         >
           <span className="chat-last-prompt-icon" aria-hidden>
-            <CornerDownRight size={13} />
+            {/* <CornerDownRight size={13} /> */}
           </span>
           <span className="chat-last-prompt-label">
             {t("chat.reader.lastPromptLabel")}

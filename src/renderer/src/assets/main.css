@@ -219,13 +219,13 @@
 [data-theme="vs-code"] {
   /* User-requested inversion vs stock Dark+: the CHAT canvas takes the
      sidebar gray and the sidebar takes the editor gray. */
-  --bg-primary: #222222;
-  --bg-secondary: #181818;
+  --bg-primary: #181818;
+  --bg-secondary: #0e0e0e;
   --bg-tertiary: #3c3c3c;
   --bg-elevated: #333333;
   --bg-hover: #2a2d2e;
   --bg-active: #094771;
-  --accent: #0071d9;
+  --accent: #0357a3;
   --accent-hover: #1a8adb;
   --accent-subtle: rgba(0, 120, 212, 0.18);
   --accent-text: #4fc1ff;
@@ -242,9 +242,9 @@
   --error-bg: rgba(244, 135, 113, 0.14);
   --warning: #d7ba7d;
   --warning-bg: rgba(215, 186, 125, 0.14);
-  --user-bubble: #0071d9;
+  --user-bubble: #0357a3;
   --user-bubble-text: #ffffff;
-  --agent-bubble: #2d2d30;
+  --agent-bubble: #222222;
   --agent-bubble-text: #cccccc;
   --code-bg: #1e1e1e;
   /* Lifted flat panel for tool results (the VS Code tool-panel look). */
@@ -7010,7 +7010,7 @@ body:has(.shell-vibrant),
      chip used to reach min(72vw, 640px), which overlapped it on any chat body
      narrower than ~900px — the two share the same top band. Reserving the
      right lane here keeps them from ever touching, at any window width. */
-  right: 232px;
+  right: 532px;
   z-index: 29;
   pointer-events: none;
 }
@@ -7021,14 +7021,15 @@ body:has(.shell-vibrant),
   /* Fills the wrap (which already reserves the counter's lane), so the pill is
      as long as the free space but never longer. */
   max-width: 100%;
-  padding: 3px 8px 3px 5px;
-  border-radius: 999px;
-  border: 1px solid var(--border, #3a3f4b);
-  background: color-mix(in srgb, var(--bg-elevated, #1e1e2e) 92%, transparent);
+  padding: 3px 8px 3px 10px;
+
+  border-radius: 15px;
+  border: 1px solid var(--text-primary, #3a3f4b);
+  background: var(--bg-primary, #3a3f4b);
   backdrop-filter: blur(6px);
   color: var(--text-secondary, #c7c7d1);
-  font-size: 12px;
-  line-height: 1.3;
+  font-size: 13px;
+  line-height: 2.3;
   text-align: left;
   pointer-events: auto;
   cursor: pointer;
@@ -7058,12 +7059,14 @@ body:has(.shell-vibrant),
 /* The expand glyph is decorative (the whole pill is the button). */
 .chat-last-prompt-expand {
   flex-shrink: 0;
-  color: var(--text-muted, #8b8b99);
+  margin-right: 7px;
+  margin-left: 3px;
+  color: var(--text-primary, #8b8b99);
 }
 .chat-last-prompt-icon {
   display: inline-flex;
   flex-shrink: 0;
-  color: var(--accent, #4f9cf9);
+  color: var(--text-primary, #4f9cf9);
 }
 .chat-last-prompt-label {
   flex-shrink: 0;
@@ -9989,18 +9992,19 @@ body:has(.shell-vibrant),
  *    while the typewriter animation plays. Uses the app's chosen font stack
  *    (--font-sans) so it picks up the user's AppearancePane preference. */
 .chat-reasoning-pre {
-  margin: 0;
+  margin-bottom: 5px;
+  margin-top:2px;
   padding: 12px 14px;
-  border-radius: var(--radius-sm, 6px);
-  background: var(--bg-elevated, rgba(127, 127, 127, 0.04));
+  border-radius: var(--radius-sm, 15px);
+  background: var(--bg-secondary, rgba(127, 127, 127, 0.04));
   font-family: var(--font-sans, system-ui, sans-serif);
   font-size: 13.5px;
   line-height: 1.65;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   letter-spacing: 0.01em;
-  max-height: 360px;
+  max-height: 200px;
   overflow-y: auto;
 }
 
