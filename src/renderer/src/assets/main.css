@@ -24412,6 +24412,8 @@ body:has(.shell-vibrant),
   font-size: 13px;
 }
 
+.source-control-not-repo { flex-wrap: wrap; padding: 16px; }
+
 /* ── File-changes summary dialog ── */
 .file-changes-overlay {
   position: fixed;

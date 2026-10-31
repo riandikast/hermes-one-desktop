@@ -1346,6 +1346,7 @@ interface HermesAPI {
   gitStashRestoreFiles: (dir: string, selections: import("../shared/git-stash").GitStashFileSelection[]) => Promise<GitActionResult>;
   gitStashDeleteFiles: (dir: string, selections: import("../shared/git-stash").GitStashFileSelection[]) => Promise<GitActionResult>;
   gitBranchChange: (dir: string, action: import("../shared/git-branches").GitBranchAction, name: string, current: string | null) => Promise<GitActionResult>;
+  gitInit: (dir: string) => Promise<GitActionResult>;
   gitRepoStatus: (dir: string) => Promise<GitStatusResult>;
   gitLog: (dir: string, opts?: { max?: number; from?: string; to?: string }) => Promise<GitLogResult>;
   gitCommitDiff: (dir: string, hash: string) => Promise<GitActionResult>;

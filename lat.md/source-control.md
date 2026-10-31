@@ -8,6 +8,12 @@ Root-folder context menus open the full-page Source Control surface.
 
 Right-clicking a root folder (one of the conversation's context folders) in [[src/renderer/src/screens/Chat/WorktreePanel.tsx#WorktreePanel]] shows a "Source Control" context-menu item (root folders only — `folderPaths.includes(contextMenu.path)`). It opens [[src/renderer/src/screens/Chat/SourceControlDialog.tsx#SourceControlDialog]], a near-fullscreen dialog (the same overlay/dialog shell as the file-changes dialog) with a branch chip (ahead/behind tracking), Fetch/Pull/Push/refresh buttons, a sidebar listing Conflicts / Staged / Changes / Untracked, a diff pane, and a commit box with Ctrl+Enter to commit.
 
+## Initialize repository
+
+The non-repository screen offers Initialize repository beside Retry. Confirmation names the folder; initialization creates local Git metadata only, then refreshes into Source Control.
+
+[[src/main/git.ts#gitInit]] accepts an existing absolute directory, rejects existing repositories, nested working folders, symbolic-link targets and damaged metadata, serializes duplicate requests, runs `git init`, then verifies repository status. No files are staged or committed, no remote is added, and nothing is pushed. Errors remain visible with retry available. The installed Git default initial branch is respected. IPC/preload changes require a user-controlled rebuild/restart. Regressions: [[src/main/git.test.ts]], [[src/renderer/src/screens/Chat/SourceControlDialog.test.tsx]].
+
 ## Git operations
 
 The main process invokes git with separate arguments and bounded operation timeouts.

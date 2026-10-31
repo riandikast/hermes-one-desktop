@@ -90,6 +90,7 @@ beforeEach(() => {
 
   (window as unknown as { hermesAPI: unknown }).hermesAPI = {
     gitRepoStatus,
+    gitInit: vi.fn().mockResolvedValue({ ok: true }),
     gitStashList: vi.fn().mockResolvedValue({ ok: true, entries: [] }),
     gitStashFiles: vi.fn().mockResolvedValue({ ok: true, files: [] }),
     gitStashFileDiff: vi.fn().mockResolvedValue({ ok: true, output: "" }),
@@ -125,6 +126,38 @@ beforeEach(() => {
 });
 
 describe("SourceControlDialog", () => {
+  it("confirms initialization of non-repository folders and refreshes into Source Control", async () => {
+    const ready = await gitRepoStatus();
+    gitRepoStatus.mockResolvedValue({ ...ready, repo: false });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderDialog("/repo");
+    const initialize = await screen.findByRole("button", { name: "Initialize repository" });
+    fireEvent.click(initialize);
+    expect(window.hermesAPI.gitInit).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    let finish!: (result: { ok: boolean }) => void;
+    vi.mocked(window.hermesAPI.gitInit).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    fireEvent.click(initialize);
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('"/repo"'));
+    expect(screen.getByRole("button", { name: "Initializing…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeDisabled();
+    gitRepoStatus.mockResolvedValue(ready);
+    await act(async () => finish({ ok: true }));
+    expect(await screen.findByRole("button", { name: "Manage local branches" })).toBeTruthy();
+    expect(window.hermesAPI.gitInit).toHaveBeenCalledTimes(1);
+    expect(window.hermesAPI.gitStage).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+  it("shows initialization failure and allows retry without closing", async () => {
+    const ready = await gitRepoStatus();
+    gitRepoStatus.mockResolvedValue({ ...ready, repo: false });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(window.hermesAPI.gitInit).mockResolvedValue({ ok: false, error: "Permission denied" });
+    renderDialog("/repo");
+    fireEvent.click(await screen.findByRole("button", { name: "Initialize repository" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Permission denied");
+    expect(screen.getByRole("button", { name: "Initialize repository" })).toBeEnabled();
+  });
   it("toggles each file section independently, appending missing paths in display order without running Git", async () => {
     const initial = await gitRepoStatus();
     gitRepoStatus.mockResolvedValue({ ...initial,

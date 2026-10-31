@@ -97,6 +97,30 @@ export function runGit(
   });
 }
 
+let initializing = false;
+export async function gitInit(dir: string): Promise<GitActionResult> {
+  if (initializing) return { ok: false, error: "Repository initialization already in progress" };
+  initializing = true;
+  try {
+    if (typeof dir !== "string" || !dir || !isAbsolute(dir) || dir.includes("\0")) throw new Error("Select an existing absolute folder path");
+    const folder = await lstat(dir);
+    if (!folder.isDirectory() || folder.isSymbolicLink()) throw new Error("Select an existing folder, not a file or symbolic link");
+    const existing = await runGit(dir, ["rev-parse", "--absolute-git-dir"], 10_000);
+    if (existing.code === 0) throw new Error("Folder already belongs to a Git repository. Refresh Source Control.");
+    if (!/not a git repository/i.test(existing.stderr)) throw new Error(existing.stderr.trim() || "Could not check repository state");
+    try {
+      await lstat(join(dir, ".git"));
+      throw new Error("Git metadata already exists. Repair it manually before initializing.");
+    } catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }
+    const result = await runGit(dir, ["init"], 60_000);
+    if (result.code !== 0) return { ok: false, error: result.stderr.trim() || "Repository initialization failed" };
+    const status = await gitRepoStatus(dir);
+    if (!status.repo || status.error) return { ok: false, error: status.error || "Git initialization could not be verified. Refresh Source Control." };
+    return { ok: true, output: result.stdout.trim() || "Repository initialized" };
+  } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  finally { initializing = false; }
+}
+
 /** Parse `git status --porcelain=v1 -z` output (records split by NUL;
  *  rename entries emit the original path then the new path as two records). */
 function parsePorcelainV1Z(output: string): GitFileEntry[] {

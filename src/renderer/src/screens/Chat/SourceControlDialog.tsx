@@ -721,15 +721,25 @@ export function SourceControlDialog({
             </button>
           </div>
           <div className="source-control-not-repo">
-            Not a git repository
+            <span>Not a git repository</span>
+            <button type="button" className="btn btn-secondary btn-sm" disabled={busy || refreshing}
+              onClick={() => {
+                if (window.confirm(`Initialize a Git repository in "${dir}"? Creates local Git metadata only. No files will be staged or committed; no remote or push.`)) {
+                  void run(() => window.hermesAPI.gitInit(dir), "Repository initialized");
+                }
+              }}>
+              {busy ? <><LoaderCircle size={14} aria-hidden="true" />Initializing…</> : "Initialize repository"}
+            </button>
             <button
               type="button"
               className="btn btn-secondary btn-sm"
+              disabled={busy || refreshing}
               onClick={() => void refresh()}
             >
               Retry
             </button>
           </div>
+          {error && <p className="source-control-empty" role="alert">{error}</p>}
         </div>
       </Shell>
     );

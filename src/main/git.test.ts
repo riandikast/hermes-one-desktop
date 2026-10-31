@@ -10,6 +10,7 @@ import {
   gitCommit,
   gitCommitDiff,
   gitDiff,
+  gitInit,
   gitLog,
   gitRepoStatus,
   gitResolveConflict,
@@ -54,6 +55,35 @@ describe("git source control", () => {
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
     }
+  });
+
+  it("initializes an existing non-repository folder without staging or committing files", async () => {
+    await rm(join(repo, ".git"), { recursive: true, force: true });
+    const result = await gitInit(repo);
+    expect(result.ok, result.error).toBe(true);
+    expect((await gitRepoStatus(repo)).untracked).toContain("a.txt");
+    expect(git(repo, "diff", "--cached", "--name-only")).toBe("");
+    expect(git(repo, "remote")).toBe("");
+    expect(() => git(repo, "rev-parse", "--verify", "HEAD")).toThrow();
+  });
+
+  it("refuses existing repositories, their subfolders, invalid paths and damaged metadata", async () => {
+    const head = git(repo, "rev-parse", "HEAD");
+    expect((await gitInit(repo)).ok).toBe(false);
+    await mkdir(join(repo, "nested"));
+    expect((await gitInit(join(repo, "nested"))).ok).toBe(false);
+    expect(git(repo, "rev-parse", "HEAD")).toBe(head);
+    for (const path of ["", "relative", repo + "\0", join(repo, "a.txt"), join(repo, "missing")]) expect((await gitInit(path)).ok).toBe(false);
+    await rm(join(repo, ".git"), { recursive: true, force: true });
+    await writeFile(join(repo, ".git"), "broken metadata");
+    expect((await gitInit(repo)).ok).toBe(false);
+  });
+
+  it("serializes duplicate initialization requests", async () => {
+    await rm(join(repo, ".git"), { recursive: true, force: true });
+    const first = gitInit(repo);
+    expect((await gitInit(repo)).error).toContain("already in progress");
+    expect((await first).ok).toBe(true);
   });
 
   it("reports untracked and unstaged changes with branch info", async () => {

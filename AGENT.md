@@ -22,4 +22,6 @@ Stash section above Staged displays filenames/status, not stash messages. Single
 
 Select/Unselect all applies to each file section (Conflicts, Stash/groups, Staged, Changes, Ignored/rules/files), preserves ordered selection and unrelated groups, resets Shift anchors. Ignored selects only displayed filtered rows. Selection toggles never execute Git mutations.
 
+Non-repository Source Control offers confirmed Initialize repository beside Retry. gitInit validates an existing absolute directory, rejects existing/nested repos and damaged metadata, serializes requests, runs git init and verifies status. No stage/commit/remote/push; Git default branch respected.
+
 Preserve unrelated chat-search/zoom work. Commit owned changes only; do not push without confirmation. Follow `AGENTS.md` resource queue and documentation checks.

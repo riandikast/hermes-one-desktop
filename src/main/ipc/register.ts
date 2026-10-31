@@ -70,6 +70,7 @@ import { getTerminalPreference, setTerminalPreference } from "../terminal-prefer
 import { exportCommand } from "../command-export";
 import {
   gitRepoStatus,
+  gitInit,
   gitDiff,
   gitDiscard,
   gitStage,
@@ -3674,6 +3675,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("git-stash-restore-files", (_event, dir: string, selections: GitStashFileSelection[]) => gitStashRestoreFiles(dir, selections));
   ipcMain.handle("git-stash-delete-files", (_event, dir: string, selections: GitStashFileSelection[]) => gitStashDeleteFiles(dir, selections));
   ipcMain.handle("git-branch-change", (_event, dir: string, action: GitBranchAction, name: string, current: string | null) => gitBranchChange(dir, action, name, current));
+  ipcMain.handle("git-init", (_event, dir: string) => gitInit(dir));
   ipcMain.handle("git-repo-status", async (_event, dir: string) =>
     gitRepoStatus(dir),
   );
