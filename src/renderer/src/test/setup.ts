@@ -2,6 +2,12 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
+// Existing action tests can keep their native-confirm spies; the real in-page
+// confirmation is independently exercised through vi.importActual in its suite.
+vi.mock("../components/modal/appConfirm", () => ({
+  appConfirm: async (message: string): Promise<boolean> => window.confirm(message),
+}));
+
 // Mock thinking-orbs — its canvas/IntersectionObserver rendering has no
 // jsdom equivalent.
 vi.mock("thinking-orbs", () => ({

@@ -1,3 +1,4 @@
+import { appConfirm } from "../../components/modal/appConfirm";
 import { memo, useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
@@ -566,7 +567,7 @@ export const ModelPicker = memo(function ModelPicker({
   async function removeSavedModel(m: (typeof allRows)[number]): Promise<void> {
     if (!m.id || !m.removable || removingId) return;
     if (
-      !window.confirm(
+      !await appConfirm(
         t("chat.removeSavedModelConfirm", {
           model: m.model,
           provider: t(m.providerLabel),

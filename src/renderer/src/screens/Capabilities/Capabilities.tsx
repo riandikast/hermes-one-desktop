@@ -1,3 +1,4 @@
+import { appConfirm } from "../../components/modal/appConfirm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, Refresh, X } from "../../assets/icons";
 import { AgentMarkdown } from "../../components/AgentMarkdown";
@@ -544,7 +545,7 @@ export default function Capabilities({
   }
 
   async function handleRemoveMcp(name: string): Promise<void> {
-    if (!window.confirm(t("tools.mcpRemoveConfirm", { name }))) return;
+    if (!await appConfirm(t("tools.mcpRemoveConfirm", { name }))) return;
     setMcpBusy(`remove:${name}`);
     try {
       const result = await window.hermesAPI.removeMcpServer(name, profile);

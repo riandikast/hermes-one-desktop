@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, it, vi, beforeEach } from "vitest";
 import { renderWithI18n } from "../../test/renderWithI18n";
 import SettingsModal from "./SettingsModal";
@@ -34,14 +34,14 @@ it("orders the first four sections appearance, providers, github, soul", () => {
   ]);
 });
 
-it("Providers opens the real Providers page and closes settings", () => {
+it("Providers opens the real Providers page and closes settings", async () => {
   const close = vi.fn();
   const goto = vi.fn();
   window.addEventListener("navigation:goto", goto);
   try {
     renderWithI18n(<SettingsModal open onClose={close} />);
     fireEvent.click(screen.getByRole("button", { name: "Providers" }));
-    expect(goto).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(goto).toHaveBeenCalledTimes(1));
     expect((goto.mock.calls[0][0] as CustomEvent).detail).toBe("providers");
     expect(close).toHaveBeenCalledTimes(1);
   } finally {
@@ -62,7 +62,7 @@ it("/settings provider routes to the Providers page instead of an empty pane", (
   }
 });
 
-it("a dirty Soul draft still blocks the Providers doorway", () => {
+it("a dirty Soul draft still blocks the Providers doorway", async () => {
   const close = vi.fn();
   const goto = vi.fn();
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
@@ -74,7 +74,7 @@ it("a dirty Soul draft still blocks the Providers doorway", () => {
     expect(screen.getByText("Soul pane")).toBeTruthy();
     confirm.mockReturnValue(true);
     fireEvent.click(screen.getByRole("button", { name: "Providers" }));
-    expect(goto).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(goto).toHaveBeenCalledTimes(1));
   } finally {
     confirm.mockRestore();
     window.removeEventListener("navigation:goto", goto);

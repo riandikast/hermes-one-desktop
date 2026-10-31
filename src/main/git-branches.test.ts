@@ -19,6 +19,16 @@ beforeEach(async () => {
 });
 afterEach(async () => { await rm(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 
+it("lists configured fetch/push URLs without network calls or leaking embedded credentials", async () => {
+  expect((await gitBranches(repo)).remotes).toEqual([]);
+  git("remote", "add", "origin", "https://fixture-user:fixture-password@example.invalid/org/repo.git?token=fixture-token#secret");
+  git("remote", "set-url", "--push", "origin", "git@example.invalid:org/push.git");
+  const result = await gitBranches(repo);
+  expect(result.ok, result.error).toBe(true);
+  expect(result.remotes).toEqual([{ name: "origin", fetchUrls: ["https://example.invalid/org/repo.git"], pushUrls: ["git@example.invalid:org/push.git"] }]);
+  expect(JSON.stringify(result)).not.toMatch(/fixture-user|fixture-password|fixture-token|secret/);
+});
+
 it("lists, creates, switches, merges into current, and safely deletes local branches", async () => {
   expect((await gitBranches(repo)).current).toBe("main");
   expect((await gitBranchChange(repo, "create", "feature/example", "main")).ok).toBe(true);

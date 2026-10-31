@@ -139,7 +139,7 @@ describe("SourceControlDialog", () => {
     vi.mocked(window.hermesAPI.gitInit).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
     fireEvent.click(initialize);
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('"/repo"'));
-    expect(screen.getByRole("button", { name: "Initializing…" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Initializing…" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Retry" })).toBeDisabled();
     gitRepoStatus.mockResolvedValue(ready);
     await act(async () => finish({ ok: true }));
@@ -409,6 +409,7 @@ describe("SourceControlDialog", () => {
     expect(screen.getByText("Close terminal source-term")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(close).not.toHaveBeenCalled();
+    await act(async () => undefined);
     confirm.mockReturnValue(true);
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(close).toHaveBeenCalledOnce());
@@ -433,6 +434,7 @@ describe("SourceControlDialog", () => {
     expect(confirm).not.toHaveBeenCalled();
     fireEvent.keyDown(terminal, { key: "Escape" });
     expect(confirm).toHaveBeenCalledOnce();
+    await act(async () => undefined);
     fireEvent.click(credentials);
     await act(async () => undefined);
     expect(close).not.toHaveBeenCalled(); expect(openSettings).not.toHaveBeenCalled();

@@ -8,6 +8,7 @@ export interface GitBranchListResult {
   ok: boolean;
   branches: GitLocalBranch[];
   current: string | null;
+  remotes?: { name: string; fetchUrls: string[]; pushUrls: string[] }[];
   error?: string;
 }
 

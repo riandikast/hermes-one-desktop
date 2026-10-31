@@ -3,6 +3,17 @@ import { join } from "path";
 import { runGit, type GitActionResult } from "./git";
 import type { GitBranchAction, GitBranchListResult } from "../shared/git-branches";
 
+function displayRemoteUrl(value: string): string {
+  // Never return embedded credentials/query tokens to the renderer.
+  if (!value.includes("://")) return value.split(/[?#]/)[0];
+  try {
+    const url = new URL(value);
+    if (url.protocol === "http:" || url.protocol === "https:") url.username = "";
+    url.password = ""; url.search = ""; url.hash = "";
+    return url.toString();
+  } catch { return "[Invalid remote URL]"; }
+}
+
 export async function gitBranches(dir: string): Promise<GitBranchListResult> {
   const fail = (error: string): GitBranchListResult => ({ ok: false, branches: [], current: null, error });
   if (typeof dir !== "string" || !dir) return fail("Invalid repository");
@@ -12,7 +23,17 @@ export async function gitBranches(dir: string): Promise<GitBranchListResult> {
     const [name, head, worktree] = line.replace(/\r$/, "").split("\0");
     return { name: name.slice("refs/heads/".length), current: head === "*", checkedOut: !!worktree };
   });
-  return { ok: true, branches, current: branches.find((branch) => branch.current)?.name ?? null };
+  const names = await runGit(dir, ["remote"], 10_000);
+  if (names.code !== 0) return fail("Remote configuration unavailable");
+  const remotes: NonNullable<GitBranchListResult["remotes"]> = [];
+  for (const name of names.stdout.trim().split(/\r?\n/).filter(Boolean)) {
+    const fetch = await runGit(dir, ["remote", "get-url", "--all", "--", name], 10_000);
+    const push = await runGit(dir, ["remote", "get-url", "--push", "--all", "--", name], 10_000);
+    if (fetch.code !== 0 || push.code !== 0) return fail("Remote URLs unavailable");
+    const urls = (text: string): string[] => text.trim().split(/\r?\n/).filter(Boolean).map(displayRemoteUrl);
+    remotes.push({ name, fetchUrls: urls(fetch.stdout), pushUrls: urls(push.stdout) });
+  }
+  return { ok: true, branches, current: branches.find((branch) => branch.current)?.name ?? null, remotes };
 }
 
 // A single lock prevents overlapping branch mutations from separate renderer clicks.

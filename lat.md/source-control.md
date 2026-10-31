@@ -72,7 +72,9 @@ Rename appears only after HEAD passes eligibility checks. Older commits omit it.
 
 ## Local branch manager
 
-The branch badge opens a local-only manager for checkout, create, merge into the current branch, and safe deletion. Each mutation confirms its direction and scope before running Git.
+The branch badge opens local branch management and displays configured remote URLs. Each mutation confirms its direction and scope before running Git.
+
+Checkout, create, merge into the current branch, and safe deletion stay local. Remote fetch URLs and distinct push URLs are displayed without fetching or editing remotes.
 
 [[src/renderer/src/screens/Chat/BranchDialog.tsx#BranchDialog]] uses the shared focus-trapped modal above Source Control. [[src/main/git-branches.ts#gitBranches]] lists local refs and linked-worktree ownership. [[src/main/git-branches.ts#gitBranchChange]] validates ref names and expected current branch, blocks unfinished Git operations, requires a clean worktree for checkout/merge, protects ignored files from overwrite, and refuses deletion unless merged into current HEAD and not checked out anywhere. Creation starts at HEAD without switching. No force flags, remote deletion or push. Conflicts remain visible for existing resolution tools; branch/status/history refresh follows every result. Real Git regressions: [[src/main/git-branches.test.ts]]; UI confirmations and locking: [[src/renderer/src/screens/Chat/BranchDialog.test.tsx]].
 

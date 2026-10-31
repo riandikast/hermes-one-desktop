@@ -14,6 +14,12 @@ The sidebar is frosted glass on macOS — the window material shows through it �
 
 For the material to paint, the renderer leaves surfaces transparent: [[src/renderer/src/App.tsx]] adds `shell-vibrant` to `.app` only on macOS and only on the `main` screen (onboarding stays solid). Under it, `body`/`#root`/`.app` go transparent, the `.sidebar` and `.status-bar` become a translucent `--bg-secondary` tint, and `.content` keeps an opaque `--bg-primary`. Because a transparent window is no longer masked to its rounded shape by macOS, `.content` also rounds its own top-right corner (`0 16px 0 0`) — the sidebar owns top-left, the status bar owns the bottom two — so the opaque panes don't show square corners.
 
+## In-page confirmations and Windows focus
+
+Renderer confirmations use an asynchronous in-page dialog, avoiding Electron native `confirm()` focus loss on Windows. The same path runs in development and installed builds.
+
+[[src/renderer/src/components/modal/appConfirm.ts#appConfirm]] renders message text without HTML, defaults focus to Cancel, denies overlapping requests, cancels on Escape/backdrop/page exit or owner removal, and restores the prior input focus. It mounts inside an active Radix focus scope and uses the browser top layer rather than creating another OS window. Confirmations never steal focus from another application. Action callers await approval before changing state; no Electron upgrade or blur/focus polling workaround is added. The dependency installed during investigation is Electron 39.8.5; upstream [issue 40212](https://github.com/electron/electron/issues/40212) matches dead inputs after native confirmation, while [fix 54380](https://github.com/electron/electron/pull/54380) targets newer release lines. The user's intermittent native focus loss was not captured live; Windows live verification remains required. Regression: [[src/renderer/src/components/modal/appConfirm.test.tsx]].
+
 ## Modal & popover glass is near-opaque (compositing-independent)
 
 Modals and pickers use a `--bg-secondary` tint plus `backdrop-filter: blur(30px) saturate(1.5)`, but the tint is **97% opaque** so legibility never depends on the blur actually painting.

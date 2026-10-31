@@ -1,3 +1,4 @@
+import { appConfirm } from "../../components/modal/appConfirm";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Plus,
@@ -616,17 +617,17 @@ function Kanban({ profile, visible }: KanbanProps): React.JSX.Element {
   async function handleDrop(task: KanbanTask, target: string): Promise<void> {
     if (!isValidDragTransition(task.status, target)) return;
     if (target === "done") {
-      if (!window.confirm(t("kanban.confirmMarkDone", { title: task.title })))
+      if (!await appConfirm(t("kanban.confirmMarkDone", { title: task.title })))
         return;
     } else if (target === "archived") {
-      if (!window.confirm(t("kanban.confirmArchive", { title: task.title })))
+      if (!await appConfirm(t("kanban.confirmArchive", { title: task.title })))
         return;
     }
     await handleMove(task, target);
   }
 
   async function handleArchive(task: KanbanTask): Promise<void> {
-    if (!window.confirm(t("kanban.confirmArchive", { title: task.title })))
+    if (!await appConfirm(t("kanban.confirmArchive", { title: task.title })))
       return;
     setActionBusy(task.id);
     const res = await window.hermesAPI.kanbanArchiveTask(task.id, profile);

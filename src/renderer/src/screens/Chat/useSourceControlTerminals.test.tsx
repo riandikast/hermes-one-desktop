@@ -74,6 +74,26 @@ it("owns multiple shells in the repository, confirms close, preserves on cancel 
   expect(window.hermesAPI.terminalKill).toHaveBeenCalledTimes(2);
 });
 
+it("preserves a shell spawned during a pending confirmation when closing is cancelled", async () => {
+  let finishSpawn!: (value: { id: string; shell: string }) => void;
+  let finishConfirm!: (value: boolean) => void;
+  vi.mocked(window.hermesAPI.terminalCreate).mockReturnValue(new Promise((resolve) => { finishSpawn = resolve; }));
+  const confirmModule = await import("../../components/modal/appConfirm");
+  vi.spyOn(confirmModule, "appConfirm").mockImplementationOnce(() => new Promise((resolve) => { finishConfirm = resolve; }));
+  const close = vi.fn();
+  const hook = renderHook(() => useSourceControlTerminals("/repo", close, vi.fn()));
+  const attached = attach(hook.result.current.dock);
+  act(() => hook.result.current.add());
+  let closing!: Promise<boolean>;
+  act(() => { closing = hook.result.current.requestClose(); });
+  await act(async () => finishSpawn({ id: "spawn-during-confirm", shell: "pwsh" }));
+  expect(attached).toHaveBeenCalledOnce();
+  expect(window.hermesAPI.terminalKill).not.toHaveBeenCalled();
+  await act(async () => { finishConfirm(false); expect(await closing).toBe(false); });
+  expect(close).not.toHaveBeenCalled();
+  expect(hook.result.current.visible).toBe(true);
+});
+
 it("guards duplicate creates, terminates late replies after close, and does not attach them", async () => {
   let finish!: (value: { id: string; shell: string }) => void;
   vi.mocked(window.hermesAPI.terminalCreate).mockReturnValue(new Promise((resolve) => { finish = resolve; }));

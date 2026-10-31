@@ -1,3 +1,4 @@
+import { appConfirm } from "../modal/appConfirm";
 import { useEffect, useState } from "react";
 import { useI18n } from "../useI18n";
 import "./SoulPane.css";
@@ -133,8 +134,8 @@ export default function SoulPane({
           type="button"
           className="btn btn-secondary"
           disabled={busy}
-          onClick={() => {
-            if (!dirty || window.confirm(t("soul.discardConfirm")))
+          onClick={async () => {
+            if (!dirty || await appConfirm(t("soul.discardConfirm")))
               setReload((value) => value + 1);
           }}
         >

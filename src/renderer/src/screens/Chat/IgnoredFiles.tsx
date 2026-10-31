@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { appConfirm } from "../../components/modal/appConfirm";
 import { ChevronRight, ChevronDown, LoaderCircle, RefreshCw, Search, X, ArrowDownAZ, CalendarArrowDown } from "lucide-react";
 import type { GitIgnoreResult } from "../../../../shared/git-ignore";
 
@@ -103,8 +104,8 @@ export function IgnoredFiles({ dir, refresh, busy: parentBusy = false }: { dir: 
     {filteredRules.map((rule) => <div className={`source-control-file${selected.includes(`rule:${rule.line}`) ? " selected" : ""}`} key={rule.line}>
       <input type="checkbox" className="source-control-file-select" aria-label={`Select ignore rule ${rule.pattern}`} checked={selected.includes(`rule:${rule.line}`)} disabled={busy} onChange={(event) => selectRule(`rule:${rule.line}`, (event.nativeEvent as MouseEvent).shiftKey)} />
       <code className="source-control-file-name" title={rule.pattern}>{rule.pattern}</code>
-      <button type="button" className="source-control-stage-btn" aria-label={`Remove ignore rule ${rule.pattern}`} disabled={busy} title={`Remove rule ${rule.pattern} from root .gitignore`} onClick={() => {
-        if (!data || !window.confirm(`Remove .gitignore rule “${rule.pattern}”? All paths matching this rule may become visible. Other ignore sources remain.`)) return;
+      <button type="button" className="source-control-stage-btn" aria-label={`Remove ignore rule ${rule.pattern}`} disabled={busy} title={`Remove rule ${rule.pattern} from root .gitignore`} onClick={async () => {
+        if (!data || !await appConfirm(`Remove .gitignore rule “${rule.pattern}”? All paths matching this rule may become visible. Other ignore sources remain.`)) return;
         setBusy(true);
         void (async () => {
           try {
@@ -122,8 +123,8 @@ export function IgnoredFiles({ dir, refresh, busy: parentBusy = false }: { dir: 
     {filteredFiles.map((path) => <div className={`source-control-file${selected.includes(path) ? " selected" : ""}`} key={path}>
       <input type="checkbox" className="source-control-file-select" aria-label={`Select ignored ${path}`} checked={selected.includes(path)} disabled={busy} onChange={(event) => selectPath(path, (event.nativeEvent as MouseEvent).shiftKey)} />
       <code className="source-control-file-name" title={path}>{path}</code>
-      <button type="button" className="source-control-stage-btn" aria-label={`Stop ignoring ${path}`} disabled={busy} title="Add a literal root .gitignore exception; never delete files" onClick={() => {
-        if (!window.confirm(`Stop ignoring “${path}” by adding a root .gitignore exception? Directory contents may become visible. No disk files will be deleted. Nested, global and info/exclude rules cannot be changed here.`)) return;
+      <button type="button" className="source-control-stage-btn" aria-label={`Stop ignoring ${path}`} disabled={busy} title="Add a literal root .gitignore exception; never delete files" onClick={async () => {
+        if (!await appConfirm(`Stop ignoring “${path}” by adding a root .gitignore exception? Directory contents may become visible. No disk files will be deleted. Nested, global and info/exclude rules cannot be changed here.`)) return;
         setBusy(true); setError("");
         void (async () => {
           try {

@@ -24414,6 +24414,22 @@ body:has(.shell-vibrant),
 
 .source-control-not-repo { flex-wrap: wrap; padding: 16px; }
 
+.app-confirm {
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: 0 20px 60px #0006;
+  -webkit-app-region: no-drag;
+}
+.app-confirm::backdrop { background: #0008; }
+.app-confirm p { margin: 0 0 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.app-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
 /* ── File-changes summary dialog ── */
 .file-changes-overlay {
   position: fixed;

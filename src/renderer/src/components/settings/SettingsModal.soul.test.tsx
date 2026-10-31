@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { renderWithI18n } from "../../test/renderWithI18n";
 import SettingsModal from "./SettingsModal";
@@ -11,7 +11,7 @@ vi.mock("../modal/AppModal", () => ({
   AppModalTitle: ({ children }: { children: React.ReactNode }) => <h1>{children}</h1>,
 }));
 
-it("opens /settings soul and confirms before navigation or closing a dirty draft", () => {
+it("opens /settings soul and confirms before navigation or closing a dirty draft", async () => {
   const close = vi.fn();
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
   renderWithI18n(<SettingsModal open initialSection="soul" profile="coder" onClose={close} />);
@@ -20,9 +20,10 @@ it("opens /settings soul and confirms before navigation or closing a dirty draft
   expect(screen.getByRole("button", { name: "Edit soul draft" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   expect(close).not.toHaveBeenCalled();
+  await act(async () => undefined);
   confirm.mockReturnValue(true);
   fireEvent.click(screen.getByRole("button", { name: "GitHub" }));
-  expect(screen.getByText("GitHub pane")).toBeInTheDocument();
+  expect(await screen.findByText("GitHub pane")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-  expect(close).toHaveBeenCalledOnce();
+  await waitFor(() => expect(close).toHaveBeenCalledOnce());
 });

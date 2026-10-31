@@ -1,3 +1,4 @@
+import { appConfirm } from "../../components/modal/appConfirm";
 import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, X } from "lucide-react";
 import { AppModal, AppModalTitle, AppModalDescription } from "../../components/modal/AppModal";
@@ -34,9 +35,9 @@ export function BranchDialog({ dir, onClose, onChanged }: {
       : action === "delete" ? `Delete local branch “${branch}”? Git will refuse an unmerged or checked-out branch. No remote branch or disk files will be deleted.`
       : action === "checkout" ? `Switch from “${current}” to “${branch}”? Local changes must be committed or stashed first.`
       : `Create local branch “${branch}” from the current HEAD? This does not switch branches or push.`;
-    if (!window.confirm(message)) return;
     lock.current = true; setBusy(true); setError("");
     try {
+      if (!await appConfirm(message)) return;
       const result = await window.hermesAPI.gitBranchChange(dir, action, branch, data.current);
       if (!result.ok) setError(result.error || "Branch operation failed");
       else if (action === "create") setName("");
@@ -56,6 +57,15 @@ export function BranchDialog({ dir, onClose, onChanged }: {
     <AppModalDescription id="branch-description">Current: {data?.current ?? "detached HEAD"}. Switch, create, safely delete, or merge another branch into the current branch. Local only.</AppModalDescription>
     {error && <p role="alert">{error}</p>}
     {(!data || busy) && !error && <p className="source-control-loading-state" role="status"><LoaderCircle size={15} />{busy ? "Updating branches…" : "Loading branches…"}</p>}
+    {data && <section aria-label="Repository remotes">
+      <h4>Remotes</h4>
+      {!data.remotes?.length && <p>No remotes configured.</p>}
+      {data.remotes?.map((remote) => <div key={remote.name}>
+        <strong>{remote.name}</strong>
+        {remote.fetchUrls.map((url, index) => <p key={`fetch:${index}`} style={{ overflowWrap: "anywhere", userSelect: "text" }}>Fetch: <code>{url}</code></p>)}
+        {remote.pushUrls.filter((url) => !remote.fetchUrls.includes(url)).map((url, index) => <p key={`push:${index}`} style={{ overflowWrap: "anywhere", userSelect: "text" }}>Push: <code>{url}</code></p>)}
+      </div>)}
+    </section>}
     <form className="source-control-branch-create" onSubmit={(event) => { event.preventDefault(); void change("create", name.trim()); }}>
       <label htmlFor="new-local-branch">New branch name</label>
       <input id="new-local-branch" value={name} maxLength={1024} disabled={busy} onChange={(event) => setName(event.target.value)} placeholder="feature/example" />

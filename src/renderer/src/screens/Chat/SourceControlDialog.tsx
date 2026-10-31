@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { appConfirm } from "../../components/modal/appConfirm";
 import { createPortal } from "react-dom";
 import {
   X,
@@ -333,7 +334,7 @@ export function SourceControlDialog({
   useEffect(() => {
     const close = (event: KeyboardEvent): void => {
       // Escape belongs to the shell/application when focus is inside its terminal.
-      if (event.key === "Escape" && !branchesOpen && !renameTarget && !(event.target instanceof Element && event.target.closest(".source-control-terminals"))) void terminals.requestClose();
+      if (event.key === "Escape" && !document.querySelector("dialog.app-confirm[open]") && !branchesOpen && !renameTarget && !(event.target instanceof Element && event.target.closest(".source-control-terminals"))) void terminals.requestClose();
     };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
@@ -602,9 +603,9 @@ export function SourceControlDialog({
     return selectedPaths(false).filter((path) => untracked.has(path));
   }, [selectedPaths, status]);
 
-  const stashSelected = (staged: boolean): void => {
+  const stashSelected = async (staged: boolean): Promise<void> => {
     const paths = selectedPaths(staged);
-    if (!paths.length || !window.confirm(`Stash selected ${paths.length} file(s)? Both staged and unstaged edits of these files will be saved and removed from the working tree. Selected untracked folders include their nonignored untracked contents. Untracked selected files are included; ignored files are not. Stashing source files of a running development app may trigger its watcher to reload or restart.`)) return;
+    if (!paths.length || !await appConfirm(`Stash selected ${paths.length} file(s)? Both staged and unstaged edits of these files will be saved and removed from the working tree. Selected untracked folders include their nonignored untracked contents. Untracked selected files are included; ignored files are not. Stashing source files of a running development app may trigger its watcher to reload or restart.`)) return;
     void run(() => window.hermesAPI.gitStashCreate(dir, paths), "Stashed selected");
   };
 
@@ -618,7 +619,7 @@ export function SourceControlDialog({
   const revertCommit = useCallback(
     async (target: import("./gitGraph").GraphCommit) => {
       if (
-        !window.confirm(
+        !await appConfirm(
           `Revert commit ${target.shortHash} ("${target.subject}")?`,
         )
       ) {
@@ -635,7 +636,7 @@ export function SourceControlDialog({
 
   const cancelRevert = useCallback(async () => {
     if (
-      !window.confirm(
+      !await appConfirm(
         "Cancel in-progress revert? Uncommitted changes from this revert will be discarded.",
       )
     ) {
@@ -669,8 +670,8 @@ export function SourceControlDialog({
   const fileRowHandlers = {
     busy: busy || refreshing,
     onIgnore: (path: string) => void run(() => window.hermesAPI.gitIgnoreAdd(dir, path), "Ignored"),
-    onDiscard: (path: string) => {
-      if (window.confirm(`Discard unstaged changes to ${path}? This cannot be undone.`)) {
+    onDiscard: async (path: string) => {
+      if (await appConfirm(`Discard unstaged changes to ${path}? This cannot be undone.`)) {
         void run(async () => {
           const result = await window.hermesAPI.gitDiscard(dir, path);
           if (result.ok && selected?.path === path && !selected.staged) { setSelected(null); setDiff(""); }
@@ -723,8 +724,8 @@ export function SourceControlDialog({
           <div className="source-control-not-repo">
             <span>Not a git repository</span>
             <button type="button" className="btn btn-secondary btn-sm" disabled={busy || refreshing}
-              onClick={() => {
-                if (window.confirm(`Initialize a Git repository in "${dir}"? Creates local Git metadata only. No files will be staged or committed; no remote or push.`)) {
+              onClick={async () => {
+                if (await appConfirm(`Initialize a Git repository in "${dir}"? Creates local Git metadata only. No files will be staged or committed; no remote or push.`)) {
                   void run(() => window.hermesAPI.gitInit(dir), "Repository initialized");
                 }
               }}>

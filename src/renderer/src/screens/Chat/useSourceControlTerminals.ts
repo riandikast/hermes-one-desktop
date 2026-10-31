@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { appConfirm } from "../../components/modal/appConfirm";
 import type { TerminalDockHandle } from "../Command/TerminalDock";
 
 /** Own only sessions created here, including late create replies after unmount. */
@@ -17,6 +18,7 @@ export function useSourceControlTerminals(dir: string, onClose: () => void, repo
   const alive = useRef(true);
   const pending = useRef(false);
   const closing = useRef(false);
+  const confirming = useRef(false);
   const [visible, setVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -30,7 +32,7 @@ export function useSourceControlTerminals(dir: string, onClose: () => void, repo
     };
   }, []);
   const add = useCallback((): void => {
-    if (pending.current || closing.current) return;
+    if (pending.current || closing.current || confirming.current) return;
     pending.current = true; setCreating(true); setMounted(true); setVisible(true);
     void (async () => {
       let created: string | undefined;
@@ -57,8 +59,11 @@ export function useSourceControlTerminals(dir: string, onClose: () => void, repo
     })();
   }, [dir, report]);
   const requestClose = useCallback(async (): Promise<boolean> => {
-    if (closing.current) return false;
-    if ((ids.current.size || pending.current) && !window.confirm("Close Source Control and all its terminals? Running commands in these terminals will be terminated.")) return false;
+    if (closing.current || confirming.current) return false;
+    confirming.current = true;
+    try {
+      if ((ids.current.size || pending.current) && !await appConfirm("Close Source Control and all its terminals? Running commands in these terminals will be terminated.")) return false;
+    } finally { confirming.current = false; }
     closing.current = true;
     try {
       const failed: string[] = [];

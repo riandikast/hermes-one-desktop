@@ -24,4 +24,6 @@ Select/Unselect all applies to each file section (Conflicts, Stash/groups, Stage
 
 Non-repository Source Control offers confirmed Initialize repository beside Retry. gitInit validates an existing absolute directory, rejects existing/nested repos and damaged metadata, serializes requests, runs git init and verifies status. No stage/commit/remote/push; Git default branch respected.
 
+Renderer confirmations use async appConfirm (in-page dialog), never native window.confirm; Electron Windows native prompts can leave inputs dead until taskbar refocus, not dev-only. Preserve deny defaults, awaited mutation ordering, nested Radix focus scope and prior focus restore. BranchDialog displays configured sanitized remote URLs; no automatic network operations or remote editing.
+
 Preserve unrelated chat-search/zoom work. Commit owned changes only; do not push without confirmation. Follow `AGENTS.md` resource queue and documentation checks.

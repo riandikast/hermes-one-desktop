@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { appConfirm } from "../../components/modal/appConfirm";
 import {
   ChevronDown,
   ChevronRight,
@@ -125,7 +126,7 @@ export function StashSection({
     });
     if (!shift || from < 0) anchor.current = target;
   };
-  const act = (action: "restore" | "delete", keys: string[]): void => {
+  const act = async (action: "restore" | "delete", keys: string[]): Promise<void> => {
     if (busy || loading || !keys.length) return;
     const selections: GitStashFileSelection[] = [];
     for (const item of keys) {
@@ -139,7 +140,7 @@ export function StashSection({
       action === "delete"
         ? `Permanently delete ${keys.length} selected saved file change(s)? Other saved files remain. This cannot be undone.`
         : `Restore ${keys.length} selected saved file change(s) to the working tree? Saved copies are kept. A clean working tree is required. Processing stops at the first failure. Restoring running development source may trigger reload or restart.`;
-    if (!window.confirm(question)) return;
+    if (!await appConfirm(question)) return;
     void run(
       () =>
         action === "delete"

@@ -16,7 +16,7 @@ it("loads full message, confirms rewrite, preserves body and reports errors", as
   expect(rename).not.toHaveBeenCalled();
   confirm.mockReturnValue(true);
   fireEvent.click(screen.getByRole("button", { name: "Save message" }));
-  expect(rename).toHaveBeenCalledWith("renamed\n\nbody");
+  await waitFor(() => expect(rename).toHaveBeenCalledWith("renamed\n\nbody"));
   expect(await screen.findByRole("alert")).toHaveTextContent("remote changed");
   expect(close).not.toHaveBeenCalled();
 });

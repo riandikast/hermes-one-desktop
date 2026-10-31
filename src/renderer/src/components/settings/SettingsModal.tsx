@@ -1,3 +1,4 @@
+import { appConfirm } from "../modal/appConfirm";
 import { useEffect, useState } from "react";
 import {
   Database,
@@ -168,10 +169,10 @@ export default function SettingsModal({
   const { t } = useI18n();
   const data = useSettingsData(profile);
   const [soulDirty, setSoulDirty] = useState(false);
-  const canLeave = (): boolean =>
-    !soulDirty || window.confirm(t("soul.discardConfirm"));
-  const close = (): void => {
-    if (canLeave()) onClose();
+  const canLeave = async (): Promise<boolean> =>
+    !soulDirty || await appConfirm(t("soul.discardConfirm"));
+  const close = async (): Promise<void> => {
+    if (await canLeave()) onClose();
   };
   const [section, setSection] = useState<SettingsSection>(() =>
     resolveSection(initialSection),
@@ -228,8 +229,8 @@ export default function SettingsModal({
                   className={`settings-modal-nav-item ${
                     section === s.id ? "active" : ""
                   }`}
-                  onClick={() => {
-                    if (!canLeave()) return;
+                  onClick={async () => {
+                    if (!await canLeave()) return;
                     setSoulDirty(false);
                     // A doorway item leaves settings and opens the real page.
                     if (s.navigateTo) {
