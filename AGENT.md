@@ -6,6 +6,8 @@ Backend validates calendar dates and range order. `--since-as-filter` avoids dro
 
 Relevant files: `src/main/git.ts`, `src/renderer/src/screens/Chat/SourceControlDialog.tsx`, `lat.md/source-control.md`. Focused regressions: `src/main/git.test.ts`, `src/renderer/src/screens/Chat/SourceControlDialog.test.tsx`.
 
+Floating chat rail icons and the FAB share `.chat-display-controls-trigger` in `src/renderer/src/assets/main.css`; keep common colors there so the whole rail changes together.
+
 When date filters appear in the renderer but return unchanged data, inspect the running Electron main bundle before changing Git logic. Renderer hot reload does not update main-process IPC. The observed stale `out/main/index.js` omitted date options entirely; rebuild/restart is user-controlled. Apply uses a no-wrap, bottom-aligned filter row matching input/button height.
 
 Branch badge opens local-only checkout/create/merge/delete commands with confirmation. Delete requires fully merged into current HEAD and not checked out in any worktree; checkout/merge require clean worktree and protect ignored content. New code: `src/main/git-branches.ts`, `src/renderer/src/screens/Chat/BranchDialog.tsx`. Ignored sort is icon-only (name or path modification time; rules use reverse file order). Git output has a close icon.

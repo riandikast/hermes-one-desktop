@@ -10477,8 +10477,8 @@ body:has(.shell-vibrant),
   place-items: center;
   border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
   border-radius: 50%;
-  background: var(--bg-elevated, #17171b);
-  color: var(--text-secondary);
+  background: var(--agent-bubble);
+  color: var(--text-primary);
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
 }
@@ -10494,12 +10494,12 @@ body:has(.shell-vibrant),
 .chat-onfinish-trigger.is-active {
   color: var(--text-primary);
   border-color: var(--accent, #8b7cf6);
-  background: color-mix(in srgb, var(--accent, #8b7cf6) 16%, var(--bg-elevated, #17171b));
+  background: var(--agent-bubble);
 }
 
 .chat-onfinish-trigger.is-running {
   border-color: var(--accent, #8b7cf6);
-  color: var(--accent-text, #4fc1ff);
+  color: var(--text-primary);
   animation: chat-onfinish-trigger-pulse 1.4s ease-in-out infinite;
 }
 
