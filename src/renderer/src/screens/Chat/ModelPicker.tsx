@@ -1289,7 +1289,7 @@ export const ModelPicker = memo(function ModelPicker({
                   className="chat-model-error-hint"
                   style={{
                     color: "var(--danger, #ef4444)",
-                    fontSize: 11,
+                    fontSize: "calc(11px * var(--font-scale))",
                     marginBottom: 8,
                   }}
                 >

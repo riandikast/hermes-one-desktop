@@ -60,7 +60,7 @@ function isBoxDiagram(code: string): boolean {
 const PLAIN_PRE_STYLE: React.CSSProperties = {
   margin: 0,
   borderRadius: 0,
-  fontSize: "13px",
+  fontSize: "calc(13px * var(--font-scale))",
   lineHeight: 1.5,
   padding: "12px",
   background: "transparent",
@@ -196,7 +196,7 @@ function CodeBlock({
       customStyle={{
         margin: 0,
         borderRadius: 0,
-        fontSize: "13px",
+        fontSize: "calc(13px * var(--font-scale))",
         padding: "12px",
         background: "transparent",
       }}

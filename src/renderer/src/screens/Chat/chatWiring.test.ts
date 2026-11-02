@@ -339,7 +339,8 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
       dialogStart,
       css.indexOf("/* Empty state */", dialogStart),
     );
-    expect(dialogBlock).toContain("border-radius: 8px");
+    // Flat Material surface with a small token radius (never a pill).
+    expect(dialogBlock).toMatch(/border-radius: var\(--radius-(sm|md|lg)\)/);
     expect(dialogBlock).toContain("box-shadow");
     expect(dialogBlock).not.toContain("linear-gradient");
     // The reader still scrolls for very long prompts — the LIST scrolls, and an
@@ -361,19 +362,18 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     // The panel rule is the grouped one naming all three bodies (collapsed
     // preview, expanded body, pinned reader). Build the needle from a char
     // code so no line-ending escaping is involved.
-    const nl = String.fromCharCode(13) + String.fromCharCode(10);
-    const panelStart = css.indexOf(
-      ".chat-last-prompt-item-preview," + nl + ".chat-last-prompt-item-body,",
+    const panelStart = css.search(
+      /\.chat-last-prompt-item-preview,\r?\n\.chat-last-prompt-item-body,/,
     );
     expect(panelStart).toBeGreaterThan(-1);
     const panel = css.slice(panelStart, panelStart + 400);
     // The panel must NOT be coloured from a --bg-* token: the dialog is painted
     // with --bg-elevated and in several themes those two variables hold the same
     // hex, which is why the container was invisible.
-    // The panel is an INSET WELL: --bg-secondary is DARKER than the dialog's
+    // The panel is an INSET WELL: a --bg-* surface DARKER than the dialog's
     // --bg-elevated in every dark theme. Mixing toward the text colour (an
     // earlier attempt) LIGHTENED it into a grey wash instead.
-    expect(panel).toContain("background: var(--bg-secondary");
+    expect(panel).toMatch(/background: var\(--bg-(primary|secondary)/);
     // All THREE bodies must be in one rule, so the two readers cannot drift
     // apart again (the original bug: two separate declarations, 6% vs 12%).
     expect(panel).toContain(".chat-last-prompt-item-preview,");
@@ -405,6 +405,19 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
       .slice(hlStart, css.indexOf("}", hlStart))
       .replace(/\/\*[\s\S]*?\*\//g, "");
     expect(hlBlock).not.toContain("background");
+  });
+
+  it("anchors the terminal sidebar to the chat's right edge", () => {
+    const overlay = css.match(
+      /\.terminal-dialog-overlay\.is-sidebar\s*\{([^}]+)\}/,
+    )?.[1];
+    const panel = css.match(/\.terminal-dialog--sidebar\s*\{([^}]+)\}/)?.[1];
+    expect(overlay).toContain("position: absolute");
+    expect(overlay).toContain("inset: 0");
+    expect(overlay).toContain("justify-content: flex-end");
+    expect(overlay).toContain("pointer-events: none");
+    expect(panel).toContain("width: min(440px, 46vw)");
+    expect(panel).toContain("height: 100%");
   });
 
   it("gives the last-prompt dialog a copy action wired to the full text", () => {
@@ -562,8 +575,13 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     const start = css.indexOf(".chat-last-prompt-wrap {");
     expect(start).toBeGreaterThan(-1);
     const block = css.slice(start, css.indexOf(".chat-last-prompt {", start));
-    // The wrap reserves the counter's lane...
-    expect(block).toContain("right: 232px");
+    // The wrap reserves the counter's lane — at least the ~200px the counter
+    // needs plus its 18px inset; a wider reservation is fine, a smaller one is
+    // the overlap bug this test exists to prevent.
+    // Anchor to the declaration line so the prose comment above it (which
+    // mentions the counter's own `right: 18px`) cannot satisfy the match.
+    const reserved = Number(block.match(/^\s*right: (\d+)px;/m)?.[1]);
+    expect(reserved).toBeGreaterThanOrEqual(232);
     // ...so the pill fills the free space instead of a viewport-relative cap.
     const pillStart = css.indexOf(".chat-last-prompt {");
     const pillBlock = css.slice(
@@ -711,5 +729,33 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     expect(transportSource.slice(readyIdx, readyIdx + 900)).toContain(
       "hermes-session-db-synced",
     );
+  });
+});
+
+describe("text size preference", () => {
+  it("scales text through the root multiplier, not the window zoom", () => {
+    // Appearance › Font size must resize text only. Every font-size multiplies
+    // `--font-scale`, so padding, icons and the layout grid keep their size.
+    expect(css).toContain("--font-scale: 1;");
+    const bubbleStart = css.indexOf(".chat-bubble {");
+    const bubble = css.slice(bubbleStart, bubbleStart + 400);
+    expect(bubble).toContain("font-size: calc(14px * var(--font-scale))");
+  });
+
+  it("keeps the last-prompt reader at the app's reading size", () => {
+    // Regression: the reader shipped at 12.5px mono — visibly smaller than the
+    // 14px chat text — so it still read small after zooming the whole window.
+    for (const selector of [
+      ".chat-hl-text",
+      ".chat-last-prompt-item-body",
+      ".chat-last-prompt-dialog-body",
+    ]) {
+      const start = css.indexOf(`${selector} {`);
+      expect(start).toBeGreaterThan(-1);
+      const size = css
+        .slice(start, start + 400)
+        .match(/font-size: calc\((\d+(?:\.\d+)?)px \* var\(--font-scale\)\)/)?.[1];
+      expect(Number(size)).toBeGreaterThanOrEqual(13.5);
+    }
   });
 });

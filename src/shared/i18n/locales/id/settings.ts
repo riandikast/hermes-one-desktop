@@ -41,6 +41,21 @@ export default {
     light: "Terang",
     dark: "Gelap",
   },
+  terminalStyle: {
+    label: "Tampilan terminal jendela",
+    hint: "Dialog tampil di atas chat; Sidebar menempel di sisi kanan. Sesi terminal yang sudah berjalan tetap terbuka saat tampilan diganti.",
+    dialog: "Dialog",
+    sidebar: "Sidebar",
+    error: "Tampilan terminal gagal disimpan.",
+  },
+  fontSize: {
+    label: "Ukuran font",
+    hint: "Hanya mengubah ukuran teks; ikon dan jarak tetap",
+    small: "Kecil",
+    default: "Bawaan",
+    large: "Besar",
+    xlarge: "Sangat besar",
+  },
   language: {
     label: "Bahasa",
     english: "English",

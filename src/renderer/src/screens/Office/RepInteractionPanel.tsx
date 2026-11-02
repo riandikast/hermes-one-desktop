@@ -482,7 +482,7 @@ export default function RepInteractionPanel({
     padding: 16,
   };
   const label: React.CSSProperties = {
-    fontSize: 11,
+    fontSize: "calc(11px * var(--font-scale))",
     fontWeight: 600,
     letterSpacing: "0.08em",
     textTransform: "uppercase",
@@ -512,7 +512,7 @@ export default function RepInteractionPanel({
             }}
           >
             <Loader2 size={18} className="animate-spin" />
-            <span style={{ fontSize: 15, fontWeight: 600 }}>
+            <span style={{ fontSize: "calc(15px * var(--font-scale))", fontWeight: 600 }}>
               {t("office.repLoadingBalance")}
             </span>
           </div>
@@ -560,14 +560,14 @@ export default function RepInteractionPanel({
             }}
           >
             <AlertCircle size={18} color="var(--error)" />
-            <span style={{ fontSize: 15, fontWeight: 600 }}>
+            <span style={{ fontSize: "calc(15px * var(--font-scale))", fontWeight: 600 }}>
               {t("office.repErrorTitle")}
             </span>
           </div>
           <div
             style={{
               marginTop: 6,
-              fontSize: 13,
+              fontSize: "calc(13px * var(--font-scale))",
               color: "var(--text-secondary)",
             }}
           >
@@ -586,7 +586,7 @@ export default function RepInteractionPanel({
                 border: "none",
                 background: "transparent",
                 color: "var(--accent-text)",
-                fontSize: 13,
+                fontSize: "calc(13px * var(--font-scale))",
                 fontWeight: 600,
                 cursor: busy ? "default" : "pointer",
                 padding: 0,
@@ -622,7 +622,7 @@ export default function RepInteractionPanel({
             }}
           >
             <CheckCircle2 size={18} color="var(--success)" />
-            <span style={{ fontSize: 15, fontWeight: 600 }}>
+            <span style={{ fontSize: "calc(15px * var(--font-scale))", fontWeight: 600 }}>
               {t("office.repCreateSuccess")}
             </span>
           </div>
@@ -630,7 +630,7 @@ export default function RepInteractionPanel({
             <div
               style={{
                 marginTop: 6,
-                fontSize: 13,
+                fontSize: "calc(13px * var(--font-scale))",
                 color: "var(--text-secondary)",
               }}
             >
@@ -648,7 +648,7 @@ export default function RepInteractionPanel({
           <div
             style={{
               marginTop: 8,
-              fontSize: 14,
+              fontSize: "calc(14px * var(--font-scale))",
               color: "var(--text-secondary)",
             }}
           >
@@ -669,7 +669,7 @@ export default function RepInteractionPanel({
         >
           <div
             style={{
-              fontSize: 14,
+              fontSize: "calc(14px * var(--font-scale))",
               color: "var(--text-primary)",
               lineHeight: 1.5,
             }}
@@ -690,7 +690,7 @@ export default function RepInteractionPanel({
             <div
               style={{
                 ...numeric,
-                fontSize: 32,
+                fontSize: "calc(32px * var(--font-scale))",
                 fontWeight: 700,
                 marginTop: 6,
                 color: "var(--text-primary)",
@@ -701,7 +701,7 @@ export default function RepInteractionPanel({
             <div
               style={{
                 marginTop: 6,
-                fontSize: 13,
+                fontSize: "calc(13px * var(--font-scale))",
                 color: "var(--text-secondary)",
               }}
             >
@@ -716,7 +716,7 @@ export default function RepInteractionPanel({
           <div
             style={{
               ...numeric,
-              fontSize: 34,
+              fontSize: "calc(34px * var(--font-scale))",
               fontWeight: 700,
               marginTop: 4,
               color: "var(--text-primary)",
@@ -737,7 +737,7 @@ export default function RepInteractionPanel({
         <div
           style={{
             ...numeric,
-            fontSize: 34,
+            fontSize: "calc(34px * var(--font-scale))",
             fontWeight: 700,
             marginTop: 4,
             color: "var(--text-muted)",
@@ -746,7 +746,7 @@ export default function RepInteractionPanel({
           $—
         </div>
         <div
-          style={{ marginTop: 6, fontSize: 13, color: "var(--text-secondary)" }}
+          style={{ marginTop: 6, fontSize: "calc(13px * var(--font-scale))", color: "var(--text-secondary)" }}
         >
           {t("office.repBalancePlaceholder")}
         </div>
@@ -829,7 +829,7 @@ export default function RepInteractionPanel({
             <div
               style={{ display: "flex", flexDirection: "column", minWidth: 0 }}
             >
-              <span style={{ fontWeight: 700, fontSize: 16 }}>
+              <span style={{ fontWeight: 700, fontSize: "calc(16px * var(--font-scale))" }}>
                 {t(`office.${rep.labelKey}`)}
               </span>
               <span
@@ -837,7 +837,7 @@ export default function RepInteractionPanel({
                   display: "flex",
                   alignItems: "center",
                   gap: 6,
-                  fontSize: 12,
+                  fontSize: "calc(12px * var(--font-scale))",
                   color: "var(--text-muted)",
                   minWidth: 0,
                 }}
@@ -901,7 +901,7 @@ export default function RepInteractionPanel({
                   borderRadius: 999,
                   background: "var(--accent)",
                   color: "#fff",
-                  fontSize: 11,
+                  fontSize: "calc(11px * var(--font-scale))",
                   fontWeight: 700,
                   flex: "0 0 auto",
                 }}
@@ -918,7 +918,7 @@ export default function RepInteractionPanel({
                   border: "none",
                   background: "transparent",
                   color: "var(--text-primary)",
-                  fontSize: 13,
+                  fontSize: "calc(13px * var(--font-scale))",
                   fontWeight: 600,
                   paddingLeft: 8,
                   paddingRight: 0,
@@ -1005,7 +1005,7 @@ export default function RepInteractionPanel({
                       borderRadius: 999,
                       background: badge.bg,
                       color: badge.color,
-                      fontSize: 13,
+                      fontSize: "calc(13px * var(--font-scale))",
                       fontWeight: 700,
                       flex: "0 0 auto",
                     }}
@@ -1023,7 +1023,7 @@ export default function RepInteractionPanel({
                     <span
                       style={{
                         fontWeight: 600,
-                        fontSize: 14,
+                        fontSize: "calc(14px * var(--font-scale))",
                         color: "var(--text-primary)",
                       }}
                     >
@@ -1032,7 +1032,7 @@ export default function RepInteractionPanel({
                     <span
                       style={{
                         ...numeric,
-                        fontSize: 12,
+                        fontSize: "calc(12px * var(--font-scale))",
                         color: "var(--text-muted)",
                       }}
                     >
@@ -1043,7 +1043,7 @@ export default function RepInteractionPanel({
                     style={{
                       ...numeric,
                       fontWeight: 600,
-                      fontSize: 14,
+                      fontSize: "calc(14px * var(--font-scale))",
                       color: "var(--text-primary)",
                     }}
                   >
@@ -1059,7 +1059,7 @@ export default function RepInteractionPanel({
         {state.kind === "status" && (
           <div style={{ display: "flex", flexDirection: "column" }}>
             {state.wallets.length === 0 ? (
-              <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+              <span style={{ fontSize: "calc(13px * var(--font-scale))", color: "var(--text-secondary)" }}>
                 {t("office.repWalletsNone")}
               </span>
             ) : (
@@ -1085,10 +1085,10 @@ export default function RepInteractionPanel({
                       minWidth: 0,
                     }}
                   >
-                    <span style={{ fontWeight: 600, fontSize: 14 }}>
+                    <span style={{ fontWeight: 600, fontSize: "calc(14px * var(--font-scale))" }}>
                       {wallet.name}
                     </span>
-                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    <span style={{ fontSize: "calc(12px * var(--font-scale))", color: "var(--text-muted)" }}>
                       {shortAddress(wallet.address)}
                     </span>
                   </span>
@@ -1096,7 +1096,7 @@ export default function RepInteractionPanel({
                     style={{
                       padding: "3px 9px",
                       borderRadius: 999,
-                      fontSize: 11,
+                      fontSize: "calc(11px * var(--font-scale))",
                       fontWeight: 600,
                       background: "var(--bg-elevated)",
                       color: "var(--text-secondary)",
@@ -1149,7 +1149,7 @@ export default function RepInteractionPanel({
                       : "var(--text-primary)",
                   cursor: disabled ? "default" : "pointer",
                   opacity: !agentId && !action.disabled ? 0.55 : 1,
-                  fontSize: 14,
+                  fontSize: "calc(14px * var(--font-scale))",
                   fontWeight: 600,
                 }}
               >
@@ -1167,7 +1167,7 @@ export default function RepInteractionPanel({
                       marginLeft: 2,
                       padding: "2px 8px",
                       borderRadius: 999,
-                      fontSize: 10,
+                      fontSize: "calc(10px * var(--font-scale))",
                       fontWeight: 700,
                       letterSpacing: "0.06em",
                       textTransform: "uppercase",

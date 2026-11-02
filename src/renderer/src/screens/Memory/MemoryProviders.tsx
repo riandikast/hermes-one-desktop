@@ -114,7 +114,7 @@ export function MemoryProviders({
                           <span
                             style={{
                               color: "var(--success)",
-                              fontSize: 10,
+                              fontSize: "calc(10px * var(--font-scale))",
                               marginLeft: 6,
                             }}
                           >
@@ -142,7 +142,7 @@ export function MemoryProviders({
                           setTimeout(() => setProviderSavedKey(null), 2000);
                         }}
                         placeholder={t("memory.enterEnvKey", { key: envKey })}
-                        style={{ fontSize: 12 }}
+                        style={{ fontSize: "calc(12px * var(--font-scale))" }}
                       />
                     </div>
                   ))}

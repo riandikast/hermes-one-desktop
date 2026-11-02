@@ -69,7 +69,7 @@ export default function LogsPane(): React.JSX.Element {
           style={{
             maxHeight: 360,
             overflow: "auto",
-            fontSize: 11,
+            fontSize: "calc(11px * var(--font-scale))",
             whiteSpace: "pre-wrap",
             wordBreak: "break-all",
           }}

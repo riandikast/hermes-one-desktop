@@ -37,6 +37,13 @@ export default {
     hint: "For newly opened terminals and Commands. Command Prompt avoids PowerShell scripts.",
     error: "Could not save terminal preference.",
   },
+  terminalStyle: {
+    label: "Window terminal style",
+    hint: "Dialog opens over the chat; Sidebar docks it to the right edge. Running sessions stay open when you switch.",
+    dialog: "Dialog",
+    sidebar: "Sidebar",
+    error: "Could not save terminal layout.",
+  },
   title: "Settings",
   sections: {
     hermesAgent: "Hermes Agent",
@@ -126,6 +133,14 @@ export default {
   roundedCorners: {
     label: "Rounded corners",
     hint: "Turn off for squared-off corners throughout the app",
+  },
+  fontSize: {
+    label: "Font size",
+    hint: "Scales text only; icons and spacing stay put",
+    small: "Small",
+    default: "Default",
+    large: "Large",
+    xlarge: "Extra large",
   },
   font: {
     label: "Font",

@@ -46,7 +46,7 @@ export function MemoryProfile({
           <span
             style={{
               color: "var(--success)",
-              fontSize: 12,
+              fontSize: "calc(12px * var(--font-scale))",
               fontWeight: 600,
             }}
           >

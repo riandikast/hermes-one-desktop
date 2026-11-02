@@ -927,7 +927,7 @@ function Providers({
                             </span>
                             <button
                               className="btn-ghost"
-                              style={{ color: "var(--error)", fontSize: 11 }}
+                              style={{ color: "var(--error)", fontSize: "calc(11px * var(--font-scale))" }}
                               onClick={() => handleRemovePoolKey(provider, idx)}
                             >
                               {t("settings.remove")}

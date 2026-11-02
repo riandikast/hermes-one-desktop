@@ -60,7 +60,7 @@ export function TerminalCommand({ command }: { command: string }): React.JSX.Ele
           margin: 0,
           padding: 0,
           background: "transparent",
-          fontSize: "12px",
+          fontSize: "calc(12px * var(--font-scale))",
           lineHeight: 1.55,
           whiteSpace: "pre-wrap",
           wordBreak: "break-word",

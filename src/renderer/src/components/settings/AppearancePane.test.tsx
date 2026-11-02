@@ -143,7 +143,7 @@ describe("Appearance pane — auto-expand toggles", () => {
 describe("Appearance pane — terminal shell row", () => {
   // The row is USELESS if the main process has no preference IPC: `terminalShell`
   // stays null and the row hides itself. So the tests supply the bridge.
-  function withTerminalApi(preference: "powershell" | "cmd") {
+  function withTerminalApi(preference: "powershell" | "cmd"): void {
     (window as unknown as { hermesAPI: Record<string, unknown> }).hermesAPI = {
       ...((window as unknown as { hermesAPI: Record<string, unknown> }).hermesAPI ?? {}),
       getTerminalPreference: vi.fn().mockResolvedValue(preference),
@@ -177,7 +177,38 @@ describe("Appearance pane — terminal shell row", () => {
       (el) => el.textContent?.trim(),
     );
     expect(labels.indexOf("Windows terminal shell")).toBe(0);
-    expect(labels.indexOf("Rounded corners")).toBe(1);
+    expect(labels.indexOf("Window terminal style")).toBe(1);
+    expect(labels.indexOf("Rounded corners")).toBe(2);
+  });
+
+  it("places Font size directly above the interface font row", async () => {
+    withTerminalApi("powershell");
+    renderPane();
+    await waitFor(() => expect(segButtonsFor("Font size")).toHaveLength(4));
+
+    // The user asked for the size control ABOVE the Font (family) row.
+    const group = document.querySelector(".settings-group");
+    const labels = [...(group?.querySelectorAll(".settings-row-label") ?? [])].map(
+      (el) => el.textContent?.trim(),
+    );
+    expect(labels.indexOf("Font size")).toBe(labels.indexOf("Font") - 1);
+  });
+
+  it("scales text only and remembers the choice", async () => {
+    withTerminalApi("powershell");
+    renderPane();
+    await waitFor(() => expect(segButtonsFor("Font size")).toHaveLength(4));
+
+    fireEvent.click(segButtonsFor("Font size")[2]); // Large
+    await waitFor(() =>
+      expect(
+        document.documentElement.style.getPropertyValue("--font-scale"),
+      ).toBe("1.15"),
+    );
+    expect(localStorage.getItem("hermes.fontSize")).toBe("large");
+    expect(
+      segButtonsFor("Font size")[2].getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 
   it("uses the shared segmented control, not a bare select", async () => {

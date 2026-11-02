@@ -83,7 +83,20 @@ function readTerminalTheme(): ITheme {
 }
 
 /**
- * Tabbed integrated terminal dock (VS Code style). One xterm instance per
+ * xterm paints into its own canvas, so the text-only CSS scale (`--font-scale`)
+ * cannot reach it — apply the same multiplier when a terminal is created. A
+ * terminal opened before the user changes the size keeps its old size; new
+ * sessions pick up the new one.
+ */
+function terminalFontSize(): number {
+  const scale = Number(
+    getComputedStyle(document.documentElement).getPropertyValue("--font-scale"),
+  );
+  return Math.round(13 * (Number.isFinite(scale) && scale > 0 ? scale : 1));
+}
+
+/**
+ * Tabbed integrated terminal dock (VS Code style).
  * session; output streams from the main process via `terminal:data`; input
  * goes back via `terminal:write`. Sessions keep running while the dock is
  * mounted (i.e. while the Commands view is open — panes stay mounted).
@@ -215,7 +228,7 @@ export const TerminalDock = forwardRef<
 
   const createXterm = useCallback((id: string): DockSession => {
     const term = new Terminal({
-      fontSize: 13,
+      fontSize: terminalFontSize(),
       fontFamily: '"Cascadia Mono", Consolas, "Courier New", monospace',
       theme: {
         background: "#101014",

@@ -329,7 +329,7 @@ function CommitRow({
             {onRename && checkRename && commit.refs.some((ref) => ref.startsWith("HEAD -> ")) && !busy && (
               renameCheck?.message !== undefined ? <button type="button" role="menuitem" className="worktree-context-menu-item"
                 onClick={() => { setMenu(null); onRename(commit, renameCheck.message!); }}>Rename commit</button>
-              : <p role="status" style={{ margin: 0, padding: "6px 10px", fontSize: 12 }}>{renameCheck?.error ?? "Checking rename eligibility…"}</p>
+              : <p role="status" style={{ margin: 0, padding: "6px 10px", fontSize: "calc(12px * var(--font-scale))" }}>{renameCheck?.error ?? "Checking rename eligibility…"}</p>
             )}
             <button
               type="button"

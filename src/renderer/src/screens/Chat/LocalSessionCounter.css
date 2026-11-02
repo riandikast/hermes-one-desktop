@@ -10,7 +10,7 @@
   padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: 18px;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   overflow-wrap: anywhere;
 }
 .chat-session-refresh {

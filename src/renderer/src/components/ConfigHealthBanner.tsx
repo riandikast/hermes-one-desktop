@@ -250,7 +250,7 @@ export function ConfigHealthBanner({
             <div className="models-modal-body">
               <p
                 style={{
-                  fontSize: 13,
+                  fontSize: "calc(13px * var(--font-scale))",
                   color: "var(--text-secondary)",
                   margin: 0,
                 }}

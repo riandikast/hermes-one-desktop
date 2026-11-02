@@ -43,6 +43,8 @@ The dock height defaults to 260px and is adjustable by dragging the
 
 node-pty spawns the detected shell; multi-line commands run via temp scripts so the shell stays interactive.
 
+The chat terminal defaults to a floating dialog; Appearance can instead pin it to the chat's right edge. Switching placement preserves mounted xterm instances and live PTY sessions. [[src/renderer/src/components/settings/windowTerminalStyle.ts#useWindowTerminalStyle]] persists and broadcasts the preference; [[src/renderer/src/screens/Chat/FloatingDialog.tsx#FloatingDialog]] renders either placement without remounting the dock.
+
 [[src/main/terminal-session.ts]] wraps node-pty: `createTerminalSession` spawns
 the detected shell (PowerShell 7 if present, else Windows PowerShell on win32;
 `$SHELL` or `/bin/bash` elsewhere) and keeps a registry keyed by session id.

@@ -182,7 +182,7 @@ export const ContextGauge = memo(function ContextGauge({
             style={{
               marginTop: 6,
               width: "100%",
-              fontSize: 11,
+              fontSize: "calc(11px * var(--font-scale))",
               padding: "3px 6px",
               cursor: "pointer",
             }}
@@ -202,7 +202,7 @@ export const ContextGauge = memo(function ContextGauge({
             style={{
               marginTop: onCompact ? 4 : 6,
               width: "100%",
-              fontSize: 11,
+              fontSize: "calc(11px * var(--font-scale))",
               padding: "3px 6px",
               cursor: "pointer",
             }}

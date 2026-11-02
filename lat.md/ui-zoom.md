@@ -15,3 +15,15 @@ The main process owns the zoom state so keyboard, menu, and wheel all hit one co
 ## IPC surface
 
 Three channels registered in [[src/main/ipc/register.ts#registerIpcHandlers]]: `zoom-by` and `zoom-apply` (handle, returning the applied level or null), plus the main→renderer `ui-zoom-changed` broadcast. The bridge is exposed on `hermesAPI` in [[src/preload/index.ts]] and mirrored in `src/preload/index.d.ts`.
+
+## Font size (text-only scale)
+
+Appearance › Font size scales text without scaling the window — the counterpart to the whole-UI zoom above.
+
+`--font-scale` (default `1`) multiplies the app's type scale: every `font-size` in the app CSS is written `calc(Npx * var(--font-scale))`, and the Tailwind `--text-*` theme variables are scaled the same way so `text-sm`/`text-xs` utilities follow. Picking a step sets the factor on `:root`; padding, icons, and the layout grid keep their size, so this can never reflow the window the way zoom does.
+
+[[src/renderer/src/components/settings/fontSize.ts#FONT_SIZE_STEPS]] holds the four steps (0.9 / 1 / 1.15 / 1.3) and persists the choice under `localStorage["hermes.fontSize"]`. [[src/renderer/src/components/settings/fontSize.ts#applyStoredFontScale]] runs from [[src/renderer/src/main.tsx]] before the first paint, so a restart never flashes the default size; [[src/renderer/src/components/settings/fontSize.ts#useFontSize]] is the store the Appearance row binds to, and the row sits directly above the interface-font row.
+
+xterm paints into its own canvas, so CSS cannot scale it: [[src/renderer/src/screens/Command/TerminalDock.tsx#terminalFontSize]] applies the same multiplier when a terminal is created (a terminal opened earlier keeps its size until reopened).
+
+The last-prompt and pinned-message readers use the app's reading size (13.5px mono via `.chat-hl-text`, `.chat-last-prompt-item-body`, `.chat-last-prompt-dialog-body`). They shipped at 12.5px, which stayed visibly smaller than chat text at any zoom level — the base value, not the zoom, was the bug.

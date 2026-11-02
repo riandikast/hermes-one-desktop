@@ -13,6 +13,7 @@ import {
 import type { GpuPreferenceMode, GpuStatus } from "../../../../shared/gpu";
 import ThemeEditor from "./ThemeEditor";
 import { useWindowTerminalStyle } from "./windowTerminalStyle";
+import { FONT_SIZE_STEPS, useFontSize } from "./fontSize";
 
 const GPU_MODES: GpuPreferenceMode[] = ["auto", "on", "off"];
 
@@ -44,6 +45,7 @@ export default function AppearancePane(): React.JSX.Element {
     saveCustomTheme,
   } = useTheme();
   const { font, setFont } = useFont();
+  const [fontSize, setFontSize] = useFontSize();
   const [showAllThemes, setShowAllThemes] = useState(false);
   const [terminalShell, setTerminalShell] = useState<
     "powershell" | "cmd" | null
@@ -459,6 +461,30 @@ export default function AppearancePane(): React.JSX.Element {
             />
             <span className="tools-toggle-track" />
           </label>
+        </div>
+
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <div className="settings-row-label">
+              {t("settings.fontSize.label")}
+            </div>
+            <div className="settings-row-hint">
+              {t("settings.fontSize.hint")}
+            </div>
+          </div>
+          <div className="settings-seg">
+            {FONT_SIZE_STEPS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={`settings-seg-btn ${fontSize === option.value ? "active" : ""}`}
+                aria-pressed={fontSize === option.value}
+                onClick={() => setFontSize(option.value)}
+              >
+                {t(`settings.fontSize.${option.value}`)}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="settings-row">

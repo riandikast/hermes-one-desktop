@@ -270,7 +270,7 @@ function App(): React.JSX.Element {
                     background: "var(--bg-elevated)",
                     color: "var(--text-primary)",
                     border: "1px solid var(--border-bright)",
-                    fontSize: 13,
+                    fontSize: "calc(13px * var(--font-scale))",
                   },
                 }}
               />

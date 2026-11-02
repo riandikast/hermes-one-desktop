@@ -117,7 +117,7 @@ function Welcome({
     return (
       <div className="screen welcome-screen">
         <HermesLogo size={36} />
-        <h1 className="welcome-title" style={{ fontSize: 22 }}>
+        <h1 className="welcome-title" style={{ fontSize: "calc(22px * var(--font-scale))" }}>
           {t("welcome.connectRemoteTitle")}
         </h1>
         <p className="welcome-subtitle" style={{ marginBottom: 24 }}>
@@ -185,7 +185,7 @@ function Welcome({
         <button
           className="btn-ghost"
           onClick={() => setPanel("none")}
-          style={{ marginTop: 8, fontSize: 13, color: "var(--text-muted)" }}
+          style={{ marginTop: 8, fontSize: "calc(13px * var(--font-scale))", color: "var(--text-muted)" }}
         >
           {t("common.back")}
         </button>
@@ -197,7 +197,7 @@ function Welcome({
     return (
       <div className="screen welcome-screen">
         <HermesLogo size={36} />
-        <h1 className="welcome-title" style={{ fontSize: 22 }}>
+        <h1 className="welcome-title" style={{ fontSize: "calc(22px * var(--font-scale))" }}>
           {t("settings.sshTitle")}
         </h1>
         <p className="welcome-subtitle" style={{ marginBottom: 24 }}>
@@ -324,7 +324,7 @@ function Welcome({
         <button
           className="btn-ghost"
           onClick={() => setPanel("none")}
-          style={{ marginTop: 8, fontSize: 13, color: "var(--text-muted)" }}
+          style={{ marginTop: 8, fontSize: "calc(13px * var(--font-scale))", color: "var(--text-muted)" }}
         >
           {t("common.back")}
         </button>

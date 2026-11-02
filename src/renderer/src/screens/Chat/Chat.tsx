@@ -2999,7 +2999,7 @@ function Chat({
                       <Hammer size={14} />
                     )}
 
-                    <span style={{ fontSize: 10, fontWeight: 600 }}>
+                    <span style={{ fontSize: "calc(10px * var(--font-scale))", fontWeight: 600 }}>
                       {planMode ? "PLAN" : "BUILD"}
                     </span>
                   </button>

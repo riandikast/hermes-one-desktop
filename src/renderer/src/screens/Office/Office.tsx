@@ -513,10 +513,10 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
         }}
       >
         <div style={{ display: "flex", flexDirection: "column" }}>
-          <span style={{ fontWeight: 600, fontSize: 15 }}>
+          <span style={{ fontWeight: 600, fontSize: "calc(15px * var(--font-scale))" }}>
             {t("office.title")}
           </span>
-          <span style={{ fontSize: 12, opacity: 0.6 }}>
+          <span style={{ fontSize: "calc(12px * var(--font-scale))", opacity: 0.6 }}>
             {t("office.subtitle")}
           </span>
         </div>
@@ -526,7 +526,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
-              fontSize: 13,
+              fontSize: "calc(13px * var(--font-scale))",
               opacity: 0.75,
             }}
           >
@@ -558,7 +558,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
                 background: devMode ? "rgba(245,158,11,0.16)" : "transparent",
                 color: devMode ? "#fbbf24" : "var(--text-secondary)",
                 cursor: "pointer",
-                fontSize: 13,
+                fontSize: "calc(13px * var(--font-scale))",
               }}
             >
               <Move size={14} />
@@ -584,7 +584,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
               // theme.
               color: "var(--text-secondary)",
               cursor: loading ? "default" : "pointer",
-              fontSize: 13,
+              fontSize: "calc(13px * var(--font-scale))",
             }}
           >
             <RefreshCw
@@ -639,7 +639,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
               background: "rgba(20,24,33,0.94)",
               color: walkMode ? "#f4b41f" : "#7dd3fc",
               cursor: "pointer",
-              fontSize: 13,
+              fontSize: "calc(13px * var(--font-scale))",
               fontWeight: 600,
               zIndex: 10,
               boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
@@ -668,7 +668,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
                 ? "1px solid rgba(244,180,31,0.55)"
                 : "1px solid rgba(255,255,255,0.12)",
               color: nearby ? "#fff" : "rgba(255,255,255,0.65)",
-              fontSize: 13,
+              fontSize: "calc(13px * var(--font-scale))",
               fontWeight: nearby ? 600 : 500,
               zIndex: 10,
               pointerEvents: "none",
@@ -688,7 +688,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
                     background: "rgba(244,180,31,0.18)",
                     border: "1px solid rgba(244,180,31,0.6)",
                     color: "#f4b41f",
-                    fontSize: 12,
+                    fontSize: "calc(12px * var(--font-scale))",
                     fontWeight: 700,
                     fontFamily: "inherit",
                   }}
@@ -721,7 +721,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
               background: "rgba(20,24,33,0.94)",
               color: "#7dd3fc",
               cursor: "pointer",
-              fontSize: 14,
+              fontSize: "calc(14px * var(--font-scale))",
               fontWeight: 600,
               zIndex: 10,
               boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
@@ -750,7 +750,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
               background: "rgba(20,24,33,0.92)",
               color: "#fff",
               cursor: "pointer",
-              fontSize: 13,
+              fontSize: "calc(13px * var(--font-scale))",
               fontWeight: 600,
               zIndex: 10,
             }}
@@ -787,7 +787,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
                 gap: 8,
               }}
             >
-              <span style={{ fontWeight: 700, fontSize: 14 }}>
+              <span style={{ fontWeight: 700, fontSize: "calc(14px * var(--font-scale))" }}>
                 {carCard.name}
               </span>
               <button
@@ -818,11 +818,11 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
                   flex: "0 0 auto",
                 }}
               />
-              <span style={{ fontSize: 12, opacity: 0.7 }}>
+              <span style={{ fontSize: "calc(12px * var(--font-scale))", opacity: 0.7 }}>
                 {t("office.showroomCardColor")}
               </span>
             </div>
-            <span style={{ fontSize: 12, opacity: 0.6, lineHeight: 1.45 }}>
+            <span style={{ fontSize: "calc(12px * var(--font-scale))", opacity: 0.6, lineHeight: 1.45 }}>
               {t("office.showroomCardHint")}
             </span>
           </div>
@@ -844,7 +844,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
               background: "rgba(20,24,33,0.92)",
               border: "1px solid rgba(245,158,11,0.5)",
               color: "#fbbf24",
-              fontSize: 13,
+              fontSize: "calc(13px * var(--font-scale))",
               lineHeight: 1.4,
               zIndex: 10,
             }}
@@ -870,7 +870,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
                   background: "rgba(245,158,11,0.16)",
                   color: "#fbbf24",
                   cursor: reenabling ? "default" : "pointer",
-                  fontSize: 13,
+                  fontSize: "calc(13px * var(--font-scale))",
                   fontWeight: 600,
                   whiteSpace: "nowrap",
                 }}
@@ -912,7 +912,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
               background: "rgba(20,24,33,0.92)",
               color: "#fbbf24",
               border: "1px solid rgba(245,158,11,0.5)",
-              fontSize: 12,
+              fontSize: "calc(12px * var(--font-scale))",
               fontFamily: "monospace",
               lineHeight: 1.5,
               zIndex: 10,
@@ -991,7 +991,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
                     flex: "0 0 auto",
                   }}
                 />
-                <span style={{ fontWeight: 700, fontSize: 16 }}>
+                <span style={{ fontWeight: 700, fontSize: "calc(16px * var(--font-scale))" }}>
                   {selectedAgent.name}
                 </span>
               </div>
@@ -1023,7 +1023,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
                 alignSelf: "flex-start",
                 padding: "4px 10px",
                 borderRadius: 999,
-                fontSize: 12,
+                fontSize: "calc(12px * var(--font-scale))",
                 fontWeight: 600,
                 background: selectedIsCeo
                   ? "rgba(245,158,11,0.18)"
@@ -1041,7 +1041,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
                 gridTemplateColumns: "auto 1fr",
                 gap: "10px 14px",
                 margin: 0,
-                fontSize: 13,
+                fontSize: "calc(13px * var(--font-scale))",
               }}
             >
               <dt style={{ opacity: 0.55 }}>{t("office.statusLabel")}</dt>
@@ -1101,7 +1101,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
                   : "rgba(245,158,11,0.16)",
                 color: selectedIsCeo ? "rgba(255,255,255,0.85)" : "#fbbf24",
                 cursor: "pointer",
-                fontSize: 13,
+                fontSize: "calc(13px * var(--font-scale))",
                 fontWeight: 600,
               }}
             >
@@ -1121,7 +1121,7 @@ function Office({ visible, profile }: OfficeProps): React.JSX.Element {
               justifyContent: "center",
               pointerEvents: "none",
               opacity: 0.6,
-              fontSize: 14,
+              fontSize: "calc(14px * var(--font-scale))",
             }}
           >
             {t("office.noAgents")}
