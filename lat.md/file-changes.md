@@ -34,7 +34,7 @@ don't carry reliable paths. Reads are best-effort; failures are swallowed.
 
 ## Per-prompt model answer
 
-Each selected history prompt offers a separate collapsed model-answer disclosure, rendered with the existing Markdown component only when opened. File actions and full previews remain unchanged.
+The selected turn presents Prompt, Model answer, and Files as matching collapsed disclosures; Markdown renders only when opened, missing answers show a fallback note, and file actions remain unchanged.
 
 ## Side-by-side prompt history
 

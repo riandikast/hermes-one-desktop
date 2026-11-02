@@ -27,9 +27,43 @@ const messages: ChatMessage[] = [
 function selectPrompt(prompt: string): void {
   const list = within(screen.getByRole("navigation", { name: "File change history" }));
   fireEvent.click(list.getByRole("button", { name: new RegExp(prompt) }));
+  const detail = screen.getByRole("region", { name: prompt });
+  const files = historySection(detail, "Files");
+  if (!files.open) fireEvent.click(files.querySelector("summary")!);
+}
+function historySection(region: HTMLElement, title: string): HTMLDetailsElement {
+  return [...region.querySelectorAll<HTMLDetailsElement>("details.file-change-history-section")].find(
+    (section) => section.querySelector("summary")?.textContent?.includes(title),
+  )!;
 }
 afterEach(cleanup);
 describe("file change history dialog", () => {
+  it("shows Prompt, Model answer, and Files as matching collapsed disclosures", () => {
+    renderWithI18n(<FileChangeHistoryDialog sessionId={null} messages={[...messages, { id: "answer", role: "agent", content: "Short answer" }]} onClose={vi.fn()} />);
+    const list = within(screen.getByRole("navigation", { name: "File change history" }));
+    fireEvent.click(list.getByRole("button", { name: /Manual prompt/ }));
+    const detail = screen.getByRole("region", { name: "Manual prompt" });
+    const sections = [...detail.querySelectorAll<HTMLDetailsElement>("details.file-change-history-section")];
+    expect(sections).toHaveLength(3);
+    expect(sections.map((section) => section.querySelector("summary")?.textContent?.trim())).toEqual(["Prompt", "Model answer", "Files1 file changed"]);
+    expect(sections.every((section) => !section.open)).toBe(true);
+    fireEvent.click(sections[0].querySelector("summary")!);
+    expect(within(sections[0]).getByText("Manual prompt")).toBeInTheDocument();
+    fireEvent.click(sections[1].querySelector("summary")!);
+    expect(within(sections[1]).getByText("Short answer")).toBeInTheDocument();
+    fireEvent.click(sections[2].querySelector("summary")!);
+    expect(within(sections[2]).getByRole("button", { name: change.path })).toBeInTheDocument();
+  });
+
+  it("shows a fallback inside Model answer when no answer was recorded", () => {
+    renderWithI18n(<FileChangeHistoryDialog sessionId={null} messages={messages} onClose={vi.fn()} />);
+    const list = within(screen.getByRole("navigation", { name: "File change history" }));
+    fireEvent.click(list.getByRole("button", { name: /Manual prompt/ }));
+    const detail = screen.getByRole("region", { name: "Manual prompt" });
+    fireEvent.click(historySection(detail, "Model answer").querySelector("summary")!);
+    expect(within(detail).getByText("No model answer recorded.")).toBeInTheDocument();
+  });
+
   it("renders the original prompt, not Knowledge envelope metadata", async () => {
     window.hermesAPI = {
       getSessionMessages: vi.fn().mockResolvedValue([
@@ -74,8 +108,9 @@ describe("file change history dialog", () => {
     await screen.findByText("Older prompt");
     expect(screen.queryByText("Older answer")).toBeNull();
     const current = screen.getByRole("region", { name: "Manual prompt" });
-    const answer = current.querySelector("details")!;
+    const answer = historySection(current, "Model answer");
     fireEvent.click(answer.querySelector("summary")!);
+    fireEvent.click(historySection(current, "Files").querySelector("summary")!);
     expect(await screen.findByText("Stored answer")).toHaveProperty("tagName", "STRONG");
     const live: ChatMessage[] = [...messages,
       { id: "tool", kind: "tool_result", role: "agent", name: "patch", callId: "edit", content: "private tool result" },
@@ -90,10 +125,10 @@ describe("file change history dialog", () => {
     expect(screen.queryByText("private reasoning")).toBeNull();
     selectPrompt("Older prompt");
     const older = screen.getByRole("region", { name: "Older prompt" });
-    fireEvent.click(older.querySelector("details")!.querySelector("summary")!);
+    fireEvent.click(historySection(older, "Model answer").querySelector("summary")!);
     expect(await screen.findByText("Older answer")).toBeTruthy();
     expect(window.hermesAPI.getSessionMessages).toHaveBeenCalledTimes(1);
-    expect(current.querySelector("button")?.textContent).toBe(change.path);
+    expect(within(older).getByRole("button", { name: change.path })).toBeInTheDocument();
   });
   it("history opens the exact same file/turn diff as the real chat chip despite path-only live edits", async () => {
     const chip = { id: "chip", kind: "file_changes" as const, role: "agent" as const, changes: [change] };

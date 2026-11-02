@@ -13,13 +13,15 @@ import { AgentMarkdown } from "../../components/AgentMarkdown";
 
 import type { ChatMessage, FileChange } from "./types";
 
-function ModelAnswer({ answer }: { answer: string }): React.JSX.Element {
-  const { t } = useI18n();
+function HistorySection({ title, count, children }: { title: string; count?: string; children: React.ReactNode }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   return (
-    <details className="file-change-history-answer" onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary><ChevronDown size={16} aria-hidden /><span>{t("chat.fileChangeHistory.answer")}</span></summary>
-      {open && <div className="chat-tool-item-body"><AgentMarkdown>{answer}</AgentMarkdown></div>}
+    <details className="file-change-history-section" open={open}>
+      <summary onClick={(event) => { event.preventDefault(); setOpen((value) => !value); }}>
+        <ChevronDown size={16} aria-hidden /><span>{title}</span>
+        {count && <span className="file-change-history-count">{count}</span>}
+      </summary>
+      {open && <div className="chat-tool-item-body">{children}</div>}
     </details>
   );
 }
@@ -165,13 +167,19 @@ export function FileChangeHistoryDialog({
             </nav>
             {selectedTurn && (
               <section className="file-change-history-detail" aria-label={selectedTurn.prompt.content}>
-                <header className="file-change-history-turn-header">
-                  <h3>{selectedTurn.prompt.content}</h3>
-                  <span className="file-change-history-count">
-                    {t("chat.fileChangeHistory.files", { count: selectedTurn.changes.length })}
-                  </span>
-                </header>
-                {selectedTurn.answer && <ModelAnswer answer={selectedTurn.answer} />}
+                <HistorySection key={`${selectedTurn.prompt.id}:prompt`} title={t("chat.fileChangeHistory.prompt")}>
+                  <p className="file-change-history-prompt-content">{selectedTurn.prompt.content}</p>
+                </HistorySection>
+                <HistorySection key={`${selectedTurn.prompt.id}:answer`} title={t("chat.fileChangeHistory.answer")}>
+                  {selectedTurn.answer ? <AgentMarkdown>{selectedTurn.answer}</AgentMarkdown> : (
+                    <p className="file-change-history-empty-answer">{t("chat.fileChangeHistory.noAnswer")}</p>
+                  )}
+                </HistorySection>
+                <HistorySection
+                  key={`${selectedTurn.prompt.id}:files`}
+                  title={t("chat.fileChangeHistory.filesSection")}
+                  count={t("chat.fileChangeHistory.files", { count: selectedTurn.changes.length })}
+                >
                 <div className="file-change-history-files">
                   {selectedTurn.changes.map((change) => {
                     const target = resolveHistoryExplorerTarget(change.path, cwd);
@@ -240,6 +248,7 @@ export function FileChangeHistoryDialog({
                     );
                   })}
                 </div>
+                </HistorySection>
               </section>
             )}
           </div>

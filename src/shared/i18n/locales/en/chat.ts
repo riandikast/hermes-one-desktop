@@ -25,7 +25,10 @@ export default {
     unconfirmed: "Stop not confirmed. No replacement sent.",
   },
   fileChangeHistory: {
+    prompt: "Prompt",
     answer: "Model answer",
+    noAnswer: "No model answer recorded.",
+    filesSection: "Files",
     copyPath: "Copy path",
     copyContent: "Copy content",
     copyingContent: "Copying file content...",
