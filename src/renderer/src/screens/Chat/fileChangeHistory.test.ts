@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { encodeKnowledgePrompt } from "../../../../shared/knowledge-envelope";
 import {
   groupFileChangeHistory,
   loadFileChangeHistory,
@@ -163,16 +164,37 @@ describe("file change history", () => {
     );
     expect(groupFileChangeHistory(messages)[0].changes).toEqual([change]);
   });
-  it("wires the new icon between explorer and terminal; dialog mounts lazily; deleted banner stays deleted", () => {
+  it("hides knowledge envelope metadata from the history prompt", async () => {
+    const prompt = "the exact user prompt";
+    window.hermesAPI = {
+      getSessionMessages: vi.fn().mockResolvedValue([
+        { kind: "user", id: 1, content: encodeKnowledgePrompt(prompt, "PRIVATE INDEX") },
+        { kind: "assistant", id: 2, content: "done", fileChanges: [change] },
+      ]),
+    } as unknown as typeof window.hermesAPI;
+    const turns = mergeFileChangeHistory(await loadFileChangeHistory("session"), []);
+    expect(turns[0].prompt.content).toBe(prompt);
+    expect(JSON.stringify(turns)).not.toContain("PRIVATE INDEX");
+    expect(JSON.stringify(turns)).not.toContain("Hermes One Knowledge envelope");
+  });
+  it("hides a Knowledge envelope when the live prompt arrives before DB history", () => {
+    const prompt = "live user prompt";
+    const turns = mergeFileChangeHistory([], [
+      user("live", encodeKnowledgePrompt(prompt, "PRIVATE INDEX")),
+      ...edits("live-edit", change.path),
+    ]);
+    expect(turns[0].prompt.content).toBe(prompt);
+    expect(JSON.stringify(turns)).not.toContain("PRIVATE INDEX");
+  });
+  it("wires history after source control in the composer; dialog mounts lazily", () => {
     expect(chatSource.length).toBeGreaterThan(1000);
-    const explorer = chatSource.indexOf('aria-label="File explorer"');
+    const sourceControl = chatSource.indexOf("<SourceControlShortcut");
     const history = chatSource.indexOf(
       'aria-label={t("chat.fileChangeHistory.title")}',
     );
-    const terminal = chatSource.indexOf('aria-label="Terminal"');
-    expect(explorer).toBeGreaterThan(0);
-    expect(history).toBeGreaterThan(explorer);
-    expect(terminal).toBeGreaterThan(history);
+    expect(sourceControl).toBeGreaterThan(0);
+    expect(history).toBeGreaterThan(sourceControl);
+    expect(chatSource).not.toContain('key: "file-history"');
     expect(chatSource).toMatch(
       /fileChangeHistoryOpen && \(\s*<FileChangeHistoryDialog/,
     );

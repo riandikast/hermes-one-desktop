@@ -2782,26 +2782,6 @@ function Chat({
                   },
                 ]
               : []),
-            {
-              key: "file-history",
-              element: (
-                <button
-                  type="button"
-                  className={`chat-display-controls-trigger${fileChangeHistoryOpen ? " is-active" : ""}`}
-                  aria-label={t("chat.fileChangeHistory.title")}
-                  title={t("chat.fileChangeHistory.title")}
-                  aria-haspopup="dialog"
-                  aria-expanded={fileChangeHistoryOpen}
-                  onClick={() => {
-                    setFileChangeHistoryOpen(true);
-                    setDisplayControlsOpen(false);
-                    setChatSearchOpen(false);
-                  }}
-                >
-                  <History size={15} />
-                </button>
-              ),
-            },
           ]}
         />
       </div>
@@ -3036,6 +3016,20 @@ function Chat({
                     baseFolder={contextFolders[0]}
                     available={active && connectionModeLoaded && connectionMode === "local"}
                   />
+
+                  <button
+                    type="button"
+                    className={`btn-ghost chat-source-control chat-file-history-trigger${
+                      fileChangeHistoryOpen ? " is-active" : ""
+                    }`}
+                    onClick={() => setFileChangeHistoryOpen(true)}
+                    aria-label={t("chat.fileChangeHistory.title")}
+                    title={t("chat.fileChangeHistory.title")}
+                    aria-haspopup="dialog"
+                    aria-expanded={fileChangeHistoryOpen}
+                  >
+                    <History size={15} />
+                  </button>
 
                   <button
                     type="button"

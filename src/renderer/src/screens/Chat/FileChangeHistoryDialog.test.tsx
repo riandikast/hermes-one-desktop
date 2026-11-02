@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { encodeKnowledgePrompt } from "../../../../shared/knowledge-envelope";
 import { renderWithI18n } from "../../test/renderWithI18n";
 import { FileChangeHistoryDialog } from "./FileChangeHistoryDialog";
 import { FileChangesRow } from "./MessageList";
@@ -25,6 +26,38 @@ const messages: ChatMessage[] = [
 ];
 afterEach(cleanup);
 describe("file change history dialog", () => {
+  it("renders the original prompt, not Knowledge envelope metadata", async () => {
+    window.hermesAPI = {
+      getSessionMessages: vi.fn().mockResolvedValue([
+        { kind: "user", id: 1, content: encodeKnowledgePrompt("Exact user prompt", "PRIVATE INDEX") },
+        { kind: "assistant", id: 2, content: "done", fileChanges: [change] },
+      ]),
+    } as unknown as typeof window.hermesAPI;
+    renderWithI18n(
+      <FileChangeHistoryDialog sessionId="session" messages={[]} onClose={vi.fn()} />,
+    );
+    expect(await screen.findByText("Exact user prompt")).toBeInTheDocument();
+    expect(screen.queryByText(/Hermes One Knowledge envelope/)).toBeNull();
+    expect(screen.queryByText("PRIVATE INDEX")).toBeNull();
+  });
+
+  it("decodes a live Knowledge envelope before it enters history", () => {
+    renderWithI18n(
+      <FileChangeHistoryDialog
+        sessionId={null}
+        messages={[
+          { id: "live", role: "user", content: "Exact live prompt" },
+          { id: "envelope", role: "user", content: encodeKnowledgePrompt("Envelope prompt", "PRIVATE INDEX") },
+          { id: "change", kind: "file_changes", role: "agent", changes: [change] },
+        ]}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Envelope prompt")).toBeInTheDocument();
+    expect(screen.queryByText(/Hermes One Knowledge envelope/)).toBeNull();
+    expect(screen.queryByText("PRIVATE INDEX")).toBeNull();
+  });
+
   it("discloses DB answers per prompt and updates finalized live answers without exposing tools", async () => {
     window.hermesAPI = { getSessionMessages: vi.fn().mockResolvedValue([
       { kind: "user", id: 1, content: "Older prompt" },
@@ -96,6 +129,11 @@ describe("file change history dialog", () => {
   });
   it("keeps themed responsive list and summary padding", () => {
     const css = readFileSync("src/renderer/src/assets/main.css", "utf8");
+    const dialog = css.match(/\.file-change-history-dialog\s*\{([^}]+)\}/)?.[1] ?? "";
+    expect(dialog).toContain("width: 100vw");
+    expect(dialog).toContain("height: 100dvh");
+    expect(dialog).toContain("background: var(--bg-secondary)");
+    expect(dialog).not.toMatch(/#[\da-f]{3,8}\b|rgba?\(/i);
     expect(css).toMatch(/\.file-change-history-body\s*\{[^}]*padding:\s*clamp\(12px, 3vw, 24px\)/);
     expect(css).toMatch(/\.file-change-history-turn summary\s*\{[^}]*padding:\s*12px 16px/);
     expect(css).toMatch(/\.file-change-history-turn\s*\{[^}]*background:\s*var\(--bg-primary\)/);

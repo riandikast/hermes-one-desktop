@@ -1,3 +1,4 @@
+import { originalKnowledgePrompt } from "../../../../shared/knowledge-envelope";
 import { isAutoInjectedPrompt } from "./autoPrompts";
 import { isBubbleMessage } from "./chatMessages";
 import { changedFilesFromToolRows, normalizePathKey } from "./fileChanges";
@@ -66,7 +67,8 @@ export function groupFileChangeHistory(
       !isAutoInjectedPrompt(message.content)
     ) {
       flush();
-      prompt = message;
+      const content = originalKnowledgePrompt(message.content);
+      prompt = content === message.content ? message : { ...message, content };
       rows = [];
     } else {
       rows.push(message);
@@ -130,7 +132,7 @@ export async function loadFileChangeHistory(
   const prompts = new Map(
     items
       .filter((item) => item.kind === "user")
-      .map((item) => [`db-${item.id}`, item.content ?? ""]),
+      .map((item) => [`db-${item.id}`, originalKnowledgePrompt(item.content ?? "")]),
   );
   return messages.map((message) =>
     isBubbleMessage(message) && message.role === "user"

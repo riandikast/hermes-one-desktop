@@ -6059,6 +6059,11 @@ body:has(.shell-vibrant),
   cursor: not-allowed;
 }
 
+.chat-file-history-trigger.is-active {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
 /* File viewer modal */
 /* File editor — rendered full-content-area in the "file" pane of the app
    layout (Layout.tsx). Tabs live in the top strip (ActiveSessionsBar) as
@@ -15739,15 +15744,18 @@ body:has(.shell-vibrant),
 
 /* History uses the existing modal/theme surface; wrapping preserves exact prompts and paths. */
 .file-change-history-dialog {
-  width: min(760px, calc(100vw - 24px));
-  height: min(720px, calc(100dvh - 48px));
+  box-sizing: border-box;
+  width: 100vw;
+  height: 100dvh;
+  max-width: 100vw;
+  max-height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-secondary);
   color: var(--text-primary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border: 0;
+  border-radius: 0;
 }
 .file-change-history-header {
   display: flex;
