@@ -28,6 +28,7 @@ export function FloatingDialog({
   children,
   size = "terminal",
   keepMounted = false,
+  placement = "dialog",
   className = "",
 }: {
   open: boolean;
@@ -44,6 +45,8 @@ export function FloatingDialog({
    * Required for anything that cannot be recreated cheaply (a live terminal).
    */
   keepMounted?: boolean;
+  /** Keep stateful contents mounted while presenting them as a right-side panel. */
+  placement?: "dialog" | "sidebar";
   /** Extra classes on the panel, for a caller-specific skin (e.g. the
    *  Material-styled last-prompt reader) without restyling every dialog. */
   className?: string;
@@ -126,7 +129,7 @@ export function FloatingDialog({
 
   return (
     <div
-      className={`terminal-dialog-overlay${open ? " is-open" : ""}`}
+      className={`terminal-dialog-overlay${open ? " is-open" : ""}${placement === "sidebar" ? " is-sidebar" : ""}`}
       // Visibility is driven by a class, never by unmounting: the terminal
       // inside must survive being closed.
       aria-hidden={!open}
@@ -134,24 +137,34 @@ export function FloatingDialog({
     >
       <div
         ref={panelRef}
-        className={`terminal-dialog terminal-dialog--${size}${
+        className={`terminal-dialog terminal-dialog--${size}${placement === "sidebar" ? " terminal-dialog--sidebar" : ""}${
           dragging ? " is-dragging" : ""
         }${className ? ` ${className}` : ""}`}
         role="dialog"
         aria-label={title}
         aria-modal="false"
-        style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}
+        style={
+          placement === "sidebar"
+            ? undefined
+            : { transform: `translate(${offset.x}px, ${offset.y}px)` }
+        }
         onClick={(e) => e.stopPropagation()}
       >
         <div
           className="terminal-dialog-head"
-          onPointerDown={onHeaderPointerDown}
-          onPointerMove={onHeaderPointerMove}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
+          onPointerDown={
+            placement === "dialog" ? onHeaderPointerDown : undefined
+          }
+          onPointerMove={
+            placement === "dialog" ? onHeaderPointerMove : undefined
+          }
+          onPointerUp={placement === "dialog" ? endDrag : undefined}
+          onPointerCancel={placement === "dialog" ? endDrag : undefined}
           // Double-click the header to snap back to center.
-          onDoubleClick={() => setOffset({ x: 0, y: 0 })}
-          title="Drag to move"
+          onDoubleClick={
+            placement === "dialog" ? () => setOffset({ x: 0, y: 0 }) : undefined
+          }
+          title={placement === "dialog" ? "Drag to move" : undefined}
         >
           <span className="terminal-dialog-title">{title}</span>
           <button

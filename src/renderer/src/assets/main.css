@@ -5914,7 +5914,7 @@ body:has(.shell-vibrant),
   padding: 6px 10px;
   font-size: 12px;
   color: var(--text-primary);
-  background: var(--bg-input, var(--bg-secondary));
+  background: var(--bg-primary);
   border: 1px solid var(--border);
   border-radius: 8px;
   outline: none;
@@ -5925,7 +5925,7 @@ body:has(.shell-vibrant),
 }
 
 .worktree-search-result .worktree-search-path {
-  color: var(--text-tertiary, var(--text-secondary));
+  color: var(--text-secondary);
   font-size: 11px;
 }
 
@@ -5934,10 +5934,10 @@ body:has(.shell-vibrant),
   z-index: 100;
   min-width: 190px;
   padding: 4px;
-  background: var(--bg-elevated, var(--bg-secondary));
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
 }
 
 .worktree-context-menu-item {
@@ -5995,7 +5995,7 @@ body:has(.shell-vibrant),
 }
 
 .worktree-folder-icon {
-  color: rgba(255, 255, 255, 0.56);
+  color: var(--text-secondary);
 }
 
 .worktree-file-icon {
@@ -6593,7 +6593,7 @@ body:has(.shell-vibrant),
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255, 255, 255, 0.56);
+  color: var(--text-secondary);
 }
 
 .worktree-file-icon-wrapper svg {
@@ -6971,10 +6971,9 @@ body:has(.shell-vibrant),
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  border: 1px solid var(--border, #3a3f4b);
-  background: var(--bg-elevated, #1e1e2e);
-  color: var(--text-primary, #e4e4e7);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
   cursor: pointer;
   opacity: 0;
   transition:
@@ -6988,7 +6987,7 @@ body:has(.shell-vibrant),
   opacity: 1;
 }
 .chat-nav-arrow:hover {
-  background: var(--bg-hover, #2a2f3a);
+  background: var(--bg-hover);
 }
 /* "Jump to present" button (bottom-right instead of centered). */
 .chat-nav-arrow--present {
@@ -7028,17 +7027,15 @@ body:has(.shell-vibrant),
   max-width: 100%;
   padding: 3px 8px 3px 10px;
 
-  border-radius: 15px;
-  border: 1px solid var(--text-primary, #3a3f4b);
-  background: var(--bg-primary, #3a3f4b);
-  backdrop-filter: blur(6px);
-  color: var(--text-secondary, #c7c7d1);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 2.3;
   text-align: left;
   pointer-events: auto;
   cursor: pointer;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
   opacity: 0;
   visibility: hidden;
   transition:
@@ -7048,11 +7045,11 @@ body:has(.shell-vibrant),
     border-color 0.15s ease;
 }
 .chat-last-prompt:hover {
-  background: var(--bg-hover, #2a2f3a);
-  border-color: var(--accent, #4f9cf9);
+  background: var(--bg-hover);
+  border-color: var(--accent);
 }
 .chat-last-prompt:hover .chat-last-prompt-text {
-  color: var(--accent, #4f9cf9);
+  color: var(--accent);
 }
 .chat-last-prompt:not(.chat-last-prompt--visible) {
   pointer-events: none;
@@ -7066,17 +7063,17 @@ body:has(.shell-vibrant),
   flex-shrink: 0;
   margin-right: 7px;
   margin-left: 3px;
-  color: var(--text-primary, #8b8b99);
+  color: var(--text-primary);
 }
 .chat-last-prompt-icon {
   display: inline-flex;
   flex-shrink: 0;
-  color: var(--text-primary, #4f9cf9);
+  color: var(--text-primary);
 }
 .chat-last-prompt-label {
   flex-shrink: 0;
   font-weight: 600;
-  color: var(--text-muted, #8b8b99);
+  color: var(--text-muted);
   text-transform: uppercase;
   font-size: 10px;
   letter-spacing: 0.04em;
@@ -7086,7 +7083,7 @@ body:has(.shell-vibrant),
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-primary, #e4e4e7);
+  color: var(--text-primary);
 }
 /* ── Last-prompt reader dialog (Material) ────────────────────────────────
    Scoped to .last-prompt-dialog so the shared FloatingDialog keeps its own look
@@ -7094,14 +7091,11 @@ body:has(.shell-vibrant),
    modest elevation shadow, a small corner radius, a quiet header label, and no
    gradients or accent washes. */
 .last-prompt-dialog {
-  border-radius: 8px;
-  border: none;
-  background: var(--bg-elevated, #1e1e2e);
-  /* Material elevation (level 2-ish): a single soft, wide shadow — not the
-     heavy 24px/60px bloom the default dialog uses. */
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.3),
-    0 4px 12px rgba(0, 0, 0, 0.28);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: none;
 }
 .last-prompt-dialog .terminal-dialog-head {
   /* Material dialog header: no divider line, roomier, quiet title. */
@@ -7112,18 +7106,18 @@ body:has(.shell-vibrant),
   font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.01em;
-  color: var(--text-secondary, #c7c7d1);
+  color: var(--text-secondary);
 }
 /* Material icon button: circular, hairline-free, ripple-ish hover wash. */
 .last-prompt-dialog .terminal-dialog-close {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  color: var(--text-muted, #8b8b99);
+  color: var(--text-muted);
 }
 .last-prompt-dialog .terminal-dialog-close:hover {
-  background: var(--hover, rgba(127, 127, 127, 0.14));
-  color: var(--text-primary, #e4e4e7);
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 .last-prompt-dialog .terminal-dialog-body {
   padding: 0;
@@ -7151,7 +7145,7 @@ body:has(.shell-vibrant),
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-muted, #8b8b99);
+  color: var(--text-muted);
 }
 /* A quiet text button on the Material accent: the dialog's one action. */
 .chat-last-prompt-dialog-copy {
@@ -7163,15 +7157,15 @@ body:has(.shell-vibrant),
   border: none;
   border-radius: var(--radius-sm, 6px);
   background: transparent;
-  color: var(--text-muted, #8b8b99);
+  color: var(--text-muted);
   font-size: 11.5px;
   font-weight: 500;
   cursor: pointer;
   transition: color var(--duration-fast, 0.15s), background var(--duration-fast, 0.15s);
 }
 .chat-last-prompt-dialog-copy:hover {
-  color: var(--text-primary, #e4e4e7);
-  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 /* The prompt list: one card per recent prompt. Rows are separated by a hairline
    instead of heavy borders, so a list of five still reads as one block. */
@@ -7190,12 +7184,12 @@ body:has(.shell-vibrant),
   flex-shrink: 0;
   padding: 8px 10px;
   border-radius: var(--radius-sm, 8px);
-  background: var(--bg-elevated, rgba(255, 255, 255, 0.03));
+  background: var(--bg-primary);
   border: 1px solid transparent;
 }
 /* The newest prompt is the one the chip represents — mark it, not shout it. */
 .chat-last-prompt-item--newest {
-  border-color: var(--border-subtle, rgba(255, 255, 255, 0.1));
+  border-color: var(--border);
 }
 .chat-last-prompt-item-head {
   display: flex;
@@ -7210,7 +7204,7 @@ body:has(.shell-vibrant),
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-muted, #8b8b99);
+  color: var(--text-muted);
 }
 .chat-last-prompt-item-toggle,
 .chat-last-prompt-item-copy {
@@ -7222,7 +7216,7 @@ body:has(.shell-vibrant),
   border: none;
   border-radius: var(--radius-sm, 6px);
   background: transparent;
-  color: var(--text-muted, #8b8b99);
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
@@ -7233,8 +7227,8 @@ body:has(.shell-vibrant),
 }
 .chat-last-prompt-item-toggle:hover,
 .chat-last-prompt-item-copy:hover {
-  color: var(--text-primary, #e4e4e7);
-  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 /* Collapsed one-liner preview. Carries the SAME panel as the expanded body, so
    the container is visible before a row is opened too — previously only the
@@ -7244,7 +7238,7 @@ body:has(.shell-vibrant),
   margin: 0;
   font-size: 12.5px;
   line-height: 1.55;
-  color: var(--text-primary, #e4e4e7);
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -7260,13 +7254,13 @@ body:has(.shell-vibrant),
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--text-primary, #e4e4e7);
+  color: var(--text-primary);
 }
 /* Small muted note next to the count (e.g. that injected rows are hidden). */
 .chat-last-prompt-dialog-note {
   flex-shrink: 0;
   font-size: 10.5px;
-  color: var(--text-muted, #8b8b99);
+  color: var(--text-muted);
   opacity: 0.8;
 }
 /* Shared single-body reader. The pinned-message reader renders ONE message in
@@ -7285,27 +7279,18 @@ body:has(.shell-vibrant),
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--text-primary, #e4e4e7);
+  color: var(--text-primary);
 }
 
-/* ONE shared surface for every reader panel. Both readers must look identical
-   on the same theme; they previously drifted because the row rule mixed at 6%
-   while the shared body mixed at 12%, making one grey and one darker.
-
-   The panel is an INSET WELL: it uses --bg-secondary, which is DARKER than the
-   dialog's own --bg-elevated (dark theme: #171717 inside #303030), so the text
-   sits in a recessed black container rather than a grey wash. An earlier attempt
-   mixed toward the text colour, which LIGHTENED the surface into grey — the
-   opposite of an inset. Tokens are theme-aware, so every theme gets its own
-   correct "one step darker than the dialog" value with no per-theme rule. */
+/* Both readers share a recessed, theme-aware surface. */
 .chat-last-prompt-item-preview,
 .chat-last-prompt-item-body,
 .chat-last-prompt-dialog-body {
   display: block;
   padding: 10px 12px;
   border-radius: var(--radius-sm, 8px);
-  background: var(--bg-secondary, #171717);
-  border: 1px solid var(--border-bright, rgba(255, 255, 255, 0.16));
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
 }
 /* Rows inside the list are cards already, so their inner panel drops the outer
    border — but keeps the SAME background as the pinned reader, so the two
@@ -7327,7 +7312,7 @@ body:has(.shell-vibrant),
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12.5px;
   line-height: 1.6;
-  color: var(--text-primary, #e4e4e7);
+  color: var(--text-primary);
   /* No background here: the class is combined with the panel rule above, and a
      `transparent` here would override it (this rule comes LATER in the file). */
 }
@@ -7335,31 +7320,31 @@ body:has(.shell-vibrant),
    the accent; code spans and quotes get a quiet surface instead of a colour,
    which keeps a wall of text calm. */
 .chat-hl-text .hl-url {
-  color: var(--accent, #7aa2f7);
+  color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 .chat-hl-text .hl-code {
-  background: var(--bg-hover, rgba(255, 255, 255, 0.07));
+  background: var(--bg-hover);
   border-radius: 3px;
   padding: 0 3px;
 }
 .chat-hl-text .hl-quote {
-  color: var(--text-secondary, #b6b6c2);
+  color: var(--text-secondary);
 }
 .chat-hl-text .hl-heading {
-  color: var(--text-primary, #e4e4e7);
+  color: var(--text-primary);
   font-weight: 600;
 }
 .chat-hl-text .hl-fence {
-  color: var(--text-muted, #8b8b99);
+  color: var(--text-muted);
 }
 .chat-hl-text .hl-bullet {
-  color: var(--accent, #7aa2f7);
+  color: var(--accent);
 }
 .chat-hl-text .hl-path,
 .chat-hl-text .hl-env {
-  color: var(--text-secondary, #b6b6c2);
+  color: var(--text-secondary);
 }
 
 /* ── Send-confirmation dialog ────────────────────────────────────────────
@@ -9614,10 +9599,10 @@ body:has(.shell-vibrant),
 }
 .chat-pinned-bar.chat-pinned-bar--floating .chat-pinned-cards {
   max-height: min(300px, 50vh);
-  background: var(--bg-elevated, rgba(40, 40, 45, 0.95));
+  background: var(--bg-primary);
   border-radius: 10px;
   margin-top: 4px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: none;
 }
 
 .chat-pinned-bar {
@@ -9626,11 +9611,10 @@ body:has(.shell-vibrant),
   z-index: 5;
   width: min(720px, calc(100% - 24px));
   margin: 8px auto 12px;
-  background: var(--bg-elevated, rgba(40, 40, 45, 0.85));
-  border: 1px solid var(--border-accent, rgba(99, 102, 241, 0.4));
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: none;
   overflow: hidden;
 }
 
@@ -9655,7 +9639,7 @@ body:has(.shell-vibrant),
   padding: 8px 12px;
   background: transparent;
   border: none;
-  color: var(--text-secondary, #aaa);
+  color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
   transition: color 0.15s;
@@ -9667,7 +9651,7 @@ body:has(.shell-vibrant),
 }
 
 .chat-pinned-bar-trigger:hover {
-  color: var(--text-primary, #eee);
+  color: var(--text-primary);
 }
 
 .chat-pinned-bar-pill {
@@ -9678,7 +9662,7 @@ body:has(.shell-vibrant),
 }
 
 .chat-pinned-count {
-  background: var(--bg-hover, rgba(255, 255, 255, 0.08));
+  background: var(--bg-primary);
   border-radius: 9px;
   padding: 1px 6px;
   font-size: 11px;
@@ -9695,17 +9679,17 @@ body:has(.shell-vibrant),
   position: relative;
   padding: 6px 48px 6px 10px;
   margin: 4px 0;
-  background: var(--bg-base, rgba(20, 20, 25, 0.6));
+  background: var(--bg-primary);
   border-radius: 6px;
-  border-left: 3px solid var(--border-accent, #0000);
+  border-left: 3px solid var(--border);
 }
 
 .chat-pinned-bubble-user {
-  border-left-color: #10b981;
+  border-left-color: var(--success);
 }
 
 .chat-pinned-bubble-agent {
-  border-left-color: #0071d9;
+  border-left-color: var(--accent);
 }
 
 .chat-pinned-meta {
@@ -9713,14 +9697,14 @@ body:has(.shell-vibrant),
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text-tertiary, #999);
+  color: var(--text-muted);
   margin-bottom: 4px;
 }
 
 .chat-pinned-content {
   font-size: 13px;
   line-height: 1.5;
-  color: var(--text-secondary, #ccc);
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -9760,12 +9744,12 @@ body:has(.shell-vibrant),
 .chat-pinned-bubble code { font-size: 12px; }
 .chat-pinned-bubble ul, .chat-pinned-bubble ol { margin: 0; padding-left: 16px; font-size: 12px; }
 .chat-pinned-bubble h1, .chat-pinned-bubble h2, .chat-pinned-bubble h3 { margin: 0 0 4px; font-size: 13px; }
-.chat-pinned-bubble a { color: var(--accent, #818cf8); }
+.chat-pinned-bubble a { color: var(--accent); }
 .chat-pinned-bubble blockquote {
   margin: 0 0 4px;
   padding-left: 10px;
-  border-left: 3px solid var(--border-accent, #6366f1);
-  color: var(--text-secondary, #aaa);
+  border-left: 3px solid var(--accent);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
@@ -9787,18 +9771,18 @@ body:has(.shell-vibrant),
   height: 22px;
   padding: 0;
   background: transparent;
-  border: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+  border: 1px solid var(--border);
   border-radius: 5px;
   cursor: pointer;
-  color: var(--text-tertiary, #999);
+  color: var(--text-muted);
   transition: background 0.12s, color 0.12s;
 }
 
 .chat-pinned-expand:hover,
 .chat-pinned-unpin:hover {
-  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
-  color: var(--text-base, #eee);
-  border-color: var(--border-focus, rgba(127, 127, 127, 0.5));
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border);
 }
 
 .chat-bubble-copy--active {
@@ -10579,15 +10563,32 @@ body:has(.shell-vibrant),
   pointer-events: auto;
 }
 
+/* The right-side layout is scoped to one chat, leaving the title and tab bars
+   usable and allowing clicks through outside the panel. */
+.terminal-dialog-overlay.is-sidebar {
+  position: absolute;
+  inset: 0;
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: 0;
+  pointer-events: none;
+}
+
+.terminal-dialog-overlay.is-sidebar .terminal-dialog-head {
+  cursor: default;
+  touch-action: auto;
+}
+
 .terminal-dialog {
   display: flex;
   flex-direction: column;
   width: min(880px, 92vw);
   height: min(520px, 76vh);
-  border: 1px solid var(--border, rgba(127, 127, 127, 0.24));
-  border-radius: 12px;
-  background: var(--bg-elevated, #17171b);
-  box-shadow: 0 24px 60px -16px rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: none;
   overflow: hidden;
   /* Dragging translates this element; keep it out of the open/close fade so a
      move never animates. */
@@ -10608,6 +10609,20 @@ body:has(.shell-vibrant),
   height: min(880px, 92vh);
 }
 
+.terminal-dialog--sidebar {
+  width: min(440px, 46vw);
+  height: 100%;
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+  pointer-events: auto;
+}
+
+@media (max-width: 640px) {
+  .terminal-dialog--sidebar {
+    width: 88vw;
+    border-radius: 0;
+  }
+}
+
 /* While dragging, drop the transition so the panel tracks the pointer exactly
    rather than easing behind it. */
 .terminal-dialog.is-dragging {
@@ -10619,7 +10634,7 @@ body:has(.shell-vibrant),
   align-items: center;
   gap: 8px;
   padding: 8px 10px 8px 14px;
-  border-bottom: 1px solid var(--border, rgba(127, 127, 127, 0.18));
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   /* The header is the drag handle. `touch-action: none` stops the OS scroll
      gesture from stealing a drag on touch/pen input. */
@@ -10658,7 +10673,7 @@ body:has(.shell-vibrant),
 }
 
 .terminal-dialog-close:hover {
-  background: var(--hover, rgba(127, 127, 127, 0.12));
+  background: var(--bg-hover);
   color: var(--text-primary);
 }
 
@@ -10831,10 +10846,11 @@ body:has(.shell-vibrant),
   width: 180px;
   gap: 4px;
   padding: 6px;
-  border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
-  border-radius: 8px;
-  background: var(--bg-elevated, #17171b);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: none;
 }
 
 .chat-display-controls-menu button {
@@ -10848,7 +10864,7 @@ body:has(.shell-vibrant),
 }
 
 .chat-display-controls-menu button:hover {
-  background: var(--hover, rgba(127, 127, 127, 0.08));
+  background: var(--bg-hover);
   color: var(--text-primary);
 }
 
@@ -15592,7 +15608,7 @@ body:has(.shell-vibrant),
   border-radius: 4px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  color: var(--accent);
+  color: var(--text-primary);
 }
 
 .bot-pill {
@@ -21579,7 +21595,7 @@ body:has(.shell-vibrant),
   align-items: center;
   gap: 4px;
   padding: 6px 8px 0;
-  background: var(--bg-tertiary);
+  background: var(--bg-secondary);
   flex-shrink: 0;
 }
 
@@ -23363,8 +23379,8 @@ body:has(.shell-vibrant),
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--border-color, rgba(127, 127, 127, 0.16));
-  background: #101014;
+  border-top: 1px solid var(--border);
+  background: var(--bg-primary);
 }
 .terminal-dock-resize {
   flex-shrink: 0;
@@ -23412,7 +23428,7 @@ body:has(.shell-vibrant),
   user-select: none;
 }
 .terminal-dock-tab.active {
-  background: #101014;
+  background: var(--bg-primary);
   color: var(--text-primary);
 }
 .terminal-dock-tab.dead {

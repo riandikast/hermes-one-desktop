@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Terminal } from "@xterm/xterm";
+import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { Plus, X } from "../../assets/icons";
@@ -69,6 +69,19 @@ interface DockSession {
   cleanup?: () => void;
 }
 
+function readTerminalTheme(): ITheme {
+  const styles = getComputedStyle(document.documentElement);
+  const color = (name: string): string | undefined =>
+    styles.getPropertyValue(name).trim() || undefined;
+  return {
+    background: color("--bg-primary"),
+    foreground: color("--text-primary"),
+    cursor: color("--accent-text"),
+    cursorAccent: color("--bg-primary"),
+    selectionBackground: color("--accent-subtle"),
+  };
+}
+
 /**
  * Tabbed integrated terminal dock (VS Code style). One xterm instance per
  * session; output streams from the main process via `terminal:data`; input
@@ -110,6 +123,25 @@ export const TerminalDock = forwardRef<
   const [activeId, setActiveId] = useState<string | null>(null);
   const sessionsRef = useRef<Map<string, DockSession>>(new Map());
   const containerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const applyTheme = (): void => {
+      const theme = readTerminalTheme();
+      for (const dock of sessionsRef.current.values()) {
+        dock.term.options.theme = { ...theme };
+      }
+    };
+    const observer = new MutationObserver(applyTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+    observer.observe(document.head, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     if (!disposeOnUnmount) return;
     const owned = sessionsRef.current;

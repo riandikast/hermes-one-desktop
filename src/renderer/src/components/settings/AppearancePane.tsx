@@ -12,6 +12,7 @@ import {
 } from "../../theme/themeEditor";
 import type { GpuPreferenceMode, GpuStatus } from "../../../../shared/gpu";
 import ThemeEditor from "./ThemeEditor";
+import { useWindowTerminalStyle } from "./windowTerminalStyle";
 
 const GPU_MODES: GpuPreferenceMode[] = ["auto", "on", "off"];
 
@@ -34,14 +35,29 @@ const THEME_PREVIEW_COUNT = 7;
 /** Theme, rounded corners, interface font, and hardware acceleration. */
 export default function AppearancePane(): React.JSX.Element {
   const { t } = useI18n();
-  const { theme, setTheme, rounded, setRounded, customThemes, saveCustomTheme } =
-    useTheme();
+  const {
+    theme,
+    setTheme,
+    rounded,
+    setRounded,
+    customThemes,
+    saveCustomTheme,
+  } = useTheme();
   const { font, setFont } = useFont();
   const [showAllThemes, setShowAllThemes] = useState(false);
-  const [terminalShell, setTerminalShell] = useState<"powershell" | "cmd" | null>(null);
+  const [terminalShell, setTerminalShell] = useState<
+    "powershell" | "cmd" | null
+  >(null);
   const [terminalSaveError, setTerminalSaveError] = useState(false);
+  const [windowTerminalStyle, setWindowTerminalStyle] =
+    useWindowTerminalStyle();
+  const [windowTerminalStyleSaveError, setWindowTerminalStyleSaveError] =
+    useState(false);
   useEffect(() => {
-    window.hermesAPI.getTerminalPreference?.().then(setTerminalShell).catch(() => {});
+    window.hermesAPI
+      .getTerminalPreference?.()
+      .then(setTerminalShell)
+      .catch(() => {});
   }, []);
   // Theme editor: id of the theme being edited (null = closed).
   const [editingThemeId, setEditingThemeId] = useState<string | null>(null);
@@ -127,10 +143,7 @@ export default function AppearancePane(): React.JSX.Element {
     : THEMES.slice(0, THEME_PREVIEW_COUNT);
 
   // All selectable themes, built-ins plus user-created ones from the editor.
-  const allThemes = useMemo(
-    () => listThemes(customThemes),
-    [customThemes],
-  );
+  const allThemes = useMemo(() => listThemes(customThemes), [customThemes]);
   const customOnly = allThemes.filter((th) => !th.builtin);
 
   return (
@@ -200,10 +213,7 @@ export default function AppearancePane(): React.JSX.Element {
                 className={`settings-theme-card ${active ? "active" : ""}`}
                 onClick={() => setTheme(th.id)}
               >
-                <div
-                  className="settings-theme-preview"
-                  data-theme={th.id}
-                >
+                <div className="settings-theme-preview" data-theme={th.id}>
                   <div className="settings-theme-preview-sidebar" />
                   <div className="settings-theme-preview-main">
                     <div className="settings-theme-preview-bar accent" />
@@ -316,7 +326,9 @@ export default function AppearancePane(): React.JSX.Element {
                     if (terminalShell === opt.value) return;
                     setTerminalSaveError(false);
                     try {
-                      if (await window.hermesAPI.setTerminalPreference(opt.value)) {
+                      if (
+                        await window.hermesAPI.setTerminalPreference(opt.value)
+                      ) {
                         setTerminalShell(opt.value);
                       } else {
                         setTerminalSaveError(true);
@@ -332,6 +344,37 @@ export default function AppearancePane(): React.JSX.Element {
             </div>
           </div>
         )}
+
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <div className="settings-row-label">
+              {t("settings.terminalStyle.label")}
+            </div>
+            <div className="settings-row-hint">
+              {windowTerminalStyleSaveError
+                ? t("settings.terminalStyle.error")
+                : t("settings.terminalStyle.hint")}
+            </div>
+          </div>
+          <div className="settings-seg">
+            {(["dialog", "sidebar"] as const).map((style) => (
+              <button
+                key={style}
+                type="button"
+                className={`settings-seg-btn ${windowTerminalStyle === style ? "active" : ""}`}
+                aria-pressed={windowTerminalStyle === style}
+                onClick={() => {
+                  if (windowTerminalStyle === style) return;
+                  setWindowTerminalStyleSaveError(
+                    !setWindowTerminalStyle(style),
+                  );
+                }}
+              >
+                {t(`settings.terminalStyle.${style}`)}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="settings-row">
           <div className="settings-row-text">
@@ -356,7 +399,8 @@ export default function AppearancePane(): React.JSX.Element {
           <div className="settings-row-text">
             <div className="settings-row-label">Auto-expand reasoning</div>
             <div className="settings-row-hint">
-              Show thinking blocks expanded and type out live reasoning during response
+              Show thinking blocks expanded and type out live reasoning during
+              response
             </div>
           </div>
           <label className="tools-toggle" onClick={(e) => e.stopPropagation()}>
@@ -367,12 +411,17 @@ export default function AppearancePane(): React.JSX.Element {
                 const next = e.target.checked;
                 setAutoExpandReasoning(next);
                 try {
-                  localStorage.setItem("hermes.autoExpandReasoning", String(next));
+                  localStorage.setItem(
+                    "hermes.autoExpandReasoning",
+                    String(next),
+                  );
                 } catch {
                   /* ignore */
                 }
                 // Broadcast so already-mounted ReasoningRows re-read the setting.
-                window.dispatchEvent(new Event("hermes-auto-expand-reasoning-changed"));
+                window.dispatchEvent(
+                  new Event("hermes-auto-expand-reasoning-changed"),
+                );
               }}
             />
             <span className="tools-toggle-track" />
@@ -395,7 +444,10 @@ export default function AppearancePane(): React.JSX.Element {
                 const next = e.target.checked;
                 setAutoExpandToolCalls(next);
                 try {
-                  localStorage.setItem("hermes.autoExpandToolCalls", String(next));
+                  localStorage.setItem(
+                    "hermes.autoExpandToolCalls",
+                    String(next),
+                  );
                 } catch {
                   /* ignore */
                 }

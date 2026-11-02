@@ -35,6 +35,7 @@ import { useOnFinishRunner } from "./useOnFinishRunner";
 import { useSettledOnFinish } from "./useSettledOnFinish";
 import { OnFinishChip } from "./OnFinishChip";
 import { FloatingDialog } from "./FloatingDialog";
+import { useWindowTerminalStyle } from "../../components/settings/windowTerminalStyle";
 
 import { SpeedDialFAB } from "./SpeedDialFAB";
 import type { TerminalDockHandle } from "../Command/TerminalDock";
@@ -675,6 +676,7 @@ function Chat({
   // Commands are read fresh on each finish so Commands-page edits apply without
   // remounting the chat.
   const onFinishDockRef = useRef<TerminalDockHandle | null>(null);
+  const [windowTerminalStyle] = useWindowTerminalStyle();
   // The terminal dialog is opened from the composer toolbar or Ctrl/Cmd+T.
   // Keep state so opening can trigger a refit — see below.
   const [onFinishDockOpen, setOnFinishDockOpen] = useState(false);
@@ -3097,6 +3099,7 @@ function Chat({
           onClose={() => setOnFinishDockOpen(false)}
           title="Terminal"
           keepMounted
+          placement={windowTerminalStyle}
         >
           {/* Hidden, not unmounted, while closed. */}
           <div className="terminal-dialog-holder" hidden={!onFinishDockOpen}>
