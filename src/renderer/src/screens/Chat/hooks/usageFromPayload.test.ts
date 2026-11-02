@@ -39,11 +39,11 @@ describe("usageFromPayload", () => {
     expect(result?.contextWindowTokens).toBeUndefined();
   });
 
-  it("falls back to prompt tokens for context when compressor is inactive", () => {
+  it("never uses cumulative prompt tokens as context occupancy", () => {
     const result = usageFromPayload({
       usage: { input: 5000, output: 200, total: 5200 },
     });
-    expect(result?.contextTokens).toBe(5000);
+    expect(result?.contextTokens).toBeUndefined();
   });
 
   it("still reads legacy OpenAI-style *_tokens keys", () => {
@@ -57,7 +57,7 @@ describe("usageFromPayload", () => {
     expect(result?.promptTokens).toBe(3000);
     expect(result?.completionTokens).toBe(150);
     expect(result?.totalTokens).toBe(3150);
-    expect(result?.contextTokens).toBe(3000);
+    expect(result?.contextTokens).toBeUndefined();
   });
 
   it("reads camelCase keys", () => {
@@ -65,7 +65,7 @@ describe("usageFromPayload", () => {
       usage: { promptTokens: 700, completionTokens: 50, totalTokens: 750 },
     });
     expect(result?.promptTokens).toBe(700);
-    expect(result?.contextTokens).toBe(700);
+    expect(result?.contextTokens).toBeUndefined();
   });
 
   it("derives totalTokens from prompt + completion when absent", () => {
@@ -77,6 +77,13 @@ describe("usageFromPayload", () => {
     const result = usageFromPayload({ usage: { context_used: 9000 } });
     expect(result).not.toBeNull();
     expect(result?.contextTokens).toBe(9000);
+  });
+
+  it("preserves authoritative zero occupancy and rejects invalid counters", () => {
+    expect(usageFromPayload({ usage: { input: 100, output: 10, context_used: 0 } })?.contextTokens).toBe(0);
+    for (const input of [-1, NaN, Infinity, 1.5]) {
+      expect(usageFromPayload({ usage: { input, output: 10 } })).toBeNull();
+    }
   });
 
   it("returns null when there is no usable usage data", () => {

@@ -24,44 +24,62 @@ export interface UsageRecord {
   contextMax?: number;
   /** Cost in USD reported by the gateway (optional). */
   cost?: number;
+  /** Stable source-turn identity; used only when the producer supplies one. */
+  sourceId?: string;
 }
 
 const STORAGE_KEY = "hermes.usage.history.v1";
 const MAX_RECORDS = 2000;
+const HISTORY_CHANGED_EVENT = "hermes-usage-history-changed";
 
 /**
- * Collapse duplicate records: the gateway can emit preview+final usage for
- * one turn, and the pre-fix recordUsage loop wrote a duplicate every 750ms
- * while a turn streamed (same values, seconds apart). Collapse any run of
- * records with identical model + input/output tokens within a 10s window —
- * real consecutive turns are far apart and differ in at least one field.
+ * Remove only records proven to be duplicates by stable source-turn identity.
+ * Equal token counts are valid for distinct turns, even seconds apart.
  */
 export function dedupeAndTrim(records: UsageRecord[]): UsageRecord[] {
   const out: UsageRecord[] = [];
-  let last: UsageRecord | null = null;
+  const sourceIds = new Set<string>();
   for (const raw of records) {
+    if (!raw || !validTokenCounts(raw) ||
+        ![raw.id, raw.timestamp, raw.provider, raw.model].every((value) => typeof value === "string") ||
+        !Number.isFinite(Date.parse(raw.timestamp))) continue;
     // Reconcile the stored total: old records kept the payload's `total`,
     // which can exceed input+output (cached/context tokens) — that made the
     // per-model breakdown and activity strip sum to MORE than the grand
     // total card. Always derive it from the two token counts.
     const r: UsageRecord = { ...raw, totalTokens: raw.inputTokens + raw.outputTokens };
-    if (
-      last &&
-      last.model === r.model &&
-      last.inputTokens === r.inputTokens &&
-      last.outputTokens === r.outputTokens &&
-      Math.abs(
-        new Date(r.timestamp).getTime() - new Date(last.timestamp).getTime(),
-      ) < 10_000
-    ) {
-      // Duplicate preview/final pair or legacy loop spam — skip.
-      continue;
+    if (r.sourceId) {
+      if (sourceIds.has(r.sourceId)) continue;
+      sourceIds.add(r.sourceId);
     }
     out.push(r);
-    last = r;
   }
-  if (out.length > MAX_RECORDS) out.splice(0, out.length - MAX_RECORDS);
-  return out;
+  return out.slice(0, MAX_RECORDS);
+}
+
+export interface TokenCounts {
+  inputTokens: number;
+  outputTokens: number;
+}
+
+function validTokenCounts(value: TokenCounts): boolean {
+  return [value.inputTokens, value.outputTokens].every(
+    (count) => Number.isSafeInteger(count) && count >= 0,
+  );
+}
+
+/** Convert a cumulative session snapshot to one turn's token delta. */
+export function tokenUsageDelta(
+  current: TokenCounts,
+  baseline: TokenCounts | null,
+): TokenCounts | null {
+  if (!validTokenCounts(current) || (baseline && !validTokenCounts(baseline))) return null;
+  if (!baseline) return null;
+  const inputTokens = current.inputTokens - baseline.inputTokens;
+  const outputTokens = current.outputTokens - baseline.outputTokens;
+  if (inputTokens < 0 || outputTokens < 0) return null;
+  if (inputTokens === 0 && outputTokens === 0) return null;
+  return { inputTokens, outputTokens };
 }
 
 function load(): UsageRecord[] {
@@ -82,7 +100,7 @@ function load(): UsageRecord[] {
   }
 }
 
-function save(records: UsageRecord[]) {
+function save(records: UsageRecord[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
   } catch {
@@ -95,44 +113,62 @@ function save(records: UsageRecord[]) {
  * the history (via `recordUsage`); the totals hook derives live aggregates
  * for the Usage page.
  */
-export function useUsageTracker() {
+export function useUsageTracker(): {
+  records: UsageRecord[];
+  recordUsage: (entry: Omit<UsageRecord, "id" | "timestamp">) => void;
+  clearUsage: () => void;
+  refreshUsage: () => void;
+  totals: UsageTotals;
+} {
   const [records, setRecords] = useState<UsageRecord[]>(() => load());
 
   // Re-read when the page regains focus or storage changes from another tab.
   useEffect(() => {
-    const onFocus = () => setRecords(load());
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) setRecords(load());
+    const onFocus = (): void => setRecords(load());
+    const onStorage = (e: StorageEvent): void => {
+      if (e.key === STORAGE_KEY || e.key === null) setRecords(load());
     };
+    const onHistoryChanged = (): void => setRecords(load());
     window.addEventListener("focus", onFocus);
     window.addEventListener("storage", onStorage);
+    window.addEventListener(HISTORY_CHANGED_EVENT, onHistoryChanged);
     return () => {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("storage", onStorage);
+      window.removeEventListener(HISTORY_CHANGED_EVENT, onHistoryChanged);
     };
   }, []);
 
   const recordUsage = useCallback((entry: Omit<UsageRecord, "id" | "timestamp">) => {
-    setRecords((prev) => {
-      const next: UsageRecord[] = [
-        {
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          timestamp: new Date().toISOString(),
-          ...entry,
-        },
-        ...prev,
-      ];
-      save(next);
-      return next;
-    });
+    if (!validTokenCounts(entry)) return;
+    // Every mounted chat writes this store. React state can lag another chat
+    // or Clear history; read the latest ledger before each synchronous write.
+    const current = load();
+    if (entry.sourceId && current.some((record) => record.sourceId === entry.sourceId)) return;
+    const next = dedupeAndTrim([
+      { ...entry, id: crypto.randomUUID(), timestamp: new Date().toISOString() },
+      ...current,
+    ]);
+    save(next);
+    setRecords(next);
+    window.dispatchEvent(new Event(HISTORY_CHANGED_EVENT));
   }, []);
 
   const clearUsage = useCallback(() => {
     setRecords([]);
     save([]);
+    window.dispatchEvent(new Event(HISTORY_CHANGED_EVENT));
   }, []);
 
-  return { records, recordUsage, clearUsage, totals: aggregateTotals(records) };
+  const refreshUsage = useCallback(() => setRecords(load()), []);
+
+  return {
+    records,
+    recordUsage,
+    clearUsage,
+    refreshUsage,
+    totals: aggregateTotals(records),
+  };
 }
 
 export interface UsageTotals {

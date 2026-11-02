@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { Check, Copy, CornerDownRight, Maximize2 } from "lucide-react";
+import { Check, Copy, Maximize2 } from "lucide-react";
 import type { ChatBubbleMessage, ChatMessage } from "./types";
 import { isBubbleMessage } from "./chatMessages";
 import { isAutoInjectedPrompt } from "./autoPrompts";

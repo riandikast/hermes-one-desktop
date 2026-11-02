@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cancelTurn, explicitModelLimit, probeTurn, providerRetry, type ProviderRetry } from "../providerRetry";
 import { useActiveSubagents, type ActiveSubagent } from "./useActiveSubagents";
 import { LOCAL_PRESETS } from "../../../constants";
+import { tokenUsageDelta, type TokenCounts } from "./useUsageTracker";
 import {
   clearStaleTurnErrors,
   isBubbleMessage,
@@ -139,6 +140,7 @@ interface EnsureDashboardRuntimeSessionParams {
 
 interface EnsureDashboardRuntimeSessionResult {
   created: boolean;
+  usageBaseline?: TokenCounts;
   runtimeSessionId: string;
   storedSessionId: string;
   /** True while the gateway reports the child still running (watch windows). */
@@ -188,6 +190,8 @@ interface UseDashboardChatTransportArgs {
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   setToolProgress: (tool: string | null) => void;
   setUsage: React.Dispatch<React.SetStateAction<UsageState | null>>;
+  /** Authoritative completed-turn delta, separate from context-gauge state. */
+  onUsage?: (usage: UsageState, sourceId?: string) => void;
   /** Called once per connection when the dashboard transport is found to be
    *  unavailable on a remote/SSH connection and the renderer is falling back to
    *  the legacy HTTP transport. Lets the UI surface a one-time notice. */
@@ -415,8 +419,26 @@ export async function ensureDashboardRuntimeSession(
       if (!resumed.session_id) {
         throw new Error("session.resume returned no session_id");
       }
+      // Resume already returns the pre-turn counters. Using the first
+      // completion as a baseline silently discarded that entire first turn.
+      let baselinePayload = asRecord(asRecord(resumed.info).usage);
+      if (!Object.keys(baselinePayload).length) {
+        try {
+          baselinePayload = asRecord(await params.client.request("session.usage", {
+            session_id: resumed.session_id,
+          }));
+        } catch { /* Older gateways may omit usage; never invent historical deltas. */ }
+      }
+      const baseline = usageFromPayload({ usage: baselinePayload });
+      const counterKeys = ["input", "output", "prompt", "completion", "prompt_tokens", "completion_tokens", "promptTokens", "completionTokens"];
+      const zeroBaseline = counterKeys.some((key) => key in baselinePayload) &&
+        counterKeys.every((key) => !(key in baselinePayload) || baselinePayload[key] === 0);
       return {
         created: false,
+        usageBaseline: (baseline && counterKeys.some((key) => key in baselinePayload)) || zeroBaseline ? {
+          inputTokens: baseline?.promptTokens ?? 0,
+          outputTokens: baseline?.completionTokens ?? 0,
+        } : undefined,
         runtimeSessionId: resumed.session_id,
         storedSessionId: resumed.stored_session_id || resumed.resumed || stored,
         running: resumed.running === true,
@@ -864,7 +886,7 @@ function logDashboardEvent(
   console.info("[Hermes dashboard event]", summary);
 }
 
-export function usageFromPayload(payload: unknown): Partial<UsageState> | null {
+export function usageFromPayload(payload: unknown, includeZeroCounters = false): Partial<UsageState> | null {
   const usage = asRecord(asRecord(payload).usage);
   // The Hermes gateway (`_get_usage` in tui_gateway/server.py) emits
   // snake-case, non-`_tokens` keys: input/output/prompt/completion/total plus
@@ -893,20 +915,21 @@ export function usageFromPayload(payload: unknown): Partial<UsageState> | null {
       usage.totalTokens ??
       promptTokens + completionTokens,
   );
-  // context_used = the current turn's prompt-token occupancy of the context
-  // window (compressor's last_prompt_tokens), which is exactly what the gauge
-  // wants — a live snapshot, not a cross-turn sum. Fall back to the latest
-  // prompt count when the compressor hasn't reported yet.
-  const contextUsed = Number(usage.context_used ?? 0);
+  // Session input is cumulative billing usage, NOT context occupancy. Missing
+  // occupancy stays unknown; the gauge may estimate it, the ledger never does.
+  const contextUsed = usage.context_used == null ? undefined : Number(usage.context_used);
   const contextMax = Number(usage.context_max ?? 0);
-  if (!promptTokens && !completionTokens && !totalTokens && !contextUsed) {
+  if (![promptTokens, completionTokens, totalTokens, contextUsed ?? 0, contextMax].every(
+    (count) => Number.isSafeInteger(count) && count >= 0,
+  )) return null;
+  if (!promptTokens && !completionTokens && !totalTokens && !contextUsed && !includeZeroCounters) {
     return null;
   }
   return {
     promptTokens,
     completionTokens,
     totalTokens,
-    contextTokens: contextUsed || promptTokens || undefined,
+    contextTokens: contextUsed,
     contextWindowTokens: contextMax || undefined,
   };
 }
@@ -1188,6 +1211,7 @@ export function useDashboardChatTransport({
   setMessages,
   setToolProgress,
   setUsage,
+  onUsage,
   onDashboardUnavailable,
   onSwitchModel,
   onRecoveryNotice,
@@ -1219,6 +1243,10 @@ export function useDashboardChatTransport({
   // immediately. Reset on connection change (see the effect below).
   const dashboardUnavailableRef = useRef(false);
   const runtimeSessionIdRef = useRef<string | null>(null);
+  const usageBaselineRef = useRef<TokenCounts | null>(null);
+  const seenUsageSourcesRef = useRef(new Set<string>());
+  const onUsageRef = useRef(onUsage);
+  onUsageRef.current = onUsage;
   const { activeSubagents, hasActiveSubagents, getSubagentRevision, onSubagentEvent } = useActiveSubagents(
     enabled,
     runtimeSessionIdRef,
@@ -2531,6 +2559,34 @@ export function useDashboardChatTransport({
           })();
         }, 400);
         const usage = usageFromPayload(event.payload);
+        const ledgerUsage = usageFromPayload(event.payload, true);
+        const rawUsage = asRecord(payloadRecord.usage);
+        const receipt = asRecord(payloadRecord.persisted_turn);
+        const turnId = receipt.submission_id ?? receipt.user_row_id;
+        const sourceId = turnId == null ? undefined : `${profile ?? "default"}:${storedSessionIdRef.current ?? event.session_id}:${turnId}`;
+        if (ledgerUsage && (!sourceId || !seenUsageSourcesRef.current.has(sourceId)) &&
+            ["input", "output", "prompt", "completion", "prompt_tokens", "completion_tokens", "promptTokens", "completionTokens"].some((key) => key in rawUsage)) {
+          if (sourceId) {
+            seenUsageSourcesRef.current.add(sourceId);
+            if (seenUsageSourcesRef.current.size > 2000) {
+              seenUsageSourcesRef.current.delete(seenUsageSourcesRef.current.values().next().value!);
+            }
+          }
+          const current = {
+            inputTokens: ledgerUsage.promptTokens ?? 0,
+            outputTokens: ledgerUsage.completionTokens ?? 0,
+          };
+          const delta = tokenUsageDelta(current, usageBaselineRef.current);
+          usageBaselineRef.current = current;
+          if (delta) {
+            onUsageRef.current?.({
+              ...ledgerUsage,
+              promptTokens: delta.inputTokens,
+              completionTokens: delta.outputTokens,
+              totalTokens: delta.inputTokens + delta.outputTokens,
+            }, sourceId);
+          }
+        }
         if (usage || !failed) {
           // Keep completion-time occupancy even when the provider omits usage.
           // Label transcript fallbacks as estimates; a failed turn without
@@ -2646,6 +2702,7 @@ export function useDashboardChatTransport({
       watchChild,
       clearQuietFinalize,
       connectionMode,
+      profile,
       finalizeFileChanges,
       resetQuietFinalize,
       resetStallTimer,
@@ -2842,6 +2899,9 @@ export function useDashboardChatTransport({
 
         targetSessionId = response.runtimeSessionId;
         runtimeSessionIdRef.current = targetSessionId;
+        usageBaselineRef.current = response.created
+          ? { inputTokens: 0, outputTokens: 0 }
+          : response.usageBaseline ?? null;
         lastRuntimeSessionWasCreatedRef.current = response.created;
         // Initialize the notice baseline, not backend Knowledge state.
         rememberKnowledgeSelection();

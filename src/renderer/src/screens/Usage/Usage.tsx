@@ -14,11 +14,8 @@ import { useUsageTracker } from "../Chat/hooks/useUsageTracker";
 import type { UsageRecord } from "../Chat/hooks/useUsageTracker";
 
 /**
- * Token-usage tracker dashboard. Hero summary cards with icon badges and
- * gradient accents, a sparkline strip showing the last 7 days of activity, a
- * per-model breakdown donut/bar, and a per-turn table. Records are de-duped
- * (preview + final pairs from the gateway collapse into one row) and capped
- * at 2000 entries to keep the dashboard responsive.
+ * Local usage ledger: authoritative transport deltas, not provider billing
+ * history. Summaries include the retained ledger; only the table is capped.
  */
 function fmtTokens(n: number): string {
   if (n >= 1_000_000) {
@@ -35,7 +32,7 @@ function fmtTokens(n: number): string {
 function fmtDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
-  const pad = (n: number) => n.toString().padStart(2, "0");
+  const pad = (n: number): string => n.toString().padStart(2, "0");
   return (
     `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
     `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
@@ -44,7 +41,7 @@ function fmtDate(iso: string): string {
 
 function fmtDay(iso: string): string {
   const d = new Date(iso);
-  const pad = (n: number) => n.toString().padStart(2, "0");
+  const pad = (n: number): string => n.toString().padStart(2, "0");
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
@@ -156,7 +153,7 @@ function ActivityStrip({
     <div className="usage-panel">
       <div className="usage-panel-header">
         <Calendar size={13} />
-        <span>Activity (last {daily.length} days)</span>
+        <span>Activity ({daily.length} active {daily.length === 1 ? "day" : "days"})</span>
       </div>
       <div className="usage-activity-chart">
         {daily.map(([day, total]) => (
@@ -188,7 +185,7 @@ const TABLE_ROW_CAP = 100;
 
 export default function Usage(): React.JSX.Element {
   const { t } = useI18n();
-  const { records, clearUsage, totals } = useUsageTracker();
+  const { records, clearUsage, refreshUsage, totals } = useUsageTracker();
   const [confirmClear, setConfirmClear] = useState(false);
   const [filterModel, setFilterModel] = useState<string>("");
 
@@ -198,12 +195,12 @@ export default function Usage(): React.JSX.Element {
     return Array.from(set).sort();
   }, [records]);
 
-  const visibleRecords = useMemo(() => {
-    const filtered = filterModel
+  const filteredRecords = useMemo(() => {
+    return filterModel
       ? records.filter((r) => r.model === filterModel)
       : records;
-    return filtered.slice(0, TABLE_ROW_CAP);
   }, [records, filterModel]);
+  const visibleRecords = filteredRecords.slice(0, TABLE_ROW_CAP);
 
   return (
     <div className="usage-page">
@@ -214,17 +211,18 @@ export default function Usage(): React.JSX.Element {
             <Activity size={14} />
             <span>Token usage</span>
           </div>
-          <h2 className="usage-hero-title">{t("navigation.usage")} Dashboard</h2>
+          <h2 className="usage-hero-title">{t("navigation.usage")}</h2>
           <p className="usage-hero-sub">
-            Track every model response: input/output tokens and context
-            occupancy, in real time.
+            Tokens reported by chats on this device. Updates after each response;
+            retains the latest 2,000 records. Not a provider billing statement.
           </p>
         </div>
         <div className="usage-page-actions">
           <button
             type="button"
             className="btn btn-secondary btn-sm"
-            onClick={() => window.dispatchEvent(new Event("focus"))}
+            onClick={refreshUsage}
+            title="Reload local usage history"
           >
             <RefreshCw size={13} />
             <span>Refresh</span>
@@ -302,25 +300,23 @@ export default function Usage(): React.JSX.Element {
               </option>
             ))}
           </select>
-          {filterModel && (
-            <span className="usage-filter-count">
-              {visibleRecords.length} of {records.length} turns
-            </span>
-          )}
+          <span className="usage-filter-count" aria-live="polite">
+            {visibleRecords.length} of {filteredRecords.length} {filteredRecords.length === 1 ? "record" : "records"}
+          </span>
         </div>
       )}
 
       {/* Table */}
       {visibleRecords.length === 0 ? (
         <div className="usage-empty">
-          <p>No token usage recorded yet.</p>
+          <p>{filterModel ? "No usage for this model." : "No token usage recorded yet."}</p>
           <p className="usage-empty-hint">
-            Send a chat message — every model response appends a record here.
+            Completed responses appear here when the backend reports token counts.
           </p>
         </div>
       ) : (
-        <div className="usage-table-wrapper">
-          <table className="usage-table">
+        <div className="usage-table-wrapper" tabIndex={0} role="region" aria-label="Token usage history">
+          <table className="usage-table" aria-label="Token usage records">
             <thead>
               <tr>
                 <th>Time</th>
@@ -348,7 +344,7 @@ export default function Usage(): React.JSX.Element {
                     <strong>{fmtTokens(r.totalTokens)}</strong>
                   </td>
                   <td className="usage-table-num">
-                    {r.contextMax
+                    {r.contextTokens != null && r.contextMax
                       ? `${Math.round(
                           ((r.contextTokens ?? 0) / r.contextMax) * 100,
                         )}%`
@@ -372,11 +368,11 @@ export default function Usage(): React.JSX.Element {
           <span>
             Newest: <code>{fmtDate(totals.newestAt)}</code>
           </span>
-          {records.length > TABLE_ROW_CAP && (
+          {filteredRecords.length > TABLE_ROW_CAP && (
             <>
               <span>·</span>
               <span>
-                Showing latest {TABLE_ROW_CAP} of {records.length} turns
+                Showing latest {TABLE_ROW_CAP} of {filteredRecords.length} records
               </span>
             </>
           )}

@@ -1155,103 +1155,24 @@ function Chat({
       sessionModelOverride.model
     : modelConfig.displayModel;
 
-  // Append a record to the persistent usage log whenever the dashboard /
-
-  // gateway transport reports a fresh usage payload. The hook dedupes
-
-  // preview+final pairs from the gateway so the table doesn't show
-
-  // duplicates for the same turn.
-
-  const lastRecordedAt = useRef<number>(0);
-  // Cumulative-counter baseline for per-request usage deltas. `null` = no
-  // trusted baseline yet (mount/resume/session switch); `baselineKnown`
-  // marks sessions whose counters we watched start from zero.
-  const prevCumulativeRef = useRef<{ input: number; output: number } | null>(
-    null,
-  );
-  const usageBaselineKnownRef = useRef(false);
-  const prevUsageSessionIdRef = useRef<string | null>(hermesSessionId);
-
-  // `recordUsage` is a stable useCallback; the hook's returned object is NOT
-
-  // (new identity every render) — using the object in deps would re-fire this
-
-  // effect on every render, causing a setState loop and app-wide lag.
-
   const { recordUsage } = usageTracker;
-
-  // Re-baseline cumulative usage counters whenever the Hermes session
-  // changes. Watching a null -> id transition means the agent session just
-  // started, so its counters begin at zero and the first usage event IS a
-  // real delta; resumed/switched sessions only get a baseline (their first
-  // observed value) and later events delta against it.
-  useEffect(() => {
-    const startedFresh =
-      prevUsageSessionIdRef.current === null && hermesSessionId !== null;
-    prevUsageSessionIdRef.current = hermesSessionId;
-    prevCumulativeRef.current = null;
-    usageBaselineKnownRef.current = startedFresh;
-  }, [hermesSessionId]);
-
-  useEffect(() => {
-    if (!usage) return;
-
-    if (usage.promptTokens === 0 && usage.completionTokens === 0) return;
-
-    const now = Date.now();
-
-    // De-dupe bursts (e.g. dashboard preview + final within 750ms).
-
-    if (now - lastRecordedAt.current < 750) return;
-
-    lastRecordedAt.current = now;
-
-    // Backend reports cumulative session_input_tokens — derive the
-    // per-request delta STRICTLY: the counters are monotonically growing
-    // within one session, so a non-positive delta means this emission
-    // carries no new tokens (re-fire after a model/provider switch, a
-    // duplicate preview, or a counter restart). Recording anyway — or
-    // falling back to the raw cumulative — produced impossible
-    // multi-million "single request" rows on the usage page.
-    const cumInput = usage.promptTokens;
-    const cumOutput = usage.completionTokens;
-    const baseline = prevCumulativeRef.current;
-    prevCumulativeRef.current = { input: cumInput, output: cumOutput };
-    if (baseline === null) {
-      // First observation of this session's counters. Only usable as a
-      // delta when we watched the session start from zero.
-      if (!usageBaselineKnownRef.current) return;
-      lastRecordedAt.current = now;
-      recordUsage({
-        provider: chatCurrentProvider || "default",
-        model: chatCurrentModel || "unknown",
-        inputTokens: cumInput,
-        outputTokens: cumOutput,
-        totalTokens: cumInput + cumOutput,
-        contextTokens: usage.contextTokens,
-        contextMax: usage.contextWindowTokens,
-      });
-      return;
-    }
-    const deltaInput = cumInput - baseline.input;
-    const deltaOutput = cumOutput - baseline.output;
-    if (deltaInput <= 0 || deltaOutput <= 0) return;
-    lastRecordedAt.current = now;
+  // Record transport events, not context-gauge renders. The old effect lost
+  // resumed first turns and rapid completions, and mixed legacy deltas with
+  // dashboard session totals. Each transport now supplies the correct delta.
+  const handleUsage = useCallback((entry: UsageState, sourceId?: string) => {
+    if (entry.promptTokens === 0 && entry.completionTokens === 0) return;
     recordUsage({
-      provider: chatCurrentProvider || "default",
-      model: chatCurrentModel || "unknown",
-      inputTokens: deltaInput,
-      outputTokens: deltaOutput,
-      totalTokens: deltaInput + deltaOutput,
-      contextTokens: usage.contextTokens,
-      contextMax: usage.contextWindowTokens,
+      provider: runtimeModel?.provider || chatCurrentProvider || "default",
+      model: runtimeModel?.model || chatCurrentModel || "unknown",
+      inputTokens: entry.promptTokens,
+      outputTokens: entry.completionTokens,
+      totalTokens: entry.promptTokens + entry.completionTokens,
+      contextTokens: entry.contextEstimated ? undefined : entry.contextTokens,
+      contextMax: entry.contextWindowTokens,
+      cost: entry.cost,
+      sourceId,
     });
-
-    // Reset the throttle on session/profile change so a new session isn't
-
-    // suppressed by an old throttle window.
-  }, [usage, chatCurrentProvider, chatCurrentModel, recordUsage]);
+  }, [recordUsage, runtimeModel, chatCurrentProvider, chatCurrentModel]);
 
   // Restore the model/provider linked to a resumed session. The saved value is
 
@@ -1414,6 +1335,7 @@ function Chat({
     sessionScopeId: visibleSessionScopeId,
 
     initialLastSyncedId: initialNewestId ?? null,
+    onUsage: handleUsage,
 
     setMessages,
 
@@ -1781,6 +1703,7 @@ function Chat({
     connectionMode,
 
     enabled: dashboardChatEnabled,
+    onUsage: handleUsage,
 
     fallbackOnUnavailable: chatTransportPreference === "auto",
 

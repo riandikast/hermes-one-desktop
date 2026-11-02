@@ -111,6 +111,7 @@ function Harness({
   onRuntimeModel,
   onRecoveryNotice,
   setUsage = vi.fn() as SetUsageMock,
+  onUsage,
 }: {
   active?: boolean;
   history?: boolean;
@@ -127,6 +128,7 @@ function Harness({
   onRuntimeModel?: (identity: { provider: string; model: string } | null) => void;
   onRecoveryNotice?: (notice: { kind: "retried" | "switched"; model?: string }) => void;
   setUsage?: SetUsageMock;
+  onUsage?: (usage: UsageState, sourceId?: string) => void;
 }): React.JSX.Element | null {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -168,6 +170,7 @@ function Harness({
     setMessages,
     setToolProgress: vi.fn(),
     setUsage,
+    onUsage,
     onDashboardUnavailable,
     onSwitchModel,
     onRuntimeModel,
@@ -322,6 +325,58 @@ describe("useDashboardChatTransport recovery", () => {
         getKnowledgeIndex: vi.fn(async () => "KNOWLEDGE-INDEX"),
       },
     });
+  });
+
+  it("records usage ledger deltas from the first resumed turn, including zero-output and rapid turns", async () => {
+    const onUsage = vi.fn();
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.resume") return {
+        session_id: "live-usage", stored_session_id: "stored-usage",
+        info: { usage: { input: 1000, output: 80, total: 1080 } },
+      };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      return {};
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness active={false} api={api} storedSessionId="stored-usage" onUsage={onUsage} />);
+    await act(async () => { await api.send!("first resumed turn"); });
+    const complete = (input: number, output: number, id: string): void => {
+      dashboardMock.onEvent?.({ type: "message.complete", session_id: "live-usage", payload: {
+        text: "ok", usage: { input, output, total: input + output },
+        persisted_turn: { submission_id: id },
+      } });
+    };
+    act(() => complete(1250, 110, "first"));
+    expect(onUsage).toHaveBeenLastCalledWith(expect.objectContaining({ promptTokens: 250, completionTokens: 30 }), "default:stored-usage:first");
+    act(() => complete(1250, 110, "first"));
+    expect(onUsage).toHaveBeenCalledTimes(1);
+    act(() => complete(1500, 110, "second"));
+    expect(onUsage).toHaveBeenLastCalledWith(expect.objectContaining({ promptTokens: 250, completionTokens: 0 }), "default:stored-usage:second");
+    act(() => complete(1250, 110, "first"));
+    act(() => complete(1750, 140, "third"));
+    expect(onUsage).toHaveBeenCalledTimes(3);
+    expect(onUsage).toHaveBeenLastCalledWith(expect.objectContaining({ promptTokens: 250, completionTokens: 30 }), "default:stored-usage:third");
+    act(() => complete(0, 0, "reset"));
+    act(() => complete(10, 0, "after-reset"));
+    expect(onUsage).toHaveBeenLastCalledWith(expect.objectContaining({ promptTokens: 10, completionTokens: 0 }), "default:stored-usage:after-reset");
+    view.unmount();
+  });
+
+  it("records usage ledger entries for a fresh session and never bills a context-only update", async () => {
+    const onUsage = vi.fn();
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") return { session_id: "fresh", stored_session_id: "stored-fresh" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      return {};
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness active={false} api={api} onUsage={onUsage} />);
+    await act(async () => { await api.send!("fresh turn"); });
+    act(() => dashboardMock.onEvent?.({ type: "message.complete", session_id: "fresh", payload: { usage: { context_used: 900 } } }));
+    expect(onUsage).not.toHaveBeenCalled();
+    act(() => dashboardMock.onEvent?.({ type: "message.complete", session_id: "fresh", payload: { usage: { input: 250, output: 30 } } }));
+    expect(onUsage).toHaveBeenLastCalledWith(expect.objectContaining({ promptTokens: 250, completionTokens: 30 }), undefined);
+    view.unmount();
   });
 
   it.each(["interrupt", "missing-again", "provider-error", "manual-pick"])("bounds missing-runtime recovery: %s", async (scenario) => {
@@ -677,7 +732,8 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
       });
       expect(document.querySelector(".file-change-history-count")?.textContent).toContain(path.endsWith("a.ts") ? "1" : "2");
     }
-    fireEvent.click(screen.getByText("original").closest("summary")!);
+    // History now uses a turn selector; file rows live under Files disclosure.
+    fireEvent.click(screen.getByText("Files", { selector: "summary span" }).closest("summary")!);
     expect(document.querySelector(".file-change-history-count")?.textContent).toContain("2");
     fireEvent.click(screen.getByRole("button", { name: "C:/repo/a.ts" }));
     expect([...document.querySelectorAll(".file-changes-diff-line")].map((line) => line.textContent)).toEqual(["-before", "+after"]);
@@ -2410,6 +2466,22 @@ describe("recovery liveness", () => {
 });
 
 describe("ensureDashboardRuntimeSession — subagent watch attach", () => {
+  it("reads an older gateway's pre-turn usage and keeps a missing baseline unknown", async () => {
+    for (const available of [true, false]) {
+      const request = vi.fn(async (method: string) => {
+        if (method === "session.resume") return { session_id: "runtime", resumed: "stored" };
+        if (available) return { input: 1000, output: 80 };
+        throw new Error("method not found");
+      });
+      const result = await ensureDashboardRuntimeSession({
+        client: { request: async <T,>(method: string): Promise<T> => await request(method) as T },
+        messages: [], storedSessionId: "stored",
+      });
+      expect(request.mock.calls.map(([method]) => method)).toEqual(["session.resume", "session.usage"]);
+      expect(result.usageBaseline).toEqual(available ? { inputTokens: 1000, outputTokens: 80 } : undefined);
+    }
+  });
+
   const makeClient = () => {
     const calls: Array<{ method: string; params: Record<string, unknown> }> =
       [];

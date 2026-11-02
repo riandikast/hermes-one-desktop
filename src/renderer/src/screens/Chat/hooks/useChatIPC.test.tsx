@@ -76,9 +76,11 @@ function installHermesApi(callbacks: ChatIpcCallbacks): {
 function Harness({
   sessionScopeId,
   initialActiveTurn = null,
+  onUsage,
 }: {
   sessionScopeId: string | null;
   initialActiveTurn?: ActiveTurn | null;
+  onUsage?: (usage: UsageState) => void;
 }): React.JSX.Element {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [, setHermesSessionId] = useState<string | null>(sessionScopeId);
@@ -95,6 +97,7 @@ function Harness({
     setToolProgress,
     setIsLoading,
     setUsage,
+    onUsage,
     activeTurnRef,
   });
 
@@ -123,6 +126,20 @@ afterEach(() => {
 });
 
 describe("useChatIPC session scoping", () => {
+  it("records usage ledger entries from legacy request deltas, not historical session totals", () => {
+    const callbacks: ChatIpcCallbacks = {};
+    installHermesApi(callbacks);
+    const onUsage = vi.fn();
+    render(<Harness sessionScopeId="old-session" onUsage={onUsage} />);
+    const usage = { promptTokens: 250, completionTokens: 0, totalTokens: 250 };
+    act(() => callbacks.usage?.("other-run", usage));
+    expect(onUsage).not.toHaveBeenCalled();
+    act(() => callbacks.usage?.("run-1", usage));
+    act(() => callbacks.usage?.("run-1", usage));
+    expect(onUsage).toHaveBeenCalledTimes(2);
+    expect(onUsage).toHaveBeenLastCalledWith(usage);
+  });
+
   it("ignores late DB refreshes from an old session after the visible chat is cleared", async () => {
     const callbacks: ChatIpcCallbacks = {};
     const api = installHermesApi(callbacks);

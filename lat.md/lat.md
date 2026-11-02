@@ -13,6 +13,7 @@ This directory defines the high-level concepts, business logic, and architecture
 - [[chat-performance]] — how chat rendering stays responsive through contained transcript rows, batched textarea resizing, and fixed-row slash-command virtualization.
 - [[chat-completion-latency]] — the id-cursor tail read and tail reconcile that keep finishing a turn O(tail) instead of re-reading and re-reconciling the whole session.
 - [[model-context]] — the per-model context-window override that drives the context gauge and the agent's auto-compaction.
+- [[token-usage]] — device-local reported token history, transport deltas, live synchronization and the Usage dashboard.
 - [[model-selection]] — the session-scoped in-chat model override that switches the model (and provider) for one conversation without touching the global default.
 - [[reasoning-effort]] — the composer's Faster⟷Smarter effort control: a draggable `role="slider"` over six ordered levels that stays open until dismissed and commits one `onChange` per real change.
 - [[web-preview]] — the in-app split-screen webview and the `partition`-based gate that lets only it load remote HTTPS while staying sandboxed.

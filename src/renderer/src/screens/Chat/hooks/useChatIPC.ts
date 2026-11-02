@@ -32,6 +32,8 @@ interface UseChatIPCArgs {
   setToolProgress: (tool: string | null) => void;
   setIsLoading: (loading: boolean) => void;
   setUsage: React.Dispatch<React.SetStateAction<UsageState | null>>;
+  /** Legacy IPC usage is already a per-request delta, including on resume. */
+  onUsage?: (usage: UsageState) => void;
   activeTurnRef: React.MutableRefObject<ActiveTurn | null>;
 }
 
@@ -60,8 +62,11 @@ export function useChatIPC({
   setToolProgress,
   setIsLoading,
   setUsage,
+  onUsage,
   activeTurnRef,
 }: UseChatIPCArgs): void {
+  const onUsageRef = useRef(onUsage);
+  onUsageRef.current = onUsage;
   const reasoningSegmentClosedRef = useRef(false);
   const dbPollRef = useRef<number | null>(null);
   const dbPollInFlightRef = useRef(false);
@@ -423,6 +428,7 @@ export function useChatIPC({
 
     const cleanupUsage = window.hermesAPI.onChatUsage((eventRunId, u) => {
       if (!eventMatchesRun(eventRunId, runId)) return;
+      onUsageRef.current?.(u);
       setUsage((prev) => ({
         promptTokens: (prev?.promptTokens || 0) + u.promptTokens,
         completionTokens: (prev?.completionTokens || 0) + u.completionTokens,
