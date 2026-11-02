@@ -39,6 +39,18 @@ function propValues(source: string, prop: string): string[] {
 }
 
 describe("Chat.tsx wiring: no silent placeholder handlers", () => {
+  it("uses theme palette for the jump-to-present and web-preview tab surfaces", () => {
+    const jumpButton = css.match(/\.chat-nav-arrow\s*\{([^}]+)\}/)?.[1] ?? "";
+    const jumpHover = css.match(/\.chat-nav-arrow:hover\s*\{([^}]+)\}/)?.[1] ?? "";
+    const previewTabs = css.match(/\.web-preview-tabs\s*\{([^}]+)\}/)?.[1] ?? "";
+    expect(jumpButton).toMatch(/border:\s*1px solid var\(--border\)/);
+    expect(jumpButton).toMatch(/background:\s*var\(--bg-secondary\)/);
+    expect(jumpButton).toMatch(/color:\s*var\(--text-primary\)/);
+    expect(jumpButton).not.toMatch(/#[\da-f]{3,8}\b|rgba?\(/i);
+    expect(jumpHover).toContain("var(--bg-hover)");
+    expect(previewTabs).toContain("background: var(--bg-secondary)");
+  });
+
   it("rounds only the message pin action button", () => {
     expect(messageRowSource).toContain("chat-bubble-copy chat-bubble-copy--pin");
     expect(css).toMatch(/\.chat-bubble-copy--pin\s*\{\s*border-radius:\s*8px\s*;\s*\}/);
@@ -88,8 +100,20 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
       }
     },
   );
-  it("wires floating opening to the dock and retains it while closed", () => {
+  it("wires the toolbar and Ctrl/Cmd+T to the retained terminal dock", () => {
     expect(chatSource.length).toBeGreaterThan(1000);
+    const folderIndex = chatSource.indexOf("<ContextFolderChip");
+    const terminalIndex = chatSource.indexOf(
+      'className={`btn-ghost chat-source-control chat-onfinish-trigger',
+    );
+    const gitIndex = chatSource.indexOf("<SourceControlShortcut", terminalIndex);
+    expect(folderIndex).toBeGreaterThan(-1);
+    expect(terminalIndex).toBeGreaterThan(folderIndex);
+    expect(gitIndex).toBeGreaterThan(terminalIndex);
+    expect(chatSource).not.toContain('key: "terminal"');
+    expect(chatSource).toMatch(
+      /e\.key\.toLowerCase\(\) === "t"[\s\S]*?setOnFinishDockOpen\(\(open\) => !open\)/,
+    );
     expect(chatSource).toMatch(
       /<FloatingDialog\s+open=\{onFinishDockOpen\}[\s\S]*?title="Terminal"\s+keepMounted/,
     );

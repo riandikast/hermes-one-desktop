@@ -675,8 +675,8 @@ function Chat({
   // Commands are read fresh on each finish so Commands-page edits apply without
   // remounting the chat.
   const onFinishDockRef = useRef<TerminalDockHandle | null>(null);
-  // The terminal now lives in a dialog, opened from a floating icon. Kept as
-  // state (not just CSS) so opening can trigger a refit — see below.
+  // The terminal dialog is opened from the composer toolbar or Ctrl/Cmd+T.
+  // Keep state so opening can trigger a refit — see below.
   const [onFinishDockOpen, setOnFinishDockOpen] = useState(false);
   /**
    * Latched once the dialog has been opened at least once.
@@ -1468,17 +1468,21 @@ function Chat({
     return undefined;
   }, [active, jumpToPresent]);
 
-  // Cmd/Ctrl+N → new chat. Only the active (visible) run handles it; otherwise
-
-  // every mounted background Chat would fire onNewChat in parallel.
+  // Cmd/Ctrl+T toggles the terminal; Cmd/Ctrl+N starts a new chat. Only the
+  // active (visible) run handles shortcuts, avoiding parallel actions from
+  // mounted background Chats.
 
   useEffect(() => {
     if (!active) return;
 
     function onKey(e: KeyboardEvent): void {
-      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key.toLowerCase() === "t") {
+        if (e.repeat || e.shiftKey) return;
         e.preventDefault();
-
+        setOnFinishDockOpen((open) => !open);
+      } else if (e.key === "n") {
+        e.preventDefault();
         onNewChat?.();
       }
     }
@@ -2798,35 +2802,6 @@ function Chat({
                 </button>
               ),
             },
-            {
-              key: "terminal",
-              element: (
-                <button
-                  type="button"
-                  className={`chat-display-controls-trigger chat-onfinish-trigger${
-                    onFinishDockOpen ? " is-active" : ""
-                  }${onFinishRunner.state.running ? " is-running" : ""}`}
-                  onClick={() => {
-                    setOnFinishDockOpen((v) => !v);
-                    setDisplayControlsOpen(false);
-                    setChatSearchOpen(false);
-                  }}
-                  aria-label="Terminal"
-                  aria-expanded={onFinishDockOpen}
-                  title={
-                    onFinishRunner.state.running
-                      ? `On-Finish: running ${onFinishRunner.state.current}/${onFinishRunner.state.total}`
-                      : "Terminal"
-                  }
-                >
-                  {onFinishRunner.state.running ? (
-                    <Spinner size={15} className="chat-onfinish-spin" />
-                  ) : (
-                    <Terminal size={15} />
-                  )}
-                </button>
-              ),
-            },
           ]}
         />
       </div>
@@ -3034,6 +3009,28 @@ function Chat({
                     onToggleKnowledgeBundle={handleToggleKnowledgeBundle}
                     onSelectRecentFolder={handleSelectRecentFolder}
                   />
+
+                  <button
+                    type="button"
+                    className={`btn-ghost chat-source-control chat-onfinish-trigger${
+                      onFinishDockOpen ? " is-active" : ""
+                    }${onFinishRunner.state.running ? " is-running" : ""}`}
+                    onClick={() => setOnFinishDockOpen((open) => !open)}
+                    aria-label="Terminal"
+                    aria-haspopup="dialog"
+                    aria-expanded={onFinishDockOpen}
+                    title={
+                      onFinishRunner.state.running
+                        ? `On-Finish: running ${onFinishRunner.state.current}/${onFinishRunner.state.total}`
+                        : "Terminal (Ctrl+T)"
+                    }
+                  >
+                    {onFinishRunner.state.running ? (
+                      <Spinner size={15} className="chat-onfinish-spin" />
+                    ) : (
+                      <Terminal size={15} />
+                    )}
+                  </button>
 
                   <SourceControlShortcut
                     baseFolder={contextFolders[0]}

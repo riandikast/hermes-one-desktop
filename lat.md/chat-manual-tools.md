@@ -10,7 +10,7 @@ The picker writes the exact command to the current terminal, never creating a ta
 
 PowerShell uses literal paths, POSIX shells quote apostrophes, and cmd uses cd /d across drives. Control characters in cwd and cmd expansion characters are rejected rather than interpreted. Focused terminal-session tests use fake PTYs; no user commands execute.
 
-Opening the floating terminal creates one session only if the dock is empty. Creation is single-flight; rerenders do not retry. Reopening after failure permits retry. Closing hides the mounted dock, preserving sessions; never-opened chats create nothing.
+The chat toolbar Terminal button sits between the folder and Git controls. Clicking it or pressing Ctrl/Cmd+T toggles the retained terminal dialog. Opening creates one session only if the dock is empty. Creation is single-flight; rerenders do not retry. Reopening after failure permits retry. Closing hides the mounted dock, preserving sessions; never-opened chats create nothing.
 
 Picker names use primary text, directory metadata uses secondary text, and command previews blend primary with the accent for contrast. Selection uses the existing accent-subtle background; keyboard focus has a primary-text outline.
 
