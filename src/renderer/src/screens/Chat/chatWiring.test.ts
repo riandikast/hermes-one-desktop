@@ -39,6 +39,24 @@ function propValues(source: string, prop: string): string[] {
 }
 
 describe("Chat.tsx wiring: no silent placeholder handlers", () => {
+  it("uses theme palette colors for send confirmation and Sessions/Bots tabs", () => {
+    const confirm = css.match(/\.send-confirm-dialog\s*\{([^}]+)\}/)?.[1] ?? "";
+    const confirmHead = css.match(/\.send-confirm-head\s*\{([^}]+)\}/)?.[1] ?? "";
+    const confirmProject = css.match(/\.send-confirm-project\s*\{([^}]+)\}/)?.[1] ?? "";
+    const sidebarTab = css.match(/\.sidebar-mode-tab\s*\{([^}]+)\}/)?.[1] ?? "";
+    const sidebarTabHover = css.match(/\.sidebar-mode-tab:hover\s*\{([^}]+)\}/)?.[1] ?? "";
+    const activeTab = css.match(/\.sidebar-mode-tab\.active\s*\{([^}]+)\}/)?.[1] ?? "";
+    expect(confirm).toContain("border: 1px solid var(--border)");
+    expect(confirm).toContain("background: var(--bg-secondary)");
+    expect(confirm).toContain("color: var(--text-primary)");
+    expect(confirmHead).toContain("color: var(--accent)");
+    expect(confirmProject).toContain("background: var(--bg-primary)");
+    expect(sidebarTab).toContain("color: var(--text-primary)");
+    expect(sidebarTabHover).toContain("color: var(--text-primary)");
+    expect(activeTab).toContain("background: var(--accent)");
+    expect(activeTab).toContain("color: var(--text-primary)");
+  });
+
   it("uses theme palette for the jump-to-present and web-preview tab surfaces", () => {
     const jumpButton = css.match(/\.chat-nav-arrow\s*\{([^}]+)\}/)?.[1] ?? "";
     const jumpHover = css.match(/\.chat-nav-arrow:hover\s*\{([^}]+)\}/)?.[1] ?? "";

@@ -2,6 +2,12 @@
 
 The sidebar starts with New Chat, keeps app destinations pinned, then gives conversations and projects their own scroll area.
 
+## Sessions and Bots list switcher
+
+The sidebar list can switch between Sessions and Bots without leaving the navigation area; both labels stay primary-text colored, and the selected tab uses the theme accent.
+
+[[src/renderer/src/screens/Layout/Layout.tsx#Layout]] renders the tabs above the pinned navigation. `.sidebar-mode-tab` uses `--text-primary` in every state and `.sidebar-mode-tab.active` uses `--accent`; [[src/renderer/src/screens/Chat/chatWiring.test.ts]] guards both tokens.
+
 [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] renders a New Chat action before Discover, Office, Kanban, and Schedules from `PINNED_NAV_ITEMS`, then renders [[src/renderer/src/screens/Layout/SidebarRecentSessions.tsx]] inside a flexible `.sidebar-chat-section`. New Chat is active when the visible Chat view has no session id yet. The standalone `sessions` view is still absent from the `View` union; the full list opens from the Cmd/Ctrl+K menu action.
 
 ## Drag-resizable sidebar width

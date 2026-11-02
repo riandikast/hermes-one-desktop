@@ -175,6 +175,7 @@ describe("file change history dialog", () => {
     expect(css).toMatch(/\.file-change-history-layout\s*\{[^}]*grid-template-columns:\s*minmax\(220px, 30%\) minmax\(0, 1fr\)/);
     expect(css).toMatch(/\.file-change-history-list\s*\{[^}]*overflow-y:\s*auto/);
     expect(css).toMatch(/\.file-change-history-turn\.is-active\s*\{[^}]*background:\s*var\(--bg-primary\)/);
+    expect(css).toMatch(/\.file-change-history-section\s*\{[^}]*flex-shrink:\s*0/);
   });
   it.each(["Escape", "close", "backdrop"])("closes real Explorer only via %s, preserves selected history", async (method) => {
     window.hermesAPI = {

@@ -34,7 +34,9 @@ don't carry reliable paths. Reads are best-effort; failures are swallowed.
 
 ## Per-prompt model answer
 
-The selected turn presents Prompt, Model answer, and Files as matching collapsed disclosures; Markdown renders only when opened, missing answers show a fallback note, and file actions remain unchanged.
+Prompt, Model answer, and Files use matching collapsed disclosures; open sections keep their height as the detail pane scrolls.
+
+Markdown renders only when opened, missing answers show a fallback note, and file actions remain unchanged.
 
 ## Side-by-side prompt history
 

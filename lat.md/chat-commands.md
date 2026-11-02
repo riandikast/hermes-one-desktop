@@ -116,6 +116,8 @@ Stopping a turn requires a second click, preventing accidental interruption.
 
 The stop (interrupt) button uses the same double-action gate as the send prompt ([[src/renderer/src/screens/Chat/ChatInput.tsx]]): the first click only ARMS the confirmation (banner "Press again to interrupt, Esc to cancel" + a pulsing outlined stop button), the second click aborts, and Escape cancels. Aborting is destructive (the streamed turn is cut), so an accidental single click must not kill a long run. The armed state auto-resets when the turn ends.
 
+The send-prompt confirmation uses the shared theme palette: a `--bg-secondary` dialog, `--bg-primary` project inset, `--border` strokes, and `--accent` send icon. Its Enter/Escape and double-action behavior is unchanged.
+
 ## Renderer-native commands
 
 A few non-local commands have dedicated desktop handling and must NOT be diverted to the gateway slash pipeline, or they'd lose their behaviour.
