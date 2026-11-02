@@ -34,7 +34,13 @@ don't carry reliable paths. Reads are best-effort; failures are swallowed.
 
 ## Per-prompt model answer
 
-Each expanded history prompt offers a separate collapsed model-answer disclosure, rendered with the existing Markdown component only when opened. File actions and full previews remain unchanged.
+Each selected history prompt offers a separate collapsed model-answer disclosure, rendered with the existing Markdown component only when opened. File actions and full previews remain unchanged.
+
+## Side-by-side prompt history
+
+The viewport-sized history dialog keeps prompts in a selectable left pane and shows the selected turn's files and answer on the right; narrow windows stack both panes.
+
+[[src/renderer/src/screens/Chat/FileChangeHistoryDialog.tsx#FileChangeHistoryDialog]] uses a semantic navigation list and selected-turn region, while [[src/renderer/src/assets/main.css]] provides the responsive split layout. [[src/renderer/src/screens/Chat/FileChangeHistoryDialog.test.tsx]] covers selection, file actions and theme-aware responsive styling.
 
 [[src/renderer/src/screens/Chat/fileChangeHistory.ts#groupFileChangeHistory]] selects the last settled assistant bubble after the last tool call, excluding reasoning, tool output, pending text, slash loaders, local errors and injected notices. Internal user continuations do not split manual turns. [[src/renderer/src/screens/Chat/fileChangeHistory.ts#mergeFileChangeHistory]] prefers finalized live answers while retaining stored answers for incomplete live tails, even when the live tail has no file snapshots. Repeated prompts remain distinct. [[src/renderer/src/screens/Chat/FileChangeHistoryDialog.test.tsx]] covers two stored turns, lazy Markdown disclosure and live finalization without tools or reasoning.
 

@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, cleanup } from "@testing-library/react";
+import { fireEvent, screen, waitFor, cleanup, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { encodeKnowledgePrompt } from "../../../../shared/knowledge-envelope";
 import { renderWithI18n } from "../../test/renderWithI18n";
@@ -24,6 +24,10 @@ const messages: ChatMessage[] = [
   { id: "manual", role: "user", content: "Manual prompt" },
   { id: "chip", kind: "file_changes", role: "agent", changes: [change] },
 ];
+function selectPrompt(prompt: string): void {
+  const list = within(screen.getByRole("navigation", { name: "File change history" }));
+  fireEvent.click(list.getByRole("button", { name: new RegExp(prompt) }));
+}
 afterEach(cleanup);
 describe("file change history dialog", () => {
   it("renders the original prompt, not Knowledge envelope metadata", async () => {
@@ -36,7 +40,7 @@ describe("file change history dialog", () => {
     renderWithI18n(
       <FileChangeHistoryDialog sessionId="session" messages={[]} onClose={vi.fn()} />,
     );
-    expect(await screen.findByText("Exact user prompt")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Exact user prompt/ })).toBeInTheDocument();
     expect(screen.queryByText(/Hermes One Knowledge envelope/)).toBeNull();
     expect(screen.queryByText("PRIVATE INDEX")).toBeNull();
   });
@@ -53,7 +57,7 @@ describe("file change history dialog", () => {
         onClose={vi.fn()}
       />,
     );
-    expect(screen.getByText("Envelope prompt")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Envelope prompt/ })).toBeInTheDocument();
     expect(screen.queryByText(/Hermes One Knowledge envelope/)).toBeNull();
     expect(screen.queryByText("PRIVATE INDEX")).toBeNull();
   });
@@ -69,8 +73,7 @@ describe("file change history dialog", () => {
     const view = renderWithI18n(<FileChangeHistoryDialog {...props} />);
     await screen.findByText("Older prompt");
     expect(screen.queryByText("Older answer")).toBeNull();
-    const current = screen.getByText("Manual prompt").closest("details")!;
-    fireEvent.click(current.querySelector("summary")!);
+    const current = screen.getByRole("region", { name: "Manual prompt" });
     const answer = current.querySelector("details")!;
     fireEvent.click(answer.querySelector("summary")!);
     expect(await screen.findByText("Stored answer")).toHaveProperty("tagName", "STRONG");
@@ -85,8 +88,8 @@ describe("file change history dialog", () => {
     expect(screen.queryByText("Stored answer")).toBeNull();
     expect(screen.queryByText("private tool result")).toBeNull();
     expect(screen.queryByText("private reasoning")).toBeNull();
-    const older = screen.getByText("Older prompt").closest("details")!;
-    fireEvent.click(older.querySelector("summary")!);
+    selectPrompt("Older prompt");
+    const older = screen.getByRole("region", { name: "Older prompt" });
     fireEvent.click(older.querySelector("details")!.querySelector("summary")!);
     expect(await screen.findByText("Older answer")).toBeTruthy();
     expect(window.hermesAPI.getSessionMessages).toHaveBeenCalledTimes(1);
@@ -113,7 +116,7 @@ describe("file change history dialog", () => {
     ];
     renderWithI18n(<FileChangeHistoryDialog sessionId="session" messages={live} onClose={vi.fn()} />);
     await waitFor(() => expect(window.hermesAPI.getSessionMessages).toHaveBeenCalled());
-    fireEvent.click(screen.getByText("Manual prompt").closest("summary")!);
+    selectPrompt("Manual prompt");
     fireEvent.click(screen.getByRole("button", { name: change.path }));
     expect([...document.querySelectorAll(".file-changes-diff-line")].map((line) => line.textContent)).toEqual(chipDiff);
   });
@@ -134,11 +137,11 @@ describe("file change history dialog", () => {
     expect(dialog).toContain("height: 100dvh");
     expect(dialog).toContain("background: var(--bg-secondary)");
     expect(dialog).not.toMatch(/#[\da-f]{3,8}\b|rgba?\(/i);
-    expect(css).toMatch(/\.file-change-history-body\s*\{[^}]*padding:\s*clamp\(12px, 3vw, 24px\)/);
-    expect(css).toMatch(/\.file-change-history-turn summary\s*\{[^}]*padding:\s*12px 16px/);
-    expect(css).toMatch(/\.file-change-history-turn\s*\{[^}]*background:\s*var\(--bg-primary\)/);
+    expect(css).toMatch(/\.file-change-history-layout\s*\{[^}]*grid-template-columns:\s*minmax\(220px, 30%\) minmax\(0, 1fr\)/);
+    expect(css).toMatch(/\.file-change-history-list\s*\{[^}]*overflow-y:\s*auto/);
+    expect(css).toMatch(/\.file-change-history-turn\.is-active\s*\{[^}]*background:\s*var\(--bg-primary\)/);
   });
-  it.each(["Escape", "close", "backdrop"])("closes real Explorer only via %s, preserves expanded history", async (method) => {
+  it.each(["Escape", "close", "backdrop"])("closes real Explorer only via %s, preserves selected history", async (method) => {
     window.hermesAPI = {
       readDirectory: vi.fn().mockResolvedValue([{ name: "long path.ts", isDirectory: false }]),
       watchContextFolder: vi.fn().mockResolvedValue(undefined),
@@ -146,7 +149,7 @@ describe("file change history dialog", () => {
     } as unknown as typeof window.hermesAPI;
     const onClose = vi.fn();
     renderWithI18n(<FileChangeHistoryDialog sessionId={null} messages={messages} cwd="C:/repo" onClose={onClose} />);
-    fireEvent.click(screen.getByText("Manual prompt").closest("summary")!);
+    selectPrompt("Manual prompt");
     const parent = screen.getByRole("dialog");
     fireEvent.click(screen.getByRole("button", { name: `Show file explorer: ${change.path}` }));
     const child = screen.getByRole("dialog", { name: "Show file explorer" });
@@ -164,7 +167,7 @@ describe("file change history dialog", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Show file explorer" })).not.toBeInTheDocument());
     expect(onClose).not.toHaveBeenCalled();
     expect(parent).toBeInTheDocument();
-    expect(parent.querySelector("details")?.open).toBe(true);
+    expect(screen.getByRole("region", { name: "Manual prompt" })).toBeInTheDocument();
   });
   it.each([[], null, "reject"])("missing/deleted file opens folder with no fabricated selection (%s)", async (result) => {
     window.hermesAPI = {
@@ -173,7 +176,7 @@ describe("file change history dialog", () => {
       onContextFolderChanged: vi.fn().mockReturnValue(() => {}),
     } as unknown as typeof window.hermesAPI;
     renderWithI18n(<FileChangeHistoryDialog sessionId={null} messages={messages} cwd="C:/repo" onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("Manual prompt").closest("summary")!);
+    selectPrompt("Manual prompt");
     fireEvent.click(screen.getByRole("button", { name: `Show file explorer: ${change.path}` }));
     const child = screen.getByRole("dialog", { name: "Show file explorer" });
     await waitFor(() => expect(child.querySelector(".worktree-error")).not.toBeNull());
@@ -181,7 +184,7 @@ describe("file change history dialog", () => {
     expect(window.hermesAPI.readDirectory).toHaveBeenCalledWith("C:/repo/src");
   });
   it.each(["Escape", "close", "backdrop"])(
-    "closes only nested diff via %s; parent preserves disclosure",
+    "closes only nested diff via %s; parent preserves selected history",
     async (method) => {
       const onClose = vi.fn();
       renderWithI18n(
@@ -191,7 +194,7 @@ describe("file change history dialog", () => {
           onClose={onClose}
         />,
       );
-      fireEvent.click(screen.getByText("Manual prompt").closest("summary")!);
+      selectPrompt("Manual prompt");
       const parent = screen.getByRole("dialog");
       expect(parent).toHaveClass(
         "app-modal-content",
@@ -221,7 +224,7 @@ describe("file change history dialog", () => {
       );
       expect(onClose).not.toHaveBeenCalled();
       expect(parent).toBeInTheDocument();
-      expect(parent.querySelector("details")?.open).toBe(true);
+      expect(screen.getByRole("region", { name: "Manual prompt" })).toBeInTheDocument();
     },
   );
   it("copies the original path; explorer selects and scrolls the resolved file", async () => {
@@ -245,7 +248,7 @@ describe("file change history dialog", () => {
         onOpenExplorer={onOpenExplorer}
       />,
     );
-    fireEvent.click(screen.getByText("Manual prompt").closest("summary")!);
+    selectPrompt("Manual prompt");
     fireEvent.click(
       screen.getByRole("button", { name: `Copy path: ${change.path}` }),
     );
@@ -275,7 +278,7 @@ describe("file change history dialog", () => {
     const copyToClipboard = vi.fn().mockResolvedValue(undefined);
     window.hermesAPI = { isRemoteMode: vi.fn().mockResolvedValue(false), readFile, copyToClipboard } as unknown as typeof window.hermesAPI;
     renderWithI18n(<FileChangeHistoryDialog sessionId={null} messages={messages} cwd="C:/repo" onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("Manual prompt").closest("summary")!);
+    selectPrompt("Manual prompt");
     const button = screen.getByRole("button", { name: `Copy content: ${change.path}` });
     expect(screen.getByRole("button", { name: `Copy path: ${change.path}` }).nextElementSibling).toBe(button);
     fireEvent.click(button);
@@ -304,7 +307,7 @@ describe("file change history dialog", () => {
     const copyToClipboard = failure === "clipboard failure" ? vi.fn().mockRejectedValue(new Error("denied")) : vi.fn().mockResolvedValue(undefined);
     window.hermesAPI = { isRemoteMode: vi.fn().mockResolvedValue(failure === "remote"), readFile, copyToClipboard } as unknown as typeof window.hermesAPI;
     renderWithI18n(<FileChangeHistoryDialog sessionId={null} messages={messages} cwd={failure === "no cwd" ? undefined : "C:/repo"} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByText("Manual prompt").closest("summary")!);
+    selectPrompt("Manual prompt");
     const button = screen.getByRole("button", { name: `Copy content: ${change.path}` });
     fireEvent.click(button);
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(feedback));
@@ -323,14 +326,14 @@ describe("file change history dialog", () => {
         onOpenExplorer={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByText("Manual prompt").closest("summary")!);
+    selectPrompt("Manual prompt");
     expect(
       screen.getByRole("button", {
         name: `Show file explorer: ${change.path}`,
       }),
     ).toBeDisabled();
   });
-  it("loads old history once, does not refetch on transcript rerender, toggles native disclosure and opens existing file view", async () => {
+  it("loads old history once, selects a turn, and opens its file view", async () => {
     const getSessionMessages = vi.fn().mockResolvedValue([
       { kind: "user", id: 1, content: "Older prompt" },
       { kind: "assistant", id: 2, content: "done", fileChanges: [change] },
@@ -348,14 +351,10 @@ describe("file change history dialog", () => {
     const view = renderWithI18n(<FileChangeHistoryDialog {...props} />);
     await screen.findByText("Older prompt");
     expect(getSessionMessages).toHaveBeenCalledExactlyOnceWith("current");
-    const summary = screen.getByText("Manual prompt").closest("summary")!;
-    const details = summary.parentElement as HTMLDetailsElement;
-    expect(details.open).toBe(false);
-    fireEvent.click(summary);
-    expect(details.open).toBe(true);
-    fireEvent.click(summary);
-    expect(details.open).toBe(false);
-    fireEvent.click(summary);
+    selectPrompt("Older prompt");
+    expect(screen.getByRole("region", { name: "Older prompt" })).toBeInTheDocument();
+    selectPrompt("Manual prompt");
+    const details = screen.getByRole("region", { name: "Manual prompt" });
     fireEvent.click(details.querySelector(".file-change-history-path")!);
     expect(onOpenFileChanges).toHaveBeenCalledWith([change]);
     view.rerender(

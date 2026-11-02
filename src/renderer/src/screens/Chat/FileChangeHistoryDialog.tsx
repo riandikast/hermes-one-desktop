@@ -17,7 +17,7 @@ function ModelAnswer({ answer }: { answer: string }): React.JSX.Element {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   return (
-    <details className="file-change-history-turn" style={{ margin: "0 16px 12px" }} onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <details className="file-change-history-answer" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary><ChevronDown size={16} aria-hidden /><span>{t("chat.fileChangeHistory.answer")}</span></summary>
       {open && <div className="chat-tool-item-body"><AgentMarkdown>{answer}</AgentMarkdown></div>}
     </details>
@@ -45,6 +45,7 @@ export function FileChangeHistoryDialog({
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [selected, setSelected] = useState<FileChange[] | null>(null);
+  const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState("");
   const [copyingContent, setCopyingContent] = useState(false);
   const copyContent = async (path: string): Promise<void> => {
@@ -67,6 +68,8 @@ export function FileChangeHistoryDialog({
         setActionStatus(t("chat.fileChangeHistory.contentUnavailable"));
       } else if (result.truncated !== false) {
         setActionStatus(t("chat.fileChangeHistory.contentTruncated"));
+      // Intentional control-character scan: clipboard copy must reject binary data.
+      // eslint-disable-next-line no-control-regex
       } else if (/[\u0000-\u0008\u000e-\u001f\ufffd]/.test(result.content)) {
         setActionStatus(t("chat.fileChangeHistory.contentBinary"));
       } else {
@@ -105,6 +108,7 @@ export function FileChangeHistoryDialog({
     () => mergeFileChangeHistory(stored, messages),
     [stored, messages],
   );
+  const selectedTurn = turns.find((turn) => turn.prompt.id === selectedPromptId) ?? turns[0];
   return (
     <AppModal
       open
@@ -142,103 +146,103 @@ export function FileChangeHistoryDialog({
         ) : turns.length === 0 ? (
           <p>{t("chat.fileChangeHistory.empty")}</p>
         ) : (
-          turns.map((turn) => (
-            <details key={turn.prompt.id} className="file-change-history-turn">
-              <summary>
-                <ChevronDown size={16} aria-hidden />
-                <span>{turn.prompt.content}</span>
-                <span className="file-change-history-count">
-                  {t("chat.fileChangeHistory.files", {
-                    count: turn.changes.length,
+          <div className="file-change-history-layout">
+            <nav className="file-change-history-list" aria-label={t("chat.fileChangeHistory.title")}>
+              {turns.map((turn) => (
+                <button
+                  key={turn.prompt.id}
+                  type="button"
+                  className={`file-change-history-turn${selectedTurn?.prompt.id === turn.prompt.id ? " is-active" : ""}`}
+                  aria-pressed={selectedTurn?.prompt.id === turn.prompt.id}
+                  onClick={() => setSelectedPromptId(turn.prompt.id)}
+                >
+                  <span className="file-change-history-prompt">{turn.prompt.content}</span>
+                  <span className="file-change-history-count">
+                    {t("chat.fileChangeHistory.files", { count: turn.changes.length })}
+                  </span>
+                </button>
+              ))}
+            </nav>
+            {selectedTurn && (
+              <section className="file-change-history-detail" aria-label={selectedTurn.prompt.content}>
+                <header className="file-change-history-turn-header">
+                  <h3>{selectedTurn.prompt.content}</h3>
+                  <span className="file-change-history-count">
+                    {t("chat.fileChangeHistory.files", { count: selectedTurn.changes.length })}
+                  </span>
+                </header>
+                {selectedTurn.answer && <ModelAnswer answer={selectedTurn.answer} />}
+                <div className="file-change-history-files">
+                  {selectedTurn.changes.map((change) => {
+                    const target = resolveHistoryExplorerTarget(change.path, cwd);
+                    const canExplore = !!target;
+                    const status =
+                      change.after === null
+                        ? "deleted"
+                        : change.before === null && change.beforeKnown
+                          ? "created"
+                          : "edited";
+                    return (
+                      <div className="file-change-history-file" key={change.path}>
+                        <button
+                          type="button"
+                          className="file-change-history-path"
+                          title={change.path}
+                          onClick={() => {
+                            setSelected([change]);
+                            onOpenFileChanges?.([change]);
+                          }}
+                        >
+                          {change.path}
+                        </button>
+                        <span className={`file-change-history-status file-change-history-status--${status}`}>
+                          {t(`chat.fileChangeHistory.${status}`)}
+                        </span>
+                        <button
+                          type="button"
+                          className="file-change-history-action"
+                          aria-label={`${t("chat.fileChangeHistory.copyPath")}: ${change.path}`}
+                          title={t("chat.fileChangeHistory.copyPath")}
+                          onClick={() => {
+                            void window.hermesAPI.copyToClipboard(change.path)
+                              .then(() => setActionStatus(t("chat.fileChangeHistory.copied")))
+                              .catch(() => setActionStatus(t("chat.fileChangeHistory.copyFailed")));
+                          }}
+                        >
+                          <Copy size={16} aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          className="file-change-history-action"
+                          disabled={copyingContent}
+                          aria-label={`${t("chat.fileChangeHistory.copyContent")}: ${change.path}`}
+                          title={t("chat.fileChangeHistory.copyContent")}
+                          onClick={() => void copyContent(change.path)}
+                        >
+                          <FileText size={16} aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          className="file-change-history-action"
+                          disabled={!canExplore}
+                          aria-label={`${t("chat.showWorktree")}: ${change.path}`}
+                          title={canExplore ? t("chat.showWorktree") : t("chat.fileChangeHistory.noCwd")}
+                          onClick={() => {
+                            if (target) {
+                              setExplorer(target);
+                              onOpenExplorer?.(target.path);
+                            }
+                          }}
+                        >
+                          <FolderSearch size={16} aria-hidden />
+                        </button>
+                      </div>
+                    );
                   })}
-                </span>
-              </summary>
-              {turn.answer && <ModelAnswer answer={turn.answer} />}
-              <div className="file-change-history-files">
-                {turn.changes.map((change) => {
-                  const target = resolveHistoryExplorerTarget(change.path, cwd);
-                  const canExplore = !!target;
-                  const status =
-                    change.after === null
-                      ? "deleted"
-                      : change.before === null && change.beforeKnown
-                        ? "created"
-                        : "edited";
-                  return (
-                    <div className="file-change-history-file" key={change.path}>
-                      <button
-                        type="button"
-                        className="file-change-history-path"
-                        title={change.path}
-                        onClick={() => {
-                          setSelected([change]);
-                          onOpenFileChanges?.([change]);
-                        }}
-                      >
-                        {change.path}
-                      </button>
-                      <span
-                        className={`file-change-history-status file-change-history-status--${status}`}
-                      >
-                        {t(`chat.fileChangeHistory.${status}`)}
-                      </span>
-                      <button
-                        type="button"
-                        className="file-change-history-action"
-                        aria-label={`${t("chat.fileChangeHistory.copyPath")}: ${change.path}`}
-                        title={t("chat.fileChangeHistory.copyPath")}
-                        onClick={() => {
-                          void window.hermesAPI
-                            .copyToClipboard(change.path)
-                            .then(() =>
-                              setActionStatus(
-                                t("chat.fileChangeHistory.copied"),
-                              ),
-                            )
-                            .catch(() =>
-                              setActionStatus(
-                                t("chat.fileChangeHistory.copyFailed"),
-                              ),
-                            );
-                        }}
-                      >
-                        <Copy size={16} aria-hidden />
-                      </button>
-                      <button
-                        type="button"
-                        className="file-change-history-action"
-                        disabled={copyingContent}
-                        aria-label={`${t("chat.fileChangeHistory.copyContent")}: ${change.path}`}
-                        title={t("chat.fileChangeHistory.copyContent")}
-                        onClick={() => void copyContent(change.path)}
-                      >
-                        <FileText size={16} aria-hidden />
-                      </button>
-                      <button
-                        type="button"
-                        className="file-change-history-action"
-                        disabled={!canExplore}
-                        aria-label={`${t("chat.showWorktree")}: ${change.path}`}
-                        title={
-                          canExplore
-                            ? t("chat.showWorktree")
-                            : t("chat.fileChangeHistory.noCwd")
-                        }
-                        onClick={() => {
-                          if (target) {
-                            setExplorer(target);
-                            onOpenExplorer?.(target.path);
-                          }
-                        }}
-                      >
-                        <FolderSearch size={16} aria-hidden />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </details>
-          ))
+                </div>
+              </section>
+            )}
+          </div>
         )}
       </div>
       {actionStatus && (
