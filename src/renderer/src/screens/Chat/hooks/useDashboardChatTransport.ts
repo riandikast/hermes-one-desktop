@@ -10,6 +10,7 @@ import {
   normalizeMessageText,
 } from "../chatMessages";
 import { isAutoInjectedPrompt } from "../autoPrompts";
+import { lastManualPromptIndex, updatePromptFileSummary } from "../fileChangeSummary";
 import {
   applyDashboardStreamEvent,
   type DashboardStreamEvent,
@@ -1343,16 +1344,11 @@ export function useDashboardChatTransport({
   // transcript (the ~1.5 s completion lock — see lat.md/chat-completion-latency.md).
   // Reset on any session/connection change; 0 means "no canonical prefix yet".
   const lastSyncedDbIdRef = useRef<number>(0);
-  // Per-turn file-change capture: path → latest before/after pair. Reset on
-  // each new user turn; attached to the assistant bubble on message.complete.
+  // Per-manual-prompt capture: earliest before/latest after, retained through
+  // automatic continuations and published as one cumulative footer.
   const fileChangesRef = useRef<Map<string, FileChange>>(new Map());
-  // Guards ONE chip per turn. `finalizeFileChanges` has three call sites
-  // (message.complete, the quiet-finalize recovery, and the reconnect path) and
-  // its body is async, so two of them could both pass the ref-clear and each
-  // append a chip — the duplicate-badge report. While a finalize is in flight,
-  // or after one already emitted for this turn, later calls are no-ops.
-  const fileChangesFinalizingRef = useRef(false);
-  const fileChangesEmittedRef = useRef(false);
+  // Only the latest finalize may publish; resumed work invalidates async reads.
+  const fileChangesRevisionRef = useRef(0);
   // Working-tree snapshot taken at TURN START (path → status|after). At
   // finalize the current tree is compared against it so ONLY files the agent
   // actually modified THIS turn are reported — files that were already dirty
@@ -1649,12 +1645,7 @@ export function useDashboardChatTransport({
   // swallow the badge), and persist for reopen. Runs at message.complete and
   // the quiet-finalize recovery path.
   const finalizeFileChanges = useCallback((): void => {
-    // One chip per turn: a second finalize (another call site, or a reopen)
-    // must not append a duplicate badge for changes already reported.
-    if (fileChangesFinalizingRef.current || fileChangesEmittedRef.current) {
-      return;
-    }
-    fileChangesFinalizingRef.current = true;
+    const revision = ++fileChangesRevisionRef.current;
     const generation = sendGenerationRef.current;
     const turnMessages = messagesRef.current;
     const storedSessionId = storedSessionIdRef.current;
@@ -1662,12 +1653,8 @@ export function useDashboardChatTransport({
     console.info("[file-changes] captured", {
       toolPaths: captured.map((c) => c.path),
     });
-    fileChangesRef.current = new Map();
-    // NO early return on an empty tool capture: the git working-tree diff
-    // below is the authoritative source (it catches terminal writes and
-    // tools whose payload shape misses the capture heuristics). Skipping it
-    // when the capture is empty made the chip silently disappear — the
-    // "tracking broke" report.
+    // Retain capture across interim completions; transcript paths also recover
+    // edits missed by stream payloads. Only a manual prompt resets capture.
     void (async () => {
       const byPath = new Map<string, FileChange>();
       // Merge helper: normalized (case-insensitive) keys so the same file
@@ -1708,13 +1695,7 @@ export function useDashboardChatTransport({
         folder && folder.length > 0
           ? folder
           : (lastSyncedCwdRef.current?.trim() || null);
-      let lastUserIdx = -1;
-      for (let i = turnMessages.length - 1; i >= 0; i--) {
-        if (turnMessages[i].role === "user") {
-          lastUserIdx = i;
-          break;
-        }
-      }
+      const lastUserIdx = lastManualPromptIndex(turnMessages);
       const transcriptPaths = changedFilesFromToolRows(
         turnMessages,
         lastUserIdx + 1,
@@ -1744,39 +1725,21 @@ export function useDashboardChatTransport({
       const changes = Array.from(byPath.values()).filter(
         (c) => c.after !== null || c.before !== null,
       );
-      if (generation !== sendGenerationRef.current) return;
-      if (changes.length === 0) {
-        // Nothing to report: leave the turn un-emitted so a later finalize
-        // (e.g. after a late tool event) can still produce the chip.
-        fileChangesFinalizingRef.current = false;
-        return;
-      }
-      const chip: ChatMessage = {
-        id: `fc-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        kind: "file_changes",
-        role: "agent",
-        changes,
-      };
-      const next = [...messagesRef.current, chip];
+      if (generation !== sendGenerationRef.current || revision !== fileChangesRevisionRef.current || !changes.length) return;
+      const next = updatePromptFileSummary(messagesRef.current, changes);
       messagesRef.current = next;
       setMessages(next);
-      // Mark done BEFORE releasing: the chip is in the transcript now, so any
-      // further finalize for this turn must not add a second one.
-      fileChangesEmittedRef.current = true;
-      fileChangesFinalizingRef.current = false;
+      const summary = next.at(-1);
+      const cumulative = summary?.kind === "file_changes" ? summary.changes : changes;
       const record = window.hermesAPI.recordSessionFileChanges;
       if (
         dashboardShouldPersistLocalOverlays(connectionMode) &&
         storedSessionId &&
         typeof record === "function"
       ) {
-        void record(storedSessionId, changes).catch(() => undefined);
+        void record(storedSessionId, cumulative).catch(() => undefined);
       }
-    })().catch(() => {
-      // A failed body must not wedge the guard, or the turn could never
-      // report changes again.
-      if (generation === sendGenerationRef.current) fileChangesFinalizingRef.current = false;
-    });
+    })().catch(() => undefined);
   }, [connectionMode, contextFolder, setMessages]);
 
   const resetQuietFinalize = useCallback((): void => {
@@ -1955,6 +1918,18 @@ export function useDashboardChatTransport({
         }
       }
       logDashboardEvent(event, "accepted", runtimeSessionId);
+      if (["message.start", "message.delta", "reasoning.delta", "thinking.delta", "tool.start", "tool.progress", "tool.complete"].includes(event.type)) {
+        fileChangesRevisionRef.current++;
+        // A model continuation can resume after an interim completion, without
+        // another user send. Hide the footer and resume liveness immediately.
+        if (!watchChild && !activeTurnRef.current && !recoveryCancelledRef.current) {
+          const startIndex = lastManualPromptIndex(messagesRef.current);
+          if (startIndex >= 0) {
+            activeTurnRef.current = { turnId: `resume-${Date.now()}`, userId: messagesRef.current[startIndex].id, startIndex, status: "running" };
+            setIsLoading(true);
+          }
+        }
+      }
       if (event.type === "status.update") {
         // The backend announces an automatic fallback with the only
         // authoritative route it has: "⚠️ Model fallback: <old> via <old_provider>
@@ -2178,7 +2153,7 @@ export function useDashboardChatTransport({
             /(^|[;&|])\s*(>|>>|tee|touch|mkdir|install|dd|rm\s|cp\s|mv\s|sed\s+-i|git\s+(add|commit|push|checkout|reset|mv|rm)\b|echo\s+[^>]*>)/.test(
               cmdText,
             );
-          if (path && writes && !fileChangesRef.current.has(path)) {
+          if (path && writes && !fileChangesRef.current.has(normalizePathKey(path))) {
             const startArgs =
               typeof toolPayload.args === "object" &&
               toolPayload.args !== null &&
@@ -2204,7 +2179,7 @@ export function useDashboardChatTransport({
               startOld === undefined ? null : startOld === "" ? "" : startOld;
             const hunkAfter =
               startNew === undefined ? null : startNew === "" ? "" : startNew;
-            fileChangesRef.current.set(path, {
+            fileChangesRef.current.set(normalizePathKey(path), {
               path,
               before: hunkBefore,
               after: hunkAfter,
@@ -2224,10 +2199,12 @@ export function useDashboardChatTransport({
                     ? []
                     : startNew.split("\n"),
             });
+            const capture = fileChangesRef.current;
             void window.hermesAPI
               .readFile(path)
               .then((res) => {
-                const current = fileChangesRef.current.get(path);
+                if (capture !== fileChangesRef.current) return;
+                const current = capture.get(normalizePathKey(path));
                 if (!current) return;
                 // A payload hunk is already the authoritative pre-edit text and
                 // is race-free. This read is asynchronous, so by the time it
@@ -2236,24 +2213,25 @@ export function useDashboardChatTransport({
                 // post-edit content, making before === after and losing the diff
                 // ("diff unavailable"). Never clobber a known hunk.
                 if (current.removed || current.added) {
-                  fileChangesRef.current.set(path, {
+                  fileChangesRef.current.set(normalizePathKey(path), {
                     ...current,
                     beforeKnown: true,
                   });
                   return;
                 }
                 // Read succeeded → the file existed before the tool ran.
-                fileChangesRef.current.set(path, {
+                fileChangesRef.current.set(normalizePathKey(path), {
                   ...current,
                   before: res?.content ?? null,
                   beforeKnown: true,
                 });
               })
               .catch(() => {
-                const current = fileChangesRef.current.get(path);
+                if (capture !== fileChangesRef.current) return;
+                const current = capture.get(normalizePathKey(path));
                 if (!current) return;
                 // Read failed → the file did not exist yet (created).
-                fileChangesRef.current.set(path, {
+                fileChangesRef.current.set(normalizePathKey(path), {
                   ...current,
                   before: null,
                   beforeKnown: true,
@@ -2313,22 +2291,26 @@ export function useDashboardChatTransport({
 
         const capturePath = (path: string): void => {
           const capture = fileChangesRef.current;
-          const existing = fileChangesRef.current.get(path);
+          const key = normalizePathKey(path);
+          const existing = capture.get(key);
           if (existing) {
             if (removed || added) {
-              fileChangesRef.current.set(path, {
+              fileChangesRef.current.set(key, {
                 ...existing,
                 after: newString ?? existing.after,
-                removed,
+                removed: existing.removed ?? removed,
                 added,
               });
+            } else {
+              // A later write without a hunk must refresh the prior result.
+              fileChangesRef.current.set(key, { ...existing, after: null, added: undefined });
             }
           } else {
             // The before was never captured (path unknown at tool.start) —
             // the file may already be modified by the time we read. The payload
             // may still carry the exact hunk, which is race-free; prefer it over
             // the async read so the dialog has something to render.
-            fileChangesRef.current.set(path, {
+            fileChangesRef.current.set(key, {
               path,
               before:
                 oldString === undefined
@@ -2347,6 +2329,7 @@ export function useDashboardChatTransport({
               added,
             });
           }
+          const snapshot = capture.get(key);
           void window.hermesAPI
             .readFile(path)
             .then((res) => {
@@ -2354,11 +2337,11 @@ export function useDashboardChatTransport({
               // for the same path must not be skipped just because an entry
               // already exists. Only fills `after` when the payload had no hunk,
               // so a real hunk is never overwritten by the whole file.
-              const current = fileChangesRef.current.get(path);
-              if (capture !== fileChangesRef.current) return;
+              const current = fileChangesRef.current.get(key);
+              if (capture !== fileChangesRef.current || current !== snapshot) return;
               if (!current) return;
-              if (current.removed || current.added) return;
-              fileChangesRef.current.set(path, {
+              if (removed || added) return;
+              fileChangesRef.current.set(key, {
                 ...current,
                 after: res?.content ?? null,
               });
@@ -3551,12 +3534,11 @@ export function useDashboardChatTransport({
       // stamp the 2s foreign poll would see the gateway already "working",
       // enter foreign mode and run a full DB reconcile on the UI thread.
       lastLocalActivityAtRef.current = Date.now();
-      // FILE-CHANGES: a new user turn starts a fresh accumulator AND clears
-      // both per-turn guards, so the previous turn's emitted chip can never
-      // suppress this turn's badge.
-      fileChangesRef.current = new Map();
-      fileChangesFinalizingRef.current = false;
-      fileChangesEmittedRef.current = false;
+      // Automatic recovery and runtime notices belong to the same manual prompt.
+      fileChangesRevisionRef.current++;
+      if (!isRecovery && !isAutoInjectedPrompt(text) && !pendingClarifyRequestIdRef.current) {
+        fileChangesRef.current = new Map();
+      }
       // Fresh turn, fresh recovery budget.
       quietFinalizeErrorsRef.current = 0;
       // Start a fresh quiet-finalize window. The stall watchdog is armed

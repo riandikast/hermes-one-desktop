@@ -67,6 +67,7 @@ interface HarnessApi {
   messages?: ChatMessage[];
   send?: (text: string, attachments?: Attachment[]) => Promise<boolean>;
   providerWait?: { deadline: number | null } | null;
+  isLoading?: boolean;
   switchProviderNow?: () => Promise<void>;
   abort?: () => void;
   applyModelOverride?: (provider: string, model: string) => Promise<void>;
@@ -138,6 +139,7 @@ function Harness({
       turnId: "turn-bad",
     },
   ]);
+  const [isLoading, setIsLoading] = useState(false);
   const [model, setModel] = useState("bad-model");
   const [provider, setProvider] = useState("bad-provider");
   const [planMode, setPlanMode] = useState(initialPlanMode);
@@ -166,7 +168,7 @@ function Harness({
     modelBaseUrl,
     provider,
     setHermesSessionId: vi.fn(),
-    setIsLoading: vi.fn(),
+    setIsLoading,
     setMessages,
     setToolProgress: vi.fn(),
     setUsage,
@@ -185,6 +187,7 @@ function Harness({
       activeTurnRef,
       messages,
       activeSubagents: transport.activeSubagents,
+      isLoading,
       send: transport.sendMessage,
       abort: transport.abort,
       providerWait: transport.providerWait,
@@ -208,6 +211,7 @@ function Harness({
     transport.switchProviderNow,
     transport.activeSubagents,
     transport.sendMessage,
+    isLoading,
   ]);
 
   return history ? <FileChangeHistoryDialog sessionId={null} messages={messages} onClose={() => {}} /> : null;
@@ -740,6 +744,92 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
     await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text: "done" } }); });
     expect(document.querySelector(".file-change-history-count")?.textContent).toContain("2");
     expect(api.messages?.filter((row) => row.kind === "file_changes")).toHaveLength(1);
+  });
+
+  it.each(["stream", "injected", "disk"] as const)("updates the same prompt summary across interim completion and %s continuation", async (mode) => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      return {};
+    });
+    Object.assign(window.hermesAPI, { readFile: vi.fn(async () => ({ content: "after" })), recordSessionFileChanges: vi.fn(async () => true) });
+    const api: HarnessApi = {};
+    render(<Harness api={api} />);
+    await act(async () => { await api.send?.("edit files"); });
+    const edit = async (path: string, before: string, after: string, id: string): Promise<void> => {
+      await act(async () => {
+        dashboardMock.onEvent?.({ type: "tool.start", session_id: "live", payload: { name: "patch", tool_id: id, args: { path, old_string: before, new_string: after } } });
+        dashboardMock.onEvent?.({ type: "tool.complete", session_id: "live", payload: { name: "patch", tool_id: id, result: "{}", args: { path, old_string: before, new_string: after } } });
+      });
+    };
+    const finish = async (text: string): Promise<void> => {
+      await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text } }); });
+    };
+    await edit("C:/repo/a.ts", "before", "middle", "p1");
+    await finish("interim answer");
+    const id = api.messages?.find((row) => row.kind === "file_changes")?.id;
+    expect(api.isLoading).toBe(false);
+    // Both stream resumption and runtime-injected prompts stay in this request.
+    await act(async () => {
+      if (mode === "injected") await api.send?.("[System: continue the current task]");
+      else dashboardMock.onEvent?.({ type: "message.start", session_id: "live", payload: {} });
+    });
+    expect(api.isLoading).toBe(true);
+    if (mode === "disk") {
+      await act(async () => {
+        dashboardMock.onEvent?.({ type: "tool.complete", session_id: "live", payload: { name: "write_file", tool_id: "p2", args: { path: "c:/repo/a.ts" }, result: "{}" } });
+      });
+    } else {
+      await edit("c:/repo/a.ts", "middle", "after", "p2");
+    }
+    await edit("C:/repo/b.ts", "old", "new", "p3");
+    await finish("final answer");
+    const chips = api.messages?.filter((row) => row.kind === "file_changes");
+    expect(chips).toHaveLength(1);
+    expect(chips?.[0]).toMatchObject({ id, changes: [
+      { path: "C:/repo/a.ts", before: "before", after: "after" },
+      { path: "C:/repo/b.ts", before: "old", after: "new" },
+    ] });
+    expect(window.hermesAPI.recordSessionFileChanges).toHaveBeenLastCalledWith("stored", expect.arrayContaining([
+      expect.objectContaining({ path: "C:/repo/a.ts", before: "before", after: "after" }),
+      expect.objectContaining({ path: "C:/repo/b.ts" }),
+    ]));
+    await act(async () => { await api.send?.("new manual request"); });
+    await edit("C:/repo/a.ts", "after", "next", "p4");
+    await finish("next answer");
+    expect(api.messages?.filter((row) => row.kind === "file_changes")).toHaveLength(2);
+  });
+
+  it("discards a slow interim finalize when streaming resumes before its read finishes", async () => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      return {};
+    });
+    let release!: (result: { content: string }) => void;
+    const read = new Promise<{ content: string }>((resolve) => { release = resolve; });
+    Object.assign(window.hermesAPI, { readFile: vi.fn(() => read), recordSessionFileChanges: vi.fn(async () => true) });
+    const api: HarnessApi = {};
+    render(<Harness api={api} />);
+    await act(async () => { await api.send?.("edit files"); });
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "tool.start", session_id: "live", payload: { name: "patch", tool_id: "slow", args: { path: "C:/repo/a.ts", old_string: "before" } } });
+      dashboardMock.onEvent?.({ type: "tool.complete", session_id: "live", payload: { name: "patch", tool_id: "slow", args: { path: "C:/repo/a.ts", old_string: "before" }, result: "{}" } });
+      dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text: "interim" } });
+    });
+    await act(async () => { dashboardMock.onEvent?.({ type: "message.start", session_id: "live", payload: {} }); });
+    await act(async () => { release({ content: "interim disk content" }); });
+    expect(api.messages?.some((row) => row.kind === "file_changes")).toBe(false);
+    expect(window.hermesAPI.recordSessionFileChanges).not.toHaveBeenCalled();
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "tool.complete", session_id: "live", payload: { name: "patch", tool_id: "latest", args: { path: "C:/repo/a.ts", old_string: "interim", new_string: "latest" }, result: "{}" } });
+      dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text: "done" } });
+    });
+    expect(api.messages?.filter((row) => row.kind === "file_changes")).toMatchObject([
+      { changes: [{ path: "C:/repo/a.ts", before: "before", after: "latest" }] },
+    ]);
   });
 
   it("does not reseed renderer-local or injected prompts into a recovered session", () => {

@@ -32,6 +32,8 @@ Settings → Keyboard Shortcuts is now the UI for the shared shortcut registry: 
 
 File editor: fold-gutter glyphs are replaced by masked chevron icons (CodeMirror markers keyed by their Fold/Unfold title). Auto-save is per-tab, seeded from Settings → Utils default (`hermes.fileEditor.autoSave`, default on); manual mode exposes Save + Unsaved and cancels a pending debounce as dirty. Utils pane uses the segmented control style.
 
+File-change summary is cumulative per manual prompt: retain capture through interim completion/recovery, update one stable chip, earliest before/latest after. MessageList uses fileSummaryFooters for presentation only (footer after latest response, hidden while active); raw tool snapshots/history remain intact. Async finalizers use generation/revision checks so resumed work cannot publish stale snapshots.
+
 Preserve unrelated chat-search/zoom work. Commit owned changes only; do not push without confirmation. Follow `AGENTS.md` resource queue and documentation checks.
 
 Theme editor saves compare built-in palettes against pristine bundled defaults, not the effective editor baseline (which dropped older overrides on later saves). Custom themes save complete palettes, including on rename. Reset only built-in overrides; custom themes use confirmed Delete. Storage stays `hermes-custom-themes`, separate from bundled CSS. See `lat.md/appearance-themes.md` and `ThemeEditor.integration.test.tsx`.

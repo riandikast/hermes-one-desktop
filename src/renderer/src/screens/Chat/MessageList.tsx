@@ -37,6 +37,7 @@ import type {
   ToolResultMessage,
 } from "./types";
 import { forkTranscriptWeight } from "./forkTranscriptWeight";
+import { fileSummaryFooters } from "./fileChangeSummary";
 import {
   RENDER_BUDGET,
   MIN_VISIBLE_GROUPS,
@@ -643,7 +644,7 @@ export const MessageList = memo(function MessageList({
     const todoCallIds = new Set(
       messages.filter(isTodoCall).map((message) => message.callId),
     );
-    return messages.filter((m) => {
+    return fileSummaryFooters(messages, isLoading).filter((m) => {
       if (isGatewaySystemMarker(m)) return false;
       if (isTodoCall(m)) return false;
       if (isToolRow(m) && todoCallIds.has(m.callId)) return false;
