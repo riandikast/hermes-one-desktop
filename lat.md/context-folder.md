@@ -26,6 +26,12 @@ The context-folder tree panel uses a compact header and can be resized from its 
 
 [[src/renderer/src/screens/Chat/WorktreePanel.tsx#WorktreePanel]] stores its width in `localStorage` under `hermes:worktreePanelWidth`, clamps it between a usable minimum and the available chat width, and updates it through a pointer-drag handle styled by `.worktree-resize-handle`.
 
+## Floating explorer sizing
+
+The chat File explorer uses the shared resizable working dialog and remains open on outside clicks or taps.
+
+The bottom-right handle supports pointer and keyboard resizing without remounting its tree. See [[commands-terminal#Commands store + built-in terminal#Floating working dialogs]]. Standalone tree-panel width behavior is unchanged.
+
 ## Large explorer directories
 
 The file explorer paginates each large directory to keep rendered tree rows bounded while retaining access to every entry.

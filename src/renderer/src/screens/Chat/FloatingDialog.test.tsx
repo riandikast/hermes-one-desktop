@@ -107,7 +107,7 @@ describe("TerminalDialog", () => {
     expect(screen.getByLabelText("Close Web preview")).toBeDefined();
   });
 
-  it("closes when the backdrop is clicked", () => {
+  it("does not close when the backdrop is clicked", () => {
     const onClose = vi.fn();
     const { container } = render(
       <FloatingDialog open onClose={onClose} title="Term">
@@ -115,7 +115,7 @@ describe("TerminalDialog", () => {
       </FloatingDialog>,
     );
     fireEvent.click(container.querySelector(".terminal-dialog-overlay")!);
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("does NOT close when a click lands inside the panel", () => {

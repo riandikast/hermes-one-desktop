@@ -6,6 +6,12 @@ It auto-opens when an in-app link is clicked or a web tool reports a URL, via th
 
 The panel's width is free-resizable: a drag handle on its left edge sets a `width` clamped between `MIN_PANEL_WIDTH` and `window.innerWidth - 360`, persisted to `localStorage` under `hermes:webPreviewWidth`. During a drag the webview's `pointer-events` are disabled so it doesn't swallow the move stream.
 
+## Floating dialog sizing
+
+The chat browser is hosted in the shared resizable working dialog, preserving its webviews and tab history while resized or hidden.
+
+Use the bottom-right resize handle or its arrow keys; outside clicks do not close it. See [[commands-terminal#Commands store + built-in terminal#Floating working dialogs]]. Standalone panel-width resizing remains unchanged.
+
 ## Webview identification and HTTPS policy
 
 The preview is the only webview allowed to load remote HTTPS; all others stay restricted to loopback HTTP. It is identified by its `partition="web-preview"` attribute, which Electron forwards to both security gates (unlike `name`).

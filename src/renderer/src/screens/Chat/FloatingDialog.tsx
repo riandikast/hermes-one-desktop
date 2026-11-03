@@ -15,8 +15,8 @@ import { X } from "../../assets/icons";
  * permanent once created, so its children stay mounted and are hidden instead —
  * closing preserves live sessions and their scrollback).
  *
- * The overlay is `aria-hidden` and click-to-close; the panel itself stops
- * propagation so interacting with contents never dismisses it.
+ * Outside clicks never dismiss working panels. Close explicitly or use Escape.
+ * A captured pointer on the corner handle resizes without losing webview input.
  *
  * DRAGGABLE by its header: the panel starts centered, and dragging offsets it
  * from there so it can be parked out of the way.
@@ -28,6 +28,7 @@ export function FloatingDialog({
   children,
   size = "terminal",
   keepMounted = false,
+  onNewSession,
   placement = "dialog",
   className = "",
 }: {
@@ -45,6 +46,8 @@ export function FloatingDialog({
    * Required for anything that cannot be recreated cheaply (a live terminal).
    */
   keepMounted?: boolean;
+  /** Terminal-only shortcut, captured before xterm consumes the key. */
+  onNewSession?: () => void;
   /** Keep stateful contents mounted while presenting them as a right-side panel. */
   placement?: "dialog" | "sidebar";
   /** Extra classes on the panel, for a caller-specific skin (e.g. the
@@ -55,6 +58,33 @@ export function FloatingDialog({
   // Offset from the centered position, in px. Kept separate from the layout so
   // the panel stays centered by default and dragging is a pure translation.
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [resizing, setResizing] = useState(false);
+  const resizeRef = useRef<{
+    pointerId: number; x: number; y: number;
+    width: number; height: number; left: number; top: number;
+    offsetX: number; offsetY: number;
+  } | null>(null);
+
+  const resize = (width: number, height: number, origin: NonNullable<typeof resizeRef.current>): void => {
+    const nextWidth = Math.min(Math.max(320, width), Math.max(0, window.innerWidth - Math.max(24, origin.left) - 24));
+    const nextHeight = Math.min(Math.max(200, height), Math.max(0, window.innerHeight - Math.max(24, origin.top) - 24));
+    setDimensions({ width: nextWidth, height: nextHeight });
+    // CSS centers the panel: compensate to keep its top-left corner stationary.
+    setOffset({ x: origin.offsetX + (nextWidth - origin.width) / 2,
+      y: origin.offsetY + (nextHeight - origin.height) / 2 });
+  };
+  const resizeOrigin = (): NonNullable<typeof resizeRef.current> | null => {
+    const rect = panelRef.current?.getBoundingClientRect();
+    return rect ? { pointerId: 0, x: 0, y: 0, width: rect.width, height: rect.height,
+      left: rect.left, top: rect.top, offsetX: offset.x, offsetY: offset.y } : null;
+  };
+  const endResize = (event: React.PointerEvent<HTMLButtonElement>): void => {
+    if (resizeRef.current?.pointerId !== event.pointerId) return;
+    resizeRef.current = null;
+    setResizing(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
   // True while dragging: suppresses the transition (which would otherwise lag
   // every mousemove) and forces the grabbing cursor. This MUST be state, not
   // read from the ref during render — a ref change does not re-render.
@@ -116,8 +146,20 @@ export function FloatingDialog({
   }
 
   useEffect(() => {
+    const recenter = (): void => setOffset({ x: 0, y: 0 });
+    window.addEventListener("resize", recenter);
+    return () => window.removeEventListener("resize", recenter);
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent): void => {
+      if (onNewSession && (e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "t") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!e.repeat) onNewSession();
+        return;
+      }
       if (e.key === "Escape") {
         e.stopPropagation();
         onClose();
@@ -125,7 +167,7 @@ export function FloatingDialog({
     };
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
-  }, [open, onClose]);
+  }, [open, onClose, onNewSession]);
 
   return (
     <div
@@ -133,20 +175,19 @@ export function FloatingDialog({
       // Visibility is driven by a class, never by unmounting: the terminal
       // inside must survive being closed.
       aria-hidden={!open}
-      onClick={onClose}
     >
       <div
         ref={panelRef}
         className={`terminal-dialog terminal-dialog--${size}${placement === "sidebar" ? " terminal-dialog--sidebar" : ""}${
           dragging ? " is-dragging" : ""
-        }${className ? ` ${className}` : ""}`}
+        }${resizing ? " is-resizing" : ""}${className ? ` ${className}` : ""}`}
         role="dialog"
         aria-label={title}
         aria-modal="false"
         style={
           placement === "sidebar"
             ? undefined
-            : { transform: `translate(${offset.x}px, ${offset.y}px)` }
+            : { ...dimensions, transform: `translate(${offset.x}px, ${offset.y}px)` }
         }
         onClick={(e) => e.stopPropagation()}
       >
@@ -180,6 +221,40 @@ export function FloatingDialog({
         <div className="terminal-dialog-body" hidden={keepMounted && !open}>
           {children}
         </div>
+        {placement === "dialog" && <button
+          type="button"
+          className="terminal-dialog-resize"
+          aria-label={`Resize ${title}`}
+          title="Drag to resize; arrow keys resize, Shift for larger steps"
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            const origin = resizeOrigin();
+            if (!origin) return;
+            event.preventDefault();
+            resizeRef.current = { ...origin, pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+            setResizing(true);
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            const origin = resizeRef.current;
+            if (origin?.pointerId !== event.pointerId) return;
+            resize(origin.width + event.clientX - origin.x, origin.height + event.clientY - origin.y, origin);
+          }}
+          onPointerUp={endResize}
+          onPointerCancel={endResize}
+          onLostPointerCapture={endResize}
+          onKeyDown={(event) => {
+            if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const origin = resizeOrigin();
+            if (!origin) return;
+            const step = event.shiftKey ? 64 : 16;
+            resize(origin.width + (event.key === "ArrowRight" ? step : event.key === "ArrowLeft" ? -step : 0),
+              origin.height + (event.key === "ArrowDown" ? step : event.key === "ArrowUp" ? -step : 0), origin);
+          }}
+        />}
+
       </div>
     </div>
   );

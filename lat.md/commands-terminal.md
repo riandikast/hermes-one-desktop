@@ -63,6 +63,14 @@ creates a session and auto-executes the command. Each row also has Edit,
 Duplicate (pre-fills the editor form from an existing command under a fresh
 id, so it saves as a new entry without re-typing the fields), and Delete.
 
+## Floating working dialogs
+
+Terminal, Web preview and File explorer share a corner resize handle and no longer dismiss on outside clicks or taps.
+
+[[src/renderer/src/screens/Chat/FloatingDialog.tsx#FloatingDialog]] supports mouse/touch/pen pointer capture and arrow-key resizing (Shift increases the step). Sizes stay within the viewport, retain the top-left corner during resize, and remain in component state across hide/reopen. Window resizing recenters panels. Sidebar placement stays unchanged. Close buttons and Escape still dismiss; stateful children remain mounted. The terminal dock's existing ResizeObserver refits xterm and its PTY to the new bounds.
+
+While the active chat's terminal is open, Ctrl+Shift+T (Cmd+Shift+T on macOS) invokes the same explicit new-session handler as +, before xterm consumes input. Repeats and closed/background terminal shortcuts do nothing. [[src/renderer/src/screens/Chat/FloatingDialog.resize.test.tsx]] covers pointer cancellation, keyboard/minimum/viewport sizing, retained children, outside taps and shortcut capture. Existing drag, dock and wiring suites cover the neighboring behavior. Live Electron verification remains manual; no app rebuild/restart is performed automatically.
+
 ## Windows launcher export
 
 Each row exports a runnable launcher to the folder chosen in the native folder picker, using the saved terminal-shell preference without running the template.

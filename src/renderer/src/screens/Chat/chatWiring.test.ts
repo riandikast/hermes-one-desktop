@@ -79,13 +79,13 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     (theme) => {
       expect(css.length).toBeGreaterThan(1000);
       const block = css.split(`[data-theme="${theme}"] {`)[1].split("}")[0];
-      const rgb = (key: string) => {
+      const rgb = (key: string): number[] => {
         const hex = block.match(new RegExp(`--${key}: #([0-9a-f]{6})`))![1];
         return [0, 2, 4].map((offset) =>
           parseInt(hex.slice(offset, offset + 2), 16),
         );
       };
-      const luminance = (color: number[]) =>
+      const luminance = (color: number[]): number =>
         color
           .map((channel) => {
             const c = channel / 255;
@@ -138,6 +138,7 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     expect(chatSource).toMatch(
       /<TerminalDock\s+ref=\{onFinishDockRef\}[\s\S]*?open=\{onFinishDockOpen\}/,
     );
+    expect(chatSource).toContain("onNewSession={active ? handleNewOnFinishSession : undefined}");
   });
 
   // Extract the real handler body from this repository's own source and run it
@@ -280,8 +281,9 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
       expect(value).not.toMatch(
         /^\(\)\s*=>\s*(undefined|void 0|\{\s*\}|null)$/,
       );
-      // A named handler is required, so the behaviour is testable elsewhere.
-      expect(value).toMatch(/^[A-Za-z_$][\w$]*$/);
+      // The floating shortcut is disabled in background chats; the dock's +
+      // button always receives the named handler.
+      expect(value === "active ? handleNewOnFinishSession : undefined" || /^[A-Za-z_$][\w$]*$/.test(value)).toBe(true);
     }
   });
 

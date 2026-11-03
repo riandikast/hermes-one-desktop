@@ -3099,6 +3099,7 @@ function Chat({
           onClose={() => setOnFinishDockOpen(false)}
           title="Terminal"
           keepMounted
+          onNewSession={active ? handleNewOnFinishSession : undefined}
           placement={windowTerminalStyle}
         >
           {/* Hidden, not unmounted, while closed. */}
