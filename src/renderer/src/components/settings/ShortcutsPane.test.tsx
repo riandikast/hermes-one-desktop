@@ -76,6 +76,40 @@ it("clears a binding with Backspace so the command becomes unassigned", async ()
   expect(within(row).getByText("Unassigned")).toBeTruthy();
 });
 
+it("edits one chord of a multi-shortcut action without dropping the others", async () => {
+  renderWithI18n(<ShortcutsPane />);
+  const row = rowFor("Zoom in");
+  expect(within(row).getAllByRole("button", { name: /^Change shortcut/ })).toHaveLength(2);
+  fireEvent.click(within(row).getByRole("button", { name: "Change" }));
+  fireEvent.keyDown(window, { key: "u", ctrlKey: true, altKey: true });
+  await waitFor(() => expect(setKeyboardShortcuts).toHaveBeenCalledWith(expect.objectContaining({ zoomIn: ["Mod+Alt+U", "Mod+="] })));
+  expect(within(row).getByText("Ctrl+=")).toBeTruthy();
+  fireEvent.click(within(row).getByRole("button", { name: "Change shortcut Ctrl+= for Zoom in" }));
+  fireEvent.keyDown(window, { key: "y", ctrlKey: true, altKey: true });
+  await waitFor(() => expect(setKeyboardShortcuts).toHaveBeenLastCalledWith(expect.objectContaining({ zoomIn: ["Mod+Alt+U", "Mod+Alt+Y"] })));
+});
+
+it("appends a chord and refuses one the same action already uses", async () => {
+  renderWithI18n(<ShortcutsPane />);
+  const row = rowFor("Zoom in");
+  fireEvent.click(within(row).getByRole("button", { name: "Add shortcut for Zoom in" }));
+  const savesBefore = setKeyboardShortcuts.mock.calls.length;
+  fireEvent.keyDown(window, { key: "=", ctrlKey: true });
+  expect(await screen.findByRole("alert")).toHaveTextContent("Zoom in already uses Ctrl+=");
+  expect(setKeyboardShortcuts).toHaveBeenCalledTimes(savesBefore);
+  fireEvent.keyDown(window, { key: "u", ctrlKey: true, altKey: true });
+  await waitFor(() => expect(setKeyboardShortcuts).toHaveBeenCalledWith(expect.objectContaining({ zoomIn: ["Mod+Plus", "Mod+=", "Mod+Alt+U"] })));
+});
+
+it("removes only the edited chord with Backspace", async () => {
+  renderWithI18n(<ShortcutsPane />);
+  const row = rowFor("Zoom in");
+  fireEvent.click(within(row).getByRole("button", { name: "Change shortcut Ctrl+= for Zoom in" }));
+  fireEvent.keyDown(window, { key: "Backspace" });
+  await waitFor(() => expect(setKeyboardShortcuts).toHaveBeenCalledWith(expect.objectContaining({ zoomIn: ["Mod+Plus"] })));
+  expect(within(row).getByText("Ctrl+Plus")).toBeTruthy();
+});
+
 it("reports a save failure instead of pretending the chord changed", async () => {
   setKeyboardShortcuts.mockResolvedValueOnce({ ok: false, error: "Could not save keyboard shortcuts." } );
   renderWithI18n(<ShortcutsPane />);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Keyboard, RotateCcw } from "lucide-react";
+import { Keyboard, Plus, RotateCcw } from "lucide-react";
 import {
   SHORTCUTS,
   bindingsFor,
@@ -102,13 +102,16 @@ function sameBinding(a: string, b: string): boolean {
   return norm(a) === norm(b);
 }
 
+/** A row's chord slot: an existing index, or a new binding to append. */
+type RecordTarget = { id: ShortcutId; index: number | "new" };
+
 export default function ShortcutsPane(): React.JSX.Element {
   const { t } = useI18n();
   const overrides = useKeyboardShortcuts();
-  const [recording, setRecording] = useState<ShortcutId | null>(null);
+  const [recording, setRecording] = useState<RecordTarget | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const recordingRef = useRef<ShortcutId | null>(null);
+  const recordingRef = useRef<RecordTarget | null>(null);
   recordingRef.current = recording;
   const platform = shortcutPlatform();
 
@@ -137,35 +140,50 @@ export default function ShortcutsPane(): React.JSX.Element {
     }
   }, []);
 
+  /** Replace or append ONE chord; the action's other chords stay intact. */
+  const applyBinding = useCallback(async (target: RecordTarget, binding: string | null): Promise<boolean> => {
+    const current = [...bindingsFor(target.id, overrides, platform)];
+    if (binding === null) {
+      // Backspace removes only the edited chord, never the whole command.
+      if (target.index === "new" || target.index >= current.length) return true;
+      current.splice(target.index, 1);
+    } else if (target.index === "new" || target.index >= current.length) current.push(binding);
+    else current[target.index] = binding;
+    return apply({ ...overrides, [target.id]: current });
+  }, [overrides, platform, apply]);
+
+  // Capture phase keeps the composer/editor from consuming the chord.
   useEffect(() => {
     if (!recording) return;
     const onKey = (event: KeyboardEvent): void => {
-      // Capture phase keeps the composer/editor from consuming the chord.
       event.preventDefault();
       event.stopPropagation();
       if (event.key === "Escape") { stop(); return; }
       if (event.key === "Backspace" || event.key === "Delete") {
-        void apply({ ...overrides, [recording]: [] }).then((ok) => { if (ok) stop(); });
+        void applyBinding(recording, null).then((ok) => { if (ok) stop(); });
         return;
       }
       const parsed = bindingFromEvent(event, platform);
       if (parsed.error) { setError(parsed.error); return; }
       if (!parsed.binding) return;
-      const conflict = SHORTCUTS.find((item) => item.id !== recording &&
+      const otherAction = SHORTCUTS.find((item) => item.id !== recording.id &&
         bindingsFor(item.id, overrides, platform).some((binding) => sameBinding(binding, parsed.binding!)));
+      const sameAction = bindingsFor(recording.id, overrides, platform)
+        .some((binding, index) => index !== recording.index && sameBinding(binding, parsed.binding!));
+      const conflict = otherAction ? LABELS[otherAction.id] : sameAction ? LABELS[recording.id] : null;
       if (conflict) {
-        setError(`${LABELS[conflict.id]} already uses ${display(parsed.binding, platform)}.`);
+        setError(`${conflict} already uses ${display(parsed.binding, platform)}.`);
         return;
       }
-      void apply({ ...overrides, [recording]: [parsed.binding] }).then((ok) => { if (ok) stop(); });
+      void applyBinding(recording, parsed.binding).then((ok) => { if (ok) stop(); });
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [recording, overrides, platform, apply, stop]);
+  }, [recording, overrides, platform, applyBinding, stop]);
 
-  const begin = (id: ShortcutId): void => {
+  const begin = (id: ShortcutId, index: number | "new" = 0): void => {
     setError("");
-    setRecording(id);
+    setRecording({ id, index });
     setShortcutRecording(true);
   };
 
@@ -180,15 +198,17 @@ export default function ShortcutsPane(): React.JSX.Element {
       <header className="settings-pane-head">
         <h2><Keyboard size={18} aria-hidden="true" /> Keyboard shortcuts</h2>
         <p className="settings-pane-subtitle">
-          Select Change, then press the new combination. Escape cancels; Backspace
-          clears the binding. Menu accelerators follow these values.
+          Select Change, or click a chord to edit just that one, then press the new
+          combination. Use + to add another chord. Escape cancels; Backspace removes
+          the chord being edited. Menu accelerators use each action’s first chord.
         </p>
       </header>
 
       {error && <p className="settings-shortcut-error" role="alert">{error}</p>}
       {recording && (
         <p className="settings-shortcut-recording" role="status">
-          Recording {LABELS[recording]} — press a key combination.
+          Recording {LABELS[recording.id]}
+          {recording.index === "new" ? " (new chord)" : ` (chord ${recording.index + 1})`} — press a key combination.
         </p>
       )}
 
@@ -198,7 +218,8 @@ export default function ShortcutsPane(): React.JSX.Element {
           {SHORTCUTS.filter((item) => item.owner === group.owner).map((item) => {
             const bindings = bindingsFor(item.id, overrides, platform);
             const isCustom = Object.prototype.hasOwnProperty.call(overrides, item.id);
-            const isRecording = recording === item.id;
+            const editingIndex = recording && recording.id === item.id ? recording.index : null;
+            const isRecording = editingIndex !== null;
             return (
               <div className="settings-row settings-shortcut-row" key={item.id}>
                 <div className="settings-row-text">
@@ -206,20 +227,44 @@ export default function ShortcutsPane(): React.JSX.Element {
                 </div>
                 <div className="settings-shortcut-actions">
                   <span className={`settings-shortcut-keys${isRecording ? " is-recording" : ""}`}>
-                    {isRecording
+                    {isRecording && editingIndex === "new"
                       ? "Press keys…"
-                      : bindings.length > 0
-                        ? bindings.map((binding) => <kbd key={binding}>{display(binding, platform)}</kbd>)
+                      : bindings.length > 0 || isRecording
+                        ? bindings.map((binding, index) => (
+                            <button
+                              key={`${item.id}-${index}`}
+                              type="button"
+                              className={`settings-shortcut-chip${editingIndex === index ? " is-recording" : ""}`}
+                              title={`Change ${display(binding, platform)} for ${LABELS[item.id]}`}
+                              aria-label={`Change shortcut ${display(binding, platform)} for ${LABELS[item.id]}`}
+                              disabled={busy || (recording !== null && editingIndex !== index)}
+                              onClick={() => (editingIndex === index ? stop() : begin(item.id, index))}
+                            >
+                              {editingIndex === index ? "Press keys…" : <kbd>{display(binding, platform)}</kbd>}
+                            </button>
+                          ))
                         : <span className="settings-shortcut-unset">Unassigned</span>}
                   </span>
                   <button
                     type="button"
                     className="btn-ghost btn-sm"
                     disabled={busy || (recording !== null && !isRecording)}
-                    onClick={() => (isRecording ? stop() : begin(item.id))}
+                    onClick={() => (isRecording ? stop() : begin(item.id, 0))}
                   >
                     {isRecording ? "Cancel" : "Change"}
                   </button>
+                  {bindings.length < 8 && (
+                    <button
+                      type="button"
+                      className="settings-shortcut-reset"
+                      title={`Add another shortcut for ${LABELS[item.id]}`}
+                      aria-label={`Add shortcut for ${LABELS[item.id]}`}
+                      disabled={busy || (recording !== null && !isRecording)}
+                      onClick={() => (editingIndex === "new" ? stop() : begin(item.id, "new"))}
+                    >
+                      <Plus size={13} />
+                    </button>
+                  )}
                   {isCustom && bindings.length > 0 && !isRecording && (
                     <button
                       type="button"
