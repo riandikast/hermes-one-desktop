@@ -8,6 +8,10 @@ The main process owns the zoom state so keyboard, menu, and wheel all hit one co
 
 `createWindow` in [[src/main/app/start.ts#createWindow]] intercepts Ctrl+=/-/0 via `before-input-event` (`control || meta`), and the View menu items (Zoom In/Out/Actual Size) in [[src/main/app/menu.ts#buildMenu]] route through the same controller — one code path for keyboard, menu, and wheel.
 
+Menu template changes must retain the initialized array in `buildMenu`; esbuild rejects a bare `const template` before any application bundle is produced.
+
+[[src/shared/keyboard-shortcuts.ts#SHORTCUTS]] supplies the shared command IDs and default bindings used by Electron and renderer handlers. [[src/shared/keyboard-shortcuts.ts#bindingsFor]] preserves explicit empty overrides and platform-specific defaults; [[src/shared/keyboard-shortcuts.ts#matchesBinding]] checks exact modifiers and suppresses IME composition. [[src/shared/keyboard-shortcuts.ts#validateShortcutOverrides]] validates persisted/IPC input. Regressions: [[src/shared/keyboard-shortcuts.test.ts]]. The shared source must ship alongside shortcut consumers or both main and renderer imports fail.
+
 ## Renderer: persistence and wheel
 
 [[src/renderer/src/hooks/useUiZoom.ts#useUiZoom]], mounted at the root of [[src/renderer/src/App.tsx]], restores the persisted level (`localStorage["hermes.ui.zoomLevel"]`) on mount, persists every `ui-zoom-changed` broadcast, and zooms on Shift+wheel via the accumulator in [[src/renderer/src/hooks/zoomWheel.ts#stepWheelDelta]] (one step per 100px, so trackpads feel natural).
