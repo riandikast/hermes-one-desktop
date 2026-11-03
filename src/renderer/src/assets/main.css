@@ -19584,6 +19584,8 @@ body:has(.shell-vibrant),
 .tools-toggle {
   position: relative;
   display: inline-flex;
+  /* Center the track in taller rows (toolbars inherit a text line-height). */
+  align-items: center;
   flex-shrink: 0;
   cursor: pointer;
 }
@@ -19609,8 +19611,9 @@ body:has(.shell-vibrant),
 .tools-toggle-track::after {
   content: "";
   position: absolute;
-  top: 2px;
-  left: 2px;
+  /* 22px track - 16px knob = 6px, split evenly. 2px sat 1px high/left. */
+  top: calc((22px - 16px) / 2);
+  left: calc((22px - 16px) / 2);
   width: 16px;
   height: 16px;
   background: var(--text-muted);
