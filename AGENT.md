@@ -29,3 +29,5 @@ Non-repository Source Control offers confirmed Initialize repository beside Retr
 Renderer confirmations use async appConfirm (in-page dialog), never native window.confirm; Electron Windows native prompts can leave inputs dead until taskbar refocus, not dev-only. Preserve deny defaults, awaited mutation ordering, nested Radix focus scope and prior focus restore. BranchDialog displays configured sanitized remote URLs and supports adding new remotes with in-page confirmation; no automatic network operations or unrequested remote mutations.
 
 Preserve unrelated chat-search/zoom work. Commit owned changes only; do not push without confirmation. Follow `AGENTS.md` resource queue and documentation checks.
+
+Theme editor saves compare built-in palettes against pristine bundled defaults, not the effective editor baseline (which dropped older overrides on later saves). Custom themes save complete palettes, including on rename. Reset only built-in overrides; custom themes use confirmed Delete. Storage stays `hermes-custom-themes`, separate from bundled CSS. See `lat.md/appearance-themes.md` and `ThemeEditor.integration.test.tsx`.

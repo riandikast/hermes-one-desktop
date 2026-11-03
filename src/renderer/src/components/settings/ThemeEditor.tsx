@@ -155,10 +155,13 @@ export default function ThemeEditor({
   }
 
   function handleSave(): void {
+    // Diff built-ins against bundled defaults, not the already-overridden
+    // editor baseline; otherwise a second save drops earlier customizations.
+    // Custom themes have no bundled base, so retain their complete palette.
+    const defaults = isCustom ? {} : (themeVars(sourceId!, {}) ?? {});
     const changed: Record<string, string> = {};
-    for (const v of THEME_VAR_ORDER) {
-      const current = vars[v] ?? "";
-      if (current !== (baseVars[v] ?? "")) changed[v] = current;
+    for (const [v, current] of Object.entries(vars)) {
+      if (isCustom || current !== (defaults[v] ?? "")) changed[v] = current;
     }
     // Saving an override with zero changed vars clears the stored override.
     if (Object.keys(changed).length === 0 && !isCustom && !draftName) {
@@ -233,7 +236,7 @@ export default function ThemeEditor({
             <Plus size={14} />
             <span>Copy</span>
           </button>
-          {hasStoredOverride && (
+          {!isCustom && hasStoredOverride && (
             <button
               type="button"
               className="theme-editor-btn"

@@ -41,6 +41,7 @@ This directory defines the high-level concepts, business logic, and architecture
 - [[office-interactions]] — space representatives: interactive bank tellers whose menu runs account status, balances, and account creation against the hermes-one backend for a chosen agent; the extensible pattern for future spaces (showroom sales, building space).
 - [[office-world-actions]] — chat-commanded errands: the agent's LLM emits world-action blocks from the office chat, its avatar walks the trip route to the bank/showroom, and the rep modal auto-opens running the requested action on arrival.
 - [[mcp-servers]] — add / edit / remove / enable / test MCP servers from the Capabilities → MCP tab; the shared add+edit modal and the in-place atomic `updateMcpServer` upsert (config.yaml locally, gateway REST in Remote/SSH).
+- [[appearance-themes]] - sparse built-in overrides, complete custom palettes, per-theme reset and repeated-save regressions.
 - [[ui-zoom]] - browser-style UI zoom: Ctrl+±/Ctrl+0 and Shift+wheel via `webContents.setZoomLevel`, main-process-owned state, persisted in localStorage.
 - [[commands-terminal]] - the Commands pinned view: a JSON store of reusable multi-line commands run in a built-in xterm.js + node-pty integrated terminal dock with tabbed sessions.
 - [[knowledge-editor]] - the Knowledge page's syntax-highlighted file editor: a highlighted overlay behind a transparent-text textarea, lazy-loaded highlight.js.
