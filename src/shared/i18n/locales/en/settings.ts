@@ -62,6 +62,7 @@ export default {
     },
     appearance: "Appearance",
     shortcuts: "Keyboard Shortcuts",
+    utils: "Utils",
     provider: "Providers",
     language: "Language",
     security: "Security",

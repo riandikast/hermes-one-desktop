@@ -6094,6 +6094,58 @@ body:has(.shell-vibrant),
   min-height: 0;
 }
 
+/* Per-file save mode: manual Save appears only when auto-save is off. */
+.file-viewer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+.file-viewer-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.file-viewer-autosave-label {
+  font-size: calc(12px * var(--font-scale));
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+/* CodeMirror's fold gutter draws literal "›"/"⌄" text by default; swap those
+   for chevron icons so the editor matches the app's icon set. */
+.file-viewer-cm-host .cm-foldGutter .cm-gutterElement span[title] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 0;
+  color: transparent;
+  background-color: var(--text-muted);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: 14px 14px;
+  mask-size: 14px 14px;
+}
+.file-viewer-cm-host .cm-foldGutter .cm-gutterElement span[title="Fold line"] {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+.file-viewer-cm-host .cm-foldGutter .cm-gutterElement span[title="Unfold line"] {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E");
+}
+.file-viewer-cm-host .cm-foldGutter .cm-gutterElement:hover span[title] {
+  background-color: var(--text-primary);
+}
+
 /* Slim footer row under the editor: filename, size, save state, open-external. */
 .file-viewer-statusbar {
   display: flex;

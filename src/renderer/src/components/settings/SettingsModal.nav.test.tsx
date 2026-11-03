@@ -25,11 +25,12 @@ function navLabels(): string[] {
   );
 }
 
-it("places keyboard shortcuts directly after appearance", () => {
+it("places utilities and keyboard shortcuts directly after appearance", () => {
   renderWithI18n(<SettingsModal open onClose={vi.fn()} />);
-  expect(navLabels().slice(0, 4)).toEqual([
+  expect(navLabels().slice(0, 5)).toEqual([
     "Appearance",
     "Keyboard Shortcuts",
+    "Utils",
     "Providers",
     "GitHub",
   ]);

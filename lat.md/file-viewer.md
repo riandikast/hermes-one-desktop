@@ -15,7 +15,12 @@ The editor opens as a STANDALONE top-strip tab, exactly like a session tab (not 
 
 ## Autosave
 
-Edits write back to disk automatically via the `write-file` IPC, 500ms after the last keystroke.
+Edits write back to disk automatically via the `write-file` IPC, 500 ms after the last keystroke. Ctrl+S always forces an immediate save.
 
-[[src/main/ipc/register.ts]] writes the debounced doc; the statusbar indicator
-shows Saving… / Saved / Save failed. Ctrl+S forces an immediate save.
+Each editor tab owns its save mode, seeded from the Utils default when the file opens. A toggle at the editor's top right turns auto-save off for that file only; manual mode reveals a Save button, shows Unsaved in the status bar, and keeps the doc in memory until saved. Turning auto-save off cancels a pending debounce and marks the file dirty rather than dropping that write.
+
+Settings → Utils chooses the default for newly opened files (`hermes.fileEditor.autoSave`, default on) using the same segmented control as Window terminal style; already-open editors keep their own value. Regressions: [[src/renderer/src/screens/Chat/FileViewer.autosave.test.tsx]], [[src/renderer/src/components/settings/UtilsPane.test.tsx]].
+
+## Fold gutter
+
+CodeMirror's default fold markers are literal `›`/`⌄` glyphs. The file editor replaces them with masked chevron icons so the gutter matches the app's icon set.

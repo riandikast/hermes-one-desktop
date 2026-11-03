@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, memo, useCallback } from "react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Save } from "lucide-react";
 import { basicSetup } from "codemirror";
 import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
@@ -11,6 +11,7 @@ import { keymap } from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
 import { Prec } from "@codemirror/state";
 import { useI18n } from "../../components/useI18n";
+import { readFileAutosaveDefault } from "../../components/settings/fileAutosave";
 import {
   searchHighlights,
   EMPTY_MATCH_INFO,
@@ -143,6 +144,12 @@ export const FileViewer = memo(function FileViewer({
   const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "error">(
     "idle",
   );
+  // Per-file: seeded from the Utils default, then owned by this editor only.
+  const [autoSave, setAutoSave] = useState<boolean>(readFileAutosaveDefault);
+  const [dirty, setDirty] = useState(false);
+  const autoSaveRef = useRef(autoSave);
+  autoSaveRef.current = autoSave;
+  const savedTextRef = useRef("");
   const editorHostRef = useRef<HTMLDivElement | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const filePathRef = useRef(filePath);
@@ -168,6 +175,10 @@ export const FileViewer = memo(function FileViewer({
         return;
       }
       const res = await window.hermesAPI.writeFile(filePathRef.current, text);
+      if (res.ok) {
+        savedTextRef.current = text;
+        setDirty(false);
+      }
       setSaving(res.ok ? "saved" : "error");
       if (!res.ok) {
         console.error("FileViewer: write failed", res.error);
@@ -184,6 +195,23 @@ export const FileViewer = memo(function FileViewer({
       void doSave();
     }, 500);
   }, [doSave]);
+
+  /** Per-file toggle: turning it on flushes pending edits, off keeps them local. */
+  const changeAutoSave = (next: boolean): void => {
+    setAutoSave(next);
+    // A pending debounce means edits exist on disk nowhere yet; keep them
+    // visible as unsaved instead of silently dropping the write.
+    const pendingSave = saveTimerRef.current !== null;
+    if (next) {
+      if (dirty || pendingSave) scheduleSave();
+      return;
+    }
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (pendingSave) setDirty(true);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -219,6 +247,8 @@ export const FileViewer = memo(function FileViewer({
         setError(t("worktree.errorLoading"));
       } else {
         setContent(result.content);
+        savedTextRef.current = result.content;
+        setDirty(false);
         setTruncated(result.truncated);
       }
       setIsLoading(false);
@@ -270,9 +300,9 @@ export const FileViewer = memo(function FileViewer({
             saveKeymap,
             ...(lang ? [lang] : []),
             EditorView.updateListener.of((update) => {
-              if (update.docChanged) {
-                scheduleSave();
-              }
+              if (!update.docChanged) return;
+              if (autoSaveRef.current) scheduleSave();
+              else setDirty(true);
             }),
           ],
         }),
@@ -343,6 +373,39 @@ export const FileViewer = memo(function FileViewer({
       className={`file-editor-body${active ? "" : " file-editor-body--hidden"}`}
       onClick={(e) => e.stopPropagation()}
     >
+      {content !== null && !isImageFile(fileName) && !isBinaryFile(fileName) && (
+        <div className="file-viewer-toolbar">
+          {!autoSave && (
+            <button
+              type="button"
+              className="btn-ghost btn-sm file-viewer-save"
+              disabled={!dirty || saving === "saving"}
+              onClick={() => void doSave()}
+              title="Save this file now (Ctrl+S)"
+            >
+              <Save size={13} aria-hidden="true" />
+              <span>Save</span>
+            </button>
+          )}
+          <label
+            className="tools-toggle file-viewer-autosave"
+            title={
+              autoSave
+                ? "Save each edit automatically for this file"
+                : "Manual saving for this file"
+            }
+          >
+            <input
+              type="checkbox"
+              checked={autoSave}
+              onChange={(event) => changeAutoSave(event.target.checked)}
+              aria-label="Auto-save this file"
+            />
+            <span className="tools-toggle-track" />
+          </label>
+          <span className="file-viewer-autosave-label">Auto-save</span>
+        </div>
+      )}
       <div className="file-viewer-content">
         {isLoading ? (
           <div className="file-viewer-loading">{t("worktree.loading")}...</div>
@@ -402,11 +465,13 @@ export const FileViewer = memo(function FileViewer({
           >
             {saving === "saving"
               ? "Saving…"
-              : saving === "saved"
-                ? "Saved"
-                : saving === "error"
-                  ? "Save failed"
-                  : ""}
+              : saving === "error"
+                ? "Save failed"
+                : !autoSave && dirty
+                  ? "Unsaved"
+                  : saving === "saved"
+                    ? "Saved"
+                    : ""}
           </span>
         )}
         <button

@@ -12,6 +12,7 @@ import {
   Plug,
   ShieldCheck,
   Users,
+  Wrench,
   X,
 } from "lucide-react";
 import { useI18n } from "../useI18n";
@@ -30,11 +31,13 @@ import LogsPane from "./LogsPane";
 import GitHubPane from "./GitHubPane";
 import SoulPane from "./SoulPane";
 import ShortcutsPane from "./ShortcutsPane";
+import UtilsPane from "./UtilsPane";
 
 export type SettingsSection =
   | "soul"
   | "appearance"
   | "shortcuts"
+  | "utils"
   | "provider"
   | "language"
   | "security"
@@ -73,6 +76,12 @@ const SETTINGS_NAV: ReadonlyArray<{
     id: "shortcuts",
     labelKey: "settings.nav.shortcuts",
     Icon: Keyboard,
+  },
+  {
+    group: "general",
+    id: "utils",
+    labelKey: "settings.nav.utils",
+    Icon: Wrench,
   },
   {
     group: "general",
@@ -286,6 +295,7 @@ export default function SettingsModal({
             )}
             {section === "appearance" && <AppearancePane />}
             {section === "shortcuts" && <ShortcutsPane />}
+            {section === "utils" && <UtilsPane />}
             {section === "language" && <LanguagePane />}
             {section === "security" && <SecurityPane />}
             {section === "privacy" && <PrivacyPane />}
