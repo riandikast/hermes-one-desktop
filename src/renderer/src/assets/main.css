@@ -846,6 +846,13 @@ body:has(.shell-vibrant),
   border: 1px solid var(--border-bright);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   padding: 4px;
+  /* The panel hangs past the title bar into .active-sessions-bar, which is a
+     `-webkit-app-region: drag` band. A drag region swallows NATIVE mouse
+     events over its bounds regardless of z-order, so the first result row sat
+     in that band and could not be hovered or clicked (arrow keys still worked,
+     because they are DOM events). Opt the panel out, like the terminal and
+     file-changes overlays. */
+  -webkit-app-region: no-drag;
 }
 
 .search-bar-status {

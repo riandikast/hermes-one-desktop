@@ -42,6 +42,10 @@ A native system strip pinned full-width beneath the sidebar+content row surfaces
 
 Visually the strip is a Safari-style tab bar: the strip uses the darker `--bg-secondary` toolbar shade; tabs are flat (no border/fill) and separated by thin vertical dividers drawn with an `::before` on each non-first chip. The active tab fills with `--bg-primary` — the same colour as the transparent content area below it — and rounds its top corners, so it docks into the page; the dividers flanking the active tab are hidden for a seamless join.
 
+## Window drag region
+
+The title bar and the conversation tab strip are `-webkit-app-region: drag` bands; a drag region swallows NATIVE mouse events over its bounds regardless of DOM z-order, while keyboard/DOM events still work. Any panel that overhangs those bands must set `-webkit-app-region: no-drag`: the file-search results dropdown previously left its first row unclickable because it opened below the title bar into the tab strip.
+
 ## Top menu collapse/expand
 
 The sessions tab strip can be collapsed to a thin 22px toggle bar to reclaim vertical space, useful on smaller windows or when many panels are open.

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SearchBar } from "./SearchBar";
+import appCss from "../assets/main.css?raw";
 
 /**
  * CLICKING a search result must open the file.
@@ -36,6 +37,23 @@ describe("SearchBar result clicks", () => {
     fireEvent.change(input, { target: { value: text } });
     await screen.findByText("app.ts");
   };
+
+  it("keeps the results panel out of the window drag region", () => {
+    // The panel hangs past the title bar into the tab strip, which is an
+    // app-region drag band. Native mouse events over that band are swallowed by
+    // the OS-level drag region regardless of z-order: the first row could not
+    // be hovered or clicked, while arrow keys (DOM events) still worked.
+    const block = (selector: string): string => {
+      const start = appCss.indexOf(`\n${selector} {`);
+      if (start < 0) throw new Error(`Missing CSS block: ${selector}`);
+      const open = appCss.indexOf("{", start);
+      return appCss.slice(open + 1, appCss.indexOf("}", open));
+    };
+    expect(block(".active-sessions-bar")).toContain("-webkit-app-region: drag");
+    expect(block(".search-bar-results")).toContain("-webkit-app-region: no-drag");
+    // It must still open BELOW the field, which is what lands it on the band.
+    expect(block(".search-bar-results")).toContain("top: 100%");
+  });
 
   it("dispatches hermes-open-file when a result is CLICKED", async () => {
     const onOpen = vi.fn();
