@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { isImeComposing } from "./keyboard";
+import { matchesShortcut } from "../../utils/keyboardShortcuts";
 import { useI18n } from "../../components/useI18n";
 import { SLASH_COMMANDS, type SlashCommand } from "./slashCommands";
 import { SlashCommandIcon } from "./slash/SlashCommandIcon";
@@ -669,7 +670,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         setInterruptConfirm(false);
         return;
       }
-      if (e.key === "Enter" && !e.shiftKey) {
+      if (matchesShortcut(e, "sendMessage")) {
         e.preventDefault();
         handleSend();
       }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FileText, Folder, Search, X } from "lucide-react";
 import { searchFiles, type FileSearchEntry } from "../screens/Chat/fileSearch";
+import { matchesShortcut } from "../utils/keyboardShortcuts";
 
 /**
  * VS Code-style FILE search input, always visible on the title-bar row (left
@@ -172,12 +173,10 @@ export function SearchBar({
     return () => document.removeEventListener("keydown", onKey, true);
   }, []);
 
-  // Window-level: Ctrl+F focuses the input; Esc closes results then clears.
+  // Window-level: the file-search shortcut focuses the input; Esc closes results then clears.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "f") {
-        // Ctrl+Shift+F = content search → Layout opens the Find-in-Files dialog.
-        if (e.shiftKey) return;
+      if (matchesShortcut(e, "searchFiles")) {
         // A CodeMirror editor owns Ctrl+F while the caret is inside it: the
         // FILE editor's search must open its own panel rather than stealing
         // focus up to this global search bar. Let the event reach CodeMirror.

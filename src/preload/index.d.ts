@@ -298,6 +298,9 @@ interface HermesAPI {
   validateHermesHome: (dir: string) => Promise<boolean>;
   adoptHermesHome: (dir: string) => Promise<boolean>;
   quitApp: () => Promise<void>;
+  getKeyboardShortcuts: () => Promise<import("../shared/keyboard-shortcuts").ShortcutOverrides>;
+  setKeyboardShortcuts: (value: import("../shared/keyboard-shortcuts").ShortcutOverrides) => Promise<{ ok: boolean; error?: string }>;
+  setShortcutRecording: (value: boolean) => Promise<void>;
   getGpuStatus: () => Promise<GpuStatus>;
   reenableGpu: () => Promise<boolean>;
   setGpuPreference: (mode: GpuPreferenceMode) => Promise<boolean>;

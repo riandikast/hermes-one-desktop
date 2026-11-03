@@ -12,6 +12,8 @@ import {
 } from "electron";
 import { extname, isAbsolute, join } from "path";
 import { GitHubAuth } from "../github-auth";
+import { getKeyboardShortcuts, setKeyboardShortcuts, setShortcutRecording } from "../keyboard-shortcut-settings";
+import { buildMenu } from "../app/menu";
 import { registerKnowledgePackageHandlers } from "./knowledge-packages";
 import { listAgentUserProviders } from "../agent-config-providers";
 import { randomUUID } from "crypto";
@@ -763,6 +765,24 @@ function resolveLibraryModelEntry(
 }
 
 export function registerIpcHandlers(context: IpcContext): void {
+  const trustedShortcuts = (event: Electron.IpcMainInvokeEvent): boolean =>
+    event.sender === context.getMainWindow()?.webContents && event.senderFrame === event.sender.mainFrame;
+  ipcMain.handle("keyboard-shortcuts:get", (event) => {
+    if (!trustedShortcuts(event)) throw new Error("Unauthorized shortcut request");
+    return getKeyboardShortcuts();
+  });
+  ipcMain.handle("keyboard-shortcuts:set", (event, value: unknown) => {
+    if (!trustedShortcuts(event)) return { ok: false, error: "Unauthorized shortcut request" };
+    const result = setKeyboardShortcuts(value);
+    if (result.ok) buildMenu({ getMainWindow: context.getMainWindow, openExternalUrl: context.openExternalUrl });
+    return result;
+  });
+  ipcMain.handle("keyboard-shortcuts:recording", (event, value: unknown) => {
+    if (!trustedShortcuts(event) || typeof value !== "boolean") return;
+    setShortcutRecording(value);
+    // Rebuild without accelerators so a recorded chord cannot also fire its command.
+    buildMenu({ getMainWindow: context.getMainWindow, openExternalUrl: context.openExternalUrl });
+  });
   const githubAuth = new GitHubAuth();
   const trustedGitHubSender = (event: Electron.IpcMainInvokeEvent): boolean =>
     event.sender === context.getMainWindow()?.webContents &&

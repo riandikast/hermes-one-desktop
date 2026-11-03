@@ -3,6 +3,7 @@ import { Settings, Users, Check, Search } from "../../assets/icons";
 import { useI18n } from "../../components/useI18n";
 import ProfileAvatar from "../../components/common/ProfileAvatar";
 import { useProfileModal } from "../../components/profile/ProfileModalContext";
+import { matchesShortcut, shortcutLabel } from "../../utils/keyboardShortcuts";
 
 interface ProfileInfo {
   id: string;
@@ -50,8 +51,6 @@ export default function ProfileSwitcher({
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const isMac = window.electron?.process?.platform === "darwin";
-  const mod = isMac ? "⌘" : "Ctrl";
 
   const load = useCallback(() => {
     window.hermesAPI
@@ -72,12 +71,7 @@ export default function ProfileSwitcher({
   // print dialog from stealing it.
   useEffect(() => {
     function onKey(e: KeyboardEvent): void {
-      if (
-        (e.metaKey || e.ctrlKey) &&
-        !e.altKey &&
-        !e.shiftKey &&
-        (e.key === "p" || e.key === "P")
-      ) {
+      if (matchesShortcut(e, "switchProfile")) {
         e.preventDefault();
         setSwitchOpen((v) => !v);
       }
@@ -228,7 +222,7 @@ export default function ProfileSwitcher({
           <button
             className="profile-switch-btn"
             onClick={() => setSwitchOpen(true)}
-            title={`${t("agents.switchProfile")} (${mod}P)`}
+            title={`${t("agents.switchProfile")} (${shortcutLabel("switchProfile")})`}
             aria-label={t("agents.switchProfile")}
           >
             <Users size={16} />
@@ -266,7 +260,7 @@ export default function ProfileSwitcher({
                 placeholder={t("agents.switchProfile")}
                 aria-label={t("agents.switchProfile")}
               />
-              <kbd className="profile-switch-kbd">{mod}P</kbd>
+              <kbd className="profile-switch-kbd">{shortcutLabel("switchProfile")}</kbd>
             </div>
 
             <div className="profile-switch-list" ref={listRef}>

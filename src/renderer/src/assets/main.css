@@ -15066,6 +15066,47 @@ body:has(.shell-vibrant),
   color: var(--text-muted);
 }
 
+/* Keyboard shortcuts pane — same quiet card, chord chips on the right. */
+.settings-pane-shortcuts { display: flex; flex-direction: column; gap: 16px; }
+.settings-pane-head h2 {
+  display: flex; align-items: center; gap: 8px; margin: 0;
+  font-size: calc(17px * var(--font-scale)); color: var(--text-primary);
+}
+.settings-shortcut-group-title {
+  padding: 10px 16px 6px; font-size: calc(11px * var(--font-scale));
+  font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.settings-shortcut-group-title + .settings-row { border-top: 0; }
+.settings-shortcut-actions {
+  display: flex; align-items: center; justify-content: flex-end;
+  gap: 6px; flex-wrap: wrap; margin-left: auto;
+}
+.settings-shortcut-keys {
+  display: inline-flex; align-items: center; justify-content: flex-end;
+  gap: 4px; flex-wrap: wrap; min-width: 64px; max-width: 240px;
+}
+.settings-shortcut-keys kbd {
+  padding: 2px 6px; border-radius: 5px; border: 1px solid var(--border);
+  background: var(--bg-secondary); color: var(--text-primary);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: calc(11px * var(--font-scale)); white-space: nowrap;
+}
+.settings-shortcut-keys.is-recording { color: var(--accent); font-size: calc(12px * var(--font-scale)); }
+.settings-shortcut-unset { color: var(--text-muted); font-size: calc(12px * var(--font-scale)); }
+.settings-shortcut-reset {
+  display: inline-flex; padding: 4px; border: none; border-radius: 4px;
+  background: none; color: var(--text-secondary); cursor: pointer;
+}
+.settings-shortcut-reset:hover:not(:disabled) { background: var(--bg-tertiary); color: var(--text-primary); }
+.settings-shortcut-error {
+  margin: 0; padding: 8px 12px; border-radius: var(--radius-md);
+  background: var(--error-bg); color: var(--error);
+  font-size: calc(12.5px * var(--font-scale));
+}
+.settings-shortcut-recording { margin: 0; color: var(--text-secondary); font-size: calc(12.5px * var(--font-scale)); }
+.settings-shortcut-footer { display: flex; justify-content: flex-end; }
+
 /* Segmented control (font, hardware accel) — a track with pill segments. */
 .settings-seg {
   display: inline-flex;

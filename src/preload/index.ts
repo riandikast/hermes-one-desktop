@@ -151,6 +151,9 @@ const hermesAPI = {
     ipcRenderer.invoke("adopt-hermes-home", dir),
 
   quitApp: (): Promise<void> => ipcRenderer.invoke("quit-app"),
+  getKeyboardShortcuts: (): Promise<import("../shared/keyboard-shortcuts").ShortcutOverrides> => ipcRenderer.invoke("keyboard-shortcuts:get"),
+  setKeyboardShortcuts: (value: import("../shared/keyboard-shortcuts").ShortcutOverrides): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke("keyboard-shortcuts:set", value),
+  setShortcutRecording: (value: boolean): Promise<void> => ipcRenderer.invoke("keyboard-shortcuts:recording", value),
 
   getGpuStatus: (): Promise<GpuStatus> => ipcRenderer.invoke("get-gpu-status"),
 

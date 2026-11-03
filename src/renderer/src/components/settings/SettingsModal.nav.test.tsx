@@ -7,6 +7,7 @@ vi.mock("./useSettingsData", () => ({ useSettingsData: () => ({}) }));
 vi.mock("./SoulPane", () => ({ default: () => <div>Soul pane</div> }));
 vi.mock("./GitHubPane", () => ({ default: () => <div>GitHub pane</div> }));
 vi.mock("./AppearancePane", () => ({ default: () => <div>Appearance pane</div> }));
+vi.mock("./ShortcutsPane", () => ({ default: () => <div>Shortcuts pane</div> }));
 vi.mock("../modal/AppModal", () => ({
   AppModal: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   AppModalTitle: ({ children }: { children: React.ReactNode }) => <h1>{children}</h1>,
@@ -24,13 +25,13 @@ function navLabels(): string[] {
   );
 }
 
-it("orders the first four sections appearance, providers, github, soul", () => {
+it("places keyboard shortcuts directly after appearance", () => {
   renderWithI18n(<SettingsModal open onClose={vi.fn()} />);
   expect(navLabels().slice(0, 4)).toEqual([
     "Appearance",
+    "Keyboard Shortcuts",
     "Providers",
     "GitHub",
-    "Soul",
   ]);
 });
 

@@ -12,6 +12,14 @@ Menu template changes must retain the initialized array in `buildMenu`; esbuild 
 
 [[src/shared/keyboard-shortcuts.ts#SHORTCUTS]] supplies the shared command IDs and default bindings used by Electron and renderer handlers. [[src/shared/keyboard-shortcuts.ts#bindingsFor]] preserves explicit empty overrides and platform-specific defaults; [[src/shared/keyboard-shortcuts.ts#matchesBinding]] checks exact modifiers and suppresses IME composition. [[src/shared/keyboard-shortcuts.ts#validateShortcutOverrides]] validates persisted/IPC input. Regressions: [[src/shared/keyboard-shortcuts.test.ts]]. The shared source must ship alongside shortcut consumers or both main and renderer imports fail.
 
+## Keyboard shortcuts settings
+
+Settings → Keyboard Shortcuts lists every command with its current chord, records a replacement, and restores defaults.
+
+The pane lives in [[src/renderer/src/components/settings/ShortcutsPane.tsx#ShortcutsPane]] and is registered after Appearance in [[src/renderer/src/components/settings/SettingsModal.tsx#SettingsModal]]. Capture uses a capture-phase `keydown` listener, so the composer never consumes the chord. `bindingFromEvent` stores the primary modifier as `Mod`, rejects bare typing keys, and blocks any chord already assigned to another command. Escape cancels, Backspace clears a binding, and a failed write keeps the row in capture mode rather than showing an unsaved chord.
+
+While recording, `keyboard-shortcuts:recording` sets the main-process flag and rebuilds the menu without accelerators, so a pressed chord cannot also fire its command; ending capture rebuilds with the saved chords. [[src/renderer/src/App.tsx]] calls `loadKeyboardShortcuts` at startup — without it, persisted overrides never reached the renderer. Regressions: [[src/renderer/src/components/settings/ShortcutsPane.test.tsx]], [[src/renderer/src/components/settings/SettingsModal.nav.test.tsx]].
+
 ## Renderer: persistence and wheel
 
 [[src/renderer/src/hooks/useUiZoom.ts#useUiZoom]], mounted at the root of [[src/renderer/src/App.tsx]], restores the persisted level (`localStorage["hermes.ui.zoomLevel"]`) on mount, persists every `ui-zoom-changed` broadcast, and zooms on Shift+wheel via the accumulator in [[src/renderer/src/hooks/zoomWheel.ts#stepWheelDelta]] (one step per 100px, so trackpads feel natural).

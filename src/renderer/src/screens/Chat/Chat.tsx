@@ -102,6 +102,7 @@ import {
 } from "./hooks/useDashboardChatTransport";
 
 import { useI18n } from "../../components/useI18n";
+import { matchesShortcut, shortcutLabel } from "../../utils/keyboardShortcuts";
 
 import { buildChatTranscript } from "./transcriptUtils";
 
@@ -1400,12 +1401,11 @@ function Chat({
     if (!active) return;
 
     function onKey(e: KeyboardEvent): void {
-      if (!(e.metaKey || e.ctrlKey)) return;
-      if (e.key.toLowerCase() === "t") {
-        if (e.repeat || e.shiftKey) return;
+      if (matchesShortcut(e, "toggleTerminal")) {
+        if (e.repeat) return;
         e.preventDefault();
         setOnFinishDockOpen((open) => !open);
-      } else if (e.key === "n") {
+      } else if (matchesShortcut(e, "newChat")) {
         e.preventDefault();
         onNewChat?.();
       }
@@ -2927,7 +2927,7 @@ function Chat({
                     title={
                       onFinishRunner.state.running
                         ? `On-Finish: running ${onFinishRunner.state.current}/${onFinishRunner.state.total}`
-                        : "Terminal (Ctrl+T)"
+                        : `Terminal (${shortcutLabel("toggleTerminal")})`
                     }
                   >
                     {onFinishRunner.state.running ? (

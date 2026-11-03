@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { useI18n } from "../../components/useI18n";
+import { matchesShortcut } from "../../utils/keyboardShortcuts";
 import type { ClarifyMessage } from "./types";
 
 /**
@@ -186,7 +187,8 @@ export const ClarifyCard = memo(function ClarifyCard({
           disabled={submitting}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+            if (matchesShortcut(e, "clarifySubmit")) {
+              e.preventDefault();
               void submit(text);
             }
           }}

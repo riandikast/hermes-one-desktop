@@ -7,6 +7,7 @@ import {
   KeyRound,
   Languages,
   Lock,
+  Keyboard,
   Palette,
   Plug,
   ShieldCheck,
@@ -28,10 +29,12 @@ import CommunityPane from "./CommunityPane";
 import LogsPane from "./LogsPane";
 import GitHubPane from "./GitHubPane";
 import SoulPane from "./SoulPane";
+import ShortcutsPane from "./ShortcutsPane";
 
 export type SettingsSection =
   | "soul"
   | "appearance"
+  | "shortcuts"
   | "provider"
   | "language"
   | "security"
@@ -64,6 +67,12 @@ const SETTINGS_NAV: ReadonlyArray<{
     id: "appearance",
     labelKey: "settings.nav.appearance",
     Icon: Palette,
+  },
+  {
+    group: "general",
+    id: "shortcuts",
+    labelKey: "settings.nav.shortcuts",
+    Icon: Keyboard,
   },
   {
     group: "general",
@@ -276,6 +285,7 @@ export default function SettingsModal({
               />
             )}
             {section === "appearance" && <AppearancePane />}
+            {section === "shortcuts" && <ShortcutsPane />}
             {section === "language" && <LanguagePane />}
             {section === "security" && <SecurityPane />}
             {section === "privacy" && <PrivacyPane />}

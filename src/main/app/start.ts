@@ -1,6 +1,6 @@
 import { app, BrowserWindow, nativeTheme, session, shell } from "electron";
 import { join } from "path";
-import { electronApp, optimizer, is } from "@electron-toolkit/utils";
+import { electronApp, is } from "@electron-toolkit/utils";
 import icon from "../../../resources/icon.png?asset";
 import { getPublicConnectionConfig } from "../config";
 import { stopHealthPolling } from "../hermes";
@@ -20,7 +20,7 @@ import { setGatewayPromptParent } from "../gatewayPrompt";
 import { showChatContextMenu } from "./context-menu";
 import { buildMenu } from "./menu";
 import { setupUpdater } from "./updater";
-import { zoomBy, zoomReset } from "../zoom";
+import { handleShortcutInput } from "../keyboard-shortcut-input";
 
 const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Hermes One";
 const OPEN_DEVTOOLS_ON_START =
@@ -58,9 +58,8 @@ export function startMainProcess(): void {
     // which causes console window flashes on Windows when spawning Get-AppxPackage probes.
     // warmTerminalResolver();
 
-    app.on("browser-window-created", (_, window) => {
-      optimizer.watchWindowShortcuts(window);
-    });
+    // Keyboard commands are owned by the configurable registry below, not
+    // optimizer's fixed F12/reload handlers (which ignore user overrides).
 
     app.on("web-contents-created", (_event, contents) => {
       if (contents.getType() === "webview") {
@@ -289,32 +288,8 @@ function createWindow(): void {
     showChatContextMenu(mainWindow, params);
   });
 
-  // Browser-style UI zoom: Ctrl+= / Ctrl+- / Ctrl+0. preventDefault also
-  // suppresses the menu accelerators for the same chords (no double-zoom).
-  const zoomTarget = mainWindow;
-  zoomTarget.webContents.on("before-input-event", (event, input) => {
-    if (input.type !== "keyDown") return;
-    if (!(input.control || input.meta)) return;
-    if (
-      input.key === "+" ||
-      input.key === "=" ||
-      input.code === "Equal" ||
-      input.code === "NumpadAdd"
-    ) {
-      event.preventDefault();
-      zoomBy(zoomTarget, 1);
-    } else if (
-      input.key === "-" ||
-      input.code === "Minus" ||
-      input.code === "NumpadSubtract"
-    ) {
-      event.preventDefault();
-      zoomBy(zoomTarget, -1);
-    } else if (input.key === "0" || input.code === "Digit0") {
-      event.preventDefault();
-      zoomReset(zoomTarget);
-    }
-  });
+  const target = mainWindow;
+  target.webContents.on("before-input-event", (event, input) => handleShortcutInput(target, event, input));
 
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);

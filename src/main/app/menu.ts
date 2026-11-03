@@ -1,6 +1,8 @@
 import { app, type BrowserWindow, Menu } from "electron";
 import { is } from "@electron-toolkit/utils";
 import { zoomBy, zoomReset } from "../zoom";
+import { bindingsFor, type ShortcutId } from "../../shared/keyboard-shortcuts";
+import { getKeyboardShortcuts, shortcutRecording } from "../keyboard-shortcut-settings";
 
 interface MenuDeps {
   getMainWindow: () => BrowserWindow | null;
@@ -9,6 +11,9 @@ interface MenuDeps {
 
 export function buildMenu({ getMainWindow, openExternalUrl }: MenuDeps): void {
   const isMac = process.platform === "darwin";
+  const overrides = getKeyboardShortcuts();
+  const accelerator = (id: ShortcutId): string | undefined =>
+    shortcutRecording ? undefined : bindingsFor(id, overrides, process.platform)[0]?.replace(/Mod/g, "CommandOrControl").replace(/Meta/g, "Command");
   const template = [
     ...(isMac
       ? [
@@ -33,13 +38,13 @@ export function buildMenu({ getMainWindow, openExternalUrl }: MenuDeps): void {
       submenu: [
         {
           label: "New Chat",
-          accelerator: "CmdOrCtrl+N",
+          accelerator: accelerator("newChat"),
           click: () => getMainWindow()?.webContents.send("menu-new-chat"),
         },
         { type: "separator" },
         {
           label: "Search Sessions",
-          accelerator: "CmdOrCtrl+K",
+          accelerator: accelerator("searchSessions"),
           click: () =>
             getMainWindow()?.webContents.send("menu-search-sessions"),
         },
@@ -48,13 +53,13 @@ export function buildMenu({ getMainWindow, openExternalUrl }: MenuDeps): void {
     {
       label: "Edit",
       submenu: [
-        { role: "undo" },
-        { role: "redo" },
+        { role: "undo" as const, accelerator: accelerator("undo") || "" },
+        { role: "redo" as const, accelerator: accelerator("redo") || "" },
         { type: "separator" },
-        { role: "cut" },
-        { role: "copy" },
-        { role: "paste" },
-        { role: "selectAll" },
+        { role: "cut" as const, accelerator: accelerator("cut") || "" },
+        { role: "copy" as const, accelerator: accelerator("copy") || "" },
+        { role: "paste" as const, accelerator: accelerator("paste") || "" },
+        { role: "selectAll" as const, accelerator: accelerator("selectAll") || "" },
       ],
     },
     {
@@ -62,7 +67,7 @@ export function buildMenu({ getMainWindow, openExternalUrl }: MenuDeps): void {
       submenu: [
         {
           label: "Zoom In",
-          accelerator: "CmdOrCtrl+Plus",
+          accelerator: accelerator("zoomIn"),
           click: () => {
             const win = getMainWindow();
             if (win) zoomBy(win, 1);
@@ -70,7 +75,7 @@ export function buildMenu({ getMainWindow, openExternalUrl }: MenuDeps): void {
         },
         {
           label: "Zoom Out",
-          accelerator: "CmdOrCtrl+-",
+          accelerator: accelerator("zoomOut"),
           click: () => {
             const win = getMainWindow();
             if (win) zoomBy(win, -1);
@@ -78,14 +83,14 @@ export function buildMenu({ getMainWindow, openExternalUrl }: MenuDeps): void {
         },
         {
           label: "Actual Size",
-          accelerator: "CmdOrCtrl+0",
+          accelerator: accelerator("zoomReset"),
           click: () => {
             const win = getMainWindow();
             if (win) zoomReset(win);
           },
         },
         { type: "separator" },
-        { role: "togglefullscreen" },
+        { role: "togglefullscreen" as const, accelerator: accelerator("fullscreen") || "" },
         ...(is.dev
           ? [
               { type: "separator" as const },
@@ -112,7 +117,7 @@ export function buildMenu({ getMainWindow, openExternalUrl }: MenuDeps): void {
           ? [
               {
                 label: "Toggle Developer Tools",
-                accelerator: "Alt+Command+I",
+                accelerator: accelerator("devTools"),
                 click: () => getMainWindow()?.webContents.toggleDevTools(),
               },
               { type: "separator" as const },

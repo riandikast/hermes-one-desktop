@@ -13,6 +13,7 @@ import Layout from "./screens/Layout/Layout";
 import SplashScreen from "./screens/SplashScreen/SplashScreen";
 import { captureScreenView } from "./utils/analytics";
 import { useUiZoom } from "./hooks/useUiZoom";
+import { loadKeyboardShortcuts } from "./utils/keyboardShortcuts";
 
 type Screen = "splash" | "welcome" | "installing" | "setup" | "main";
 
@@ -42,6 +43,8 @@ function App(): React.JSX.Element {
   // can't clobber the newer run's screen transition.
   const runIdRef = useRef(0);
   useUiZoom();
+  // Saved bindings must reach the renderer before the first shortcut is used.
+  useEffect(() => { void loadKeyboardShortcuts(); }, []);
 
   const runInstallCheck = useCallback(async () => {
     const myRun = ++runIdRef.current;

@@ -45,6 +45,9 @@ export default {
     error: "Could not save terminal layout.",
   },
   title: "Settings",
+  shortcuts: {
+    resetAll: "Reset all shortcuts",
+  },
   sections: {
     hermesAgent: "Hermes Agent",
     appearance: "Appearance",
@@ -58,6 +61,7 @@ export default {
       hermes: "Hermes One",
     },
     appearance: "Appearance",
+    shortcuts: "Keyboard Shortcuts",
     provider: "Providers",
     language: "Language",
     security: "Security",

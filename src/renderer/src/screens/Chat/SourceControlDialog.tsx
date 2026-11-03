@@ -16,6 +16,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
+import { matchesShortcut, shortcutLabel } from "../../utils/keyboardShortcuts";
 import { useSettingsModal } from "../../components/settings/SettingsModalContext";
 import { DiffViewer } from "./DiffViewer";
 import { CommitGraph } from "./CommitGraph";
@@ -862,7 +863,7 @@ export function SourceControlDialog({
             <SourceControlSplit key="changes" label="Changes pane width" initial={35}>
               <div className="source-control-sidebar">
                 <div className="source-control-footer">
-                  <textarea className="source-control-commit-input" aria-label="Commit message" value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} placeholder="Commit message (Ctrl+Enter to commit)" rows={2} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !busy && stagedCount > 0) void commit(); }} />
+                  <textarea className="source-control-commit-input" aria-label="Commit message" value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} placeholder={`Commit message (${shortcutLabel("gitCommit")} to commit)`} rows={2} onKeyDown={(event) => { if (matchesShortcut(event, "gitCommit") && !busy && stagedCount > 0) void commit(); }} />
                   <button type="button" className="source-control-commit-btn btn-sm" disabled={busy || !stagedCount || !commitMessage.trim()} onClick={() => void commit()}>Commit</button>
                 </div>
                 <Section title={`Conflicts (${status.conflicted.length})`}

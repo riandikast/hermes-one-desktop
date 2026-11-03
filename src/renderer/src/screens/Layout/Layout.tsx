@@ -65,6 +65,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { BarChart3 } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
+import { matchesShortcut } from "../../utils/keyboardShortcuts";
 
 type View =
   | "chat"
@@ -603,7 +604,7 @@ function Layout({
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent): void => {
-      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+      if (matchesShortcut(e, "settings")) {
         e.preventDefault();
         openSettings(undefined, { profile: activeProfile });
       }
@@ -831,12 +832,7 @@ function Layout({
   }, [activeSessionId]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        e.shiftKey &&
-        !e.altKey &&
-        e.key.toLowerCase() === "f"
-      ) {
+      if (matchesShortcut(e, "searchContents")) {
         e.preventDefault();
         setFindInFilesOpen(true);
       }
@@ -1035,46 +1031,31 @@ function Layout({
       );
     };
     const handleKey = (e: KeyboardEvent): void => {
-      const primary = e.metaKey || e.ctrlKey;
       let target: string | null = null;
       let matched = false;
-      if (primary && !e.shiftKey && !e.altKey && e.code === "KeyW") {
+      if (matchesShortcut(e, "closeTab")) {
         e.preventDefault();
         handleCloseRun(activeRunId);
         return;
       }
-      if (e.ctrlKey && !e.metaKey && !e.altKey && e.code === "Tab") {
+      const next = matchesShortcut(e, "nextTab");
+      const previous = matchesShortcut(e, "previousTab");
+      if (next || previous) {
+        // Keep shifted arrows available for selecting text in editable fields.
+        if (
+          e.shiftKey && !e.altKey &&
+          (e.code === "ArrowRight" || e.code === "ArrowLeft") &&
+          isEditable(e.target)
+        ) return;
         matched = true;
-        target = cycleRunId(runs, activeRunId, e.shiftKey ? -1 : 1);
-      } else if (
-        primary &&
-        e.shiftKey &&
-        !e.altKey &&
-        (e.code === "BracketRight" || e.code === "BracketLeft")
-      ) {
-        matched = true;
-        target = cycleRunId(
-          runs,
-          activeRunId,
-          e.code === "BracketRight" ? 1 : -1,
-        );
-      } else if (
-        primary &&
-        (e.code === "ArrowRight" || e.code === "ArrowLeft") &&
-        ((e.altKey && !e.shiftKey) ||
-          (e.shiftKey && !e.altKey && !isEditable(e.target)))
-      ) {
-        matched = true;
-        target = cycleRunId(
-          runs,
-          activeRunId,
-          e.code === "ArrowRight" ? 1 : -1,
-        );
-      } else if (primary && !e.shiftKey && !e.altKey) {
-        const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
-        if (digit) {
-          matched = true;
-          target = runIdAtOrdinal(runs, Number(digit[1]));
+        target = cycleRunId(runs, activeRunId, next ? 1 : -1);
+      } else {
+        for (const ordinal of [1, 2, 3, 4, 5, 6, 7, 8, 9] as const) {
+          if (matchesShortcut(e, `tab${ordinal}`)) {
+            matched = true;
+            target = runIdAtOrdinal(runs, ordinal);
+            break;
+          }
         }
       }
       if (!matched) return;
