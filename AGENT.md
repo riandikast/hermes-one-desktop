@@ -31,3 +31,7 @@ Renderer confirmations use async appConfirm (in-page dialog), never native windo
 Preserve unrelated chat-search/zoom work. Commit owned changes only; do not push without confirmation. Follow `AGENTS.md` resource queue and documentation checks.
 
 Theme editor saves compare built-in palettes against pristine bundled defaults, not the effective editor baseline (which dropped older overrides on later saves). Custom themes save complete palettes, including on rename. Reset only built-in overrides; custom themes use confirmed Delete. Storage stays `hermes-custom-themes`, separate from bundled CSS. See `lat.md/appearance-themes.md` and `ThemeEditor.integration.test.tsx`.
+
+Branch manager distinguishes remote aliases from branches. Confirmed remote rename preserves URLs and updates tracking via Git. Set/unset upstream is local-only; Publish and set upstream explicitly confirms push URLs/branch and uses one non-force refspec. Validate current branch before mutation; read back tracking afterward. New main/preload IPC requires user-controlled rebuild/restart. Fixtures: `git-upstream.test.ts`, `BranchDialog.upstream.test.tsx`.
+
+Publish carries a raw-destination fingerprint through IPC; reject remote URLs changed since confirmation. Verify full upstream refs and branch remote/merge configuration, not Git's ambiguous short ref output. Avoid concurrent external Git configuration edits during publish.

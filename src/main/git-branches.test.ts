@@ -25,7 +25,7 @@ it("lists configured fetch/push URLs without network calls or leaking embedded c
   git("remote", "set-url", "--push", "origin", "git@example.invalid:org/push.git");
   const result = await gitBranches(repo);
   expect(result.ok, result.error).toBe(true);
-  expect(result.remotes).toEqual([{ name: "origin", fetchUrls: ["https://example.invalid/org/repo.git"], pushUrls: ["git@example.invalid:org/push.git"] }]);
+  expect(result.remotes).toEqual([expect.objectContaining({ name: "origin", fetchUrls: ["https://example.invalid/org/repo.git"], pushUrls: ["git@example.invalid:org/push.git"] })]);
   expect(JSON.stringify(result)).not.toMatch(/fixture-user|fixture-password|fixture-token|secret/);
 });
 

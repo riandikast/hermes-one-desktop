@@ -311,7 +311,11 @@ async function runGitAction(
 }
 
 /** Resolve the remote host of the repo's first push remote (https or ssh). */
-export async function gitRemoteHost(dir: string): Promise<string | null> {
+export async function gitRemoteHost(dir: string, remote?: string): Promise<string | null> {
+  if (remote !== undefined) {
+    const result = await runGit(dir, ["remote", "get-url", "--push", "--", remote]);
+    return result.code === 0 ? extractHostFromRemoteUrl(result.stdout.trim()) : null;
+  }
   const res = await runGit(dir, ["remote", "-v"]);
   for (const line of res.stdout.split("\n")) {
     if (!line.includes("(push)")) continue;
@@ -529,9 +533,9 @@ export async function gitCommitDiff(
 }
 
 /** Auth args for the repo's remote host when a token is stored for it. */
-async function gitNetworkAuthArgs(dir: string): Promise<string[]> {
+export async function gitNetworkAuthArgs(dir: string, remote?: string): Promise<string[]> {
   if (!tokenProvider) return [];
-  const host = await gitRemoteHost(dir);
+  const host = await gitRemoteHost(dir, remote);
   if (!host || host.toLowerCase() === "github.com") return [];
   return gitTokenAuthArgs(host, tokenProvider(host));
 }

@@ -78,6 +78,16 @@ Checkout, create, merge into the current branch, and safe deletion stay local. R
 
 [[src/renderer/src/screens/Chat/BranchDialog.tsx#BranchDialog]] uses the shared focus-trapped modal above Source Control. [[src/main/git-branches.ts#gitBranches]] lists local refs and linked-worktree ownership. [[src/main/git-branches.ts#gitBranchChange]] validates ref names and expected current branch, blocks unfinished Git operations, requires a clean worktree for checkout/merge, protects ignored files from overwrite, and refuses deletion unless merged into current HEAD and not checked out anywhere. Creation starts at HEAD without switching. No force flags, remote deletion or push. Conflicts remain visible for existing resolution tools; branch/status/history refresh follows every result. Real Git regressions: [[src/main/git-branches.test.ts]]; UI confirmations and locking: [[src/renderer/src/screens/Chat/BranchDialog.test.tsx]].
 
+## Remote names and upstream tracking
+
+Remote aliases are distinct from branch names. The branch manager supports confirmed remote rename, local upstream selection/removal, and an explicit Publish and set upstream action.
+
+[[src/main/git-branches.ts#gitRemoteRename]] uses Git's remote rename so tracking references/configuration follow the alias without changing URLs or server branches. [[src/main/git-branches.ts#gitBranchUpstream]] validates the current branch, remote and target, serializes mutations, and reads tracking back after success. Set upstream requires an existing fetched remote-tracking branch and performs no network operation; unset removes only tracking configuration.
+
+Publish confirms the selected remote push URLs and exact branch destination. It pushes one explicit refspec without force, mirror, followed tags or recursive submodule pushes; authentication resolves the selected remote host. No global push.autoSetupRemote change or automatic publish occurs. Detached/stale branch requests fail closed. Main/preload changes require a user-controlled rebuild/restart. Real Git tests use local bare fixtures only: [[src/main/git-upstream.test.ts]]. UI cancellation, tracking refresh, duplicate locks and errors: [[src/renderer/src/screens/Chat/BranchDialog.upstream.test.tsx]].
+
+A SHA-256 fingerprint binds confirmation to raw push URLs without returning credentials; changed destinations require refresh and reconfirmation. Tracking verification uses full upstream refs plus remote/merge configuration, avoiding ambiguous short names. External Git clients can still race the final check; avoid concurrent configuration edits while publishing. Live GUI verification is pending because the running desktop has no CDP connection.
+
 ## Resizable panes, reference and terminals
 
 Terminal is text-only; its pane uses the same bounded pointer/keyboard splitter as Changes and Graph. Git Doc lists common commands without executing them. Source Control owns its embedded terminal sessions and confirms before closing them.

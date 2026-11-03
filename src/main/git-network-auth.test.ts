@@ -5,7 +5,7 @@ import { createServer, type Server } from "http";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { gitFetch, gitPull, gitPush, setGitTokenProvider } from "./git";
+import { gitFetch, gitPull, gitPush, gitNetworkAuthArgs, setGitTokenProvider } from "./git";
 
 describe("git network authentication", () => {
   let repo: string;
@@ -55,5 +55,14 @@ describe("git network authentication", () => {
     setGitTokenProvider((host) => { lookups.push(host); return host === "gitlab.example" ? "other-secret" : null; });
     await gitFetch(repo);
     expect(lookups).toEqual(["gitlab.example"]);
+  });
+
+  it("scopes publish credentials to the selected remote rather than the first remote", async () => {
+    execFileSync("git", ["-C", repo, "remote", "add", "aaa", "https://wrong.example/repo.git"]);
+    execFileSync("git", ["-C", repo, "remote", "add", "master", "https://selected.example/repo.git"]);
+    const lookups: string[] = [];
+    setGitTokenProvider((host) => { lookups.push(host); return "fixture-token"; });
+    expect(await gitNetworkAuthArgs(repo, "master")).toEqual(expect.arrayContaining([expect.stringContaining("selected.example")]));
+    expect(lookups).toEqual(["selected.example"]);
   });
 });
