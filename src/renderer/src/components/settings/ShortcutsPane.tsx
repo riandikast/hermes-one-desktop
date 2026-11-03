@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Keyboard, Plus, RotateCcw } from "lucide-react";
+import { Keyboard, Plus, RotateCcw, X } from "lucide-react";
 import {
   SHORTCUTS,
   bindingsFor,
@@ -231,17 +231,30 @@ export default function ShortcutsPane(): React.JSX.Element {
                       ? "Press keys…"
                       : bindings.length > 0 || isRecording
                         ? bindings.map((binding, index) => (
-                            <button
-                              key={`${item.id}-${index}`}
-                              type="button"
-                              className={`settings-shortcut-chip${editingIndex === index ? " is-recording" : ""}`}
-                              title={`Change ${display(binding, platform)} for ${LABELS[item.id]}`}
-                              aria-label={`Change shortcut ${display(binding, platform)} for ${LABELS[item.id]}`}
-                              disabled={busy || (recording !== null && editingIndex !== index)}
-                              onClick={() => (editingIndex === index ? stop() : begin(item.id, index))}
-                            >
-                              {editingIndex === index ? "Press keys…" : <kbd>{display(binding, platform)}</kbd>}
-                            </button>
+                            <span key={`${item.id}-${index}`} className="settings-shortcut-chord">
+                              <button
+                                type="button"
+                                className={`settings-shortcut-chip${editingIndex === index ? " is-recording" : ""}`}
+                                title={`Change ${display(binding, platform)} for ${LABELS[item.id]}`}
+                                aria-label={`Change shortcut ${display(binding, platform)} for ${LABELS[item.id]}`}
+                                disabled={busy || (recording !== null && editingIndex !== index)}
+                                onClick={() => (editingIndex === index ? stop() : begin(item.id, index))}
+                              >
+                                {editingIndex === index ? "Press keys…" : <kbd>{display(binding, platform)}</kbd>}
+                              </button>
+                              {editingIndex !== index && (
+                                <button
+                                  type="button"
+                                  className="settings-shortcut-remove"
+                                  title={`Remove ${display(binding, platform)} from ${LABELS[item.id]}`}
+                                  aria-label={`Remove shortcut ${display(binding, platform)} for ${LABELS[item.id]}`}
+                                  disabled={busy || recording !== null}
+                                  onClick={() => void applyBinding({ id: item.id, index }, null)}
+                                >
+                                  <X size={11} />
+                                </button>
+                              )}
+                            </span>
                           ))
                         : <span className="settings-shortcut-unset">Unassigned</span>}
                   </span>

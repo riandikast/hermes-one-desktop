@@ -110,6 +110,20 @@ it("removes only the edited chord with Backspace", async () => {
   expect(within(row).getByText("Ctrl+Plus")).toBeTruthy();
 });
 
+it("removes a single chord with its × button and shows Unassigned when none remain", async () => {
+  saved = { zoomIn: ["Mod+Plus", "Mod+=", "Mod+Alt+U"] };
+  await saveKeyboardShortcuts(saved);
+  renderWithI18n(<ShortcutsPane />);
+  const row = rowFor("Zoom in");
+  fireEvent.click(within(row).getByRole("button", { name: "Remove shortcut Ctrl+Alt+U for Zoom in" }));
+  await waitFor(() => expect(setKeyboardShortcuts).toHaveBeenLastCalledWith(expect.objectContaining({ zoomIn: ["Mod+Plus", "Mod+="] })));
+  fireEvent.click(within(row).getByRole("button", { name: "Remove shortcut Ctrl+= for Zoom in" }));
+  await waitFor(() => expect(setKeyboardShortcuts).toHaveBeenLastCalledWith(expect.objectContaining({ zoomIn: ["Mod+Plus"] })));
+  fireEvent.click(within(row).getByRole("button", { name: "Remove shortcut Ctrl+Plus for Zoom in" }));
+  await waitFor(() => expect(setKeyboardShortcuts).toHaveBeenLastCalledWith(expect.objectContaining({ zoomIn: [] })));
+  expect(within(row).getByText("Unassigned")).toBeTruthy();
+});
+
 it("reports a save failure instead of pretending the chord changed", async () => {
   setKeyboardShortcuts.mockResolvedValueOnce({ ok: false, error: "Could not save keyboard shortcuts." } );
   renderWithI18n(<ShortcutsPane />);
