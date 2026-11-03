@@ -44,7 +44,7 @@ Visually the strip is a Safari-style tab bar: the strip uses the darker `--bg-se
 
 ## Window drag region
 
-The title bar and the conversation tab strip are `-webkit-app-region: drag` bands; a drag region swallows NATIVE mouse events over its bounds regardless of DOM z-order, while keyboard/DOM events still work. Any panel that overhangs those bands must set `-webkit-app-region: no-drag`: the file-search results dropdown previously left its first row unclickable because it opened below the title bar into the tab strip.
+The title bar and the conversation tab strip are `-webkit-app-region: drag` bands; a drag region swallows NATIVE mouse events over its bounds regardless of DOM z-order, while keyboard/DOM events still work. `no-drag` alone is not enough for a panel that OVERFLOWS a drag element: the panel is still hit-tested as part of that element. Such panels must be portaled to `<body>` and marked `no-drag`, like the terminal/file-changes overlays. The file-search dropdown did neither at first, so its first row (the part over the tab strip) could not be hovered or clicked.
 
 ## Top menu collapse/expand
 

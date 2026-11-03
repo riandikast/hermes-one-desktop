@@ -846,13 +846,20 @@ body:has(.shell-vibrant),
   border: 1px solid var(--border-bright);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   padding: 4px;
-  /* The panel hangs past the title bar into .active-sessions-bar, which is a
-     `-webkit-app-region: drag` band. A drag region swallows NATIVE mouse
-     events over its bounds regardless of z-order, so the first result row sat
-     in that band and could not be hovered or clicked (arrow keys still worked,
-     because they are DOM events). Opt the panel out, like the terminal and
-     file-changes overlays. */
+  /* The panel is PORTALED to <body> because the title bar sits inside the
+     window's `-webkit-app-region: drag` band: a panel that overflows a drag
+     element is still hit-tested as drag territory, so its first row could not
+     be hovered or clicked (arrow keys kept working — they are DOM events).
+     `no-drag` reclaims the band, exactly like the terminal overlay. */
   -webkit-app-region: no-drag;
+}
+
+/* Portal variant: fixed below the search field, above the title bar (1002)
+   and the tab strip (1001) so it is neither clipped nor drag-hit-tested. */
+.search-bar-results--portal {
+  position: fixed;
+  right: auto;
+  z-index: 1003;
 }
 
 .search-bar-status {

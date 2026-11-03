@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { FileText, Folder, Search, X } from "lucide-react";
 import { searchFiles, type FileSearchEntry } from "../screens/Chat/fileSearch";
 import { matchesShortcut } from "../utils/keyboardShortcuts";
@@ -29,6 +30,8 @@ export function SearchBar({
   const [searching, setSearching] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const [anchor, setAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
   const seqRef = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -255,10 +258,41 @@ export function SearchBar({
 
   const canSearch = folders.length > 0;
   const count = results?.length ?? 0;
+  const showResults = searching || results !== null;
+
+  // The panel is PORTALED to <body>: the title bar lives inside the window's
+  // `-webkit-app-region: drag` band, and a panel that overflows a drag element
+  // is still hit-tested as drag territory — its first row could not be clicked
+  // even with `no-drag` on the panel. A body-level fixed panel is the same
+  // pattern the terminal and file-changes overlays use to reclaim the band.
+  useLayoutEffect(() => {
+    if (!showResults) {
+      setAnchor(null);
+      return;
+    }
+    const update = (): void => {
+      const rect = barRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(480, window.innerWidth - 24);
+      setAnchor({
+        top: Math.round(rect.bottom + 4),
+        left: Math.round(Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))),
+        width,
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    // Capture catches scrolls inside the page, not just on window.
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [showResults]);
 
   return (
     <div className="search-bar-wrap mx-auto mt-1" onClick={() => inputRef.current?.focus()}>
-      <div className="search-bar">
+      <div className="search-bar" ref={barRef}>
         <Search size={13} className="search-bar-icon" />
         <input
           ref={inputRef}
@@ -288,8 +322,12 @@ export function SearchBar({
           </button>
         )}
       </div>
-      {(searching || results !== null) && (
-        <div className="search-bar-results" role="listbox">
+      {showResults && anchor && createPortal(
+        <div
+          className="search-bar-results search-bar-results--portal"
+          role="listbox"
+          style={{ top: anchor.top, left: anchor.left, width: anchor.width }}
+        >
           {searching ? (
             <div className="search-bar-status">Searching…</div>
           ) : count === 0 ? (
@@ -318,7 +356,8 @@ export function SearchBar({
               </button>
             ))
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

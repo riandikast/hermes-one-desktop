@@ -55,6 +55,24 @@ describe("SearchBar result clicks", () => {
     expect(block(".search-bar-results")).toContain("top: 100%");
   });
 
+  it("portals the results panel out of the window drag region", async () => {
+    render(<SearchBar initialFolders={FOLDERS} sessionId={null} />);
+    await search("app");
+    const list = screen.getByRole("listbox");
+    // A panel nested inside the title bar's drag element is still hit-tested
+    // as drag territory, which is what made the first row unclickable.
+    expect(list.parentElement).toBe(document.body);
+    const block = (selector: string): string => {
+      const start = appCss.indexOf(`\n${selector} {`);
+      if (start < 0) throw new Error(`Missing CSS block: ${selector}`);
+      const open = appCss.indexOf("{", start);
+      return appCss.slice(open + 1, appCss.indexOf("}", open));
+    };
+    expect(block(".search-bar-results--portal")).toContain("position: fixed");
+    expect(block(".search-bar-results--portal")).toContain("z-index: 1003");
+    expect(block(".search-bar-results")).toContain("-webkit-app-region: no-drag");
+  });
+
   it("dispatches hermes-open-file when a result is CLICKED", async () => {
     const onOpen = vi.fn();
     window.addEventListener("hermes-open-file", onOpen);
