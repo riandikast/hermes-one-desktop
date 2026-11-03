@@ -67,7 +67,8 @@ export function FloatingDialog({
   } | null>(null);
 
   const resize = (width: number, height: number, origin: NonNullable<typeof resizeRef.current>): void => {
-    const nextWidth = Math.min(Math.max(320, width), Math.max(0, window.innerWidth - Math.max(24, origin.left) - 24));
+    // Match the left navigation sidebar's default width (Layout: 237px).
+    const nextWidth = Math.min(Math.max(237, width), Math.max(0, window.innerWidth - Math.max(24, origin.left) - 24));
     const nextHeight = Math.min(Math.max(200, height), Math.max(0, window.innerHeight - Math.max(24, origin.top) - 24));
     setDimensions({ width: nextWidth, height: nextHeight });
     // CSS centers the panel: compensate to keep its top-left corner stationary.

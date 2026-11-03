@@ -10571,6 +10571,10 @@ body:has(.shell-vibrant),
 .terminal-dialog-overlay.is-open {
   opacity: 1;
   visibility: visible;
+  /* Nonmodal tools must not block search/composer input outside the panel. */
+  pointer-events: none;
+}
+.terminal-dialog-overlay.is-open > .terminal-dialog {
   pointer-events: auto;
 }
 

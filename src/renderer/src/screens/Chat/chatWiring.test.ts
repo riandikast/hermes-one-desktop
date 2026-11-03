@@ -118,6 +118,13 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
       }
     },
   );
+  it("keeps floating tool overlays click-through while panels remain interactive", () => {
+    const open = css.match(/\.terminal-dialog-overlay\.is-open\s*\{([^}]+)\}/)?.[1];
+    const panel = css.match(/\.terminal-dialog-overlay\.is-open\s*>\s*\.terminal-dialog\s*\{([^}]+)\}/)?.[1];
+    expect(open).toContain("pointer-events: none");
+    expect(panel).toContain("pointer-events: auto");
+  });
+
   it("wires the toolbar and Ctrl/Cmd+T to the retained terminal dock", () => {
     expect(chatSource.length).toBeGreaterThan(1000);
     const folderIndex = chatSource.indexOf("<ContextFolderChip");

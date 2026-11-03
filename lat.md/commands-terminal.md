@@ -65,7 +65,7 @@ id, so it saves as a new entry without re-typing the fields), and Delete.
 
 ## Floating working dialogs
 
-Terminal, Web preview and File explorer share a corner resize handle and no longer dismiss on outside clicks or taps.
+Terminal, Web preview and File explorer share a corner resize handle. Minimum width is 237px, matching the default left sidebar; transparent overlay space passes clicks/taps to search and prompt inputs without dismissing the panel.
 
 [[src/renderer/src/screens/Chat/FloatingDialog.tsx#FloatingDialog]] supports mouse/touch/pen pointer capture and arrow-key resizing (Shift increases the step). Sizes stay within the viewport, retain the top-left corner during resize, and remain in component state across hide/reopen. Window resizing recenters panels. Sidebar placement stays unchanged. Close buttons and Escape still dismiss; stateful children remain mounted. The terminal dock's existing ResizeObserver refits xterm and its PTY to the new bounds.
 

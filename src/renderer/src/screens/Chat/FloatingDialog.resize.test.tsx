@@ -50,7 +50,7 @@ it("clamps size to minimum and available viewport, supports keyboard resizing", 
   expect(panel.style.width).toBe("900px");
   expect(panel.style.height).toBe("664px");
   fireEvent.pointerMove(handle, { pointerId: 2, clientX: -9000, clientY: -9000 });
-  expect(panel.style.width).toBe("320px");
+  expect(panel.style.width).toBe("237px");
   expect(panel.style.height).toBe("200px");
   fireEvent.pointerUp(handle, { pointerId: 2 });
 });
