@@ -42,6 +42,8 @@ File explorer row menu: New File/Folder, Copy/Paste (in-app + OS FileNameW clipb
 
 Explorer now supports saved SSH hosts as extra roots (ssh://<id>/abs/path) even with no local folder; panel mounts from display controls unconditionally. read-directory/read-file/write-file/explorer-* route remote paths to ssh-explorer.ts (ssh2 + remote python3; scripts in ssh-scripts.ts are tested locally). Auth: agent/default keys first, password prompted only after the first attempt fails, held in memory only; TOFU host keys in ~/.ssh/known_hosts. Remote delete is permanent; local↔remote copy refused; OS clipboard not used for remote. See lat.md/context-folder.md.
 
+Tool preview highlights syntax with a theme-token palette (keywords blue, strings green, numbers amber, comments italic) resolved by extension via @codemirror/language-data (tsx/jsx included); regression asserts token classes. See lat.md/file-changes.md.
+
 Context gauge can never display over 100%: a prompt cannot exceed the window, and the chars/4 fallback sums the whole visible transcript (estimate drift). ContextGauge caps pct/ring/tokens with a hint; usageFromPayload clamps context_used to context_max; the Usage table caps too. See lat.md/model-context.md.
 
 Preserve unrelated chat-search/zoom work. Commit owned changes only; do not push without confirmation. Follow `AGENTS.md` resource queue and documentation checks.

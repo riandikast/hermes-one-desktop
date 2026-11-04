@@ -143,6 +143,25 @@ it("shows a real read-only editor then hides it on completion, opt-out or backgr
   expect(writeFile).not.toHaveBeenCalled();
 });
 
+it("syntax-highlights the animated preview by file extension", async () => {
+  const view = render(
+    <AnimatedFileCode
+      path="C:/repo/a.ts"
+      before=""
+      after={'const answer: number = 42;\nconst label = "ok";'}
+    />,
+  );
+  await waitFor(() => expect(codeText(view.container)).toContain("ok"));
+  await waitFor(() => {
+    const classes = new Set(
+      [...view.container.querySelectorAll(".cm-line span")].map(
+        (node) => node.className,
+      ),
+    );
+    expect(classes.size).toBeGreaterThanOrEqual(3);
+  });
+});
+
 it("animates deletion then insertion using bounded transactions; reduced motion settles immediately", () => {
   vi.useFakeTimers();
   vi.stubGlobal(

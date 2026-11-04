@@ -19,16 +19,77 @@ import type { PreviewAgent } from "./useFilePreviewAgents";
 const EMPTY_AGENTS: readonly PreviewAgent[] = [];
 
 const chatSyntax = HighlightStyle.define([
-  { tag: tags.keyword, color: "var(--accent-text)", fontWeight: "600" },
-  { tag: [tags.string, tags.number, tags.bool], color: "var(--text-primary)" },
   {
-    tag: [tags.comment, tags.meta],
+    tag: [
+      tags.keyword,
+      tags.modifier,
+      tags.controlKeyword,
+      tags.moduleKeyword,
+      tags.operatorKeyword,
+      tags.definitionKeyword,
+      tags.self,
+    ],
+    color: "var(--accent-text)",
+    fontWeight: "600",
+  },
+  {
+    tag: [
+      tags.string,
+      tags.special(tags.string),
+      tags.regexp,
+      tags.escape,
+      tags.character,
+    ],
+    color: "var(--success)",
+  },
+  { tag: [tags.number, tags.bool, tags.null, tags.atom], color: "var(--warning)" },
+  {
+    tag: [
+      tags.comment,
+      tags.lineComment,
+      tags.blockComment,
+      tags.docComment,
+    ],
     color: "var(--text-secondary)",
     fontStyle: "italic",
   },
   {
-    tag: [tags.function(tags.variableName), tags.typeName],
+    tag: [
+      tags.function(tags.variableName),
+      tags.function(tags.propertyName),
+      tags.macroName,
+      tags.labelName,
+    ],
     color: "var(--accent-text)",
+  },
+  {
+    tag: [
+      tags.typeName,
+      tags.className,
+      tags.namespace,
+      tags.tagName,
+      tags.standard(tags.tagName),
+    ],
+    color: "var(--accent-text)",
+  },
+  {
+    tag: [tags.propertyName, tags.attributeName, tags.variableName, tags.name],
+    color: "var(--text-primary)",
+  },
+  {
+    tag: [tags.operator, tags.punctuation, tags.bracket, tags.separator],
+    color: "var(--text-secondary)",
+  },
+  {
+    tag: [tags.meta, tags.processingInstruction, tags.documentMeta],
+    color: "var(--text-muted)",
+  },
+  { tag: tags.invalid, color: "var(--error)" },
+  { tag: tags.heading, color: "var(--accent-text)", fontWeight: "700" },
+  {
+    tag: [tags.link, tags.url],
+    color: "var(--accent-text)",
+    textDecoration: "underline",
   },
 ]);
 
