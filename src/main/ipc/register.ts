@@ -38,6 +38,22 @@ import {
   renameExplorerEntry,
 } from "../file-explorer-ops";
 import { readClipboardFilePaths, writeClipboardFilePaths } from "../clipboard-files";
+import { parseRemotePath, type ExplorerSshConnection } from "../../shared/remote-path";
+import {
+  deleteExplorerSshConnection,
+  findExplorerSshConnection,
+  listExplorerSshConnections,
+  saveExplorerSshConnection,
+  sshExplorerCopy,
+  sshExplorerCreate,
+  sshExplorerDelete,
+  sshExplorerList,
+  sshExplorerRead,
+  sshExplorerRename,
+  sshExplorerTest,
+  sshExplorerWrite,
+  updateExplorerSshRoot,
+} from "../ssh-explorer";
 import { zoomBy, zoomApply } from "../zoom";
 import { listInstalledFonts } from "../system-fonts";
 import { promptApproval, type ApprovalPromptOptions } from "../gatewayPrompt";
@@ -3553,6 +3569,13 @@ export function registerIpcHandlers(context: IpcContext): void {
       _event,
       dirPath: string,
     ): Promise<{ name: string; isDirectory: boolean }[] | null> => {
+      const remote = parseRemotePath(dirPath);
+      if (remote) {
+        const connection = findExplorerSshConnection(remote.connectionId);
+        if (!connection) return null;
+        const result = await sshExplorerList(connection, remote.path);
+        return result.ok ? result.entries : null;
+      }
       const conn = getConnectionConfig();
       if (conn.mode === "ssh" && conn.ssh) {
         return sshReadDirectory(conn.ssh, dirPath);
@@ -3589,6 +3612,17 @@ export function registerIpcHandlers(context: IpcContext): void {
       try {
         // 0 = unlimited (the in-app editor must load the FULL file — a capped
         // read + autosave would silently destroy everything past the cap).
+        const remote = parseRemotePath(filePath);
+        if (remote) {
+          const connection = findExplorerSshConnection(remote.connectionId);
+          if (!connection) return null;
+          const result = await sshExplorerRead(
+            connection,
+            remote.path,
+            maxBytes === 0 ? 0 : (maxBytes ?? 102400),
+          );
+          return result.ok ? { content: result.content, truncated: result.truncated } : null;
+        }
         const limit = maxBytes === 0 ? Infinity : (maxBytes ?? 102400);
         const buffer = await readFile(filePath);
         const truncated = buffer.byteLength > limit;
@@ -3610,6 +3644,12 @@ export function registerIpcHandlers(context: IpcContext): void {
       filePath: string,
       content: string,
     ): Promise<{ ok: boolean; error?: string }> => {
+      const remote = parseRemotePath(filePath);
+      if (remote) {
+        const connection = findExplorerSshConnection(remote.connectionId);
+        if (!connection) return { ok: false, error: "SSH connection not found" };
+        return sshExplorerWrite(connection, remote.path, content);
+      }
       try {
         await writeFile(filePath, content, "utf-8");
         return { ok: true };
@@ -3624,23 +3664,78 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   // File-explorer mutations (rename / create / trash / copy). Each call is
   // scoped to the opened root and rejects paths that resolve outside it.
-  ipcMain.handle("explorer-rename", (_event, root: string, path: string, name: string) =>
-    renameExplorerEntry(root, path, name),
-  );
+  // A root that starts with ssh:// is served by the remote connection instead.
+  const remoteRootFor = (
+    path: string,
+  ): { connection: ExplorerSshConnection; root: string } | null => {
+    const parsed = parseRemotePath(path);
+    if (!parsed) return null;
+    const connection = findExplorerSshConnection(parsed.connectionId);
+    return connection ? { connection, root: parsed.path } : null;
+  };
+
+  ipcMain.handle("explorer-rename", async (_event, root: string, path: string, name: string) => {
+    const remote = remoteRootFor(root);
+    if (remote) {
+      const target = parseRemotePath(path)?.path;
+      if (!target) return { ok: false, error: "Invalid remote path" };
+      return sshExplorerRename(remote.connection, remote.root, target, name);
+    }
+    return renameExplorerEntry(root, path, name);
+  });
   ipcMain.handle(
     "explorer-create",
-    (_event, root: string, parent: string, name: string, kind: "file" | "directory") =>
-      createExplorerEntry(root, parent, name, kind),
+    async (_event, root: string, parent: string, name: string, kind: "file" | "directory") => {
+      const remote = remoteRootFor(root);
+      if (remote) {
+        const target = parseRemotePath(parent)?.path;
+        if (!target) return { ok: false, error: "Invalid remote path" };
+        return sshExplorerCreate(remote.connection, remote.root, target, name, kind);
+      }
+      return createExplorerEntry(root, parent, name, kind);
+    },
   );
-  ipcMain.handle("explorer-delete", (_event, root: string, path: string) =>
-    deleteExplorerEntry(root, path, (target) => shell.trashItem(target)),
-  );
-  ipcMain.handle("explorer-copy", (_event, root: string, source: string, destination: string) =>
-    copyExplorerEntry(root, source, destination),
+  ipcMain.handle("explorer-delete", async (_event, root: string, path: string) => {
+    const remote = remoteRootFor(root);
+    if (remote) {
+      const target = parseRemotePath(path)?.path;
+      if (!target) return { ok: false, error: "Invalid remote path" };
+      return sshExplorerDelete(remote.connection, remote.root, target);
+    }
+    return deleteExplorerEntry(root, path, (target) => shell.trashItem(target));
+  });
+  ipcMain.handle(
+    "explorer-copy",
+    async (_event, root: string, source: string, destination: string) => {
+      const remote = remoteRootFor(root);
+      if (remote) {
+        const from = parseRemotePath(source)?.path;
+        const to = parseRemotePath(destination)?.path;
+        if (!from || !to) return { ok: false, error: "Invalid remote path" };
+        return sshExplorerCopy(remote.connection, remote.root, from, to);
+      }
+      return copyExplorerEntry(root, source, destination);
+    },
   );
   ipcMain.handle("explorer-import", (_event, root: string, source: string, destination: string) =>
-    importExplorerEntry(root, source, destination),
+    root.startsWith("ssh://")
+      ? { ok: false, error: "Copying between your computer and an SSH host is not supported yet" }
+      : importExplorerEntry(root, source, destination),
   );
+
+  // ── Explorer SSH connections ───────────────────────────────────────────────
+  ipcMain.handle("ssh-list-connections", () => listExplorerSshConnections());
+  ipcMain.handle("ssh-save-connection", (_event, input: Partial<ExplorerSshConnection>) =>
+    saveExplorerSshConnection(input),
+  );
+  ipcMain.handle("ssh-delete-connection", (_event, id: string) => deleteExplorerSshConnection(id));
+  ipcMain.handle("ssh-test-connection", async (_event, id: string) => {
+    const connection = findExplorerSshConnection(id);
+    if (!connection) return { ok: false, error: "Connection not found" };
+    const result = await sshExplorerTest(connection);
+    if (result.ok) updateExplorerSshRoot(id, connection.rootPath || result.home);
+    return result;
+  });
   ipcMain.handle("explorer-read-clipboard", () => readClipboardFilePaths());
   ipcMain.handle("explorer-write-clipboard", (_event, paths: string[]) =>
     writeClipboardFilePaths(paths),
@@ -3648,6 +3743,7 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   // Open file in default application
   ipcMain.handle("open-file-in-editor", async (_event, filePath: string) => {
+    if (parseRemotePath(filePath)) return false;
     try {
       await shell.openPath(filePath);
       return true;
@@ -3657,7 +3753,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   });
 
   ipcMain.handle("open-terminal", async (_event, dirPath: string) => {
-    if (isRemoteOnlyMode()) return false;
+    if (isRemoteOnlyMode() || parseRemotePath(dirPath)) return false;
     if (typeof dirPath !== "string" || dirPath.trim().length === 0)
       return false;
     try {

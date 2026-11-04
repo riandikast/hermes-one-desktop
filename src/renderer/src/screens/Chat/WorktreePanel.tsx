@@ -18,6 +18,8 @@ import {
   FolderPlus,
   Pencil,
   Trash2,
+  Server,
+  Cable,
 } from "lucide-react";
 import { getIconForFile, getSVGStringFromFileType } from "@wesbos/code-icons";
 import { useI18n } from "../../components/useI18n";
@@ -26,6 +28,13 @@ import { SourceControlDialog } from "./SourceControlDialog";
 import { FindInFilesDialog } from "./FindInFilesDialog";
 import { appConfirm } from "../../components/modal/appConfirm";
 import { ExplorerPromptDialog, type ExplorerPromptRequest } from "./ExplorerPromptDialog";
+import { SshConnectDialog, type SshConnectionInput } from "./SshConnectDialog";
+import {
+  isRemotePath,
+  parseRemotePath,
+  remotePath,
+  type ExplorerSshConnection,
+} from "../../../../shared/remote-path";
 
 interface FileEntry {
   name: string;
@@ -289,6 +298,10 @@ function TreeEntries({
 }
 
 interface RootSectionProps {
+  /** Overrides the folder name (SSH hosts show their label). */
+  label?: string;
+  /** Remote roots omit local-only actions such as the terminal. */
+  remote?: boolean;
   selectedPath?: string;
   folderPath: string;
   onFileClick: (filePath: string) => void;
@@ -420,6 +433,8 @@ function SearchResultRow({
 /** One collapsible root in the multi-root sidebar. */
 function RootSection({
   folderPath,
+  label,
+  remote = false,
   onFileClick,
   onRowContextMenu,
   onOpenTerminal,
@@ -463,7 +478,7 @@ function RootSection({
   }, [folderPath, refreshVersion, t]);
 
   const folderName =
-    folderPath.split(/[\\/]/).filter(Boolean).pop() || folderPath;
+    label || folderPath.split(/[\\/]/).filter(Boolean).pop() || folderPath;
 
   const handleContextMenu = (e: React.MouseEvent): void => {
     e.preventDefault();
@@ -481,20 +496,26 @@ function RootSection({
         <span className="worktree-chevron">
           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
-        <Folder size={14} className="worktree-icon worktree-folder-icon" />
+        {remote ? (
+          <Server size={14} className="worktree-icon worktree-folder-icon" />
+        ) : (
+          <Folder size={14} className="worktree-icon worktree-folder-icon" />
+        )}
         <span className="worktree-root-name">{folderName}</span>
-        <button
-          type="button"
-          className="btn-ghost worktree-header-action"
-          onClick={(e) => {
-            e.stopPropagation();
-            void onOpenTerminal(folderPath);
-          }}
-          aria-label={t("chat.worktree.openTerminal")}
-          title={t("chat.worktree.openTerminal")}
-        >
-          <SquareTerminal size={16} />
-        </button>
+        {!remote && (
+          <button
+            type="button"
+            className="btn-ghost worktree-header-action"
+            onClick={(e) => {
+              e.stopPropagation();
+              void onOpenTerminal(folderPath);
+            }}
+            aria-label={t("chat.worktree.openTerminal")}
+            title={t("chat.worktree.openTerminal")}
+          >
+            <SquareTerminal size={16} />
+          </button>
+        )}
       </div>
       {selectedPath && !isLoading && entries && !entries.some((entry) => {
         const path = `${folderPath.replace(/[\\/]+$/, "")}/${entry.name}`;
@@ -568,6 +589,26 @@ export const WorktreePanel = memo(function WorktreePanel({
   } | null>(null);
   const [osClipboard, setOsClipboard] = useState<string[]>([]);
   const [opError, setOpError] = useState<string | null>(null);
+  const [sshConnections, setSshConnections] = useState<ExplorerSshConnection[]>([]);
+  const [sshDialogOpen, setSshDialogOpen] = useState(false);
+  const [sshBusy, setSshBusy] = useState(false);
+  const [sshError, setSshError] = useState<string | null>(null);
+
+  const loadSshConnections = useCallback(async (): Promise<void> => {
+    const list =
+      (await window.hermesAPI.listExplorerSshConnections?.().catch(() => [])) ?? [];
+    setSshConnections(list);
+  }, []);
+  useEffect(() => {
+    void loadSshConnections();
+  }, [loadSshConnections]);
+
+  const remoteRoots = sshConnections
+    .filter((connection) => connection.rootPath)
+    .map((connection) => ({
+      connection,
+      root: remotePath(connection.id, connection.rootPath),
+    }));
   const [width, setWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem(WIDTH_STORAGE_KEY));
     return Number.isFinite(saved) && saved >= MIN_PANEL_WIDTH ? saved : 240;
@@ -779,6 +820,19 @@ export const WorktreePanel = memo(function WorktreePanel({
   /** The opened root that owns a row, or null for an unrelated path. */
   const rootFor = useCallback(
     (path: string): string | null => {
+      if (isRemotePath(path)) {
+        const parsed = parseRemotePath(path);
+        const connection = parsed
+          ? sshConnections.find(
+              (item) => item.id === parsed.connectionId && item.rootPath,
+            )
+          : null;
+        if (!parsed || !connection) return null;
+        const prefix = connection.rootPath.replace(/\/+$/, "");
+        return parsed.path === prefix || parsed.path.startsWith(`${prefix}/`)
+          ? remotePath(connection.id, connection.rootPath)
+          : null;
+      }
       const target = normalizePath(path);
       return (
         folderPaths.find((folder) => {
@@ -787,8 +841,41 @@ export const WorktreePanel = memo(function WorktreePanel({
         }) ?? null
       );
     },
-    [folderPaths],
+    [folderPaths, sshConnections],
   );
+
+  /** A root row (local folder or SSH host) cannot be renamed or deleted. */
+  const isRootRow = (path: string): boolean => {
+    if (isRemotePath(path)) return remoteRoots.some((item) => item.root === path);
+    return folderPaths.some(
+      (folder) => normalizePath(folder) === normalizePath(path),
+    );
+  };
+
+  const saveExplorerSshConnection = async (input: SshConnectionInput): Promise<void> => {
+    setSshBusy(true);
+    setSshError(null);
+    const saved = await window.hermesAPI.saveExplorerSshConnection(input);
+    if (!saved.ok || !saved.connection) {
+      setSshError(saved.error ?? "Could not save the host");
+      setSshBusy(false);
+      return;
+    }
+    const tested = await window.hermesAPI.testExplorerSshConnection(saved.connection.id);
+    await loadSshConnections();
+    setSshBusy(false);
+    if (!tested.ok) {
+      setSshError(tested.error ?? "SSH connection failed");
+      return;
+    }
+    setSshDialogOpen(false);
+    setRefreshVersion((version) => version + 1);
+  };
+
+  const deleteExplorerSshConnection = async (id: string): Promise<void> => {
+    await window.hermesAPI.deleteExplorerSshConnection(id);
+    await loadSshConnections();
+  };
 
   const finishOp = (result: { ok: boolean; error?: string } | null): boolean => {
     if (!result?.ok) {
@@ -823,7 +910,9 @@ export const WorktreePanel = memo(function WorktreePanel({
     setContextMenu(null);
     if (!root) return;
     const confirmed = await appConfirm(
-      `Move "${menu.entry.name}" to the Recycle Bin?`,
+      isRemotePath(menu.entry.path)
+        ? `Permanently delete "${menu.entry.name}" on the SSH host?`
+        : `Move "${menu.entry.name}" to the Recycle Bin?`,
     );
     if (!confirmed) return;
     finishOp(await window.hermesAPI.deleteExplorerEntry(root, menu.entry.path));
@@ -834,10 +923,12 @@ export const WorktreePanel = memo(function WorktreePanel({
       paths: [path],
       name: name || path.split(/[\\/]/).pop() || path,
     });
-    try {
-      await window.hermesAPI.writeClipboardFiles([path]);
-    } catch {
-      // The in-app clipboard still works if the OS clipboard is unavailable.
+    if (!isRemotePath(path)) {
+      try {
+        await window.hermesAPI.writeClipboardFiles([path]);
+      } catch {
+        // The in-app clipboard still works if the OS clipboard is unavailable.
+      }
     }
   };
 
@@ -861,7 +952,18 @@ export const WorktreePanel = memo(function WorktreePanel({
       return;
     }
     let failureMessage: string | null = null;
+    const remoteTarget = parseRemotePath(root);
     for (const source of sources) {
+      const remoteSource = parseRemotePath(source);
+      if (Boolean(remoteTarget) !== Boolean(remoteSource)) {
+        failureMessage =
+          "Copying between your computer and an SSH host is not supported yet";
+        break;
+      }
+      if (remoteTarget && remoteSource && remoteTarget.connectionId !== remoteSource.connectionId) {
+        failureMessage = "Copying between different SSH hosts is not supported";
+        break;
+      }
       const result = rootFor(source)
         ? await window.hermesAPI.copyExplorerEntry(root, source, targetDir)
         : await window.hermesAPI.importExplorerEntry(root, source, targetDir);
@@ -963,6 +1065,15 @@ export const WorktreePanel = memo(function WorktreePanel({
         >
           <Search size={15} />
         </button>
+        <button
+          type="button"
+          className="worktree-header-action"
+          onClick={() => setSshDialogOpen(true)}
+          aria-label="Connect to SSH host"
+          title="Connect to SSH host"
+        >
+          <Cable size={15} />
+        </button>
       </div>
       <div className="worktree-search">
         <input
@@ -1005,24 +1116,53 @@ export const WorktreePanel = memo(function WorktreePanel({
               />
             ))
           )
-        ) : folderPaths.length === 0 ? (
-          <div className="worktree-empty">{t("chat.worktree.empty")}</div>
+        ) : folderPaths.length === 0 && remoteRoots.length === 0 ? (
+          <div className="worktree-empty worktree-empty-actions">
+            <span>{t("chat.worktree.empty")}</span>
+            <button
+              type="button"
+              className="btn-ghost worktree-empty-action"
+              onClick={() => setSshDialogOpen(true)}
+            >
+              <Cable size={14} />
+              Connect to SSH host
+            </button>
+          </div>
         ) : (
-          folderPaths.map((folder) => (
-            <RootSection
-              key={folder}
-              folderPath={folder}
-              selectedPath={selectedPath}
-              onFileClick={(path) => {
-                window.dispatchEvent(
-                  new CustomEvent("hermes-open-file", { detail: path }),
-                );
-              }}
-              onRowContextMenu={handleRowContextMenu}
-              onOpenTerminal={handleOpenTerminal}
-              refreshVersion={refreshVersion}
-            />
-          ))
+          <>
+            {folderPaths.map((folder) => (
+              <RootSection
+                key={folder}
+                folderPath={folder}
+                selectedPath={selectedPath}
+                onFileClick={(path) => {
+                  window.dispatchEvent(
+                    new CustomEvent("hermes-open-file", { detail: path }),
+                  );
+                }}
+                onRowContextMenu={handleRowContextMenu}
+                onOpenTerminal={handleOpenTerminal}
+                refreshVersion={refreshVersion}
+              />
+            ))}
+            {remoteRoots.map(({ connection, root }) => (
+              <RootSection
+                key={connection.id}
+                folderPath={root}
+                label={connection.label}
+                remote
+                selectedPath={selectedPath}
+                onFileClick={(path) => {
+                  window.dispatchEvent(
+                    new CustomEvent("hermes-open-file", { detail: path }),
+                  );
+                }}
+                onRowContextMenu={handleRowContextMenu}
+                onOpenTerminal={handleOpenTerminal}
+                refreshVersion={refreshVersion}
+              />
+            ))}
+          </>
         )}
       </div>
       {contextMenu && (
@@ -1083,10 +1223,7 @@ export const WorktreePanel = memo(function WorktreePanel({
             </button>
           )}
           {rootFor(contextMenu.entry.path) &&
-            !folderPaths.some(
-              (folder) =>
-                normalizePath(folder) === normalizePath(contextMenu.entry.path),
-            ) && (
+            !isRootRow(contextMenu.entry.path) && (
               <>
                 <button
                   type="button"
@@ -1107,22 +1244,26 @@ export const WorktreePanel = memo(function WorktreePanel({
               </>
             )}
           <div className="worktree-context-menu-sep" role="separator" />
-          <button
-            type="button"
-            className="worktree-context-menu-item"
-            onClick={() => handleRevealInExplorer(contextMenu.path)}
-          >
-            <ExternalLink size={14} />
-            <span>{t("chat.worktree.revealInExplorer")}</span>
-          </button>
-          <button
-            type="button"
-            className="worktree-context-menu-item"
-            onClick={() => void handleOpenTerminal(contextMenu.path)}
-          >
-            <Terminal size={14} />
-            <span>{t("chat.worktree.openTerminal")}</span>
-          </button>
+          {!isRemotePath(contextMenu.path) && (
+            <>
+              <button
+                type="button"
+                className="worktree-context-menu-item"
+                onClick={() => handleRevealInExplorer(contextMenu.path)}
+              >
+                <ExternalLink size={14} />
+                <span>{t("chat.worktree.revealInExplorer")}</span>
+              </button>
+              <button
+                type="button"
+                className="worktree-context-menu-item"
+                onClick={() => void handleOpenTerminal(contextMenu.path)}
+              >
+                <Terminal size={14} />
+                <span>{t("chat.worktree.openTerminal")}</span>
+              </button>
+            </>
+          )}
           <button
             type="button"
             className="worktree-context-menu-item"
@@ -1150,6 +1291,19 @@ export const WorktreePanel = memo(function WorktreePanel({
         <SourceControlDialog
           dir={sourceControlDir}
           onClose={() => setSourceControlDir(null)}
+        />
+      )}
+      {sshDialogOpen && (
+        <SshConnectDialog
+          connections={sshConnections}
+          busy={sshBusy}
+          error={sshError}
+          onSave={saveExplorerSshConnection}
+          onDelete={deleteExplorerSshConnection}
+          onClose={() => {
+            setSshDialogOpen(false);
+            setSshError(null);
+          }}
         />
       )}
       {prompt && (

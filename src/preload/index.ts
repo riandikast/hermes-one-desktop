@@ -1817,6 +1817,32 @@ const hermesAPI = {
     ipcRenderer.invoke("explorer-import", root, source, destination),
   readClipboardFiles: (): Promise<string[]> =>
     ipcRenderer.invoke("explorer-read-clipboard"),
+  listExplorerSshConnections: (): Promise<
+    Array<{
+      id: string;
+      label: string;
+      host: string;
+      port: number;
+      username: string;
+      keyPath: string;
+      rootPath: string;
+    }>
+  > => ipcRenderer.invoke("ssh-list-connections"),
+  saveExplorerSshConnection: (input: {
+    id?: string;
+    label?: string;
+    host: string;
+    port: number;
+    username: string;
+    keyPath: string;
+  }): Promise<{ ok: boolean; error?: string; connection?: { id: string; label: string } }> =>
+    ipcRenderer.invoke("ssh-save-connection", input),
+  deleteExplorerSshConnection: (id: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("ssh-delete-connection", id),
+  testExplorerSshConnection: (
+    id: string,
+  ): Promise<{ ok: boolean; error?: string; home?: string }> =>
+    ipcRenderer.invoke("ssh-test-connection", id),
   writeClipboardFiles: (paths: string[]): Promise<void> =>
     ipcRenderer.invoke("explorer-write-clipboard", paths),
   openFileInEditor: (filePath: string): Promise<boolean> =>

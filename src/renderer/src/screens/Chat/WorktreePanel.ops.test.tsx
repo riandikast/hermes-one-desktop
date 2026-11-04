@@ -34,6 +34,18 @@ const importExplorerEntry = vi.fn(async () => ({
 }));
 const readClipboardFiles = vi.fn(async (): Promise<string[]> => []);
 const writeClipboardFiles = vi.fn(async () => undefined);
+const listExplorerSshConnections = vi.fn(
+  async () =>
+    [] as Array<{
+      id: string;
+      label: string;
+      host: string;
+      port: number;
+      username: string;
+      keyPath: string;
+      rootPath: string;
+    }>,
+);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -49,6 +61,8 @@ beforeEach(() => {
           ];
         if (path === "C:/proj/src")
           return [{ name: "b.ts", isDirectory: false }];
+        if (path === "ssh://srv1/srv/app")
+          return [{ name: "server.ts", isDirectory: false }];
         return [];
       }),
       listFilesRecursive: vi.fn(async () => []),
@@ -64,6 +78,16 @@ beforeEach(() => {
       importExplorerEntry,
       readClipboardFiles,
       writeClipboardFiles,
+      listExplorerSshConnections,
+      saveExplorerSshConnection: vi.fn(async () => ({
+        ok: false,
+        error: "not used",
+      })),
+      deleteExplorerSshConnection: vi.fn(async () => ({ ok: true })),
+      testExplorerSshConnection: vi.fn(async () => ({
+        ok: true,
+        home: "/srv/app",
+      })),
     },
   });
 });
@@ -146,7 +170,11 @@ describe("explorer file operations", () => {
     await waitFor(() => expect(paste).toBeEnabled());
     fireEvent.click(paste);
     await waitFor(() =>
-      expect(importExplorerEntry).toHaveBeenCalledWith("C:/proj", "D:/Downloads/report.pdf", "C:/proj/src"),
+      expect(importExplorerEntry).toHaveBeenCalledWith(
+        "C:/proj",
+        "D:/Downloads/report.pdf",
+        "C:/proj/src",
+      ),
     );
   });
 
@@ -158,7 +186,51 @@ describe("explorer file operations", () => {
     const folderRow = await screen.findByTitle("C:/proj/src");
     fireEvent.keyDown(folderRow, { key: "v", ctrlKey: true });
     await waitFor(() =>
-      expect(copyExplorerEntry).toHaveBeenCalledWith("C:/proj", "C:/proj/a.ts", "C:/proj/src"),
+      expect(copyExplorerEntry).toHaveBeenCalledWith(
+        "C:/proj",
+        "C:/proj/a.ts",
+        "C:/proj/src",
+      ),
+    );
+  });
+
+  it("browses a saved SSH root with no local folder attached", async () => {
+    listExplorerSshConnections.mockResolvedValue([
+      {
+        id: "srv1",
+        label: "prod",
+        host: "10.0.0.5",
+        port: 22,
+        username: "root",
+        keyPath: "",
+        rootPath: "/srv/app",
+      },
+    ]);
+    render(
+      <I18nProvider>
+        <WorktreePanel folderPaths={[]} embedded />
+      </I18nProvider>,
+    );
+    expect(await screen.findByText("prod")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(window.hermesAPI.readDirectory).toHaveBeenCalledWith(
+        "ssh://srv1/srv/app",
+      ),
+    );
+    expect(await screen.findByText("server.ts")).toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByTitle("ssh://srv1/srv/app"));
+    fireEvent.click(await screen.findByRole("button", { name: /New File/ }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "New File" }), {
+      target: { value: "worker.ts" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(createExplorerEntry).toHaveBeenCalledWith(
+        "ssh://srv1/srv/app",
+        "ssh://srv1/srv/app",
+        "worker.ts",
+        "file",
+      ),
     );
   });
 

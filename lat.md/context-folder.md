@@ -48,6 +48,18 @@ The file explorer's row menu supports VS Code-style New File, New Folder, Copy, 
 
 These are main-process IPC channels (`explorer-rename`, `explorer-create`, `explorer-delete`, `explorer-copy`, `explorer-import`, `explorer-read-clipboard`, `explorer-write-clipboard`), so the packaged app needs a rebuild/restart before the menu works. Regressions: [[tests/file-explorer-ops.test.ts]] (temp-directory rename/create/trash/copy/import, escape, conflict) and [[src/renderer/src/screens/Chat/WorktreePanel.ops.test.tsx]] (prompt flow, internal and OS-clipboard paste, Ctrl+C/V, delete confirmation, root protection).
 
+## SSH remote explorer
+
+Saved SSH hosts appear as extra roots in the file explorer, and they render even when no local folder is attached; the panel opens from the display controls without context folders.
+
+Connections are stored in `explorer-ssh-connections.json` under the app's user-data directory and are created through the "Connect to SSH host" dialog (host, user, port, optional private key, optional label). Saving runs a real `ssh` probe before the host is shown, so a bad key or host key fails in the dialog instead of as an empty tree. Each host resolves its home directory and uses it as the initial root.
+
+Remote paths are encoded as `ssh://<connectionId>/absolute/path`. [[src/shared/remote-path.ts#parseRemotePath]] and [[src/shared/remote-path.ts#remotePath]] are the only places that encode or decode them. The existing `read-directory`, `read-file`, and `write-file` IPC channels detect that scheme and proxy to [[src/main/ssh-explorer.ts#sshExplorerList]], [[src/main/ssh-explorer.ts#sshExplorerRead]], and [[src/main/ssh-explorer.ts#sshExplorerWrite]], so opening, editing, and autosaving remote files needs no separate editor. The `explorer-rename`, `explorer-create`, `explorer-delete`, and `explorer-copy` channels do the same, scoping every mutation to the host's opened root.
+
+Remote work runs through the system OpenSSH client (`ssh` on PATH) and `python3` on the host, using the same key/agent conventions as the rest of the app. Listing, reading, writing, and mutations are small Python payloads in [[src/main/ssh-scripts.ts]]; they are the same strings executed over SSH, and are exercised locally against temp directories by [[tests/ssh-scripts.test.ts]]. Delete on a remote host is permanent (there is no Recycle Bin across SSH) and the confirmation says so. Copying between the local machine and a remote host, or between two hosts, is deliberately refused with an explicit message. Local-only actions (reveal in Explorer, terminal) are hidden for remote rows, and the OS clipboard is not written for remote paths.
+
+Regressions: [[src/renderer/src/screens/Chat/WorktreePanel.ops.test.tsx]] (saved host root without folders, remote New File routing) and [[tests/remote-path.test.ts]].
+
 ## Composer source control shortcut
 
 The composer provides a Source Control shortcut immediately after the folder picker, targeting the selected base folder.

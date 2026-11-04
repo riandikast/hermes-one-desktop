@@ -1354,6 +1354,33 @@ interface HermesAPI {
   ) => Promise<{ ok: boolean; path?: string; error?: string }>;
   readClipboardFiles: () => Promise<string[]>;
   writeClipboardFiles: (paths: string[]) => Promise<void>;
+  listExplorerSshConnections: () => Promise<
+    Array<{
+      id: string;
+      label: string;
+      host: string;
+      port: number;
+      username: string;
+      keyPath: string;
+      rootPath: string;
+    }>
+  >;
+  saveExplorerSshConnection: (input: {
+    id?: string;
+    label?: string;
+    host: string;
+    port: number;
+    username: string;
+    keyPath: string;
+  }) => Promise<{
+    ok: boolean;
+    error?: string;
+    connection?: { id: string; label: string };
+  }>;
+  deleteExplorerSshConnection: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  testExplorerSshConnection: (
+    id: string,
+  ) => Promise<{ ok: boolean; error?: string; home?: string }>;
   openFileInEditor: (filePath: string) => Promise<boolean>;
   openTerminal: (dirPath: string) => Promise<boolean>;
   getTerminalPreference: () => Promise<"powershell" | "cmd">;

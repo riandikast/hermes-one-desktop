@@ -2687,8 +2687,7 @@ function Chat({
                   },
                 ]
               : []),
-            ...(contextFolders.length > 0
-              ? [
+            ...[
                   {
                     key: "file-explorer",
                     element: (
@@ -2708,8 +2707,7 @@ function Chat({
                       </button>
                     ),
                   },
-                ]
-              : []),
+                ],
           ]}
         />
       </div>
@@ -3165,8 +3163,7 @@ function Chat({
           Opens on the session's context folders, or on a folder the explorer was
           explicitly pointed at (a directory picked in the top search bar) —
           which can exist even with no context folders attached. */}
-      {(contextFolders.length > 0 || explorerFocusFolder !== null) &&
-      worktreeEverOpened ? (
+      {worktreeEverOpened ? (
         <FloatingDialog
           open={worktreeVisible}
           onClose={() => {

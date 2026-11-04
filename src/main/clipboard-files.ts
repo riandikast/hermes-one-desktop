@@ -58,7 +58,10 @@ export function writeClipboardFilePaths(paths: string[]): void {
   if (list.length === 0) return;
   let wroteBuffer = false;
   try {
-    clipboard.writeBuffer("FileNameW", Buffer.from(`${list.join("\u0000")}\u0000\u0000`, "utf16le"));
+    clipboard.writeBuffer(
+      "FileNameW",
+      Buffer.from(`${list.join("\u0000")}\u0000\u0000`, "utf16le"),
+    );
     wroteBuffer = true;
   } catch {
     // Buffer formats are unavailable on some Linux sessions.
