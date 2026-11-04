@@ -2545,7 +2545,6 @@ function Chat({
   );
 
   return (
-    <div className="chat-workspace">
     <div
       className="chat-container"
       onDragEnter={handleDragEnter}
@@ -2554,12 +2553,7 @@ function Chat({
       onDrop={handleDrop}
     >
       <ConfigHealthBanner profile={profile} onOpenDiagnose={onOpenDiagnose} />
-      <LocalSessionCounter
-        sessionId={hermesSessionId}
-        isLoading={isLoading}
-        refreshing={refreshing}
-        onRefresh={refreshSession}
-      />
+
       {/* Pins share the FAB containing block, outside the scrollport. */}
       {pinnedMessages.length > 0 && (
         <div className="chat-pinned-float">
@@ -2716,6 +2710,13 @@ function Chat({
       </div>
 
       <div className="chat-body">
+        <div className="chat-transcript-column">
+        <LocalSessionCounter
+          sessionId={hermesSessionId}
+          isLoading={isLoading}
+          refreshing={refreshing}
+          onRefresh={refreshSession}
+        />
         <div className="chat-messages" ref={containerRef}>
           <div ref={contentRef}>
             <ChatNavArrow
@@ -2794,6 +2795,17 @@ function Chat({
             />
           </div>
         </div>
+
+        </div>
+
+        <ToolFilePreview
+          messages={messages}
+          enabled={toolCallsAnimation}
+          running={isLoading}
+          active={active}
+          local={connectionMode === "local"}
+          baseDir={contextFolders[0]}
+        />
 
         {/* "What did I last ask?" — a compact chip over the TOP-LEFT of the
             scrollport, shown only while scrolled up (at the bottom the real
@@ -3172,15 +3184,6 @@ function Chat({
           />
         </FloatingDialog>
       ) : null}
-    </div>
-    <ToolFilePreview
-      messages={messages}
-      enabled={toolCallsAnimation}
-      running={isLoading}
-      active={active}
-      local={connectionMode === "local"}
-      baseDir={contextFolders[0]}
-    />
     </div>
   );
 }

@@ -25146,10 +25146,13 @@ body:has(.shell-vibrant),
   font-size: calc(10px * var(--font-scale));
 }
 
-/* Chat and its floating rail shrink together; preview owns the full-height right column. */
-.chat-workspace { display: flex; height: 100%; min-height: 0; min-width: 0; }
-.chat-workspace > .chat-container { flex: 1; min-width: 0; }
-.chat-workspace:has(> .tool-file-preview) { gap: 12px; }
+/* Split only the transcript area; the composer remains full width below it. */
+.chat-body:has(> .tool-file-preview) { gap: 12px; }
+.chat-transcript-column { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
+.chat-body:has(> .tool-file-preview) > .chat-transcript-column .chat-messages { min-width: 0; padding-right: 62px; }
+.chat-container:has(.tool-file-preview) > .chat-display-controls { right: calc(clamp(240px, 32%, 480px) + 30px); }
+
+.chat-container:has(.tool-file-preview) > .chat-pinned-float { right: calc(clamp(240px, 32%, 480px) + 74px); }
 .tool-file-preview {
   display: flex;
   flex-direction: column;
@@ -25157,9 +25160,10 @@ body:has(.shell-vibrant),
   min-width: 0;
   min-height: 0;
   margin: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--bg-primary);
   color: var(--text-primary);
   overflow: hidden;
 }
@@ -25169,16 +25173,20 @@ body:has(.shell-vibrant),
 .tool-file-preview-path { padding: 0 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: calc(11px * var(--font-scale)); }
 .tool-file-preview-status, .tool-file-preview-note { padding: 8px 12px; color: var(--text-secondary); font-size: calc(11px * var(--font-scale)); }
 .tool-file-preview-code { flex: 1; min-height: 0; overflow: hidden; }
-/* Match the existing file editor's oneDark syntax palette for readable code. */
+/* Preview follows the active chat palette instead of a separate dark editor theme. */
+.tool-file-preview-code.file-viewer-cm-host { background: transparent; }
 .tool-file-preview-code .cm-editor { height: 100%; font-size: calc(12px * var(--font-scale)); }
 .tool-file-preview-code[data-animating="true"] .cm-cursor { visibility: visible; border-left-color: var(--accent-text); }
 .tool-file-preview-code .cm-scroller { overflow: auto; }
 .tool-file-preview-code .cm-gutters { background: var(--bg-secondary); color: var(--text-secondary); border-color: var(--border); }
 .tool-file-preview-code .cm-selectionBackground { background: color-mix(in srgb, var(--accent) 38%, transparent) !important; }
 @media (max-width: 600px) {
-  .chat-workspace:has(> .tool-file-preview) { flex-direction: column; }
-  .chat-workspace:has(> .tool-file-preview) > .chat-container { min-height: 160px; height: auto; }
-  .tool-file-preview { flex: 0 0 38%; }
+  .chat-body:has(> .tool-file-preview) { flex-direction: column; }
+  .chat-body:has(> .tool-file-preview) > .chat-transcript-column { min-height: 100px; }
+  .chat-container:has(.tool-file-preview) > .chat-display-controls { right: 18px; }
+
+  .chat-container:has(.tool-file-preview) > .chat-pinned-float { right: 62px; }
+  .tool-file-preview { flex: 0 0 38%; border-left: 0; border-top: 1px solid var(--border); }
 }
 
 /* ---- Capabilities screen ---- */

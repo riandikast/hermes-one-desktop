@@ -3,7 +3,9 @@ import { FileCode2 } from "lucide-react";
 import { basicSetup } from "codemirror";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { oneDark } from "@codemirror/theme-one-dark";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags } from "@lezer/highlight";
+
 import { languages } from "@codemirror/language-data";
 import {
   FILE_PREVIEW_LIMIT,
@@ -12,6 +14,20 @@ import {
   previewEditRange,
 } from "./toolFilePreviewModel";
 import type { ChatMessage } from "./types";
+
+const chatSyntax = HighlightStyle.define([
+  { tag: tags.keyword, color: "var(--accent-text)", fontWeight: "600" },
+  { tag: [tags.string, tags.number, tags.bool], color: "var(--text-primary)" },
+  {
+    tag: [tags.comment, tags.meta],
+    color: "var(--text-secondary)",
+    fontStyle: "italic",
+  },
+  {
+    tag: [tags.function(tags.variableName), tags.typeName],
+    color: "var(--accent-text)",
+  },
+]);
 
 /** Read-only transactions animate the observed replacement, never save it. */
 export function AnimatedFileCode({
@@ -37,7 +53,18 @@ export function AnimatedFileCode({
       state: EditorState.create({
         extensions: [
           basicSetup,
-          oneDark,
+          syntaxHighlighting(chatSyntax),
+          EditorView.theme({
+            "&": {
+              backgroundColor: "transparent",
+              color: "var(--text-primary)",
+            },
+            ".cm-content": { caretColor: "var(--accent-text)" },
+            ".cm-activeLine, .cm-activeLineGutter": {
+              backgroundColor: "var(--bg-hover)",
+            },
+          }),
+          EditorView.lineWrapping,
           language.of([]),
           EditorState.readOnly.of(true),
           EditorView.editable.of(false),
