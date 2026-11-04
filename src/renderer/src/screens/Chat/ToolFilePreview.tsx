@@ -185,8 +185,9 @@ export function AnimatedFileCode({
     const edit = previewEditRange(old, target);
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: old },
-      selection: { anchor: edit.from },
-      effects: EditorView.scrollIntoView(edit.from, { y: "center" }),
+      selection: { anchor: reading ? 0 : edit.from },
+      // Position once; subsequent frames only scroll when the cursor leaves view.
+      effects: EditorView.scrollIntoView(reading ? 0 : edit.from, { y: "center" }),
     });
     // Insert-only replay starts immediately, without an empty deletion phase.
     const deletionTime = edit.to > edit.from ? 0.4 : 0;
@@ -220,7 +221,7 @@ export function AnimatedFileCode({
         );
         view.dispatch({
           selection: { anchor: 0, head: end },
-          effects: EditorView.scrollIntoView(end, { y: "center" }),
+          effects: EditorView.scrollIntoView(end, { y: "nearest" }),
         });
         host.current?.setAttribute("data-animating", "true");
         if (step < frames) timer = setTimeout(tick, 24);
@@ -246,7 +247,7 @@ export function AnimatedFileCode({
       view.dispatch({
         changes: change,
         selection: { anchor: cursor },
-        effects: EditorView.scrollIntoView(cursor, { y: "center" }),
+        effects: EditorView.scrollIntoView(cursor, { y: "nearest" }),
       });
       host.current?.setAttribute("data-animating", String(step < frames));
       if (step < frames) timer = setTimeout(tick, 30);

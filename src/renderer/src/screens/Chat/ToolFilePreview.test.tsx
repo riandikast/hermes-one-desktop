@@ -175,6 +175,40 @@ it.each([
   expect(editor.state.selection.main.to).toBeLessThanOrEqual(editor.state.doc.length);
 });
 
+it.each([false, true])("scrolls once, then minimally follows the replay cursor (reading: %s)", (reading) => {
+  vi.useFakeTimers();
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  const scroll = vi.spyOn(EditorView, "scrollIntoView");
+  try {
+    const prefix = "unchanged line\n".repeat(40);
+    const rendered = render(
+      <AnimatedFileCode
+        path="a.unknown"
+        before={`${prefix}old\ntail`}
+        after={`${prefix}new\ntail`}
+        reading={reading}
+      />,
+    );
+    expect(scroll).toHaveBeenNthCalledWith(1, reading ? 0 : prefix.length, { y: "center" });
+    act(() => { vi.advanceTimersByTime(6000); });
+    const following = scroll.mock.calls.slice(1);
+    expect(following.length).toBeGreaterThan(1);
+    expect(following.every(([, options]) => options?.y === "nearest")).toBe(true);
+    const editor = EditorView.findFromDOM(rendered.container.querySelector(".cm-editor")!)!;
+    expect(editor.state.doc.toString()).toBe(`${prefix}new\ntail`);
+    rendered.unmount();
+  } finally {
+    scroll.mockRestore();
+  }
+});
+
 it("syntax-highlights the animated preview by file extension", async () => {
   const view = render(
     <AnimatedFileCode

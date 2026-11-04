@@ -56,6 +56,8 @@ Replay normalizes both input snapshots with CodeMirror's `EditorState.toText` be
 
 Regressions: [[src/renderer/src/screens/Chat/ToolFilePreview.test.tsx]], [[src/renderer/src/screens/Chat/toolFilePreviewModel.test.ts]], [[src/renderer/src/screens/Chat/ToolFilePreview.wiring.test.ts]], [[src/renderer/src/components/settings/toolCallsAnimation.test.ts]], and [[src/renderer/src/components/settings/AppearancePane.test.tsx]]. Unit tests verify animation, read-only behavior, cleanup, source selection, remote isolation, toggle persistence and layout contracts; they do not prove native Electron geometry.
 
+Replay scrolls to the edit once (reads start at the beginning), then uses CodeMirror's native `nearest` strategy on each frame. Visible cursor movement does not recenter the viewport; offscreen cursors cause only the minimum scroll. Read/edit regression tests assert this policy without claiming live Electron geometry.
+
 ## Agent and file tabs
 
 One read-only editor serves the main agent and live children. Tabs retain the latest operation per file; selecting a tab pins the choice, and only that file is read and animated.
