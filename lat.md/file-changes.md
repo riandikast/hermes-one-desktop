@@ -54,6 +54,14 @@ Typing/deletion is a bounded progressive replay, not actual agent keystrokes. La
 
 Regressions: [[src/renderer/src/screens/Chat/ToolFilePreview.test.tsx]], [[src/renderer/src/screens/Chat/toolFilePreviewModel.test.ts]], [[src/renderer/src/screens/Chat/ToolFilePreview.wiring.test.ts]], [[src/renderer/src/components/settings/toolCallsAnimation.test.ts]], and [[src/renderer/src/components/settings/AppearancePane.test.tsx]]. Unit tests verify animation, read-only behavior, cleanup, source selection, remote isolation, toggle persistence and layout contracts; they do not prove native Electron geometry.
 
+## Agent and file tabs
+
+One read-only editor serves the main agent and live children. Tabs retain the latest operation per file; selecting a tab pins the choice, and only that file is read and animated.
+
+[[src/renderer/src/screens/Chat/useFilePreviewAgents.ts#useFilePreviewAgents]] reads at most eight child-session tails sequentially (60 rows each, two-second refresh after the previous batch). It never resumes a runtime, starts agents, fetches full history or polls hidden/disabled previews. Session keys and cleanup reject stale replies. Relative child paths remain payload-only rather than assuming the parent's cwd.
+
+[[src/renderer/src/screens/Chat/toolFilePreviewModel.ts#previewFiles]] retains at most twelve files per agent, deduplicates normalized paths and infers completed calls from stored results. [[src/renderer/src/screens/Chat/ToolFilePreview.tsx#ToolFilePreview]] shows status-only waiting children and a single selected editor, with arrow/Home/End tab navigation. [[src/renderer/src/screens/Chat/ToolFilePreview.test.tsx]] verifies four-agent selection without mounting or reading inactive editors; [[src/renderer/src/screens/Chat/useFilePreviewAgents.test.ts]] covers bounded sequential reads and stale-session isolation.
+
 ## Per-prompt model answer
 
 Prompt, Model answer, and Files use matching collapsed disclosures; open sections keep their height as the detail pane scrolls.

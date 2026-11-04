@@ -11,6 +11,8 @@
  * a blank tab, deduping, and the persistence round-trip).
  */
 
+import { isPrivateWebHost } from "../../../../shared/private-web-host";
+
 export interface BrowserTab {
   id: string;
   url: string;
@@ -75,9 +77,13 @@ export function normaliseUrlInput(raw: string): string {
   // Local dev hosts are checked BEFORE the scheme test: `localhost:3000` looks
   // like it has a scheme ("localhost:") and would otherwise be returned as-is,
   // producing an URL the webview cannot load.
-  if (/^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d+)?(\/|$)/i.test(value)) {
+  if (
+    /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d+)?(\/|$)/i.test(value)
+  ) {
     return `http://${value}`;
   }
+  const host = value.split(/[/:?#]/)[0];
+  if (isPrivateWebHost(host)) return `http://${value}`;
   // A leading scheme (http:, https:, file:, data:, about:…) is respected.
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value)) return value;
   // A bare word with no dot is a search, not a host.
@@ -103,7 +109,10 @@ export function openTab(
  * left when it was last — the same rule Chrome uses, so the user keeps their
  * place. Closing the only tab is refused: an empty tab strip has no way back.
  */
-export function closeTab(state: BrowserTabsState, id: string): BrowserTabsState {
+export function closeTab(
+  state: BrowserTabsState,
+  id: string,
+): BrowserTabsState {
   if (state.tabs.length <= 1) return state;
   const index = state.tabs.findIndex((t) => t.id === id);
   if (index === -1) return state;

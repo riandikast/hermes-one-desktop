@@ -1,5 +1,6 @@
 import type { WebContents, WebPreferences } from "electron";
 import { pathToFileURL } from "url";
+import { isPrivateWebHost } from "../shared/private-web-host";
 
 const EXTERNAL_PROTOCOLS = new Set(["https:", "http:", "mailto:"]);
 const LOCAL_WEBVIEW_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
@@ -59,6 +60,22 @@ export function isAllowedWebviewUrl(
   }
 
   if (url.protocol === "http:") {
+    const rawHost =
+      typeof rawUrl === "string"
+        ? rawUrl
+            .match(/^http:\/\/(\[[^\]]+\]|[^/:?#@]+)(?::\d+)?(?:[/?#]|$)/i)?.[1]
+            ?.toLowerCase()
+        : undefined;
+    // Preview-only LAN access. Validate the original host: URL() silently
+    // turns malformed 10.3.0 / octal IPv4 into a different private address.
+    if (
+      allowHttps &&
+      !url.username &&
+      !url.password &&
+      rawHost &&
+      (LOCAL_WEBVIEW_HOSTS.has(rawHost) || isPrivateWebHost(rawHost))
+    )
+      return true;
     if (LOCAL_WEBVIEW_HOSTS.has(url.hostname)) {
       const port = Number(url.port);
       if (Number.isInteger(port) && port >= 1024 && port <= 65535) {

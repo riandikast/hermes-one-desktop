@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { FileCode2 } from "lucide-react";
 import { basicSetup } from "codemirror";
 import { Compartment, EditorState } from "@codemirror/state";
@@ -10,10 +10,13 @@ import { languages } from "@codemirror/language-data";
 import {
   FILE_PREVIEW_LIMIT,
   filePreviewText,
-  latestFileTool,
+  previewFiles,
+  type FileToolPreview,
   previewEditRange,
 } from "./toolFilePreviewModel";
 import type { ChatMessage } from "./types";
+import type { PreviewAgent } from "./useFilePreviewAgents";
+const EMPTY_AGENTS: readonly PreviewAgent[] = [];
 
 const chatSyntax = HighlightStyle.define([
   { tag: tags.keyword, color: "var(--accent-text)", fontWeight: "600" },
@@ -208,18 +211,12 @@ export function AnimatedFileCode({
 }
 
 const PreviewBody = memo(function PreviewBody({
-  messages,
-  baseDir,
+  file,
   local,
 }: {
-  messages: readonly ChatMessage[];
-  baseDir?: string;
+  file: FileToolPreview;
   local: boolean;
 }): React.JSX.Element | null {
-  const file = useMemo(
-    () => latestFileTool(messages, baseDir),
-    [messages, baseDir],
-  );
   const [snapshot, setSnapshot] = useState<{
     id: string;
     before?: string;
@@ -273,7 +270,7 @@ const PreviewBody = memo(function PreviewBody({
     text.before.length > FILE_PREVIEW_LIMIT ||
     text.after.length > FILE_PREVIEW_LIMIT;
   return (
-    <aside className="tool-file-preview" aria-label="Live file preview">
+    <>
       <header className="tool-file-preview-header">
         <FileCode2 size={16} aria-hidden="true" />
         <span title={file.path}>{file.path.split(/[\\/]/).at(-1)}</span>
@@ -302,9 +299,125 @@ const PreviewBody = memo(function PreviewBody({
             : (current?.note ?? "Preview limited to 64 KB")}
         </div>
       )}
-    </aside>
+    </>
   );
 });
+
+function PreviewTabs({
+  messages,
+  agents,
+  baseDir,
+  local,
+}: {
+  messages: readonly ChatMessage[];
+  agents: readonly PreviewAgent[];
+  baseDir?: string;
+  local: boolean;
+}): React.JSX.Element | null {
+  const candidates = useMemo(
+    () =>
+      [{ id: "main", label: "Main", messages }, ...agents].flatMap((agent) => {
+        const files = previewFiles(
+          agent.messages,
+          agent.id === "main" ? baseDir : undefined,
+        );
+        return files.map((file) => ({
+          key: `${agent.id}\0${file.path}`,
+          agent: agent.label,
+          file,
+        }));
+      }),
+    [messages, agents, baseDir],
+  );
+  const panelId = useId();
+  const [selected, setSelected] = useState<string | null>(null);
+  const current =
+    candidates.find((entry) => entry.key === selected) ?? candidates.at(-1);
+  if (!current && !agents.length) return null;
+  return (
+    <aside className="tool-file-preview" aria-label="Live file preview">
+      <div
+        className="tool-file-preview-tabs"
+        role="tablist"
+        aria-label="Agent files"
+      >
+        {candidates.map((entry) => (
+          <button
+            type="button"
+            role="tab"
+            key={entry.key}
+            aria-selected={current?.key === entry.key}
+            aria-controls={panelId}
+            title={`${entry.agent} · ${entry.file.path} · ${entry.file.status}`}
+            onKeyDown={(event) => {
+              if (
+                !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
+              )
+                return;
+              event.preventDefault();
+              const index = candidates.indexOf(entry);
+              const next =
+                event.key === "Home"
+                  ? 0
+                  : event.key === "End"
+                    ? candidates.length - 1
+                    : (index +
+                        (event.key === "ArrowRight" ? 1 : -1) +
+                        candidates.length) %
+                      candidates.length;
+              setSelected(candidates[next].key);
+              const buttons =
+                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                  "button[role=tab]",
+                );
+              buttons?.[next]?.focus();
+            }}
+            onClick={() => setSelected(entry.key)}
+          >
+            {entry.agent} · {entry.file.path.split(/[\\/]/).at(-1)}
+            <span className="tool-file-preview-tab-status">
+              {entry.file.status}
+            </span>
+          </button>
+        ))}
+        {agents
+          .filter(
+            (agent) =>
+              !candidates.some((entry) =>
+                entry.key.startsWith(`${agent.id}\0`),
+              ),
+          )
+          .map((agent) => (
+            <span className="tool-file-preview-waiting" key={agent.id}>
+              {agent.label} · {agent.status ?? "Waiting for file…"}
+            </span>
+          ))}
+      </div>
+      <div
+        role="tabpanel"
+        id={panelId}
+        className="tool-file-preview-panel"
+        aria-label={
+          current
+            ? `${current.agent} · ${current.file.path}`
+            : "Waiting for files"
+        }
+      >
+        {current ? (
+          <PreviewBody
+            key={current.key}
+            file={current.file}
+            local={local && /^(?:[A-Za-z]:[\\/]|\/)/.test(current.file.path)}
+          />
+        ) : (
+          <div className="tool-file-preview-note">
+            Waiting for file activity…
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
 
 /** No history playback, background reads, editor timers or hidden-tab work. */
 export function ToolFilePreview({
@@ -314,8 +427,10 @@ export function ToolFilePreview({
   active,
   local,
   baseDir,
+  agents = EMPTY_AGENTS,
 }: {
   messages: readonly ChatMessage[];
+  agents?: readonly PreviewAgent[];
   enabled: boolean;
   running: boolean;
   active: boolean;
@@ -323,6 +438,11 @@ export function ToolFilePreview({
   baseDir?: string;
 }): React.JSX.Element | null {
   return enabled && running && active ? (
-    <PreviewBody messages={messages} baseDir={baseDir} local={local} />
+    <PreviewTabs
+      messages={messages}
+      agents={agents}
+      baseDir={baseDir}
+      local={local}
+    />
   ) : null;
 }

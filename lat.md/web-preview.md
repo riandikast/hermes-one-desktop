@@ -6,6 +6,12 @@ It auto-opens when an in-app link is clicked or a web tool reports a URL, via th
 
 The panel's width is free-resizable: a drag handle on its left edge sets a `width` clamped between `MIN_PANEL_WIDTH` and `window.innerWidth - 360`, persisted to `localStorage` under `hermes:webPreviewWidth`. During a drag the webview's `pointer-events` are disabled so it doesn't swallow the move stream.
 
+## Private-network HTTP
+
+The sandboxed browser preview permits HTTP on exact RFC1918 IPv4 hosts and loopback, including standard ports. Other webviews retain their loopback high-port restriction; public HTTP stays blocked.
+
+[[src/shared/private-web-host.ts#isPrivateWebHost]] validates canonical dotted quads before URL coercion. [[src/renderer/src/screens/Chat/browserTabs.ts#normaliseUrlInput]] defaults bare private hosts to HTTP, preserving explicit HTTPS. [[src/main/security.ts#isAllowedWebviewUrl]] checks the original host rather than allowing shortened/octal IPv4 to become a different private address; credentials and invalid ports do not gain LAN access. Existing attach/navigation gates, sandbox, web security and certificate validation remain enabled. Main-process policy changes require the user's rebuild/restart. [[tests/private-web-host.test.ts]] covers private boundaries, malformed input, public HTTP denial, standard ports and non-preview isolation without accessing a real LAN.
+
 ## Floating dialog sizing
 
 The chat browser is hosted in the shared resizable working dialog, preserving its webviews and tab history while resized or hidden.

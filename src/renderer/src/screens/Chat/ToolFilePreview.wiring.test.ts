@@ -61,7 +61,8 @@ it("mounts the preview in chat-body flow with current-session data and separate 
   for (const prop of [
     "messages={messages}",
     "enabled={toolCallsAnimation}",
-    "running={isLoading}",
+    "running={isLoading || dashboardTransport.activeSubagents.length > 0}",
+    "agents={previewAgents}",
     "active={active}",
     'local={connectionMode === "local"}',
     "baseDir={contextFolders[0]}",

@@ -65,6 +65,40 @@ export function latestFileTool(
   return null;
 }
 
+/** Latest operation per file, scoped to this request; no editor work for inactive tabs. */
+export function previewFiles(
+  messages: readonly ChatMessage[],
+  baseDir?: string,
+): FileToolPreview[] {
+  const files = new Map<string, FileToolPreview>();
+  const completed = new Set(
+    messages
+      .filter((row) => row.kind === "tool_result")
+      .map((row) => (row.kind === "tool_result" ? row.callId : "")),
+  );
+  for (let i = messages.length - 1; i >= 0 && files.size < 12; i--) {
+    const row = messages[i];
+    if (
+      isBubbleMessage(row) &&
+      row.role === "user" &&
+      !isAutoInjectedPrompt(row.content)
+    )
+      break;
+    if (row.kind !== "tool_call") continue;
+    const file = latestFileTool([row], baseDir);
+    if (!file) continue;
+    const key = file.path.replace(/\\/g, "/").toLowerCase();
+    if (!files.has(key))
+      files.set(
+        key,
+        completed.has(row.callId) && !row.status
+          ? { ...file, status: "completed" }
+          : file,
+      );
+  }
+  return [...files.values()].reverse();
+}
+
 /** Payload edits are a replay, never a claim about unobserved disk contents. */
 export function filePreviewText(
   file: FileToolPreview,

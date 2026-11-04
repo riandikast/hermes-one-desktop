@@ -25167,6 +25167,13 @@ body:has(.shell-vibrant),
   color: var(--text-primary);
   overflow: hidden;
 }
+.tool-file-preview-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.tool-file-preview-tabs { display: flex; gap: 4px; overflow-x: auto; padding: 6px; flex-shrink: 0; border-bottom: 1px solid var(--border); }
+.tool-file-preview-tabs button { flex-shrink: 0; background: transparent; color: var(--text-secondary); border: 1px solid transparent; padding: 6px 8px; border-radius: var(--radius-sm); font-size: calc(11px * var(--font-scale)); cursor: pointer; }
+.tool-file-preview-tabs button[aria-selected="true"] { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border); }
+.tool-file-preview-tabs button:focus-visible { outline: 2px solid var(--accent); }
+.tool-file-preview-tab-status { margin-left: 6px; color: var(--text-secondary); }
+.tool-file-preview-waiting { padding: 6px; white-space: nowrap; color: var(--text-secondary); font-size: calc(11px * var(--font-scale)); }
 .tool-file-preview-header { display: flex; align-items: center; gap: 8px; padding: 10px 12px 4px; }
 .tool-file-preview-header > span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-file-preview-operation { color: var(--accent-text); font-size: calc(11px * var(--font-scale)); }

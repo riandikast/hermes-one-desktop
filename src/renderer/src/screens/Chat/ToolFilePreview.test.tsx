@@ -1,4 +1,10 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
 import { AnimatedFileCode, ToolFilePreview } from "./ToolFilePreview";
@@ -59,6 +65,56 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+it("four agents share one editor, inactive tabs do not read or animate", async () => {
+  const agents = [1, 2, 3, 4].map((n) => ({
+    id: `agent${n}`,
+    label: `Agent ${n}`,
+    messages: [
+      {
+        id: `t${n}`,
+        kind: "tool_call" as const,
+        role: "agent" as const,
+        callId: `t${n}`,
+        name: "write_file",
+        status: "running" as const,
+        args: JSON.stringify({
+          path: `C:/repo/file${n}.ts`,
+          content: `agent ${n}`,
+        }),
+      },
+    ],
+  }));
+  const view = render(<ToolFilePreview {...props} agents={agents} />);
+  await waitFor(() =>
+    expect(view.container.querySelectorAll(".cm-editor")).toHaveLength(1),
+  );
+  expect(screen.getAllByRole("tab")).toHaveLength(5);
+  expect(
+    readFile.mock.calls.every((call) => call[0] === "C:/repo/file4.ts"),
+  ).toBe(true);
+  fireEvent.click(screen.getByRole("tab", { name: /Agent 2/ }));
+  await waitFor(() =>
+    expect(readFile).toHaveBeenCalledWith("C:/repo/file2.ts", 64 * 1024),
+  );
+  expect(view.container.querySelectorAll(".cm-editor")).toHaveLength(1);
+  expect(
+    screen.getByRole("tab", { name: /Agent 2/ }).getAttribute("aria-selected"),
+  ).toBe("true");
+  const updated = agents.map((agent) => ({ ...agent, status: "working" }));
+  view.rerender(<ToolFilePreview {...props} agents={updated} />);
+  expect(
+    screen.getByRole("tab", { name: /Agent 2/ }).getAttribute("aria-selected"),
+  ).toBe("true");
+  fireEvent.keyDown(screen.getByRole("tab", { name: /Agent 2/ }), {
+    key: "ArrowRight",
+  });
+  expect(
+    screen.getByRole("tab", { name: /Agent 3/ }).getAttribute("aria-selected"),
+  ).toBe("true");
+  expect(view.container.querySelectorAll(".cm-editor")).toHaveLength(1);
+  expect(writeFile).not.toHaveBeenCalled();
 });
 
 it("shows a real read-only editor then hides it on completion, opt-out or background tab without writes", async () => {

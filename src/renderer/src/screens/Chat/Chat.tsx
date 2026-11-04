@@ -49,6 +49,7 @@ import type { MessageListModel } from "./MessageList";
 
 import { FileChangesDialog } from "./FileChangesDialog";
 import { ToolFilePreview } from "./ToolFilePreview";
+import { useFilePreviewAgents } from "./useFilePreviewAgents";
 import { useToolCallsAnimation } from "../../components/settings/toolCallsAnimation";
 import { FileChangeHistoryDialog } from "./FileChangeHistoryDialog";
 import { SourceControlShortcut } from "./SourceControlShortcut";
@@ -1899,7 +1900,11 @@ function Chat({
     [],
   );
 
+  const previewAgents = useFilePreviewAgents(dashboardTransport.activeSubagents,
+    toolCallsAnimation && active && (isLoading || dashboardTransport.activeSubagents.length > 0), hermesSessionId ?? runId);
+
   const actions = useChatActions({
+
     runId,
 
     profile,
@@ -2800,8 +2805,9 @@ function Chat({
 
         <ToolFilePreview
           messages={messages}
+          agents={previewAgents}
           enabled={toolCallsAnimation}
-          running={isLoading}
+          running={isLoading || dashboardTransport.activeSubagents.length > 0}
           active={active}
           local={connectionMode === "local"}
           baseDir={contextFolders[0]}
