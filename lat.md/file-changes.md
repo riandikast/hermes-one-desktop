@@ -52,6 +52,8 @@ Settings → Appearance → Tool calls animation opts into a read-only file pane
 
 Typing/deletion is a bounded progressive replay, not actual agent keystrokes. Late baseline reads never restart an active replay; fast patch snapshots already containing the result use the authoritative old/new hunk. Read tools animate an expanding text selection without changing contents or stealing focus. Reduced-motion settles immediately. The pane, editor and timers unmount when generation ends, the preference turns off or the chat becomes inactive; stale reads are discarded. Existing file-history snapshots remain unchanged.
 
+Replay normalizes both input snapshots with CodeMirror's `EditorState.toText` before calculating edits, selections or scroll offsets. Raw CRLF lengths otherwise exceed the normalized document and throw `Selection points outside of document`. The display-only normalization never modifies files or stored snapshots. Regression covers read/edit replay, reduced motion and shorter follow-up contents.
+
 Regressions: [[src/renderer/src/screens/Chat/ToolFilePreview.test.tsx]], [[src/renderer/src/screens/Chat/toolFilePreviewModel.test.ts]], [[src/renderer/src/screens/Chat/ToolFilePreview.wiring.test.ts]], [[src/renderer/src/components/settings/toolCallsAnimation.test.ts]], and [[src/renderer/src/components/settings/AppearancePane.test.tsx]]. Unit tests verify animation, read-only behavior, cleanup, source selection, remote isolation, toggle persistence and layout contracts; they do not prove native Electron geometry.
 
 ## Agent and file tabs

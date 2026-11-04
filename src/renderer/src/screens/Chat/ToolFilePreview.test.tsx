@@ -143,6 +143,38 @@ it("shows a real read-only editor then hides it on completion, opt-out or backgr
   expect(writeFile).not.toHaveBeenCalled();
 });
 
+it.each([
+  { reading: true, reduced: true },
+  { reading: true, reduced: false },
+  { reading: false, reduced: true },
+  { reading: false, reduced: false },
+])("keeps CRLF replay selections inside the document ($reading, $reduced)", ({ reading, reduced }) => {
+  vi.useFakeTimers();
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({
+      matches: reduced,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  const before = "first\r\nold\r\nlast\r\n";
+  const after = "first\r\nnew\r\nlast\r\n";
+  const rendered = render(
+    <AnimatedFileCode path="a.unknown" before={before} after={after} reading={reading} />,
+  );
+  act(() => { vi.advanceTimersByTime(6000); });
+  const editor = EditorView.findFromDOM(rendered.container.querySelector(".cm-editor")!)!;
+  expect(editor.state.doc.toString()).toBe("first\nnew\nlast\n");
+  expect(editor.state.selection.main.to).toBeLessThanOrEqual(editor.state.doc.length);
+  rendered.rerender(
+    <AnimatedFileCode path="a.unknown" before={before} after={"short\r\n"} reading={reading} />,
+  );
+  act(() => { vi.advanceTimersByTime(6000); });
+  expect(editor.state.doc.toString()).toBe("short\n");
+  expect(editor.state.selection.main.to).toBeLessThanOrEqual(editor.state.doc.length);
+});
+
 it("syntax-highlights the animated preview by file extension", async () => {
   const view = render(
     <AnimatedFileCode

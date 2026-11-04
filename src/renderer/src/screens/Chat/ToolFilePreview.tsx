@@ -169,13 +169,18 @@ export function AnimatedFileCode({
   useEffect(() => {
     const view = editor.current;
     if (!view) return;
-    const target = after.slice(0, FILE_PREVIEW_LIMIT);
+    // Use CodeMirror's newline normalization before computing UTF-16 offsets.
+    const target = view.state
+      .toText(after.slice(0, FILE_PREVIEW_LIMIT))
+      .toString();
     // Late snapshots must not reset an in-flight replay to its final contents.
     const old = reading
       ? target
       : started.current
         ? view.state.doc.toString()
-        : initialBefore.current.slice(0, FILE_PREVIEW_LIMIT);
+        : view.state
+            .toText(initialBefore.current.slice(0, FILE_PREVIEW_LIMIT))
+            .toString();
     started.current = true;
     const edit = previewEditRange(old, target);
     view.dispatch({
