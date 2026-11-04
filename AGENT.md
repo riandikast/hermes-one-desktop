@@ -38,6 +38,8 @@ Appearance → Tool calls animation defaults OFF, independently persisted at her
 
 One editor now serves main/child agent-file tabs, selected tab pinned; inactive files only status (no read/editor/timers). useFilePreviewAgents reads max8 child tails sequentially, 60 rows every2s, active opt-in only; never resumes runtimes. LAN preview: exact RFC1918 HTTP enabled only for web-preview, bare private IP defaults HTTP; public HTTP/malformed shorthand denied. Main-process security changes require user rebuild/restart.
 
+File explorer row menu: New File/Folder, Copy/Paste (in-app clipboard, no OS clipboard), Rename, Delete (confirmed, shell.trashItem). Mutations are root-scoped with realpath escaping rejection, validated names, copy-suffix conflicts; root rows cannot be renamed/deleted. Main-process IPC `explorer-*` requires user rebuild/restart. See lat.md/context-folder.md.
+
 Preserve unrelated chat-search/zoom work. Commit owned changes only; do not push without confirmation. Follow `AGENTS.md` resource queue and documentation checks.
 
 Theme editor saves compare built-in palettes against pristine bundled defaults, not the effective editor baseline (which dropped older overrides on later saves). Custom themes save complete palettes, including on rename. Reset only built-in overrides; custom themes use confirmed Delete. Storage stays `hermes-custom-themes`, separate from bundled CSS. See `lat.md/appearance-themes.md` and `ThemeEditor.integration.test.tsx`.

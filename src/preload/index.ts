@@ -1785,6 +1785,30 @@ const hermesAPI = {
     content: string,
   ): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("write-file", filePath, content),
+  renameExplorerEntry: (
+    root: string,
+    path: string,
+    name: string,
+  ): Promise<{ ok: boolean; path?: string; error?: string }> =>
+    ipcRenderer.invoke("explorer-rename", root, path, name),
+  createExplorerEntry: (
+    root: string,
+    parent: string,
+    name: string,
+    kind: "file" | "directory",
+  ): Promise<{ ok: boolean; path?: string; error?: string }> =>
+    ipcRenderer.invoke("explorer-create", root, parent, name, kind),
+  deleteExplorerEntry: (
+    root: string,
+    path: string,
+  ): Promise<{ ok: boolean; path?: string; error?: string }> =>
+    ipcRenderer.invoke("explorer-delete", root, path),
+  copyExplorerEntry: (
+    root: string,
+    source: string,
+    destination: string,
+  ): Promise<{ ok: boolean; path?: string; error?: string }> =>
+    ipcRenderer.invoke("explorer-copy", root, source, destination),
   openFileInEditor: (filePath: string): Promise<boolean> =>
     ipcRenderer.invoke("open-file-in-editor", filePath),
   openTerminal: (dirPath: string): Promise<boolean> =>

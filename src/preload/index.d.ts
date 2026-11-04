@@ -1327,6 +1327,26 @@ interface HermesAPI {
     filePath: string,
     content: string,
   ) => Promise<{ ok: boolean; error?: string }>;
+  renameExplorerEntry: (
+    root: string,
+    path: string,
+    name: string,
+  ) => Promise<{ ok: boolean; path?: string; error?: string }>;
+  createExplorerEntry: (
+    root: string,
+    parent: string,
+    name: string,
+    kind: "file" | "directory",
+  ) => Promise<{ ok: boolean; path?: string; error?: string }>;
+  deleteExplorerEntry: (
+    root: string,
+    path: string,
+  ) => Promise<{ ok: boolean; path?: string; error?: string }>;
+  copyExplorerEntry: (
+    root: string,
+    source: string,
+    destination: string,
+  ) => Promise<{ ok: boolean; path?: string; error?: string }>;
   openFileInEditor: (filePath: string) => Promise<boolean>;
   openTerminal: (dirPath: string) => Promise<boolean>;
   getTerminalPreference: () => Promise<"powershell" | "cmd">;

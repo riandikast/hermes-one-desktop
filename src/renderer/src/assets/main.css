@@ -5984,6 +5984,63 @@ body:has(.shell-vibrant),
   background: var(--bg-hover);
 }
 
+.worktree-context-menu-item--danger {
+  color: var(--danger, #f87171);
+}
+
+.worktree-context-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
+.explorer-name-dialog {
+  width: min(420px, calc(100vw - 48px));
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+.explorer-name-title {
+  font-size: calc(15px * var(--font-scale));
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+.explorer-name-parent {
+  margin-bottom: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: calc(11px * var(--font-scale));
+}
+.explorer-name-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--border-bright, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: calc(13px * var(--font-scale));
+}
+.explorer-name-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.explorer-name-error {
+  margin-top: 8px;
+  color: var(--danger, #f87171);
+  font-size: calc(12px * var(--font-scale));
+}
+.explorer-name-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
 .worktree-row {
   display: flex;
   align-items: center;

@@ -12,12 +12,20 @@ import {
   Tag,
   GitPullRequest,
   LoaderCircle,
+  Copy,
+  ClipboardPaste,
+  FilePlus2,
+  FolderPlus,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { getIconForFile, getSVGStringFromFileType } from "@wesbos/code-icons";
 import { useI18n } from "../../components/useI18n";
 import { searchFiles, type FileSearchEntry } from "./fileSearch";
 import { SourceControlDialog } from "./SourceControlDialog";
 import { FindInFilesDialog } from "./FindInFilesDialog";
+import { appConfirm } from "../../components/modal/appConfirm";
+import { ExplorerPromptDialog, type ExplorerPromptRequest } from "./ExplorerPromptDialog";
 
 interface FileEntry {
   name: string;
@@ -544,6 +552,18 @@ export const WorktreePanel = memo(function WorktreePanel({
   const [findInFilesOpen, setFindInFilesOpen] = useState(false);
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [prompt, setPrompt] = useState<{
+    request: ExplorerPromptRequest;
+    root: string;
+    entry: ContextMenuState["entry"];
+  } | null>(null);
+  /** In-app clipboard for Copy → Paste; the OS clipboard is not involved. */
+  const [clipboard, setClipboard] = useState<{
+    root: string;
+    path: string;
+    name: string;
+  } | null>(null);
+  const [opError, setOpError] = useState<string | null>(null);
   const [width, setWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem(WIDTH_STORAGE_KEY));
     return Number.isFinite(saved) && saved >= MIN_PANEL_WIDTH ? saved : 240;
@@ -714,8 +734,8 @@ export const WorktreePanel = memo(function WorktreePanel({
       const top = bounds ? clientY - bounds.top : clientY;
       setContextMenu({
         path: target,
-        x: Math.min(left, Math.max(0, width - 200)),
-        y: top,
+        x: Math.min(left, Math.max(0, width - 220)),
+        y: Math.min(top, Math.max(0, (bounds?.height ?? 0) - 320)),
         entry: {
           name: path.slice(path.lastIndexOf("/") + 1),
           isDirectory,
@@ -731,6 +751,92 @@ export const WorktreePanel = memo(function WorktreePanel({
     const opened = await window.hermesAPI.openTerminal(path);
     if (!opened) setTerminalError(t("chat.worktree.openTerminalFailed"));
     setContextMenu(null);
+  };
+
+  const normalizePath = (path: string): string =>
+    path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+
+  /** The opened root that owns a row, or null for an unrelated path. */
+  const rootFor = useCallback(
+    (path: string): string | null => {
+      const target = normalizePath(path);
+      return (
+        folderPaths.find((folder) => {
+          const root = normalizePath(folder);
+          return target === root || target.startsWith(`${root}/`);
+        }) ?? null
+      );
+    },
+    [folderPaths],
+  );
+
+  const finishOp = (result: { ok: boolean; error?: string } | null): boolean => {
+    if (!result?.ok) {
+      setOpError(result?.error ?? "The operation failed");
+      return false;
+    }
+    setOpError(null);
+    setRefreshVersion((version) => version + 1);
+    return true;
+  };
+
+  const openPrompt = (
+    kind: ExplorerPromptRequest["kind"],
+    menu: ContextMenuState,
+  ): void => {
+    const root = rootFor(menu.entry.path);
+    if (!root) return;
+    setPrompt({
+      root,
+      entry: menu.entry,
+      request: {
+        kind,
+        initial: kind === "rename" ? menu.entry.name : "",
+        parent: kind === "rename" ? parentDir(menu.entry.path) : menu.path,
+      },
+    });
+    setContextMenu(null);
+  };
+
+  const handleDelete = async (menu: ContextMenuState): Promise<void> => {
+    const root = rootFor(menu.entry.path);
+    setContextMenu(null);
+    if (!root) return;
+    const confirmed = await appConfirm(
+      `Move "${menu.entry.name}" to the Recycle Bin?`,
+    );
+    if (!confirmed) return;
+    finishOp(await window.hermesAPI.deleteExplorerEntry(root, menu.entry.path));
+  };
+
+  const handlePaste = async (menu: ContextMenuState): Promise<void> => {
+    const root = rootFor(menu.path);
+    setContextMenu(null);
+    if (!root || !clipboard) return;
+    const result = await window.hermesAPI.copyExplorerEntry(
+      root,
+      clipboard.path,
+      menu.path,
+    );
+    finishOp(result);
+  };
+
+  const submitPrompt = async (name: string): Promise<string | null> => {
+    if (!prompt) return "No target folder";
+    const result =
+      prompt.request.kind === "rename"
+        ? await window.hermesAPI.renameExplorerEntry(
+            prompt.root,
+            prompt.entry.path,
+            name,
+          )
+        : await window.hermesAPI.createExplorerEntry(
+            prompt.root,
+            prompt.request.parent,
+            name,
+            prompt.request.kind === "file" ? "file" : "directory",
+          );
+    return finishOp(result) ? null : (result?.error ?? "The operation failed");
   };
 
   const handleRevealInExplorer = (path: string): void => {
@@ -789,6 +895,11 @@ export const WorktreePanel = memo(function WorktreePanel({
       {terminalError && (
         <div className="worktree-terminal-error">{terminalError}</div>
       )}
+      {opError && (
+        <div className="worktree-terminal-error" role="alert">
+          {opError}
+        </div>
+      )}
       <div className="worktree-content">
         {showingSearch ? (
           searchResults === null ? (
@@ -840,6 +951,82 @@ export const WorktreePanel = memo(function WorktreePanel({
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onContextMenu={(e) => e.preventDefault()}
         >
+          {rootFor(contextMenu.entry.path) && (
+            <>
+              <button
+                type="button"
+                className="worktree-context-menu-item"
+                onClick={() => openPrompt("file", contextMenu)}
+              >
+                <FilePlus2 size={14} />
+                <span>New File</span>
+              </button>
+              <button
+                type="button"
+                className="worktree-context-menu-item"
+                onClick={() => openPrompt("folder", contextMenu)}
+              >
+                <FolderPlus size={14} />
+                <span>New Folder</span>
+              </button>
+              <div className="worktree-context-menu-sep" role="separator" />
+            </>
+          )}
+          {rootFor(contextMenu.entry.path) && (
+            <button
+              type="button"
+              className="worktree-context-menu-item"
+              onClick={() => {
+                const root = rootFor(contextMenu.entry.path);
+                if (root) {
+                  setClipboard({
+                    root,
+                    path: contextMenu.entry.path,
+                    name: contextMenu.entry.name,
+                  });
+                }
+                setContextMenu(null);
+              }}
+            >
+              <Copy size={14} />
+              <span>Copy</span>
+            </button>
+          )}
+          {clipboard && rootFor(contextMenu.path) === clipboard.root && (
+            <button
+              type="button"
+              className="worktree-context-menu-item"
+              onClick={() => void handlePaste(contextMenu)}
+            >
+              <ClipboardPaste size={14} />
+              <span>Paste “{clipboard.name}”</span>
+            </button>
+          )}
+          {rootFor(contextMenu.entry.path) &&
+            !folderPaths.some(
+              (folder) =>
+                normalizePath(folder) === normalizePath(contextMenu.entry.path),
+            ) && (
+              <>
+                <button
+                  type="button"
+                  className="worktree-context-menu-item"
+                  onClick={() => openPrompt("rename", contextMenu)}
+                >
+                  <Pencil size={14} />
+                  <span>Rename…</span>
+                </button>
+                <button
+                  type="button"
+                  className="worktree-context-menu-item worktree-context-menu-item--danger"
+                  onClick={() => void handleDelete(contextMenu)}
+                >
+                  <Trash2 size={14} />
+                  <span>Delete</span>
+                </button>
+              </>
+            )}
+          <div className="worktree-context-menu-sep" role="separator" />
           <button
             type="button"
             className="worktree-context-menu-item"
@@ -883,6 +1070,13 @@ export const WorktreePanel = memo(function WorktreePanel({
         <SourceControlDialog
           dir={sourceControlDir}
           onClose={() => setSourceControlDir(null)}
+        />
+      )}
+      {prompt && (
+        <ExplorerPromptDialog
+          request={prompt.request}
+          onSubmit={submitPrompt}
+          onClose={() => setPrompt(null)}
         />
       )}
       {findInFilesOpen && (

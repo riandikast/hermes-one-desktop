@@ -30,6 +30,12 @@ import type {
 } from "../../shared/session-continuation";
 import { stageAttachment, clearStagedAttachments } from "../attachment-staging";
 import { searchFileContents } from "../file-content-search";
+import {
+  copyExplorerEntry,
+  createExplorerEntry,
+  deleteExplorerEntry,
+  renameExplorerEntry,
+} from "../file-explorer-ops";
 import { zoomBy, zoomApply } from "../zoom";
 import { listInstalledFonts } from "../system-fonts";
 import { promptApproval, type ApprovalPromptOptions } from "../gatewayPrompt";
@@ -3612,6 +3618,23 @@ export function registerIpcHandlers(context: IpcContext): void {
         };
       }
     },
+  );
+
+  // File-explorer mutations (rename / create / trash / copy). Each call is
+  // scoped to the opened root and rejects paths that resolve outside it.
+  ipcMain.handle("explorer-rename", (_event, root: string, path: string, name: string) =>
+    renameExplorerEntry(root, path, name),
+  );
+  ipcMain.handle(
+    "explorer-create",
+    (_event, root: string, parent: string, name: string, kind: "file" | "directory") =>
+      createExplorerEntry(root, parent, name, kind),
+  );
+  ipcMain.handle("explorer-delete", (_event, root: string, path: string) =>
+    deleteExplorerEntry(root, path, (target) => shell.trashItem(target)),
+  );
+  ipcMain.handle("explorer-copy", (_event, root: string, source: string, destination: string) =>
+    copyExplorerEntry(root, source, destination),
   );
 
   // Open file in default application

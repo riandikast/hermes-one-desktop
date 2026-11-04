@@ -38,6 +38,16 @@ The file explorer paginates each large directory to keep rendered tree rows boun
 
 [[src/renderer/src/screens/Chat/WorktreePanel.tsx#WorktreePanel]] shows at most 100 immediate children per directory, with previous and next controls for root folders, nested folders and expanded search results. When file history requests a selected child, the explorer opens its page automatically. Live refresh preserves expanded folders and the current page. Directory enumeration and sorting still handle the complete listing.
 
+## Explorer file operations
+
+The file explorer's row menu supports VS Code-style New File, New Folder, Copy, Paste, Rename, and Delete while keeping the existing reveal, terminal, tag, and Source Control actions.
+
+[[src/renderer/src/screens/Chat/WorktreePanel.tsx#WorktreePanel]] resolves the owning root for a row and offers mutations only inside it; the root row itself has no rename or delete. Copy stores an in-app clipboard entry (the OS clipboard is not touched) and Paste duplicates it into the target folder, with a themed prompt for names. Delete asks first, then moves the entry to the OS Recycle Bin, so it stays recoverable.
+
+[[src/main/file-explorer-ops.ts#renameExplorerEntry]], [[src/main/file-explorer-ops.ts#createExplorerEntry]], [[src/main/file-explorer-ops.ts#deleteExplorerEntry]], and [[src/main/file-explorer-ops.ts#copyExplorerEntry]] all re-resolve real paths and reject anything that escapes the opened root, so a symlink or `..` segment cannot widen access. Names reject separators, traversal, Windows-reserved words, and trailing dots/spaces. Paste never overwrites: it appends `copy`, then `copy 2`, and refuses copying a folder into itself. Delete is the only operation routed through `shell.trashItem`.
+
+These are new main-process IPC channels (`explorer-rename`, `explorer-create`, `explorer-delete`, `explorer-copy`), so the packaged app needs a rebuild/restart before the menu works. Regressions: [[tests/file-explorer-ops.test.ts]] (temp-directory rename/create/trash/copy, escape, conflict) and [[src/renderer/src/screens/Chat/WorktreePanel.ops.test.tsx]] (prompt flow, copy/paste, delete confirmation, root protection).
+
 ## Composer source control shortcut
 
 The composer provides a Source Control shortcut immediately after the folder picker, targeting the selected base folder.
