@@ -2545,6 +2545,7 @@ function Chat({
   );
 
   return (
+    <div className="chat-workspace">
     <div
       className="chat-container"
       onDragEnter={handleDragEnter}
@@ -2793,15 +2794,6 @@ function Chat({
             />
           </div>
         </div>
-
-        <ToolFilePreview
-          messages={messages}
-          enabled={toolCallsAnimation}
-          running={isLoading}
-          active={active}
-          local={connectionMode === "local"}
-          baseDir={contextFolders[0]}
-        />
 
         {/* "What did I last ask?" — a compact chip over the TOP-LEFT of the
             scrollport, shown only while scrolled up (at the bottom the real
@@ -3180,6 +3172,15 @@ function Chat({
           />
         </FloatingDialog>
       ) : null}
+    </div>
+    <ToolFilePreview
+      messages={messages}
+      enabled={toolCallsAnimation}
+      running={isLoading}
+      active={active}
+      local={connectionMode === "local"}
+      baseDir={contextFolders[0]}
+    />
     </div>
   );
 }

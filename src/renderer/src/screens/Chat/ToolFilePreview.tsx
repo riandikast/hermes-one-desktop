@@ -18,14 +18,18 @@ export function AnimatedFileCode({
   path,
   before,
   after,
+  reading = false,
 }: {
   path: string;
   before: string;
   after: string;
+  reading?: boolean;
 }): React.JSX.Element {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
   const language = useMemo(() => new Compartment(), []);
+  const started = useRef(false);
+  const initialBefore = useRef(before);
   useEffect(() => {
     if (!host.current) return;
     const view = new EditorView({
@@ -74,8 +78,14 @@ export function AnimatedFileCode({
   useEffect(() => {
     const view = editor.current;
     if (!view) return;
-    const old = before.slice(0, FILE_PREVIEW_LIMIT);
     const target = after.slice(0, FILE_PREVIEW_LIMIT);
+    // Late snapshots must not reset an in-flight replay to its final contents.
+    const old = reading
+      ? target
+      : started.current
+        ? view.state.doc.toString()
+        : initialBefore.current.slice(0, FILE_PREVIEW_LIMIT);
+    started.current = true;
     const edit = previewEditRange(old, target);
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: old },
@@ -87,16 +97,40 @@ export function AnimatedFileCode({
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)");
     let timer: ReturnType<typeof setTimeout> | undefined;
     let step = 0;
-    const frames = 18;
+    // Character-sized steps for small edits; bounded batches for large files.
+    const frames = reading
+      ? 60
+      : Math.min(
+          180,
+          Math.max(
+            30,
+            Math.ceil((edit.to - edit.from + edit.insert.length) / 3),
+          ),
+        );
     const settle = (): void => {
       host.current?.setAttribute("data-animating", "false");
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: target },
+        selection: { anchor: 0, head: reading ? target.length : 0 },
       });
     };
     const tick = (): void => {
       step++;
       const progress = Math.min(1, step / frames);
+      if (reading) {
+        const end = Math.min(
+          target.length,
+          Math.ceil(target.length * progress),
+        );
+        view.dispatch({
+          selection: { anchor: 0, head: end },
+          effects: EditorView.scrollIntoView(end, { y: "center" }),
+        });
+        host.current?.setAttribute("data-animating", "true");
+        if (step < frames) timer = setTimeout(tick, 24);
+        else settle();
+        return;
+      }
       const deleting = progress < deletionTime;
       let end = deleting
         ? edit.to - Math.ceil(((edit.to - edit.from) * progress) / deletionTime)
@@ -128,14 +162,19 @@ export function AnimatedFileCode({
         settle();
       }
     };
-    if (reduce?.matches || old === target) settle();
-    else timer = setTimeout(tick, 30);
+    if (reduce?.matches || (!reading && old === target) || (reading && !target))
+      settle();
+    else timer = setTimeout(tick, 24);
     reduce?.addEventListener("change", finishReduced);
     return () => {
       clearTimeout(timer);
       reduce?.removeEventListener("change", finishReduced);
     };
-  }, [before, after]);
+  }, [after, reading]);
+  useEffect(() => {
+    host.current?.setAttribute("data-reading", String(reading));
+  }, [reading]);
+
   return (
     <div className="file-viewer-cm-host tool-file-preview-code" ref={host} />
   );
@@ -227,6 +266,7 @@ const PreviewBody = memo(function PreviewBody({
         path={file.path}
         before={text.before}
         after={text.after}
+        reading={file.operation === "Read"}
       />
       {(!local || current?.note || limited) && (
         <div className="tool-file-preview-note">

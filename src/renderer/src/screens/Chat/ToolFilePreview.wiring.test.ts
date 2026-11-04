@@ -35,14 +35,18 @@ it("mounts the preview in chat-body flow with current-session data and separate 
   expect(chat.indexOf("<ToolFilePreview")).toBeGreaterThan(
     chat.indexOf('className="chat-body"'),
   );
-  expect(chat.indexOf("<ToolFilePreview")).toBeLessThan(
+  expect(chat.indexOf("<ToolFilePreview")).toBeGreaterThan(
     chat.indexOf('className="chat-input-area"'),
   );
+  expect(chat).toContain('className="chat-workspace"');
+  expect(chat.match(/<ToolFilePreview/g)).toHaveLength(1);
   const pane = rule(".tool-file-preview");
-  expect(pane).toContain("margin: 112px 62px 12px 0");
+  expect(pane).toContain("margin: 0");
+  expect(pane).toContain("flex: 0 0 clamp(240px, 32%, 480px)");
   expect(pane).not.toMatch(/position:\s*(?:fixed|absolute)|z-index/);
+  expect(rule(".chat-workspace > .chat-container")).toContain("flex: 1");
   expect(css).toContain(
-    ".chat-body:has(.tool-file-preview) { flex-direction: column; }",
+    ".chat-workspace:has(> .tool-file-preview) { flex-direction: column; }",
   );
-  expect(css).toContain("margin: 0 62px 12px 24px");
+  expect(css).not.toContain("margin: 112px 62px 12px 0");
 });

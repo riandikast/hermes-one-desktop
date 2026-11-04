@@ -72,14 +72,28 @@ export function filePreviewText(
   after?: string,
 ): { before: string; after: string; excerpt: boolean } {
   const { args, operation } = file;
+  if (file.status === "failed")
+    return { before: before ?? "", after: before ?? "", excerpt: false };
+  // A fast read can race the write and return its already-written result.
+  // Replay the authoritative patch hunk instead of an identical before/after.
+  if (
+    operation === "Patch" &&
+    typeof args.old_string === "string" &&
+    typeof args.new_string === "string" &&
+    (before === undefined || before === after || before === args.new_string)
+  ) {
+    return { before: args.old_string, after: args.new_string, excerpt: true };
+  }
   if (after !== undefined)
     return { before: before ?? "", after, excerpt: false };
   if (operation === "Read")
     return { before: "", after: before ?? "", excerpt: false };
-  if (file.status === "failed")
-    return { before: before ?? "", after: before ?? "", excerpt: false };
   if (operation === "Write" && typeof args.content === "string") {
-    return { before: before ?? "", after: args.content, excerpt: false };
+    return {
+      before: before === args.content ? "" : (before ?? ""),
+      after: args.content,
+      excerpt: false,
+    };
   }
   if (
     typeof args.old_string === "string" &&

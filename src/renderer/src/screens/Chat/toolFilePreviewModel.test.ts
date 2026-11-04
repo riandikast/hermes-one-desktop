@@ -119,6 +119,25 @@ it("replays exact replacement without interpreting dollar signs, labels ambiguou
   ).toBe("read content");
 });
 
+it("uses the payload baseline when disk reads race a fast edit", () => {
+  const patch = latestFileTool([
+    tool({ path: "a.ts", old_string: "old", new_string: "new" }),
+  ])!;
+  expect(filePreviewText(patch, "new", "new")).toEqual({
+    before: "old",
+    after: "new",
+    excerpt: true,
+  });
+  const write = latestFileTool([
+    tool({ path: "a.ts", content: "new" }, "write_file"),
+  ])!;
+  expect(filePreviewText(write, "new")).toEqual({
+    before: "",
+    after: "new",
+    excerpt: false,
+  });
+});
+
 it("bounds one replacement range including empty input, deletion and surrogate pairs", () => {
   for (const [before, after] of [
     ["before\nold\ntail", "before\nnew\ntail"],

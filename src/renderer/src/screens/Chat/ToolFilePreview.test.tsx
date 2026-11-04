@@ -111,7 +111,7 @@ it("animates deletion then insertion using bounded transactions; reduced motion 
   expect(codeText(view.container)).not.toBe("hello old tail");
   expect(codeText(view.container)).not.toBe("hello new tail");
   act(() => {
-    vi.advanceTimersByTime(600);
+    vi.advanceTimersByTime(2000);
   });
   expect(codeText(view.container)).toBe("hello new tail");
   vi.stubGlobal(
@@ -126,6 +126,97 @@ it("animates deletion then insertion using bounded transactions; reduced motion 
     <AnimatedFileCode path="a.unknown" before="hello new tail" after="final" />,
   );
   expect(codeText(view.container)).toBe("final");
+});
+
+it("keeps typing through late baseline updates instead of spawning the final text", () => {
+  vi.useFakeTimers();
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  const target = "new content typed progressively";
+  const view = render(
+    <AnimatedFileCode path="a.txt" before="" after={target} />,
+  );
+  act(() => {
+    vi.advanceTimersByTime(100);
+  });
+  const partial = codeText(view.container);
+  expect(partial.length).toBeGreaterThan(0);
+  expect(partial.length).toBeLessThan(target.length);
+  view.rerender(
+    <AnimatedFileCode path="a.txt" before={target} after={target} />,
+  );
+  expect(codeText(view.container)).toBe(partial);
+  act(() => {
+    vi.advanceTimersByTime(2000);
+  });
+  expect(codeText(view.container)).toBe(target);
+});
+
+it("replays a fast completed patch even when the disk snapshot already contains its result", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  readFile.mockResolvedValue({ content: "new", truncated: false });
+  const completed = messages.map((row) =>
+    row.kind === "tool_call" ? { ...row, status: "completed" as const } : row,
+  );
+  const view = render(<ToolFilePreview {...props} messages={completed} />);
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(codeText(view.container)).toBe("old");
+  act(() => {
+    vi.advanceTimersByTime(180);
+  });
+  expect(codeText(view.container)).not.toBe("new");
+  act(() => {
+    vi.advanceTimersByTime(2000);
+  });
+  expect(codeText(view.container)).toBe("new");
+});
+
+it("reads by progressively selecting text without changing the document or taking focus", () => {
+  vi.useFakeTimers();
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  const text = "one two three four five six seven";
+  const view = render(
+    <AnimatedFileCode path="a.txt" before="" after={text} reading />,
+  );
+  const editor = EditorView.findFromDOM(
+    view.container.querySelector(".cm-editor")!,
+  )!;
+  expect(codeText(view.container)).toBe(text);
+  act(() => {
+    vi.advanceTimersByTime(240);
+  });
+  expect(editor.state.selection.main.from).toBe(0);
+  expect(editor.state.selection.main.to).toBeGreaterThan(0);
+  expect(editor.state.selection.main.to).toBeLessThan(text.length);
+  expect(editor.hasFocus).toBe(false);
+  act(() => {
+    vi.advanceTimersByTime(2000);
+  });
+  expect(editor.state.selection.main.to).toBe(text.length);
+  expect(codeText(view.container)).toBe(text);
 });
 
 it("destroys the editor and cancels in-flight reads on unmount", async () => {

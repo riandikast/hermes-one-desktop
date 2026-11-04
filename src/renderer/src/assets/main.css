@@ -25146,15 +25146,17 @@ body:has(.shell-vibrant),
   font-size: calc(10px * var(--font-scale));
 }
 
-/* Live tool replay is an inline pane; the 62px rail lane stays unobstructed. */
+/* Chat and its floating rail shrink together; preview owns the full-height right column. */
+.chat-workspace { display: flex; height: 100%; min-height: 0; min-width: 0; }
+.chat-workspace > .chat-container { flex: 1; min-width: 0; }
+.chat-workspace:has(> .tool-file-preview) { gap: 12px; }
 .tool-file-preview {
   display: flex;
   flex-direction: column;
-  flex: 0 1 36%;
-  min-width: 240px;
-  max-width: 480px;
+  flex: 0 0 clamp(240px, 32%, 480px);
+  min-width: 0;
   min-height: 0;
-  margin: 112px 62px 12px 0;
+  margin: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
@@ -25172,11 +25174,11 @@ body:has(.shell-vibrant),
 .tool-file-preview-code[data-animating="true"] .cm-cursor { visibility: visible; border-left-color: var(--accent-text); }
 .tool-file-preview-code .cm-scroller { overflow: auto; }
 .tool-file-preview-code .cm-gutters { background: var(--bg-secondary); color: var(--text-secondary); border-color: var(--border); }
-.chat-body:has(.tool-file-preview) > .chat-messages { min-width: 0; }
-@media (max-width: 900px) {
-  .chat-body:has(.tool-file-preview) { flex-direction: column; }
-  .tool-file-preview { flex: 0 1 38%; min-width: 0; max-width: none; margin: 0 62px 12px 24px; }
-  .chat-body:has(.tool-file-preview) > .chat-messages { min-height: 100px; }
+.tool-file-preview-code .cm-selectionBackground { background: color-mix(in srgb, var(--accent) 38%, transparent) !important; }
+@media (max-width: 600px) {
+  .chat-workspace:has(> .tool-file-preview) { flex-direction: column; }
+  .chat-workspace:has(> .tool-file-preview) > .chat-container { min-height: 160px; height: auto; }
+  .tool-file-preview { flex: 0 0 38%; }
 }
 
 /* ---- Capabilities screen ---- */
