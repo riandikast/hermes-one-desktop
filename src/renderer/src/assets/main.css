@@ -25123,7 +25123,9 @@ body:has(.shell-vibrant),
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin: 2px 0 6px;
+  /* Align with assistant text: 28px avatar + 12px message gap. */
+  margin: 2px 0 6px 40px;
+  max-width: calc(100% - 40px);
   padding: 4px 10px;
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
   border-radius: 99px;
@@ -25142,6 +25144,39 @@ body:has(.shell-vibrant),
 .chat-file-changes-row-arrow {
   color: var(--text-tertiary);
   font-size: calc(10px * var(--font-scale));
+}
+
+/* Live tool replay is an inline pane; the 62px rail lane stays unobstructed. */
+.tool-file-preview {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 36%;
+  min-width: 240px;
+  max-width: 480px;
+  min-height: 0;
+  margin: 112px 62px 12px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+.tool-file-preview-header { display: flex; align-items: center; gap: 8px; padding: 10px 12px 4px; }
+.tool-file-preview-header > span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-file-preview-operation { color: var(--accent-text); font-size: calc(11px * var(--font-scale)); }
+.tool-file-preview-path { padding: 0 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: calc(11px * var(--font-scale)); }
+.tool-file-preview-status, .tool-file-preview-note { padding: 8px 12px; color: var(--text-secondary); font-size: calc(11px * var(--font-scale)); }
+.tool-file-preview-code { flex: 1; min-height: 0; overflow: hidden; }
+/* Match the existing file editor's oneDark syntax palette for readable code. */
+.tool-file-preview-code .cm-editor { height: 100%; font-size: calc(12px * var(--font-scale)); }
+.tool-file-preview-code[data-animating="true"] .cm-cursor { visibility: visible; border-left-color: var(--accent-text); }
+.tool-file-preview-code .cm-scroller { overflow: auto; }
+.tool-file-preview-code .cm-gutters { background: var(--bg-secondary); color: var(--text-secondary); border-color: var(--border); }
+.chat-body:has(.tool-file-preview) > .chat-messages { min-width: 0; }
+@media (max-width: 900px) {
+  .chat-body:has(.tool-file-preview) { flex-direction: column; }
+  .tool-file-preview { flex: 0 1 38%; min-width: 0; max-width: none; margin: 0 62px 12px 24px; }
+  .chat-body:has(.tool-file-preview) > .chat-messages { min-height: 100px; }
 }
 
 /* ---- Capabilities screen ---- */

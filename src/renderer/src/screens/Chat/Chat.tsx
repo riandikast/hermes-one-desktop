@@ -48,6 +48,8 @@ import { MessageList, PinnedMessagesBar, PinnedMessageReader } from "./MessageLi
 import type { MessageListModel } from "./MessageList";
 
 import { FileChangesDialog } from "./FileChangesDialog";
+import { ToolFilePreview } from "./ToolFilePreview";
+import { useToolCallsAnimation } from "../../components/settings/toolCallsAnimation";
 import { FileChangeHistoryDialog } from "./FileChangeHistoryDialog";
 import { SourceControlShortcut } from "./SourceControlShortcut";
 import { ChatLogsDialog } from "./ChatLogsDialog";
@@ -557,6 +559,7 @@ function Chat({
   const [displayControlsOpen, setDisplayControlsOpen] = useState(false);
   const [showAllThoughts, setShowAllThoughts] = useState(false);
   const [showAllTools, setShowAllTools] = useState(false);
+  const [toolCallsAnimation] = useToolCallsAnimation();
   // In-chat search (floating find bar next to the display controls).
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   // Message the search wants brought into the rendered window.
@@ -2790,6 +2793,15 @@ function Chat({
             />
           </div>
         </div>
+
+        <ToolFilePreview
+          messages={messages}
+          enabled={toolCallsAnimation}
+          running={isLoading}
+          active={active}
+          local={connectionMode === "local"}
+          baseDir={contextFolders[0]}
+        />
 
         {/* "What did I last ask?" — a compact chip over the TOP-LEFT of the
             scrollport, shown only while scrolled up (at the bottom the real

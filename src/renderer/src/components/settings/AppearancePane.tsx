@@ -14,6 +14,7 @@ import type { GpuPreferenceMode, GpuStatus } from "../../../../shared/gpu";
 import ThemeEditor from "./ThemeEditor";
 import { useWindowTerminalStyle } from "./windowTerminalStyle";
 import { FONT_SIZE_STEPS, useFontSize } from "./fontSize";
+import { useToolCallsAnimation } from "./toolCallsAnimation";
 
 const GPU_MODES: GpuPreferenceMode[] = ["auto", "on", "off"];
 
@@ -83,6 +84,9 @@ export default function AppearancePane(): React.JSX.Element {
       return false;
     }
   });
+  const [toolCallsAnimation, setToolCallsAnimation] = useToolCallsAnimation();
+  const [toolCallsAnimationSaveError, setToolCallsAnimationSaveError] =
+    useState(false);
   // Installed font families, listed from the main process (the renderer cannot
   // enumerate system fonts). Empty until loaded; also empty on a platform we
   // could not enumerate, in which case only the built-in presets render.
@@ -456,6 +460,30 @@ export default function AppearancePane(): React.JSX.Element {
                 // Broadcast so already-mounted ToolActivityItems re-read it.
                 window.dispatchEvent(
                   new Event("hermes-auto-expand-tool-calls-changed"),
+                );
+              }}
+            />
+            <span className="tools-toggle-track" />
+          </label>
+        </div>
+
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <div className="settings-row-label">Tool calls animation</div>
+            <div className="settings-row-hint">
+              {toolCallsAnimationSaveError
+                ? "Could not save tool calls animation preference."
+                : "Show a read-only animated file tool preview during generation"}
+            </div>
+          </div>
+          <label className="tools-toggle" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              aria-label="Tool calls animation"
+              checked={toolCallsAnimation}
+              onChange={(e) => {
+                setToolCallsAnimationSaveError(
+                  !setToolCallsAnimation(e.target.checked),
                 );
               }}
             />

@@ -34,6 +34,8 @@ File editor: fold-gutter glyphs are replaced by masked chevron icons (CodeMirror
 
 File-change summary is cumulative per manual prompt: retain capture through interim completion/recovery, update one stable chip, earliest before/latest after. MessageList uses fileSummaryFooters for presentation only (footer after latest response, hidden while active); raw tool snapshots/history remain intact. Async finalizers use generation/revision checks so resumed work cannot publish stale snapshots.
 
+Appearance → Tool calls animation defaults OFF, independently persisted at hermes.toolCallsAnimation. ToolFilePreview is a read-only CodeMirror tool replay (read/write/patch only), inline right pane with reserved floating-control lane, stacked on narrow layouts; active generation/tab only. 64KB local reads, no remote-to-local fallback, canceled stale reads, reduced-motion immediate. Tool args retained separately from labels; Windows case-only module names must differ beyond casing (toolFilePreviewModel vs ToolFilePreview). Chip aligns to assistant column. Docs: lat.md/file-changes.md.
+
 Preserve unrelated chat-search/zoom work. Commit owned changes only; do not push without confirmation. Follow `AGENTS.md` resource queue and documentation checks.
 
 Theme editor saves compare built-in palettes against pristine bundled defaults, not the effective editor baseline (which dropped older overrides on later saves). Custom themes save complete palettes, including on rename. Reset only built-in overrides; custom themes use confirmed Delete. Storage stays `hermes-custom-themes`, separate from bundled CSS. See `lat.md/appearance-themes.md` and `ThemeEditor.integration.test.tsx`.

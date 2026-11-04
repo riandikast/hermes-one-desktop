@@ -140,6 +140,76 @@ describe("Appearance pane — auto-expand toggles", () => {
   });
 });
 
+describe("Appearance pane — tool calls animation", () => {
+  it("defaults off directly below Auto-expand tool calls with an accessible checkbox", () => {
+    renderPane();
+    const toggle = screen.getByRole("checkbox", {
+      name: "Tool calls animation",
+    }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    const labels = [...document.querySelectorAll(".settings-row-label")].map(
+      (el) => el.textContent?.trim(),
+    );
+    expect(labels.indexOf("Tool calls animation")).toBe(
+      labels.indexOf("Auto-expand tool calls") + 1,
+    );
+    expect(
+      screen.getByText(
+        "Show a read-only animated file tool preview during generation",
+      ),
+    ).toBeDefined();
+  });
+
+  it("persists checkbox interaction independently of auto-expansion", () => {
+    renderPane();
+    const toggle = screen.getByRole("checkbox", {
+      name: "Tool calls animation",
+    }) as HTMLInputElement;
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(true);
+    expect(localStorage.getItem("hermes.toolCallsAnimation")).toBe("true");
+    expect(localStorage.getItem("hermes.autoExpandToolCalls")).toBeNull();
+    expect(localStorage.getItem("hermes.autoExpandReasoning")).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(false);
+    expect(localStorage.getItem("hermes.toolCallsAnimation")).toBe("false");
+  });
+
+  it("reflects the saved animation preference", () => {
+    localStorage.setItem("hermes.toolCallsAnimation", "true");
+    renderPane();
+    expect(toggleFor("Tool calls animation").checked).toBe(true);
+  });
+
+  it("shows storage failures without changing the checkbox and allows retry", () => {
+    renderPane();
+    const toggle = screen.getByRole("checkbox", {
+      name: "Tool calls animation",
+    }) as HTMLInputElement;
+    const save = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("Storage unavailable");
+    });
+    try {
+      fireEvent.click(toggle);
+      expect(toggle.checked).toBe(false);
+      expect(localStorage.getItem("hermes.toolCallsAnimation")).toBeNull();
+      expect(
+        screen.getByText("Could not save tool calls animation preference."),
+      ).toBeDefined();
+    } finally {
+      save.mockRestore();
+    }
+
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(true);
+    expect(localStorage.getItem("hermes.toolCallsAnimation")).toBe("true");
+    expect(
+      screen.queryByText("Could not save tool calls animation preference."),
+    ).toBeNull();
+  });
+});
+
 describe("Appearance pane — terminal shell row", () => {
   // The row is USELESS if the main process has no preference IPC: `terminalShell`
   // stays null and the row hides itself. So the tests supply the bridge.

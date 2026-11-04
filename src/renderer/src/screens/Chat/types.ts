@@ -69,6 +69,8 @@ export interface ToolCallMessage {
   callId: string;
   name: string;
   args: string;
+  /** Bounded structured arguments for the live read-only file preview, not its label. */
+  filePreviewArgs?: string;
   status?: "running" | "completed" | "failed";
 }
 

@@ -255,7 +255,9 @@ function appendClarifyRequest(
   return next;
 }
 
-function toolEventFromGatewayEvent(event: DashboardStreamEvent): ChatToolEvent {
+type PreviewToolEvent = ChatToolEvent & { filePreviewArgs?: string };
+
+function toolEventFromGatewayEvent(event: DashboardStreamEvent): PreviewToolEvent {
   const payload = isRecord(event.payload) ? event.payload : {};
   const name =
     textFromPayload(payload, "name", "tool", "function", "function_name") ||
@@ -268,6 +270,11 @@ function toolEventFromGatewayEvent(event: DashboardStreamEvent): ChatToolEvent {
   const status = complete ? (failed ? "failed" : "completed") : "running";
   const label = previewFromPayload(payload);
   const result = complete ? resultFromPayload(payload) : "";
+  // Labels often replace args in the UI. Preserve structured file-tool payloads
+  // separately so previewing never parses a human label as source code.
+  const fileArgs = /(?:^|__)(?:read_file|readfile|write_file|writefile|patch|patch_file|apply_patch|edit_file)$/.test(name)
+    ? stableStringify(payload.args ?? payload.input ?? payload.arguments ??
+        (payload.path || payload.file_path || payload.patch ? payload : undefined)) : "";
 
   return {
     callId,
@@ -282,6 +289,7 @@ function toolEventFromGatewayEvent(event: DashboardStreamEvent): ChatToolEvent {
     status,
     ...(label ? { label, preview: label } : {}),
     ...(result ? { result } : {}),
+    ...(fileArgs && fileArgs.length <= 256 * 1024 ? { filePreviewArgs: fileArgs } : {}),
   };
 }
 
@@ -455,7 +463,7 @@ function hasMatchingToolResult(
 
 function appendToolEvent(
   messages: ReadonlyArray<ChatMessage>,
-  event: ChatToolEvent,
+  event: PreviewToolEvent,
 ): ChatMessage[] {
   const detail = event.preview || event.label || "";
   if (
@@ -476,6 +484,7 @@ function appendToolEvent(
         ...current,
         name: event.name || current.name,
         args: detail || current.args,
+        ...(event.filePreviewArgs ? { filePreviewArgs: event.filePreviewArgs } : {}),
         status: event.status,
       };
     }
@@ -487,6 +496,7 @@ function appendToolEvent(
       callId: event.callId,
       name: event.name || "tool",
       args: detail,
+      ...(event.filePreviewArgs ? { filePreviewArgs: event.filePreviewArgs } : {}),
       status: event.status,
     });
   }

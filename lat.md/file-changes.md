@@ -42,6 +42,18 @@ The transport retains capture through interim completions and recovery, invalida
 
 Regressions: [[src/renderer/src/screens/Chat/fileChangeSummary.test.ts]], [[src/renderer/src/screens/Chat/MessageList.fileSummary.test.tsx]], and [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.test.tsx]]. They cover continuation, duplicate completions, stale reads, latest-after/earliest-before, new manual prompts, footer ordering/hiding and unchanged history availability.
 
+## Live file-tool preview
+
+Settings → Appearance → Tool calls animation opts into a read-only file pane during active generation. It defaults off and is independent of tool auto-expansion.
+
+[[src/renderer/src/screens/Chat/ToolFilePreview.tsx#ToolFilePreview]] mounts beside the transcript, leaving a reserved right-hand lane for floating controls; narrow layouts stack it below the transcript. The editor never writes files or takes keyboard focus. It reuses CodeMirror, syntax grammars and existing fold icons. Summary chips align with the assistant avatar/gap column.
+
+[[src/renderer/src/screens/Chat/toolFilePreviewModel.ts#latestFileTool]] selects explicit read/write/patch calls from the current manual prompt, excluding shell tools. The dashboard adapter preserves bounded structured arguments separately from friendly labels. Local reads are capped at 64 KB; remote sessions never read matching local paths. Missing, binary and truncated reads report payload-only/capped states. Complex context patches show a labeled excerpt rather than pretending to apply a full-file patch.
+
+Typing/deletion is a bounded replay of observed contents or exact tool arguments, not actual agent keystrokes. Reduced-motion settles immediately. The pane, editor and timers unmount when generation ends, the preference turns off or the chat becomes inactive; stale reads are discarded. Existing file-history snapshots remain unchanged.
+
+Regressions: [[src/renderer/src/screens/Chat/ToolFilePreview.test.tsx]], [[src/renderer/src/screens/Chat/toolFilePreviewModel.test.ts]], [[src/renderer/src/screens/Chat/ToolFilePreview.wiring.test.ts]], [[src/renderer/src/components/settings/toolCallsAnimation.test.ts]], and [[src/renderer/src/components/settings/AppearancePane.test.tsx]]. Unit tests verify animation, read-only behavior, cleanup, source selection, remote isolation, toggle persistence and layout contracts; they do not prove native Electron geometry.
+
 ## Per-prompt model answer
 
 Prompt, Model answer, and Files use matching collapsed disclosures; open sections keep their height as the detail pane scrolls.
