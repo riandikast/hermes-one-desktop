@@ -8,6 +8,7 @@ import {
   Globe,
   MousePointerClick,
   Plus,
+  PanelTop,
 } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import {
@@ -50,6 +51,8 @@ interface WebPreviewPanelProps {
     className: string;
     outerHTML: string;
   }) => void;
+  /** Promote the active page into its own tab in the app tab bar. */
+  onOpenInTab?: (url: string) => void;
   /**
    * Fill the parent instead of sizing itself.
    *
@@ -90,6 +93,7 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
   initialUrl,
   onClose,
   onInspectElement,
+  onOpenInTab,
   embedded = false,
 }: WebPreviewPanelProps): React.JSX.Element {
   const { t } = useI18n();
@@ -189,6 +193,20 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
   useEffect(() => {
     setAddress(current?.url ?? "");
   }, [current?.url, currentId]);
+
+  // A host can point the same mounted panel at another page (attaching a
+  // different preview URL); open or focus it instead of remounting, which would
+  // reload every webview.
+  const requestedUrl = useRef(normaliseUrlInput(initialUrl));
+  useEffect(() => {
+    const url = normaliseUrlInput(initialUrl);
+    if (!url || url === BLANK_URL || url === requestedUrl.current) return;
+    requestedUrl.current = url;
+    setState((prev) => {
+      const existing = prev.tabs.find((tab) => tab.url === url);
+      return existing ? selectTab(prev, existing.id) : openTab(prev, url);
+    });
+  }, [initialUrl]);
 
   // Escape leaves inspect mode: without it the overlay swallows page clicks
   // and there is no way back except closing the panel.
@@ -552,6 +570,21 @@ export const WebPreviewPanel = memo(function WebPreviewPanel({
         >
           <ExternalLink size={15} />
         </button>
+        {onOpenInTab && (
+          <button
+            type="button"
+            className="web-preview-btn"
+            onClick={() => {
+              if (current?.url && current.url !== BLANK_URL)
+                onOpenInTab(current.url);
+            }}
+            disabled={!current?.url || current.url === BLANK_URL}
+            title="Open in a tab"
+            aria-label="Open preview in a tab"
+          >
+            <PanelTop size={16} />
+          </button>
+        )}
         <button
           type="button"
           className="web-preview-btn"

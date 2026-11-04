@@ -7,6 +7,7 @@ export default {
   sortByName: "Nama",
   sortByUpdated: "Terakhir diperbarui",
   chats: "Obrolan",
+  web: "Pratinjau web",
   noChats: "Tidak ada obrolan",
 
   searchSessions: "Cari sesi",  discover: "Jelajahi",

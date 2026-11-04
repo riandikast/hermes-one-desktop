@@ -1339,37 +1339,13 @@ function Chat({
 
   const visibleSessionScopeId = hermesSessionId ?? null;
 
-  // Attached web preview: a right-side pane owned by this chat tab, restored
-  // per session. Docking only changes FloatingDialog's placement class, so the
-  // mounted webviews never reload.
-  const webPreviewDockKey = visibleSessionScopeId
-    ? `hermes.webPreview.docked.${visibleSessionScopeId}`
-    : null;
-  const [webPreviewDocked, setWebPreviewDocked] = useState(false);
-  useEffect(() => {
-    if (!webPreviewDockKey) {
-      setWebPreviewDocked(false);
-      return;
-    }
-    try {
-      setWebPreviewDocked(localStorage.getItem(webPreviewDockKey) === "1");
-    } catch {
-      setWebPreviewDocked(false);
-    }
-  }, [webPreviewDockKey]);
-  const toggleWebPreviewDock = useCallback((): void => {
-    setWebPreviewDocked((docked) => {
-      const next = !docked;
-      if (webPreviewDockKey) {
-        try {
-          localStorage.setItem(webPreviewDockKey, next ? "1" : "0");
-        } catch {
-          // Storage unavailable: dock still works for this mount.
-        }
-      }
-      return next;
-    });
-  }, [webPreviewDockKey]);
+  // Attach the preview to the tab bar: Layout opens (or focuses) a web tab.
+  const openWebPreviewInTab = useCallback((url: string): void => {
+    window.dispatchEvent(
+      new CustomEvent("hermes-open-web-preview", { detail: url }),
+    );
+    setWebPreviewVisible(false);
+  }, []);
 
   useChatIPC({
     runId,
@@ -3199,14 +3175,12 @@ function Chat({
           title="Web preview"
           size="full"
           keepMounted
-          placement={webPreviewDocked ? "sidebar" : "dialog"}
-          placementDocked={webPreviewDocked}
-          onTogglePlacement={toggleWebPreviewDock}
         >
           <WebPreviewPanel
             initialUrl={webPreviewUrl}
             onClose={() => setWebPreviewVisible(false)}
             onInspectElement={handleInspectElement}
+            onOpenInTab={openWebPreviewInTab}
             embedded
           />
         </FloatingDialog>

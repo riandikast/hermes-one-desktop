@@ -14,6 +14,7 @@ export default {
   sortByUpdated: "Last updated",
   skills: "Skills",
   chats: "Chats",
+  web: "Web preview",
   pinned: "Pinned",
   noChats: "No chats",
   searchSessions: "Search sessions",

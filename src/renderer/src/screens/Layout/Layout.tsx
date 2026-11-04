@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import Chat from "../Chat/Chat";
+import { WebPreviewPanel } from "../Chat/WebPreviewPanel";
 import { dbItemsToChatMessages } from "../Chat/sessionHistory";
 import type { ChatMessage } from "../Chat/types";
 import {
@@ -71,6 +72,7 @@ type View =
   | "chat"
   | "group-chat"
   | "file"
+  | "web"
   | "capabilities"
   | "agents"
   | "office"
@@ -473,6 +475,7 @@ function Layout({
       chat: "navigation.chat",
       "group-chat": "navigation.chats",
       file: "navigation.file",
+      web: "navigation.web",
       capabilities: "navigation.tools",
       office: "navigation.office",
       kanban: "navigation.kanban",
@@ -582,6 +585,60 @@ function Layout({
     },
     [runs, activeProfile],
   );
+
+  const handleOpenWebPreview = useCallback(
+    (url: string): void => {
+      const clean = url.trim();
+      if (!clean || clean === "about:blank") return;
+      let title = "Web preview";
+      try {
+        title = new URL(clean).host || title;
+      } catch {
+        // Keep the generic title for non-URL payloads.
+      }
+      const existing = runs.find((run) => run.targetView === "web");
+      if (existing) {
+        setRuns((prev) =>
+          prev.map((run) =>
+            run.runId === existing.runId
+              ? { ...run, webUrl: clean, title }
+              : run,
+          ),
+        );
+        setActiveRunId(existing.runId);
+      } else {
+        const webRun: ChatRun = {
+          runId: `web-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          profile: activeProfile,
+          sessionId: null,
+          loading: false,
+          title,
+          targetView: "web",
+          webUrl: clean,
+        };
+        setRuns((prev) => [...prev, webRun]);
+        setActiveRunId(webRun.runId);
+      }
+      setVisitedViews((prev) =>
+        prev.has("web") ? prev : new Set(prev).add("web"),
+      );
+      setView("web");
+    },
+    [activeProfile, runs],
+  );
+
+  useEffect(() => {
+    const handleOpenWebPreviewEvent = (e: Event): void => {
+      const url = (e as CustomEvent<string>).detail;
+      if (typeof url === "string") handleOpenWebPreview(url);
+    };
+    window.addEventListener("hermes-open-web-preview", handleOpenWebPreviewEvent);
+    return () =>
+      window.removeEventListener(
+        "hermes-open-web-preview",
+        handleOpenWebPreviewEvent,
+      );
+  }, [handleOpenWebPreview]);
 
   useEffect(() => {
     const handleOpenFileEvent = (e: Event): void => {
@@ -878,7 +935,9 @@ function Layout({
       setActiveGroupChat(null);
       // In Bot Mode / per-bot chats: each chat tab is tagged with its own `profile: name`
       // WITHOUT switching the global activeProfile / HERMES_HOME context (matches official Desktop).
-      const existing = runs.find((r) => r.profile === name && !r.filePath);
+      const existing = runs.find(
+        (r) => r.profile === name && !r.filePath && !r.webUrl,
+      );
       if (existing) {
         setActiveRunId(existing.runId);
         goTo("chat");
@@ -1662,6 +1721,33 @@ function Layout({
                 onGroupNameChange={(name) => handleGroupChatUpdate(activeGroupChat.id, { name })}
                 onGroupImageChange={(avatar) => handleGroupChatUpdate(activeGroupChat.id, { avatar })}
               />
+            </div>
+          )}
+
+          {visitedViews.has("web") && (
+            <div style={paneStyle("web")}>
+              {runs
+                .filter((run) => run.targetView === "web")
+                .map((run) => (
+                  <div
+                    key={run.runId}
+                    style={{
+                      display:
+                        view === "web" && run.runId === activeRunId
+                          ? "flex"
+                          : "none",
+                      flex: 1,
+                      flexDirection: "column",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <WebPreviewPanel
+                      initialUrl={run.webUrl ?? ""}
+                      onClose={() => handleCloseRun(run.runId)}
+                      embedded
+                    />
+                  </div>
+                ))}
             </div>
           )}
 

@@ -5,7 +5,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { PanelRight, PanelRightClose } from "lucide-react";
 import { X } from "../../assets/icons";
 
 /**
@@ -31,8 +30,6 @@ export function FloatingDialog({
   keepMounted = false,
   onNewSession,
   placement = "dialog",
-  placementDocked = false,
-  onTogglePlacement,
   className = "",
 }: {
   open: boolean;
@@ -53,10 +50,6 @@ export function FloatingDialog({
   onNewSession?: () => void;
   /** Keep stateful contents mounted while presenting them as a right-side panel. */
   placement?: "dialog" | "sidebar";
-  /** Whether the sidebar placement is active, for the header toggle state. */
-  placementDocked?: boolean;
-  /** Renders a header toggle that switches between floating and docked. */
-  onTogglePlacement?: () => void;
   /** Extra classes on the panel, for a caller-specific skin (e.g. the
    *  Material-styled last-prompt reader) without restyling every dialog. */
   className?: string;
@@ -321,32 +314,6 @@ export function FloatingDialog({
           title={placement === "dialog" ? "Drag to move" : undefined}
         >
           <span className="terminal-dialog-title">{title}</span>
-          {onTogglePlacement && (
-            <button
-              type="button"
-              className={`terminal-dialog-close terminal-dialog-dock${
-                placementDocked ? " is-active" : ""
-              }`}
-              onClick={onTogglePlacement}
-              aria-pressed={placementDocked}
-              aria-label={
-                placementDocked
-                  ? `Float ${title} in a window`
-                  : `Attach ${title} to this chat`
-              }
-              title={
-                placementDocked
-                  ? "Detach to a floating window"
-                  : "Attach to this chat"
-              }
-            >
-              {placementDocked ? (
-                <PanelRightClose size={14} />
-              ) : (
-                <PanelRight size={14} />
-              )}
-            </button>
-          )}
           <button
             type="button"
             className="terminal-dialog-close"

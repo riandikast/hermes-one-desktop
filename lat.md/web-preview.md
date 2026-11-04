@@ -18,11 +18,11 @@ The chat browser is hosted in the shared resizable working dialog, preserving it
 
 Use either bottom-corner resize handle or its arrow keys; outside clicks do not close it. See [[commands-terminal#Commands store + built-in terminal#Floating working dialogs]]. Standalone panel-width resizing remains unchanged.
 
-## Attached to the chat tab
+## Attached as an app tab
 
-The preview header has an attach toggle. Attached, it becomes a right-side pane owned by the chat tab instead of a floating window.
+The preview toolbar's panel button promotes the page into its own tab in the window's tab strip, like a session or file tab.
 
-[[src/renderer/src/screens/Chat/FloatingDialog.tsx#FloatingDialog]] gains optional `placementDocked` / `onTogglePlacement` props and renders the header button only when a caller opts in; the sidebar placement keeps the panel mounted, so attaching never reloads a webview or loses its tab history. [[src/renderer/src/screens/Chat/Chat.tsx]] stores the choice under `hermes.webPreview.docked.<sessionId>` and restores it per session. CSS reserves `min(440px, 46vw)` on the chat body and composer, so the pane sits beside them instead of covering input; below 640px it overlays without reserving space. Regression: [[src/renderer/src/screens/Chat/FloatingDialog.dock.test.tsx]] and the source wiring check in [[src/renderer/src/screens/Chat/chatPanels.test.ts]].
+[[src/renderer/src/screens/Chat/WebPreviewPanel.tsx]] takes an optional `onOpenInTab(url)` and renders the button only when the host supplies it (the floating dialog does, the tab itself does not). [[src/renderer/src/screens/Chat/Chat.tsx]] dispatches `hermes-open-web-preview`, then closes the floating window so the page is not shown twice. [[src/renderer/src/screens/Layout/Layout.tsx]] opens one web run (`targetView: "web"`, `webUrl`, title = host) or retargets the existing one, marks it visited, and renders [[src/renderer/src/screens/Chat/WebPreviewPanel.tsx#WebPreviewPanel]] inside the web pane; closing the tab runs the normal `handleCloseRun`. [[src/renderer/src/screens/Layout/ActiveSessionsBar.tsx]] shows a globe on that chip. The mounted panel also follows later `initialUrl` changes by opening/focusing that page, so attaching a second URL does not stack duplicate tabs. Regressions: [[src/renderer/src/screens/Chat/WebPreviewPanel.attach.test.tsx]], [[src/renderer/src/screens/Layout/Layout.webTab.test.ts]], and [[src/renderer/src/screens/Chat/chatPanels.test.ts]].
 
 
 ## Webview identification and HTTPS policy

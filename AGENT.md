@@ -42,7 +42,7 @@ File explorer row menu: New File/Folder, Copy/Paste (in-app + OS FileNameW clipb
 
 Explorer now supports saved SSH hosts as extra roots (ssh://<id>/abs/path) even with no local folder; panel mounts from display controls unconditionally. read-directory/read-file/write-file/explorer-* route remote paths to ssh-explorer.ts (ssh2 + remote python3; scripts in ssh-scripts.ts are tested locally). Auth: agent/default keys first, password prompted only after the first attempt fails, held in memory only; TOFU host keys in ~/.ssh/known_hosts. Remote delete is permanent; local↔remote copy refused; OS clipboard not used for remote. See lat.md/context-folder.md.
 
-Web preview has a header attach toggle: FloatingDialog `placement="sidebar"` docks it as a right pane owned by the chat tab, keeping webviews mounted; choice persists per session at `hermes.webPreview.docked.<sessionId>`; CSS reserves min(440px,46vw) on chat body+composer and overlays below 640px. See lat.md/web-preview.md.
+Web preview attaches to the app tab bar: the panel toolbar dispatches `hermes-open-web-preview`, Layout opens/reuses a `targetView: "web"` run (title = host) rendered with WebPreviewPanel and marked by a globe chip; closing the tab uses the normal run close. See lat.md/web-preview.md.
 
 Tool preview highlights syntax with a theme-token palette (keywords blue, strings green, numbers amber, comments italic) resolved by extension via @codemirror/language-data (tsx/jsx included); regression asserts token classes. See lat.md/file-changes.md.
 

@@ -10856,32 +10856,10 @@ body:has(.shell-vibrant),
   pointer-events: auto;
 }
 
-/* Attached panel: reserve a right column so the docked preview sits beside the
-   transcript and composer instead of covering them. */
-.terminal-dialog-dock.is-active {
-  color: var(--accent-text);
-  background: var(--bg-hover);
-}
-.chat-container:has(> .terminal-dialog-overlay.is-sidebar) > .chat-body,
-.chat-container:has(> .terminal-dialog-overlay.is-sidebar) > .chat-input-area {
-  padding-right: min(440px, 46vw);
-}
-.chat-container:has(> .terminal-dialog-overlay.is-sidebar) > .chat-display-controls {
-  right: calc(min(440px, 46vw) + 12px);
-}
-.chat-container:has(> .terminal-dialog-overlay.is-sidebar) > .chat-pinned-float {
-  right: calc(min(440px, 46vw) + 56px);
-}
-
 @media (max-width: 640px) {
   .terminal-dialog--sidebar {
     width: 88vw;
     border-radius: 0;
-  }
-  /* No room for a side-by-side column: overlay instead of squeezing the chat. */
-  .chat-container:has(> .terminal-dialog-overlay.is-sidebar) > .chat-body,
-  .chat-container:has(> .terminal-dialog-overlay.is-sidebar) > .chat-input-area {
-    padding-right: 0;
   }
 }
 

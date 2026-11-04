@@ -57,6 +57,8 @@ export interface ChatRun {
   filePath?: string;
   /** 1-based line to jump to when this file tab opens (Find in Files). */
   fileLine?: number;
+  /** Standalone web-preview tab: the URL the browser pane opens. */
+  webUrl?: string;
 }
 
 /** A blank chat that can be reassigned to another profile without losing work. */

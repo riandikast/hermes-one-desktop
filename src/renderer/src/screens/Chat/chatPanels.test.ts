@@ -107,7 +107,8 @@ describe("panels are dialogs, not inline panes", () => {
     // Without it the panel keeps its own width AND its resize handle, which
     // fights the dialog's sizing.
     expect(chatSource).toMatch(/<WorktreePanel[\s\S]{0,600}embedded/);
-    expect(chatSource).toMatch(/onInspectElement=\{handleInspectElement\}\s*\n?\s*embedded/);
+    expect(chatSource).toMatch(/onInspectElement=\{handleInspectElement\}/);
+    expect(chatSource).toMatch(/<WebPreviewPanel[\s\S]{0,400}\sembedded/);
   });
 
   it("opens the explorer on the session folders, or a pointed-at folder", () => {
@@ -130,12 +131,11 @@ describe("panels are dialogs, not inline panes", () => {
     expect(body).not.toContain("<WorktreePanel");
   });
 
-  it("can attach the web preview to the chat tab, remembered per session", () => {
-    expect(chatSource).toContain(
-      'placement={webPreviewDocked ? "sidebar" : "dialog"}',
-    );
-    expect(chatSource).toContain("onTogglePlacement={toggleWebPreviewDock}");
-    expect(chatSource).toContain("hermes.webPreview.docked.");
+  it("attaches the web preview as a tab in the app tab bar", () => {
+    expect(chatSource).toContain('new CustomEvent("hermes-open-web-preview"');
+    expect(chatSource).toContain("onOpenInTab={openWebPreviewInTab}");
+    // Promote, then dismiss the floating window so the page is not shown twice.
+    expect(chatSource).toContain("setWebPreviewVisible(false)");
   });
 
   it("keeps both dialogs mounted lazily but persistently", () => {

@@ -1,5 +1,6 @@
 import { memo, useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { Globe } from "lucide-react";
 import { X, Plus, FileCode } from "../../assets/icons";
 import { OrbLoader } from "../../components/OrbLoader";
 import { useI18n } from "../../components/useI18n";
@@ -162,6 +163,10 @@ export const ActiveSessionsBar = memo(function ActiveSessionsBar({
               {run.filePath ? (
                 <span className="active-session-chip-avatar active-session-chip-file">
                   <FileCode size={14} />
+                </span>
+              ) : run.webUrl ? (
+                <span className="active-session-chip-avatar active-session-chip-file">
+                  <Globe size={14} />
                 </span>
               ) : run.loading ? (
                 <span
