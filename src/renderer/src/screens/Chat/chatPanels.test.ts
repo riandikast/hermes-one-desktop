@@ -26,11 +26,11 @@ function railButton(label: string): string {
 }
 
 describe("file explorer icon visibility", () => {
-  it("is rendered only when a context folder is attached", () => {
+  it("is rendered even without a context folder so SSH hosts stay reachable", () => {
     const block = railButton("File explorer");
     expect(block).not.toBe("");
-    // Requested behaviour: no folder means no icon.
-    expect(block).toContain("contextFolders.length > 0");
+    // The explorer now also hosts remote roots with no local folder attached.
+    expect(block).not.toContain("contextFolders.length > 0");
   });
 
   it("is NOT gated on the panel being open", () => {
@@ -128,6 +128,14 @@ describe("panels are dialogs, not inline panes", () => {
       chatSource.indexOf("</div>", chatSource.indexOf("<div className=\"chat-body\">")),
     );
     expect(body).not.toContain("<WorktreePanel");
+  });
+
+  it("can attach the web preview to the chat tab, remembered per session", () => {
+    expect(chatSource).toContain(
+      'placement={webPreviewDocked ? "sidebar" : "dialog"}',
+    );
+    expect(chatSource).toContain("onTogglePlacement={toggleWebPreviewDock}");
+    expect(chatSource).toContain("hermes.webPreview.docked.");
   });
 
   it("keeps both dialogs mounted lazily but persistently", () => {

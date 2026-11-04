@@ -18,6 +18,13 @@ The chat browser is hosted in the shared resizable working dialog, preserving it
 
 Use either bottom-corner resize handle or its arrow keys; outside clicks do not close it. See [[commands-terminal#Commands store + built-in terminal#Floating working dialogs]]. Standalone panel-width resizing remains unchanged.
 
+## Attached to the chat tab
+
+The preview header has an attach toggle. Attached, it becomes a right-side pane owned by the chat tab instead of a floating window.
+
+[[src/renderer/src/screens/Chat/FloatingDialog.tsx#FloatingDialog]] gains optional `placementDocked` / `onTogglePlacement` props and renders the header button only when a caller opts in; the sidebar placement keeps the panel mounted, so attaching never reloads a webview or loses its tab history. [[src/renderer/src/screens/Chat/Chat.tsx]] stores the choice under `hermes.webPreview.docked.<sessionId>` and restores it per session. CSS reserves `min(440px, 46vw)` on the chat body and composer, so the pane sits beside them instead of covering input; below 640px it overlays without reserving space. Regression: [[src/renderer/src/screens/Chat/FloatingDialog.dock.test.tsx]] and the source wiring check in [[src/renderer/src/screens/Chat/chatPanels.test.ts]].
+
+
 ## Webview identification and HTTPS policy
 
 The preview is the only webview allowed to load remote HTTPS; all others stay restricted to loopback HTTP. It is identified by its `partition="web-preview"` attribute, which Electron forwards to both security gates (unlike `name`).
