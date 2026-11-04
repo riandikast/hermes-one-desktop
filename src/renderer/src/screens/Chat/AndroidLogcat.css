@@ -1,0 +1,82 @@
+.android-logcat {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  padding: 12px;
+  color: var(--text-primary);
+}
+.android-logcat-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.android-logcat-toolbar > input,
+.android-logcat-toolbar > select {
+  min-width: 100px;
+  max-width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: calc(12px * var(--font-scale));
+}
+.android-logcat-toolbar > input {
+  flex: 1;
+}
+.android-logcat-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: calc(12px * var(--font-scale));
+}
+.android-logcat-hint {
+  margin: 0;
+  font-size: calc(11px * var(--font-scale));
+  color: var(--text-secondary);
+}
+.android-logcat-error {
+  color: var(--error);
+  font-size: calc(12px * var(--font-scale));
+  overflow-wrap: anywhere;
+}
+.android-logcat-output {
+  flex: 1;
+  min-height: 100px;
+  overflow: auto;
+  background: var(--bg-primary);
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono, monospace);
+  font-size: calc(12px * var(--font-scale));
+  line-height: 1.5;
+  user-select: text;
+}
+.android-logcat-output > div {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.android-logcat-output [data-priority="W"] {
+  color: var(--warning);
+}
+.android-logcat-output [data-priority="E"],
+.android-logcat-output [data-priority="F"] {
+  color: var(--error);
+}
+.android-logcat-spin {
+  animation: android-logcat-spin 1s linear infinite;
+}
+@keyframes android-logcat-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .android-logcat-spin {
+    animation: none;
+  }
+}

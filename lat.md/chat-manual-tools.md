@@ -26,6 +26,16 @@ Chat provides a floating log viewer beneath the search icon for troubleshooting 
 
 The trigger in [[src/renderer/src/screens/Chat/Chat.tsx]] opens [[src/renderer/src/screens/Chat/ChatLogsDialog.tsx#ChatLogsDialog]] with two tabs: Crash & Errors (reading `errors.log`) and Request Log (reading `agent.log`). The Request Log defaults to filtering API call requests and responses with model, provider, tokens, and retry countdowns, while supporting full agent log view and live search filtering.
 
+## Android Logcat
+
+The floating phone icon opens a local Android device log viewer without requiring a workspace or launching an app. Capture starts only after explicit Start; closing the panel or leaving the chat stops its reader.
+
+[[src/renderer/src/screens/Chat/AndroidLogcat.tsx#AndroidLogcat]] uses the shared two-corner resizable dialog. It lists ready, offline and unauthorized devices, supports refresh, Start/Stop, Pause/Resume, literal text/tag/PID filtering, minimum severity and Follow. Clear view only clears the renderer, never the phone's buffers. USB debugging and phone authorization are prerequisites. Device logs stay in memory and are never injected into chat automatically.
+
+[[src/main/android-logcat.ts#listAndroidDevices]] discovers SDK Platform-Tools through ANDROID_HOME, ANDROID_SDK_ROOT, the standard Windows SDK folder, then PATH. [[src/main/android-logcat.ts#startAndroidLogcat]] spawns shell-free `adb -s SERIAL logcat -v threadtime -T 500`: uppercase -T includes recent buffered rows and continues streaming (lowercase -t would exit). The UTF-8 decoder preserves split characters. Retention is bounded to 2000 lines, 4096 characters per line and four owned processes; snapshots and visible DOM rows are capped at 500. The renderer polls sequentially every 500ms only while unpaused. Old rows can be dropped during high log volume or a long pause.
+
+Main-frame IPC checks and per-webContents capture ownership prevent other renderers from reading/stopping captures. Unmount, late-start replies, renderer destruction, crash and navigation clean up owned readers only. Never run adb kill-server, clear phone logs, launch an app or alter device privileges. Main/preload changes require a user-controlled rebuild/restart. [[src/main/android-logcat.test.ts]] covers split UTF-8, bounds, ownership, invalid serials and failures; [[src/renderer/src/screens/Chat/AndroidLogcat.test.tsx]] covers explicit start, filtering, pause, authorization and late-start cleanup. A real `adb devices -l` succeeded with no attached devices; on-phone streaming remains unverified.
+
 ## Pinned chat bar
 
 The pinned bar and FAB share the chat-container containing block and one `top: 72px` rule. The floating collapsed pill uses zero margin and a 32px border-box with a full-height trigger.

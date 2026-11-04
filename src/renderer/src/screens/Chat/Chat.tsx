@@ -19,6 +19,7 @@ import {
   FolderSearch,
   History,
   FileText,
+  Smartphone,
 } from "lucide-react";
 import { Spinner } from "../../assets/icons";
 
@@ -54,6 +55,7 @@ import { useToolCallsAnimation } from "../../components/settings/toolCallsAnimat
 import { FileChangeHistoryDialog } from "./FileChangeHistoryDialog";
 import { SourceControlShortcut } from "./SourceControlShortcut";
 import { ChatLogsDialog } from "./ChatLogsDialog";
+import { AndroidLogcat } from "./AndroidLogcat";
 
 import { ModelPicker } from "./ModelPicker";
 
@@ -615,6 +617,7 @@ function Chat({
 
   const [fileChangeHistoryOpen, setFileChangeHistoryOpen] = useState(false);
   const [logsModalOpen, setLogsModalOpen] = useState(false);
+  const [logcatOpen, setLogcatOpen] = useState(false);
   const [fileChangesOpen, setFileChangesOpen] = useState<FileChange[] | null>(
     null,
   );
@@ -2618,6 +2621,22 @@ function Chat({
               ),
             },
             {
+              key: "android-logcat",
+              element: (
+                <button
+                  type="button"
+                  className={`chat-display-controls-trigger${logcatOpen ? " is-active" : ""}`}
+                  aria-label="Android Logcat"
+                  title="Android Logcat"
+                  aria-haspopup="dialog"
+                  aria-expanded={logcatOpen}
+                  onClick={() => setLogcatOpen((open) => !open)}
+                >
+                  <Smartphone size={15} />
+                </button>
+              ),
+            },
+            {
               key: "display-controls",
               element: (
                 <>
@@ -3096,6 +3115,7 @@ function Chat({
         />
       )}
 
+      {logcatOpen && active && <AndroidLogcat onClose={() => setLogcatOpen(false)} />}
       {logsModalOpen && (
         <ChatLogsDialog
           open={logsModalOpen}

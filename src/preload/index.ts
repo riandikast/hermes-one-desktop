@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import type { AppLocale } from "../shared/i18n/types";
+import type { AndroidDevice, LogcatSnapshot, LogcatStartResult } from "../shared/android-logcat";
 import type { Attachment } from "../shared/attachments";
 import type { SessionHistoryPage } from "../shared/session-history";
 import type { SessionModelOverride } from "../shared/model-override";
@@ -1815,6 +1816,10 @@ const hermesAPI = {
     destination: string,
   ): Promise<{ ok: boolean; path?: string; error?: string }> =>
     ipcRenderer.invoke("explorer-import", root, source, destination),
+  listAndroidDevices: (): Promise<{ devices: AndroidDevice[]; error?: string }> => ipcRenderer.invoke("android-logcat:devices"),
+  startAndroidLogcat: (serial: string): Promise<LogcatStartResult> => ipcRenderer.invoke("android-logcat:start", serial),
+  readAndroidLogcat: (id: string, after: number): Promise<LogcatSnapshot> => ipcRenderer.invoke("android-logcat:read", id, after),
+  stopAndroidLogcat: (id: string): Promise<void> => ipcRenderer.invoke("android-logcat:stop", id),
   readClipboardFiles: (): Promise<string[]> =>
     ipcRenderer.invoke("explorer-read-clipboard"),
   listExplorerSshConnections: (): Promise<

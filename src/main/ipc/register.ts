@@ -1,3 +1,4 @@
+import { listAndroidDevices, startAndroidLogcat, readAndroidLogcat, stopAndroidLogcat, stopOwnedAndroidLogcats } from "../android-logcat";
 import {
   app,
   shell,
@@ -789,6 +790,34 @@ function resolveLibraryModelEntry(
 }
 
 export function registerIpcHandlers(context: IpcContext): void {
+  const logcatOwners = new Set<number>();
+  const logcatOwner = (event: Electron.IpcMainInvokeEvent): number => {
+    if (event.sender !== context.getMainWindow()?.webContents || event.senderFrame !== event.sender.mainFrame)
+      throw new Error("Unauthorized Logcat request");
+    if (!logcatOwners.has(event.sender.id)) {
+      const owner = event.sender.id;
+      logcatOwners.add(owner);
+      event.sender.once("destroyed", () => {
+        stopOwnedAndroidLogcats(owner);
+        logcatOwners.delete(owner);
+      });
+      event.sender.on("render-process-gone", () => stopOwnedAndroidLogcats(owner));
+      event.sender.on("did-navigate", () => stopOwnedAndroidLogcats(owner));
+    }
+    return event.sender.id;
+  };
+  ipcMain.handle("android-logcat:devices", (event) => {
+    logcatOwner(event);
+    return listAndroidDevices();
+  });
+  ipcMain.handle("android-logcat:start", (event, serial: unknown) => {
+    try { return { ok: true, id: startAndroidLogcat(logcatOwner(event), serial) }; }
+    catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
+  });
+  ipcMain.handle("android-logcat:read", (event, id: unknown, after: unknown) =>
+    readAndroidLogcat(logcatOwner(event), id, after));
+  ipcMain.handle("android-logcat:stop", (event, id: unknown) =>
+    stopAndroidLogcat(logcatOwner(event), id));
   const trustedShortcuts = (event: Electron.IpcMainInvokeEvent): boolean =>
     event.sender === context.getMainWindow()?.webContents && event.senderFrame === event.sender.mainFrame;
   ipcMain.handle("keyboard-shortcuts:get", (event) => {

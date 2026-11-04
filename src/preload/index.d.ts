@@ -1,4 +1,5 @@
 import type { AppLocale } from "../shared/i18n/types";
+import type { AndroidDevice, LogcatSnapshot, LogcatStartResult } from "../shared/android-logcat";
 import type { Attachment } from "../shared/attachments";
 import type { SessionHistoryPage } from "../shared/session-history";
 import type { SessionModelOverride } from "../shared/model-override";
@@ -1352,6 +1353,10 @@ interface HermesAPI {
     source: string,
     destination: string,
   ) => Promise<{ ok: boolean; path?: string; error?: string }>;
+  listAndroidDevices: () => Promise<{ devices: AndroidDevice[]; error?: string }>;
+  startAndroidLogcat: (serial: string) => Promise<LogcatStartResult>;
+  readAndroidLogcat: (id: string, after: number) => Promise<LogcatSnapshot>;
+  stopAndroidLogcat: (id: string) => Promise<void>;
   readClipboardFiles: () => Promise<string[]>;
   writeClipboardFiles: (paths: string[]) => Promise<void>;
   listExplorerSshConnections: () => Promise<
