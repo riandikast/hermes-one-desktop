@@ -3729,10 +3729,10 @@ export function registerIpcHandlers(context: IpcContext): void {
     saveExplorerSshConnection(input),
   );
   ipcMain.handle("ssh-delete-connection", (_event, id: string) => deleteExplorerSshConnection(id));
-  ipcMain.handle("ssh-test-connection", async (_event, id: string) => {
+  ipcMain.handle("ssh-test-connection", async (_event, id: string, password?: string) => {
     const connection = findExplorerSshConnection(id);
     if (!connection) return { ok: false, error: "Connection not found" };
-    const result = await sshExplorerTest(connection);
+    const result = await sshExplorerTest(connection, password);
     if (result.ok) updateExplorerSshRoot(id, connection.rootPath || result.home);
     return result;
   });

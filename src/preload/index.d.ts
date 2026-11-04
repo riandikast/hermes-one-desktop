@@ -1380,7 +1380,13 @@ interface HermesAPI {
   deleteExplorerSshConnection: (id: string) => Promise<{ ok: boolean; error?: string }>;
   testExplorerSshConnection: (
     id: string,
-  ) => Promise<{ ok: boolean; error?: string; home?: string }>;
+    password?: string,
+  ) => Promise<{
+    ok: boolean;
+    error?: string;
+    home?: string;
+    needsPassword?: boolean;
+  }>;
   openFileInEditor: (filePath: string) => Promise<boolean>;
   openTerminal: (dirPath: string) => Promise<boolean>;
   getTerminalPreference: () => Promise<"powershell" | "cmd">;

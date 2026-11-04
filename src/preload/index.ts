@@ -1841,8 +1841,9 @@ const hermesAPI = {
     ipcRenderer.invoke("ssh-delete-connection", id),
   testExplorerSshConnection: (
     id: string,
-  ): Promise<{ ok: boolean; error?: string; home?: string }> =>
-    ipcRenderer.invoke("ssh-test-connection", id),
+    password?: string,
+  ): Promise<{ ok: boolean; error?: string; home?: string; needsPassword?: boolean }> =>
+    ipcRenderer.invoke("ssh-test-connection", id, password),
   writeClipboardFiles: (paths: string[]): Promise<void> =>
     ipcRenderer.invoke("explorer-write-clipboard", paths),
   openFileInEditor: (filePath: string): Promise<boolean> =>

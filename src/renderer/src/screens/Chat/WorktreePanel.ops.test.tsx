@@ -234,6 +234,46 @@ describe("explorer file operations", () => {
     );
   });
 
+  it("asks for a password only after the first connection attempt", async () => {
+    const save = vi.fn(async () => ({
+      ok: true,
+      connection: { id: "srv1", label: "prod" },
+    }));
+    const test = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        needsPassword: true,
+        error: "SSH password required",
+      })
+      .mockResolvedValueOnce({ ok: true, home: "/home/me" });
+    Object.assign(window.hermesAPI, {
+      saveExplorerSshConnection: save,
+      testExplorerSshConnection: test,
+    });
+    renderPanel();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Connect to SSH host" }),
+    );
+    fireEvent.change(screen.getByLabelText("Host"), {
+      target: { value: "10.3.0.9" },
+    });
+    fireEvent.change(screen.getByLabelText("User"), {
+      target: { value: "me" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+    const password = await screen.findByLabelText("Password");
+    expect(test).toHaveBeenLastCalledWith("srv1", undefined);
+    fireEvent.change(password, { target: { value: "secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() =>
+      expect(test).toHaveBeenLastCalledWith("srv1", "secret"),
+    );
+    expect(save).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "srv1", host: "10.3.0.9", username: "me" }),
+    );
+  });
+
   it("confirms before trashing and never offers rename/delete on the root", async () => {
     renderPanel();
     await openMenuOn("C:/proj/a.ts");

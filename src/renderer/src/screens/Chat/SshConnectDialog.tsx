@@ -17,6 +17,7 @@ export function SshConnectDialog({
   connections,
   busy,
   error,
+  needsPassword,
   onSave,
   onDelete,
   onClose,
@@ -24,7 +25,8 @@ export function SshConnectDialog({
   connections: ExplorerSshConnection[];
   busy: boolean;
   error: string | null;
-  onSave: (input: SshConnectionInput) => Promise<void>;
+  needsPassword: boolean;
+  onSave: (input: SshConnectionInput, password?: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onClose: () => void;
 }): React.JSX.Element {
@@ -33,17 +35,23 @@ export function SshConnectDialog({
   const [port, setPort] = useState("22");
   const [label, setLabel] = useState("");
   const [keyPath, setKeyPath] = useState("");
+  const [password, setPassword] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const submit = (event: React.FormEvent): void => {
     event.preventDefault();
     if (busy || !host.trim() || !username.trim()) return;
-    void onSave({
-      label: label.trim(),
-      host: host.trim(),
-      port: Number(port) || 22,
-      username: username.trim(),
-      keyPath: keyPath.trim(),
-    });
+    if (needsPassword && !password) return;
+    void onSave(
+      {
+        label: label.trim(),
+        host: host.trim(),
+        port: Number(port) || 22,
+        username: username.trim(),
+        keyPath: keyPath.trim(),
+      },
+      needsPassword ? password : undefined,
+    );
   };
 
   return (
@@ -58,8 +66,9 @@ export function SshConnectDialog({
         Connect to SSH host
       </AppModalTitle>
       <p className="ssh-connect-hint">
-        Uses the system OpenSSH client. Leave the key empty to use your SSH
-        agent or default keys.
+        {needsPassword
+          ? "This host needs a password. It is kept in memory for this session only and never written to disk."
+          : "Connects with your SSH agent or default keys. If the host asks for a password, you will be prompted after the first attempt."}
       </p>
       <form className="ssh-connect-form" onSubmit={submit}>
         <label>
@@ -101,16 +110,43 @@ export function SshConnectDialog({
             placeholder="Optional"
           />
         </label>
-        <label className="ssh-connect-key">
-          <span>Private key</span>
-          <input
-            className="explorer-name-input"
-            value={keyPath}
-            onChange={(event) => setKeyPath(event.target.value)}
-            placeholder="C:/Users/you/.ssh/id_ed25519"
-            spellCheck={false}
-          />
-        </label>
+        {needsPassword && (
+          <label className="ssh-connect-key">
+            <span>Password</span>
+            <input
+              className="explorer-name-input"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoFocus
+              autoComplete="off"
+            />
+          </label>
+        )}
+        {!needsPassword && (
+          <div className="ssh-connect-advanced">
+            <button
+              type="button"
+              className="ssh-connect-advanced-toggle"
+              aria-expanded={showAdvanced}
+              onClick={() => setShowAdvanced((value) => !value)}
+            >
+              {showAdvanced ? "Hide advanced" : "Advanced: use a private key"}
+            </button>
+            {showAdvanced && (
+              <label>
+                <span>Private key (optional)</span>
+                <input
+                  className="explorer-name-input"
+                  value={keyPath}
+                  onChange={(event) => setKeyPath(event.target.value)}
+                  placeholder="C:/Users/you/.ssh/id_ed25519"
+                  spellCheck={false}
+                />
+              </label>
+            )}
+          </div>
+        )}
         {error && (
           <div className="explorer-name-error" role="alert">
             {error}
@@ -119,7 +155,7 @@ export function SshConnectDialog({
         <div className="explorer-name-actions">
           <button
             type="button"
-            className="btn-ghost"
+            className="btn btn-ghost btn-sm"
             onClick={onClose}
             disabled={busy}
           >
@@ -127,10 +163,15 @@ export function SshConnectDialog({
           </button>
           <button
             type="submit"
-            className="btn-primary"
-            disabled={busy || !host.trim() || !username.trim()}
+            className="btn btn-primary btn-sm"
+            disabled={
+              busy ||
+              !host.trim() ||
+              !username.trim() ||
+              (needsPassword && !password)
+            }
           >
-            {busy ? "Connecting…" : "Connect"}
+            {busy ? "Connecting…" : needsPassword ? "Sign in" : "Connect"}
           </button>
         </div>
       </form>

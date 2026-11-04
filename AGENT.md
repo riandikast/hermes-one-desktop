@@ -40,7 +40,7 @@ One editor now serves main/child agent-file tabs, selected tab pinned; inactive 
 
 File explorer row menu: New File/Folder, Copy/Paste (in-app + OS FileNameW clipboard, imports Explorer files, Ctrl+C/V on focused row), Rename, Delete (confirmed, shell.trashItem). Mutations are root-scoped with realpath escaping rejection, validated names, copy-suffix conflicts; root rows cannot be renamed/deleted. Main-process IPC `explorer-*` requires user rebuild/restart. See lat.md/context-folder.md.
 
-Explorer now supports saved SSH hosts as extra roots (ssh://<id>/abs/path) even with no local folder; panel mounts from display controls unconditionally. read-directory/read-file/write-file/explorer-* route remote paths to ssh-explorer.ts (system OpenSSH + remote python3; scripts in ssh-scripts.ts are tested locally). Remote delete is permanent; local↔remote copy refused; OS clipboard not used for remote. See lat.md/context-folder.md.
+Explorer now supports saved SSH hosts as extra roots (ssh://<id>/abs/path) even with no local folder; panel mounts from display controls unconditionally. read-directory/read-file/write-file/explorer-* route remote paths to ssh-explorer.ts (ssh2 + remote python3; scripts in ssh-scripts.ts are tested locally). Auth: agent/default keys first, password prompted only after the first attempt fails, held in memory only; TOFU host keys in ~/.ssh/known_hosts. Remote delete is permanent; local↔remote copy refused; OS clipboard not used for remote. See lat.md/context-folder.md.
 
 Preserve unrelated chat-search/zoom work. Commit owned changes only; do not push without confirmation. Follow `AGENTS.md` resource queue and documentation checks.
 

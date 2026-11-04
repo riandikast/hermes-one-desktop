@@ -6080,6 +6080,21 @@ body:has(.shell-vibrant),
 .ssh-connect-form .explorer-name-actions {
   grid-column: 1 / -1;
 }
+.ssh-connect-advanced {
+  grid-column: 1 / -1;
+}
+.ssh-connect-advanced-toggle {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: calc(11.5px * var(--font-scale));
+  cursor: pointer;
+  text-align: left;
+}
+.ssh-connect-advanced label {
+  margin-top: 8px;
+}
 .ssh-connect-saved {
   margin-top: 16px;
   border-top: 1px solid var(--border);

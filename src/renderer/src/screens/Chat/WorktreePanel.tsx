@@ -593,6 +593,8 @@ export const WorktreePanel = memo(function WorktreePanel({
   const [sshDialogOpen, setSshDialogOpen] = useState(false);
   const [sshBusy, setSshBusy] = useState(false);
   const [sshError, setSshError] = useState<string | null>(null);
+  const [sshNeedsPassword, setSshNeedsPassword] = useState(false);
+  const [sshPendingId, setSshPendingId] = useState<string | null>(null);
 
   const loadSshConnections = useCallback(async (): Promise<void> => {
     const list =
@@ -852,24 +854,47 @@ export const WorktreePanel = memo(function WorktreePanel({
     );
   };
 
-  const saveExplorerSshConnection = async (input: SshConnectionInput): Promise<void> => {
+  const saveSshConnection = async (
+    input: SshConnectionInput,
+    password?: string,
+  ): Promise<void> => {
     setSshBusy(true);
     setSshError(null);
-    const saved = await window.hermesAPI.saveExplorerSshConnection(input);
+    const saved = await window.hermesAPI.saveExplorerSshConnection({
+      ...input,
+      id: input.id ?? sshPendingId ?? undefined,
+    });
     if (!saved.ok || !saved.connection) {
       setSshError(saved.error ?? "Could not save the host");
       setSshBusy(false);
       return;
     }
-    const tested = await window.hermesAPI.testExplorerSshConnection(saved.connection.id);
+    setSshPendingId(saved.connection.id);
+    const tested = await window.hermesAPI.testExplorerSshConnection(
+      saved.connection.id,
+      password,
+    );
     await loadSshConnections();
     setSshBusy(false);
     if (!tested.ok) {
+      if (tested.needsPassword) {
+        setSshNeedsPassword(true);
+        return;
+      }
       setSshError(tested.error ?? "SSH connection failed");
       return;
     }
+    setSshNeedsPassword(false);
+    setSshPendingId(null);
     setSshDialogOpen(false);
     setRefreshVersion((version) => version + 1);
+  };
+
+  const openSshDialog = (): void => {
+    setSshNeedsPassword(false);
+    setSshPendingId(null);
+    setSshError(null);
+    setSshDialogOpen(true);
   };
 
   const deleteExplorerSshConnection = async (id: string): Promise<void> => {
@@ -1068,7 +1093,7 @@ export const WorktreePanel = memo(function WorktreePanel({
         <button
           type="button"
           className="worktree-header-action"
-          onClick={() => setSshDialogOpen(true)}
+          onClick={openSshDialog}
           aria-label="Connect to SSH host"
           title="Connect to SSH host"
         >
@@ -1122,7 +1147,7 @@ export const WorktreePanel = memo(function WorktreePanel({
             <button
               type="button"
               className="btn-ghost worktree-empty-action"
-              onClick={() => setSshDialogOpen(true)}
+              onClick={openSshDialog}
             >
               <Cable size={14} />
               Connect to SSH host
@@ -1298,7 +1323,8 @@ export const WorktreePanel = memo(function WorktreePanel({
           connections={sshConnections}
           busy={sshBusy}
           error={sshError}
-          onSave={saveExplorerSshConnection}
+          needsPassword={sshNeedsPassword}
+          onSave={saveSshConnection}
           onDelete={deleteExplorerSshConnection}
           onClose={() => {
             setSshDialogOpen(false);

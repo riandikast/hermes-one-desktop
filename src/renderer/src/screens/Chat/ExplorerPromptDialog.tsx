@@ -79,7 +79,7 @@ export function ExplorerPromptDialog({
         <div className="explorer-name-actions">
           <button
             type="button"
-            className="btn-ghost"
+            className="btn btn-ghost btn-sm"
             onClick={onClose}
             disabled={saving}
           >
@@ -87,7 +87,7 @@ export function ExplorerPromptDialog({
           </button>
           <button
             type="submit"
-            className="btn-primary"
+            className="btn btn-primary btn-sm"
             disabled={saving || !name.trim()}
           >
             {request.kind === "rename" ? "Rename" : "Create"}
