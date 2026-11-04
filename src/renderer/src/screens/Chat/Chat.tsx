@@ -2799,6 +2799,19 @@ function Chat({
           </div>
         </div>
 
+        {/* "What did I last ask?" — a compact chip over the TOP-LEFT of the
+            scrollport, shown only while scrolled up (at the bottom the real
+            prompt is already on screen). A sibling of .chat-messages, NOT a
+            child of the scrolling content: inside the scroller a sticky chip's
+            containing block ends where it sits in the flow, so it scrolled out
+            of view ("shows then disappears"). Anchored to the transcript
+            column, so the live file preview narrowing that column also
+            narrows the chip instead of leaving it at full-body width. */}
+        <LastPromptChip
+          messages={messages}
+          containerRef={containerRef}
+          scrolledUpAtom={scrolledUpAtom}
+        />
         </div>
 
         <ToolFilePreview
@@ -2809,19 +2822,6 @@ function Chat({
           active={active}
           local={connectionMode === "local"}
           baseDir={contextFolders[0]}
-        />
-
-        {/* "What did I last ask?" — a compact chip over the TOP-LEFT of the
-            scrollport, shown only while scrolled up (at the bottom the real
-            prompt is already on screen). A sibling of .chat-messages, NOT a
-            child of the scrolling content: inside the scroller a sticky chip's
-            containing block ends where it sits in the flow, so it scrolled out
-            of view ("shows then disappears"). Positioned against .chat-body it
-            is immune to scrolling entirely. */}
-        <LastPromptChip
-          messages={messages}
-          containerRef={containerRef}
-          scrolledUpAtom={scrolledUpAtom}
         />
 
         {/* The pinned reader is mounted HERE, at the same level as the pinned

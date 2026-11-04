@@ -16,7 +16,7 @@ The sandboxed browser preview permits HTTP on exact RFC1918 IPv4 hosts and loopb
 
 The chat browser is hosted in the shared resizable working dialog, preserving its webviews and tab history while resized or hidden.
 
-Use the bottom-right resize handle or its arrow keys; outside clicks do not close it. See [[commands-terminal#Commands store + built-in terminal#Floating working dialogs]]. Standalone panel-width resizing remains unchanged.
+Use either bottom-corner resize handle or its arrow keys; outside clicks do not close it. See [[commands-terminal#Commands store + built-in terminal#Floating working dialogs]]. Standalone panel-width resizing remains unchanged.
 
 ## Webview identification and HTTPS policy
 

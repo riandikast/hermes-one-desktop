@@ -340,6 +340,15 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     expect(block).not.toContain("::before");
     expect(block).toContain("border: 1px solid var(--border");
 
+    // The wrap anchors to the transcript column and keeps a proportional lane
+    // for the DB counter, so the live preview narrowing the column also
+    // narrows the chip.
+    const wrapStart = css.indexOf(".chat-last-prompt-wrap {");
+    expect(wrapStart).toBeGreaterThan(-1);
+    const wrapBlock = css.slice(wrapStart, wrapStart + 600);
+    expect(wrapBlock).toContain("right: clamp(232px, 52%, 532px)");
+    expect(wrapBlock).toContain("left: 12px");
+
     // The DIALOG is the Material surface: flat fill, small radius, modest
     // elevation — and specifically NOT a gradient wash.
     const dialogStart = css.indexOf(".last-prompt-dialog {");
@@ -589,8 +598,13 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
     // the overlap bug this test exists to prevent.
     // Anchor to the declaration line so the prose comment above it (which
     // mentions the counter's own `right: 18px`) cannot satisfy the match.
-    const reserved = Number(block.match(/^\s*right: (\d+)px;/m)?.[1]);
-    expect(reserved).toBeGreaterThanOrEqual(232);
+    const reserved = block.match(
+      /^\s*right: clamp\((\d+)px, ([\d.]+)%, (\d+)px\);/m,
+    );
+    expect(reserved).not.toBeNull();
+    // Even the clamp's smallest lane must clear the counter's ~200px + inset.
+    expect(Number(reserved?.[1])).toBeGreaterThanOrEqual(232);
+    expect(Number(reserved?.[3])).toBeGreaterThanOrEqual(232);
     // ...so the pill fills the free space instead of a viewport-relative cap.
     const pillStart = css.indexOf(".chat-last-prompt {");
     const pillBlock = css.slice(

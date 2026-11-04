@@ -110,6 +110,12 @@ The answer streams LIVE into the pending bubble and is replaced by one authorita
 
 Body-portaled image lightboxes share the existing global modal layer (1100), above tab and title chrome (1001–1002). No new portal or arbitrary topmost layer is needed. A CSS regression pins that ordering.
 
+## Last-prompt chip width
+
+The chip is anchored to the transcript column, so showing the live file preview (which narrows that column) narrows the chip with it instead of leaving it at full-body width.
+
+It remains a sibling of the scrollport rather than a child of the scrolling content, so scrolling cannot push it out of view. Its right inset is `clamp(232px, 52%, 532px)`: that keeps a proportional lane for the DB counter on narrow columns while preserving the original 532px clearance at full width. The chip lives inside [[src/renderer/src/screens/Chat/Chat.tsx#Chat]]'s transcript column, and [[src/renderer/src/screens/Chat/chatWiring.test.ts]] pins the responsive inset.
+
 ## Unsend image restoration
 
 Unsend restores the removed manual row’s ordered attachments into ChatInput. Image-only rows expose the same action; session.undo semantics stay unchanged.

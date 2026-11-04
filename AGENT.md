@@ -46,6 +46,8 @@ Tool preview highlights syntax with a theme-token palette (keywords blue, string
 
 Context gauge can never display over 100%: a prompt cannot exceed the window, and the chars/4 fallback sums the whole visible transcript (estimate drift). ContextGauge caps pct/ring/tokens with a hint; usageFromPayload clamps context_used to context_max; the Usage table caps too. See lat.md/model-context.md.
 
+Last-prompt chip is anchored inside the transcript column and uses `right: clamp(232px, 52%, 532px)`, so it narrows with the live file preview. FloatingDialog has both bottom-corner resize handles (left anchors top-right, right anchors top-left); size + dragged position survive hide/reopen, clamped on-screen. See lat.md/chat-performance.md and lat.md/commands-terminal.md.
+
 Preserve unrelated chat-search/zoom work. Commit owned changes only; do not push without confirmation. Follow `AGENTS.md` resource queue and documentation checks.
 
 Theme editor saves compare built-in palettes against pristine bundled defaults, not the effective editor baseline (which dropped older overrides on later saves). Custom themes save complete palettes, including on rename. Reset only built-in overrides; custom themes use confirmed Delete. Storage stays `hermes-custom-themes`, separate from bundled CSS. See `lat.md/appearance-themes.md` and `ThemeEditor.integration.test.tsx`.

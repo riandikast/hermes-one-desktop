@@ -65,11 +65,11 @@ id, so it saves as a new entry without re-typing the fields), and Delete.
 
 ## Floating working dialogs
 
-Terminal, Web preview and File explorer share a corner resize handle. Minimum width is 237px, matching the default left sidebar; transparent overlay space passes clicks/taps to search and prompt inputs without dismissing the panel.
+Terminal, Web preview and File explorer share resize handles on **both** bottom corners. Minimum width is 237px, matching the default left sidebar; transparent overlay space passes clicks/taps to search and prompt inputs without dismissing the panel.
 
-[[src/renderer/src/screens/Chat/FloatingDialog.tsx#FloatingDialog]] supports mouse/touch/pen pointer capture and arrow-key resizing (Shift increases the step). Sizes stay within the viewport, retain the top-left corner during resize, and remain in component state across hide/reopen. Window resizing recenters panels. Sidebar placement stays unchanged. Close buttons and Escape still dismiss; stateful children remain mounted. The terminal dock's existing ResizeObserver refits xterm and its PTY to the new bounds.
+[[src/renderer/src/screens/Chat/FloatingDialog.tsx#FloatingDialog]] supports mouse/touch/pen pointer capture and arrow-key resizing (Shift increases the step). The right handle anchors the top-left corner; the left handle anchors the top-right, so either edge can grow. Sizes stay within the viewport, and both size and a manually dragged position survive hide/reopen. Resizing the window keeps the panel's on-screen position and only pulls it back inside the new bounds. Sidebar placement stays unchanged.
 
-While the active chat's terminal is open, Ctrl+Shift+T (Cmd+Shift+T on macOS) invokes the same explicit new-session handler as +, before xterm consumes input. Repeats and closed/background terminal shortcuts do nothing. [[src/renderer/src/screens/Chat/FloatingDialog.resize.test.tsx]] covers pointer cancellation, keyboard/minimum/viewport sizing, retained children, outside taps and shortcut capture. Existing drag, dock and wiring suites cover the neighboring behavior. Live Electron verification remains manual; no app rebuild/restart is performed automatically.
+While the active chat's terminal is open, Ctrl+Shift+T (Cmd+Shift+T on macOS) invokes the same explicit new-session handler as +, before xterm consumes input. Repeats and closed/background terminal shortcuts do nothing. [[src/renderer/src/screens/Chat/FloatingDialog.resize.test.tsx]] covers pointer cancellation, keyboard/minimum/viewport sizing, retained children, outside taps and shortcut capture; [[src/renderer/src/screens/Chat/FloatingDialog.leftResize.test.tsx]] covers the left-edge pointer and keyboard paths. Existing drag, dock and wiring suites cover the neighboring behavior. Live Electron verification remains manual; no app rebuild/restart is performed automatically.
 
 ## Windows launcher export
 

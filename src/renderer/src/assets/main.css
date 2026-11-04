@@ -7240,9 +7240,10 @@ body:has(.shell-vibrant),
   left: 12px;
   /* Stop short of the DB counter (top: 12px; right: 18px, ~200px wide). The
      chip used to reach min(72vw, 640px), which overlapped it on any chat body
-     narrower than ~900px — the two share the same top band. Reserving the
-     right lane here keeps them from ever touching, at any window width. */
-  right: 532px;
+     narrower than ~900px — the two share the same top band. A percentage keeps
+     that clearance proportional so the live file preview narrowing the
+     transcript column also narrows the chip instead of clipping it. */
+  right: clamp(232px, 52%, 532px);
   z-index: 29;
   pointer-events: none;
 }
@@ -10874,6 +10875,12 @@ body:has(.shell-vibrant),
   background: linear-gradient(135deg, transparent 55%, var(--text-secondary) 56%, var(--text-secondary) 60%, transparent 61%, transparent 72%, var(--text-secondary) 73%, var(--text-secondary) 77%, transparent 78%);
   cursor: nwse-resize;
   touch-action: none;
+}
+.terminal-dialog-resize--left {
+  right: auto;
+  left: 0;
+  background: linear-gradient(225deg, transparent 55%, var(--text-secondary) 56%, var(--text-secondary) 60%, transparent 61%, transparent 72%, var(--text-secondary) 73%, var(--text-secondary) 77%, transparent 78%);
+  cursor: nesw-resize;
 }
 .terminal-dialog-resize:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
 .terminal-dialog.is-resizing .terminal-dialog-body { pointer-events: none; }

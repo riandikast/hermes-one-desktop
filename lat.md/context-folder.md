@@ -30,7 +30,7 @@ The context-folder tree panel uses a compact header and can be resized from its 
 
 The chat File explorer uses the shared resizable working dialog and remains open on outside clicks or taps.
 
-The bottom-right handle supports pointer and keyboard resizing without remounting its tree. See [[commands-terminal#Commands store + built-in terminal#Floating working dialogs]]. Standalone tree-panel width behavior is unchanged.
+Both bottom-corner handles support pointer and keyboard resizing without remounting its tree. See [[commands-terminal#Commands store + built-in terminal#Floating working dialogs]]. Standalone tree-panel width behavior is unchanged.
 
 ## Large explorer directories
 
