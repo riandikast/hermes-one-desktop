@@ -51,6 +51,17 @@ describe("context usage counter", () => {
     expect((screen.getByRole("button", { name: "Compress Context (/compact)" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("caps impossible over-100 occupancy caused by estimate drift", () => {
+    render(<ContextGauge used={2_000_000} window={100_000} estimated />);
+    expect(
+      screen.getByRole("button", { name: "Context usage: estimated 100%" }),
+    ).toBeTruthy();
+    expect(screen.getByText("100")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Context usage/ }));
+    expect(screen.getByText("100k / 100k")).toBeTruthy();
+    expect(screen.getByText("chat.contextCapped")).toBeTruthy();
+  });
+
   it("labels a heuristic model limit separately from the occupancy estimate", () => {
     render(<ContextGauge used={25000} window={131072} limitEstimated />);
     expect(screen.getByText("chat.contextLimitEstimated")).toBeTruthy();

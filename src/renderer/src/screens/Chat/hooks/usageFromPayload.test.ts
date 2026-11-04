@@ -32,6 +32,14 @@ describe("usageFromPayload", () => {
     expect(result?.contextWindowTokens).toBe(200000);
   });
 
+  it("clamps reported occupancy to the reported window", () => {
+    const result = usageFromPayload({
+      usage: { context_used: 200000, context_max: 100000 },
+    });
+    expect(result?.contextTokens).toBe(100000);
+    expect(result?.contextWindowTokens).toBe(100000);
+  });
+
   it("omits contextWindowTokens when the gateway doesn't report context_max", () => {
     const result = usageFromPayload({
       usage: { input: 5000, output: 200, total: 5200 },

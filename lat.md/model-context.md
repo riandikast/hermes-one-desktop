@@ -28,6 +28,12 @@ The gauge shows a chars/4 estimate from locally loaded messages immediately, inc
 
 A heuristic denominator is labeled separately as estimated while model discovery is pending; its unknown-family fallback is 1,000,000 tokens (displayed as 1M). This is not a discovered limit.
 
+### Impossible occupancy is capped
+
+The gauge never reports more than 100%: a prompt cannot exceed the model window, so anything larger is estimate drift from the chars/4 fallback.
+
+[[src/renderer/src/screens/Chat/ContextGauge.tsx#ContextGauge]] caps the percentage, ring and token line at the window and adds a hint explaining the cap; the fallback sums every displayed row, including tool output and pre-compaction history the agent no longer sends. On the data side, [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#usageFromPayload]] clamps `context_used` to a reported `context_max`, because older gateways could send the pair unclamped. The Usage table applies the same cap. Regressions: the over-100 gauge case in [[src/renderer/src/screens/Chat/ContextGauge.test.tsx]] and the clamp case in [[src/renderer/src/screens/Chat/hooks/usageFromPayload.test.ts]].
+
 A failed turn without usage keeps the prior reported occupancy. [[src/renderer/src/screens/Chat/contextUsage.test.tsx]] exercises the actual Chat data expression and mounted gauge before any response, zero occupancy, and transition to provider counts; [[src/renderer/src/screens/Chat/hooks/usageFromPayload.test.ts]] verifies both local and completion-time estimation.
 
 ## Auto-compaction settings

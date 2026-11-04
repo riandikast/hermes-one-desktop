@@ -918,8 +918,15 @@ export function usageFromPayload(payload: unknown, includeZeroCounters = false):
   );
   // Session input is cumulative billing usage, NOT context occupancy. Missing
   // occupancy stays unknown; the gauge may estimate it, the ledger never does.
-  const contextUsed = usage.context_used == null ? undefined : Number(usage.context_used);
+  const rawContextUsed =
+    usage.context_used == null ? undefined : Number(usage.context_used);
   const contextMax = Number(usage.context_max ?? 0);
+  // A single prompt cannot exceed the model window. Older gateways reported
+  // the pair unclamped; clamp here so the gauge never receives used > max.
+  const contextUsed =
+    rawContextUsed != null && contextMax > 0
+      ? Math.min(rawContextUsed, contextMax)
+      : rawContextUsed;
   if (![promptTokens, completionTokens, totalTokens, contextUsed ?? 0, contextMax].every(
     (count) => Number.isSafeInteger(count) && count >= 0,
   )) return null;

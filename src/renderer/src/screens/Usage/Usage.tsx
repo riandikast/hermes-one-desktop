@@ -345,8 +345,11 @@ export default function Usage(): React.JSX.Element {
                   </td>
                   <td className="usage-table-num">
                     {r.contextTokens != null && r.contextMax
-                      ? `${Math.round(
-                          ((r.contextTokens ?? 0) / r.contextMax) * 100,
+                      ? `${Math.min(
+                          100,
+                          Math.round(
+                            ((r.contextTokens ?? 0) / r.contextMax) * 100,
+                          ),
                         )}%`
                       : r.contextTokens
                         ? fmtTokens(r.contextTokens)

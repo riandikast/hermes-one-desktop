@@ -163,6 +163,8 @@ export default {
   contextTokens: "{{used}} / {{total}} tokens used",
   contextCache: "Cache: {{pct}}% hit ({{read}} read / {{write}} write)",
   contextLimitEstimated: "Model limit is estimated until discovery finishes.",
+  contextCapped:
+    "Capped at the model window: a prompt cannot be larger than its context limit.",
   contextAutoCompact: "Auto-compact context",
   contextCompactCeiling: "Token ceiling (optional)",
   contextCompactAutomatic: "Use backend default",

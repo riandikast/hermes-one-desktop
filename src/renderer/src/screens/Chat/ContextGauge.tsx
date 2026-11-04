@@ -74,7 +74,14 @@ export const ContextGauge = memo(function ContextGauge({
     used >= 0 &&
     Number.isFinite(ctxWindow) &&
     ctxWindow > 0;
-  const pct = hasData ? Math.round((used / ctxWindow) * 100) : 0;
+  const rawPct = hasData ? (used / ctxWindow) * 100 : 0;
+  // A prompt can never exceed the model window; a larger figure is estimate
+  // drift (the heuristic counts the whole displayed transcript, which may be
+  // longer than the compacted prompt). Cap the display instead of showing
+  // impossible values such as 2000%.
+  const overLimit = hasData && rawPct > 100;
+  const pct = hasData ? Math.min(100, Math.max(0, Math.round(rawPct))) : 0;
+  const shownUsed = overLimit ? ctxWindow : used;
   const left = Math.max(0, 100 - pct);
 
   // Ring geometry.
@@ -148,7 +155,7 @@ export const ContextGauge = memo(function ContextGauge({
             <div>{t("chat.contextUsed", { pct, left })}</div>
             <div>
               {t("chat.contextTokens", {
-                used: fmtTokens(used),
+                used: fmtTokens(shownUsed),
                 total: fmtTokens(ctxWindow),
               })}
             </div>
@@ -169,6 +176,7 @@ export const ContextGauge = memo(function ContextGauge({
           </div>
         )}
         {limitEstimated && <p className="chat-ctx-hint">{t("chat.contextLimitEstimated")}</p>}
+        {overLimit && <p className="chat-ctx-hint">{t("chat.contextCapped")}</p>}
         {open && settings}
         {onCompact && (
           <button
