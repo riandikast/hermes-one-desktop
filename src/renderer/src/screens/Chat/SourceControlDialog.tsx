@@ -14,6 +14,8 @@ import {
   Plus,
   Minus,
   BookOpen,
+  Maximize2,
+  PictureInPicture2,
 } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import { matchesShortcut, shortcutLabel } from "../../utils/keyboardShortcuts";
@@ -26,6 +28,7 @@ import { BranchDialog } from "./BranchDialog";
 import { RenameCommitDialog } from "./RenameCommitDialog";
 import { GitDoc } from "./GitDoc";
 import { SourceControlSplit } from "./SourceControlSplit";
+import { FloatingDialog } from "./FloatingDialog";
 import { useSourceControlTerminals } from "./useSourceControlTerminals";
 import { TerminalDock } from "../Command/TerminalDock";
 import type { GraphCommit } from "./gitGraph";
@@ -59,6 +62,12 @@ interface GitActionResult {
 
 const fileLabel = (path: string): string => path.split(/[\\/]/).pop() || path;
 
+/** Below this panel width the side-by-side diff split becomes tabs. */
+export const SOURCE_CONTROL_NARROW_WIDTH = 760;
+export function isNarrowSourceControl(width: number): boolean {
+  return width > 0 && width < SOURCE_CONTROL_NARROW_WIDTH;
+}
+
 function statusCode(entry: { index: string; worktree: string }): string {
   if (entry.index !== " ") return entry.index;
   return entry.worktree;
@@ -78,7 +87,33 @@ function statusCode(entry: { index: string; worktree: string }): string {
  * FloatingDialog it is mounted inside (whose body clips and stacks it, which
  * cropped the bottom and double-chromed it with a second header).
  */
-function Shell({ children }: { children: React.ReactNode }): React.JSX.Element {
+function Shell({
+  children,
+  floating = false,
+  title = "Source Control",
+  onClose,
+}: {
+  children: React.ReactNode;
+  floating?: boolean;
+  title?: string;
+  onClose?: () => void;
+}): React.JSX.Element {
+  if (floating && onClose) {
+    // Same draggable/resizable window as the terminal and web preview. It still
+    // portals to <body>, so it clears the chat's stacking context.
+    return createPortal(
+      <FloatingDialog
+        open
+        title={title}
+        size="wide"
+        onClose={onClose}
+        className="source-control-floating"
+      >
+        {children}
+      </FloatingDialog>,
+      document.body,
+    );
+  }
   return createPortal(
     <div className="source-control-page">{children}</div>,
     document.body,
@@ -332,6 +367,63 @@ export function SourceControlDialog({
   const [renameTarget, setRenameTarget] = useState<(GraphCommit & { message: string }) | null>(null);
   const [terminalError, setTerminalError] = useState("");
   const terminals = useSourceControlTerminals(dir, onClose, setTerminalError);
+  // Full-page (default) or a floating, draggable and resizable window. The
+  // choice persists; it is ignored when the app window is too narrow for a
+  // floating panel to be usable, which falls back to the tabbed full page.
+  const [floating, setFloating] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("hermes.sourceControl.floating") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [viewportWide, setViewportWide] = useState(
+    () => !isNarrowSourceControl(window.innerWidth),
+  );
+  useEffect(() => {
+    const onResize = (): void =>
+      setViewportWide(!isNarrowSourceControl(window.innerWidth));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const useFloating = floating && viewportWide;
+  useEffect(() => {
+    // The dock subtree remounts with the wrapper; re-attach the running ptys so
+    // the terminal pane is not empty after floating/docking.
+    terminals.reattach();
+  }, [terminals.reattach, useFloating]);
+  const toggleFloating = useCallback((): void => {
+    setFloating((current) => {
+      const next = !current;
+      try {
+        localStorage.setItem("hermes.sourceControl.floating", next ? "1" : "0");
+      } catch {
+        // Storage unavailable: the toggle still works for this mount.
+      }
+      return next;
+    });
+  }, []);
+  // Narrow panel (small floating window or narrow app window): the diff split
+  // cannot show both panes side by side, so they become tabs.
+  const [narrow, setNarrow] = useState(() =>
+    isNarrowSourceControl(window.innerWidth),
+  );
+  // A callback ref (not an effect) because the root remounts when the panel
+  // moves between full-page and floating, and again when loading finishes.
+  const dialogObserver = useRef<ResizeObserver | null>(null);
+  const setDialogNode = useCallback((node: HTMLDivElement | null): void => {
+    dialogObserver.current?.disconnect();
+    dialogObserver.current = null;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? 0;
+      if (width > 0) setNarrow(isNarrowSourceControl(width));
+    });
+    observer.observe(node);
+    dialogObserver.current = observer;
+  }, []);
+  const [narrowPane, setNarrowPane] = useState<"changes" | "diff">("changes");
+  const [narrowGraphPane, setNarrowGraphPane] = useState<"list" | "diff">("list");
   useEffect(() => {
     const close = (event: KeyboardEvent): void => {
       // Escape belongs to the shell/application when focus is inside its terminal.
@@ -749,8 +841,12 @@ export function SourceControlDialog({
 
 
   return (
-    <Shell>
-      <div className="source-control-dialog">
+    <Shell
+      floating={useFloating}
+      title={`Source Control — ${repoName}`}
+      onClose={() => void terminals.requestClose()}
+    >
+      <div className="source-control-dialog" ref={setDialogNode}>
         <div className="source-control-header">
           <span className="file-changes-title">
             Source Control — {repoName}
@@ -818,7 +914,28 @@ export function SourceControlDialog({
             </button>
             <button
               type="button"
-              className="btn-ghost"
+              className={`btn-ghost source-control-float-toggle${floating ? " is-active" : ""}`}
+              aria-pressed={floating}
+              disabled={!viewportWide && !floating}
+              title={
+                floating
+                  ? "Dock as a full page"
+                  : viewportWide
+                    ? "Float in a resizable window"
+                    : "Not enough room to float; widen the window"
+              }
+              aria-label={
+                floating
+                  ? "Dock source control as a full page"
+                  : "Float source control in a window"
+              }
+              onClick={toggleFloating}
+            >
+              {floating ? <Maximize2 size={15} /> : <PictureInPicture2 size={15} />}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost source-control-header-close"
               onClick={() => void terminals.requestClose()}
               aria-label="Close"
             >
@@ -858,9 +975,21 @@ export function SourceControlDialog({
         {terminalError && <p role="alert">{terminalError}</p>}
         <SourceControlSplit className="source-control-workspace" label="Terminal pane width" initial={62} collapsed={!terminals.visible}>
         <div className="source-control-content">
-        <div className="source-control-body">
+        <div className={`source-control-body${narrow ? " is-narrow" : ""}`}>
           {view === "changes" ? (
-            <SourceControlSplit key="changes" label="Changes pane width" initial={35}>
+            <>
+            {narrow && (
+              <div className="source-control-pane-tabs" role="tablist" aria-label="Changes layout">
+                <button type="button" role="tab" aria-selected={narrowPane === "changes"}
+                  className={`source-control-pane-tab${narrowPane === "changes" ? " active" : ""}`}
+                  onClick={() => setNarrowPane("changes")}>Changes</button>
+                <button type="button" role="tab" aria-selected={narrowPane === "diff"}
+                  className={`source-control-pane-tab${narrowPane === "diff" ? " active" : ""}`}
+                  onClick={() => setNarrowPane("diff")}>Diff</button>
+              </div>
+            )}
+            <SourceControlSplit key="changes" label="Changes pane width" initial={35}
+              className={narrow ? `source-control-split--narrow is-${narrowPane}` : ""}>
               <div className="source-control-sidebar">
                 <div className="source-control-footer">
                   <textarea className="source-control-commit-input" aria-label="Commit message" value={commitMessage} onChange={(event) => setCommitMessage(event.target.value)} placeholder={`Commit message (${shortcutLabel("gitCommit")} to commit)`} rows={2} onKeyDown={(event) => { if (matchesShortcut(event, "gitCommit") && !busy && stagedCount > 0) void commit(); }} />
@@ -1041,8 +1170,21 @@ export function SourceControlDialog({
                 />
               </div>
             </SourceControlSplit>
+            </>
           ) : view === "graph" ? (
-            <SourceControlSplit key="graph" label="Graph pane width" initial={46}>
+            <>
+            {narrow && (
+              <div className="source-control-pane-tabs" role="tablist" aria-label="History layout">
+                <button type="button" role="tab" aria-selected={narrowGraphPane === "list"}
+                  className={`source-control-pane-tab${narrowGraphPane === "list" ? " active" : ""}`}
+                  onClick={() => setNarrowGraphPane("list")}>History</button>
+                <button type="button" role="tab" aria-selected={narrowGraphPane === "diff"}
+                  className={`source-control-pane-tab${narrowGraphPane === "diff" ? " active" : ""}`}
+                  onClick={() => setNarrowGraphPane("diff")}>Commit</button>
+              </div>
+            )}
+            <SourceControlSplit key="graph" label="Graph pane width" initial={46}
+              className={narrow ? `source-control-split--narrow is-${narrowGraphPane}` : ""}>
               <div className="source-control-graph-list">
                 {graphError && <p role="alert">{graphError}</p>}
                 <form className="source-control-graph-toolbar source-control-graph-filters" onSubmit={(event) => {
@@ -1096,6 +1238,7 @@ export function SourceControlDialog({
                 )}
               </div>
             </SourceControlSplit>
+            </>
           ) : <GitDoc />}
         </div>
 

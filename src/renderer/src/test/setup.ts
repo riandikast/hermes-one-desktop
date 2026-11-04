@@ -46,6 +46,27 @@ if (typeof window !== "undefined" && !("PointerEvent" in window)) {
 }
 
 
+// jsdom has no ResizeObserver; host-measuring components only need the API to
+// exist (tests that care about width render at a known window.innerWidth).
+if (typeof globalThis.ResizeObserver === "undefined") {
+  class ResizeObserverShim {
+    observe(): void {
+      return;
+    }
+    unobserve(): void {
+      return;
+    }
+    disconnect(): void {
+      return;
+    }
+  }
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    value: ResizeObserverShim,
+    configurable: true,
+    writable: true,
+  });
+}
+
 // jsdom has no matchMedia; ThemeProvider and any responsive logic need it.
 if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
   Object.defineProperty(window, "matchMedia", {

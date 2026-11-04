@@ -1,8 +1,8 @@
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent, within } from "@testing-library/react";
 import { I18nProvider } from "../../components/I18nProvider";
-import { SourceControlDialog } from "./SourceControlDialog";
+import { SourceControlDialog, isNarrowSourceControl } from "./SourceControlDialog";
 import sourceControlCss from "../../assets/main.css?raw";
 import { SettingsModalContext } from "../../components/settings/SettingsModalContext";
 
@@ -66,6 +66,7 @@ const gitRevert = vi.fn();
 const gitRevertAbort = vi.fn();
 
 beforeEach(() => {
+  localStorage.removeItem("hermes.sourceControl.floating");
   gitLog.mockReset();
   gitRepoStatus.mockReset();
   gitDiff.mockReset();
@@ -1066,5 +1067,86 @@ describe("SourceControlDialog", () => {
     // Still the same DOM element, not a fresh replacement (the dialog portals
     // to <body>, so look there rather than in the render container).
     expect(document.body.querySelector("textarea")).toBe(node);
+  });
+
+  it("switches the diff split into tabs below 760px", () => {
+    expect(isNarrowSourceControl(759)).toBe(true);
+    expect(isNarrowSourceControl(760)).toBe(false);
+    // An unmeasured host (0px) must not be treated as narrow on its own.
+    expect(isNarrowSourceControl(0)).toBe(false);
+  });
+
+  it("switches to a floating, resizable window and back", async () => {
+    renderDialog("/repo");
+    const float = await screen.findByRole("button", {
+      name: "Float source control in a window",
+    });
+    expect(float.getAttribute("aria-pressed")).toBe("false");
+
+    // A running terminal must survive the layout swap (the dock remounts).
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Terminal" }));
+    });
+    expect(
+      await screen.findByRole("button", { name: "Close terminal source-term" }),
+    ).toBeTruthy();
+
+    act(() => {
+      fireEvent.click(float);
+    });
+
+    await waitFor(() =>
+      expect(document.querySelector(".source-control-floating")).not.toBeNull(),
+    );
+    // Same chrome as the other floating tools: drag handle, resize handles,
+    // and a close control that reports the panel title.
+    expect(
+      document.querySelector(".source-control-floating.terminal-dialog"),
+    ).not.toBeNull();
+    expect(document.querySelector(".terminal-dialog-resize")).not.toBeNull();
+    expect(screen.getByRole("dialog", { name: "Source Control — repo" })).toBeTruthy();
+    expect(localStorage.getItem("hermes.sourceControl.floating")).toBe("1");
+    expect(
+      screen.getByRole("button", { name: "Close terminal source-term" }),
+    ).toBeTruthy();
+
+    act(() => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Dock source control as a full page" }),
+      );
+    });
+    await waitFor(() =>
+      expect(document.querySelector(".source-control-page")).not.toBeNull(),
+    );
+    expect(localStorage.getItem("hermes.sourceControl.floating")).toBe("0");
+  });
+
+  it("shows the pane switcher instead of the split on a narrow panel", async () => {
+    const original = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 700,
+    });
+    try {
+      renderDialog("/repo");
+      const tabs = await screen.findByRole("tablist", { name: "Changes layout" });
+      const changes = within(tabs).getByRole("tab", { name: "Changes" });
+      const diff = within(tabs).getByRole("tab", { name: "Diff" });
+      expect(changes.getAttribute("aria-selected")).toBe("true");
+      expect(document.querySelector(".source-control-split--narrow")).not.toBeNull();
+
+      act(() => {
+        fireEvent.click(diff);
+      });
+      expect(diff.getAttribute("aria-selected")).toBe("true");
+      expect(
+        document.querySelector(".source-control-split--narrow.is-diff"),
+      ).not.toBeNull();
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: original,
+      });
+    }
   });
 });

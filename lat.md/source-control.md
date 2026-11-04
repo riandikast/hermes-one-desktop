@@ -8,6 +8,12 @@ Root-folder context menus open the full-page Source Control surface.
 
 Right-clicking a root folder (one of the conversation's context folders) in [[src/renderer/src/screens/Chat/WorktreePanel.tsx#WorktreePanel]] shows a "Source Control" context-menu item (root folders only — `folderPaths.includes(contextMenu.path)`). It opens [[src/renderer/src/screens/Chat/SourceControlDialog.tsx#SourceControlDialog]], a near-fullscreen dialog (the same overlay/dialog shell as the file-changes dialog) with a branch chip (ahead/behind tracking), Fetch/Pull/Push/refresh buttons, a sidebar listing Conflicts / Staged / Changes / Untracked, a diff pane, and a commit box with Ctrl+Enter to commit.
 
+## Floating window and narrow layout
+
+The header's float toggle opens the same panel as a draggable, resizable window; narrow panels turn the split into tabs.
+
+The choice is kept in `hermes.sourceControl.floating`. Floating mode renders through [[src/renderer/src/screens/Chat/FloatingDialog.tsx#FloatingDialog]] (size `wide`, `className="source-control-floating"`), so dragging, edge resizing and Escape match the terminal and web preview, while CSS hides the duplicate page title and close button. Below a 760px panel width — a small floating window or a narrow app window — `isNarrowSourceControl` switches the Changes split (list | diff) and the Graph split (history | commit) to a tab switcher and hides the split handle. Below 760px of window width the float toggle is disabled and the panel stays full-page. Owned terminal sessions keep running across the swap; [[src/renderer/src/screens/Chat/useSourceControlTerminals.ts]] re-attaches their ptys to the remounted dock. Regressions: [[src/renderer/src/screens/Chat/SourceControlDialog.test.tsx]] and [[src/renderer/src/screens/Chat/useSourceControlTerminals.test.tsx]].
+
 ## Initialize repository
 
 The non-repository screen offers Initialize repository beside Retry. Confirmation names the folder; initialization creates local Git metadata only, then refreshes into Source Control.

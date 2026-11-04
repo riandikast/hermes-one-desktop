@@ -10,6 +10,8 @@ export function useSourceControlTerminals(dir: string, onClose: () => void, repo
   creating: boolean;
   toggle: () => void;
   add: () => void;
+  /** Re-attach the owned sessions to a freshly mounted dock (layout mode swap). */
+  reattach: () => void;
   closed: (id: string) => void;
   requestClose: () => Promise<boolean>;
 } {
@@ -58,6 +60,11 @@ export function useSourceControlTerminals(dir: string, onClose: () => void, repo
       }
     })();
   }, [dir, report]);
+  const reattach = useCallback((): void => {
+    [...ids.current].forEach((id, index) => {
+      dock.current?.attachSession(id, `Terminal ${index + 1}`, dir);
+    });
+  }, [dir]);
   const requestClose = useCallback(async (): Promise<boolean> => {
     if (closing.current || confirming.current) return false;
     confirming.current = true;
@@ -85,7 +92,7 @@ export function useSourceControlTerminals(dir: string, onClose: () => void, repo
     else if (ids.current.size || pending.current) setVisible(true);
     else add();
   };
-  return { dock, visible, mounted, creating, toggle, add, closed: (id) => {
+  return { dock, visible, mounted, creating, toggle, add, reattach, closed: (id) => {
     ids.current.delete(id);
     if (!ids.current.size && !pending.current) setVisible(false);
   }, requestClose };
