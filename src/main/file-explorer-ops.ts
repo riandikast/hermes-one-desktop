@@ -156,6 +156,43 @@ export async function deleteExplorerEntry(
   }
 }
 
+/**
+ * Copy a path from anywhere on disk into the opened root (paste from Windows
+ * Explorer). Only the destination is root-scoped; the source may be external.
+ */
+export async function importExplorerEntry(
+  root: string,
+  source: string,
+  destinationDir: string,
+): Promise<ExplorerResult> {
+  const destination = await guardParent(root, destinationDir);
+  if (!destination) return { ok: false, error: "Folder is outside the opened folder" };
+  if (typeof source !== "string" || !isAbsolute(source)) return { ok: false, error: "Invalid source path" };
+  const realSource = await realTarget(source);
+  const info = realSource ? await stat(realSource).catch(() => null) : null;
+  if (!realSource || !info) return { ok: false, error: "Source no longer exists" };
+  if (info.isDirectory() && (realSource === destination.parent || inside(realSource, destination.parent)))
+    return { ok: false, error: "Cannot copy a folder into itself" };
+  const name = realSource.split(/[\\/]/).pop() ?? "";
+  if (!name) return { ok: false, error: "Invalid source path" };
+  try {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const target = conflictFreeName(destination.parent, name, info.isDirectory(), attempt);
+      if (await exists(target)) continue;
+      await cp(realSource, target, {
+        recursive: true,
+        errorOnExist: true,
+        force: false,
+        preserveTimestamps: true,
+      });
+      return { ok: true, path: target };
+    }
+    return { ok: false, error: "Too many files with that name" };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
 /** "copy", then "copy 2", … — never overwrite an existing sibling. */
 function conflictFreeName(
   directory: string,

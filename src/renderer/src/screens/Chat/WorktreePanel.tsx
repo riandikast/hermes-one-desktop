@@ -169,6 +169,10 @@ function TreeItem({
         ref={rowRef}
         aria-current={selected ? "true" : undefined}
         className={`worktree-row ${!entry.isDirectory ? "worktree-row-file" : ""}${selected ? " is-selected" : ""}`}
+        data-worktree-path={fullPath}
+        data-worktree-directory={entry.isDirectory ? "true" : "false"}
+        data-worktree-name={entry.name}
+        tabIndex={0}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         style={{ paddingLeft }}
@@ -557,12 +561,12 @@ export const WorktreePanel = memo(function WorktreePanel({
     root: string;
     entry: ContextMenuState["entry"];
   } | null>(null);
-  /** In-app clipboard for Copy → Paste; the OS clipboard is not involved. */
+  /** In-app clipboard for Copy → Paste (also mirrored to the OS clipboard). */
   const [clipboard, setClipboard] = useState<{
-    root: string;
-    path: string;
+    paths: string[];
     name: string;
   } | null>(null);
+  const [osClipboard, setOsClipboard] = useState<string[]>([]);
   const [opError, setOpError] = useState<string | null>(null);
   const [width, setWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem(WIDTH_STORAGE_KEY));
@@ -753,6 +757,22 @@ export const WorktreePanel = memo(function WorktreePanel({
     setContextMenu(null);
   };
 
+  // Refresh the OS-clipboard files whenever the menu opens so Paste enables
+  // for files copied in Windows Explorer, not just in this panel.
+  useEffect(() => {
+    if (!contextMenu) return;
+    let cancelled = false;
+    void window.hermesAPI
+      .readClipboardFiles()
+      .then((paths) => {
+        if (!cancelled) setOsClipboard(paths);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [contextMenu]);
+
   const normalizePath = (path: string): string =>
     path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 
@@ -809,16 +829,77 @@ export const WorktreePanel = memo(function WorktreePanel({
     finishOp(await window.hermesAPI.deleteExplorerEntry(root, menu.entry.path));
   };
 
+  const copyEntry = async (path: string, name?: string): Promise<void> => {
+    setClipboard({
+      paths: [path],
+      name: name || path.split(/[\\/]/).pop() || path,
+    });
+    try {
+      await window.hermesAPI.writeClipboardFiles([path]);
+    } catch {
+      // The in-app clipboard still works if the OS clipboard is unavailable.
+    }
+  };
+
+  /** Paste internal or OS-clipboard files into a folder inside an opened root. */
+  const pasteInto = async (targetDir: string): Promise<void> => {
+    const root = rootFor(targetDir);
+    if (!root) {
+      setOpError("Open a folder before pasting");
+      return;
+    }
+    let sources = clipboard?.paths ?? [];
+    if (sources.length === 0) {
+      try {
+        sources = await window.hermesAPI.readClipboardFiles();
+      } catch {
+        sources = [];
+      }
+    }
+    if (sources.length === 0) {
+      setOpError("Nothing to paste — copy a file first");
+      return;
+    }
+    let failureMessage: string | null = null;
+    for (const source of sources) {
+      const result = rootFor(source)
+        ? await window.hermesAPI.copyExplorerEntry(root, source, targetDir)
+        : await window.hermesAPI.importExplorerEntry(root, source, targetDir);
+      if (!result?.ok && !failureMessage) {
+        failureMessage = result?.error ?? "Paste failed";
+      }
+    }
+    if (failureMessage) {
+      setOpError(failureMessage);
+      return;
+    }
+    setOpError(null);
+    setRefreshVersion((version) => version + 1);
+  };
+
   const handlePaste = async (menu: ContextMenuState): Promise<void> => {
-    const root = rootFor(menu.path);
     setContextMenu(null);
-    if (!root || !clipboard) return;
-    const result = await window.hermesAPI.copyExplorerEntry(
-      root,
-      clipboard.path,
-      menu.path,
-    );
-    finishOp(result);
+    await pasteInto(menu.path);
+  };
+
+  const handleExplorerKeyDown = (
+    event: React.KeyboardEvent<HTMLDivElement>,
+  ): void => {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+    const key = event.key.toLowerCase();
+    if (key !== "c" && key !== "v") return;
+    const row = (event.target as HTMLElement).closest?.(
+      "[data-worktree-path]",
+    ) as HTMLElement | null;
+    const path = row?.dataset.worktreePath;
+    if (!row || !path) return;
+    event.preventDefault();
+    if (key === "c") {
+      void copyEntry(path, row.dataset.worktreeName || undefined);
+      return;
+    }
+    const isDirectory = row.dataset.worktreeDirectory === "true";
+    void pasteInto(isDirectory ? path : parentDir(path));
   };
 
   const submitPrompt = async (name: string): Promise<string | null> => {
@@ -900,7 +981,7 @@ export const WorktreePanel = memo(function WorktreePanel({
           {opError}
         </div>
       )}
-      <div className="worktree-content">
+      <div className="worktree-content" onKeyDown={handleExplorerKeyDown}>
         {showingSearch ? (
           searchResults === null ? (
             <div className="worktree-loading" role="status">
@@ -977,14 +1058,7 @@ export const WorktreePanel = memo(function WorktreePanel({
               type="button"
               className="worktree-context-menu-item"
               onClick={() => {
-                const root = rootFor(contextMenu.entry.path);
-                if (root) {
-                  setClipboard({
-                    root,
-                    path: contextMenu.entry.path,
-                    name: contextMenu.entry.name,
-                  });
-                }
+                void copyEntry(contextMenu.entry.path, contextMenu.entry.name);
                 setContextMenu(null);
               }}
             >
@@ -992,14 +1066,20 @@ export const WorktreePanel = memo(function WorktreePanel({
               <span>Copy</span>
             </button>
           )}
-          {clipboard && rootFor(contextMenu.path) === clipboard.root && (
+          {rootFor(contextMenu.path) && (
             <button
               type="button"
               className="worktree-context-menu-item"
+              disabled={!clipboard && osClipboard.length === 0}
+              title={
+                clipboard || osClipboard.length > 0
+                  ? "Paste into this folder"
+                  : "Copy a file first, or copy files in Explorer"
+              }
               onClick={() => void handlePaste(contextMenu)}
             >
               <ClipboardPaste size={14} />
-              <span>Paste “{clipboard.name}”</span>
+              <span>{clipboard ? `Paste “${clipboard.name}”` : "Paste"}</span>
             </button>
           )}
           {rootFor(contextMenu.entry.path) &&

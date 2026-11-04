@@ -38,7 +38,7 @@ Appearance → Tool calls animation defaults OFF, independently persisted at her
 
 One editor now serves main/child agent-file tabs, selected tab pinned; inactive files only status (no read/editor/timers). useFilePreviewAgents reads max8 child tails sequentially, 60 rows every2s, active opt-in only; never resumes runtimes. LAN preview: exact RFC1918 HTTP enabled only for web-preview, bare private IP defaults HTTP; public HTTP/malformed shorthand denied. Main-process security changes require user rebuild/restart.
 
-File explorer row menu: New File/Folder, Copy/Paste (in-app clipboard, no OS clipboard), Rename, Delete (confirmed, shell.trashItem). Mutations are root-scoped with realpath escaping rejection, validated names, copy-suffix conflicts; root rows cannot be renamed/deleted. Main-process IPC `explorer-*` requires user rebuild/restart. See lat.md/context-folder.md.
+File explorer row menu: New File/Folder, Copy/Paste (in-app + OS FileNameW clipboard, imports Explorer files, Ctrl+C/V on focused row), Rename, Delete (confirmed, shell.trashItem). Mutations are root-scoped with realpath escaping rejection, validated names, copy-suffix conflicts; root rows cannot be renamed/deleted. Main-process IPC `explorer-*` requires user rebuild/restart. See lat.md/context-folder.md.
 
 Preserve unrelated chat-search/zoom work. Commit owned changes only; do not push without confirmation. Follow `AGENTS.md` resource queue and documentation checks.
 

@@ -8,6 +8,7 @@ import {
   copyExplorerEntry,
   createExplorerEntry,
   deleteExplorerEntry,
+  importExplorerEntry,
   renameExplorerEntry,
   validateEntryName,
 } from "../src/main/file-explorer-ops";
@@ -121,5 +122,22 @@ it("copies files and folders with copy-suffix conflicts and refuses self-copy", 
   ).resolves.toMatchObject({ ok: false });
   await expect(
     copyExplorerEntry(root, join(root, "a.txt"), outside),
+  ).resolves.toMatchObject({ ok: false });
+});
+
+it("imports paths from outside the root and still guards the destination", async () => {
+  writeFileSync(join(outside, "report.txt"), "external");
+  await expect(
+    importExplorerEntry(root, join(outside, "report.txt"), join(root, "src")),
+  ).resolves.toMatchObject({ ok: true });
+  expect(readFileSync(join(root, "src", "report.txt"), "utf-8")).toBe("external");
+  await expect(
+    importExplorerEntry(root, join(outside, "report.txt"), join(root, "src")),
+  ).resolves.toMatchObject({ ok: true, path: expect.stringContaining("report copy.txt") });
+  await expect(
+    importExplorerEntry(root, join(root, "a.txt"), outside),
+  ).resolves.toMatchObject({ ok: false });
+  await expect(
+    importExplorerEntry(root, join(root, "missing.txt"), join(root)),
   ).resolves.toMatchObject({ ok: false });
 });

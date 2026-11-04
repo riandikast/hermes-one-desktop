@@ -5984,6 +5984,17 @@ body:has(.shell-vibrant),
   background: var(--bg-hover);
 }
 
+.worktree-context-menu-item:disabled {
+  opacity: 0.45;
+  background: transparent;
+  cursor: default;
+}
+
+.worktree-row:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
 .worktree-context-menu-item--danger {
   color: var(--danger, #f87171);
 }

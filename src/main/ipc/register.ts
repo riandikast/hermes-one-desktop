@@ -34,8 +34,10 @@ import {
   copyExplorerEntry,
   createExplorerEntry,
   deleteExplorerEntry,
+  importExplorerEntry,
   renameExplorerEntry,
 } from "../file-explorer-ops";
+import { readClipboardFilePaths, writeClipboardFilePaths } from "../clipboard-files";
 import { zoomBy, zoomApply } from "../zoom";
 import { listInstalledFonts } from "../system-fonts";
 import { promptApproval, type ApprovalPromptOptions } from "../gatewayPrompt";
@@ -3635,6 +3637,13 @@ export function registerIpcHandlers(context: IpcContext): void {
   );
   ipcMain.handle("explorer-copy", (_event, root: string, source: string, destination: string) =>
     copyExplorerEntry(root, source, destination),
+  );
+  ipcMain.handle("explorer-import", (_event, root: string, source: string, destination: string) =>
+    importExplorerEntry(root, source, destination),
+  );
+  ipcMain.handle("explorer-read-clipboard", () => readClipboardFilePaths());
+  ipcMain.handle("explorer-write-clipboard", (_event, paths: string[]) =>
+    writeClipboardFilePaths(paths),
   );
 
   // Open file in default application

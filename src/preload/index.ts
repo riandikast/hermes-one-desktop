@@ -1809,6 +1809,16 @@ const hermesAPI = {
     destination: string,
   ): Promise<{ ok: boolean; path?: string; error?: string }> =>
     ipcRenderer.invoke("explorer-copy", root, source, destination),
+  importExplorerEntry: (
+    root: string,
+    source: string,
+    destination: string,
+  ): Promise<{ ok: boolean; path?: string; error?: string }> =>
+    ipcRenderer.invoke("explorer-import", root, source, destination),
+  readClipboardFiles: (): Promise<string[]> =>
+    ipcRenderer.invoke("explorer-read-clipboard"),
+  writeClipboardFiles: (paths: string[]): Promise<void> =>
+    ipcRenderer.invoke("explorer-write-clipboard", paths),
   openFileInEditor: (filePath: string): Promise<boolean> =>
     ipcRenderer.invoke("open-file-in-editor", filePath),
   openTerminal: (dirPath: string): Promise<boolean> =>

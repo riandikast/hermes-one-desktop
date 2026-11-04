@@ -1347,6 +1347,13 @@ interface HermesAPI {
     source: string,
     destination: string,
   ) => Promise<{ ok: boolean; path?: string; error?: string }>;
+  importExplorerEntry: (
+    root: string,
+    source: string,
+    destination: string,
+  ) => Promise<{ ok: boolean; path?: string; error?: string }>;
+  readClipboardFiles: () => Promise<string[]>;
+  writeClipboardFiles: (paths: string[]) => Promise<void>;
   openFileInEditor: (filePath: string) => Promise<boolean>;
   openTerminal: (dirPath: string) => Promise<boolean>;
   getTerminalPreference: () => Promise<"powershell" | "cmd">;

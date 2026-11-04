@@ -28,9 +28,16 @@ const copyExplorerEntry = vi.fn(async () => ({
   ok: true,
   path: "C:/proj/src/a.ts",
 }));
+const importExplorerEntry = vi.fn(async () => ({
+  ok: true,
+  path: "C:/proj/src/report.pdf",
+}));
+const readClipboardFiles = vi.fn(async (): Promise<string[]> => []);
+const writeClipboardFiles = vi.fn(async () => undefined);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  readClipboardFiles.mockResolvedValue([]);
   Object.defineProperty(window, "hermesAPI", {
     configurable: true,
     value: {
@@ -54,6 +61,9 @@ beforeEach(() => {
       createExplorerEntry,
       deleteExplorerEntry,
       copyExplorerEntry,
+      importExplorerEntry,
+      readClipboardFiles,
+      writeClipboardFiles,
     },
   });
 });
@@ -125,6 +135,30 @@ describe("explorer file operations", () => {
         "C:/proj/a.ts",
         "C:/proj/src",
       ),
+    );
+  });
+
+  it("pastes files copied in Explorer through the OS clipboard", async () => {
+    readClipboardFiles.mockResolvedValue(["D:/Downloads/report.pdf"]);
+    renderPanel();
+    await openMenuOn("C:/proj/src");
+    const paste = await screen.findByRole("button", { name: "Paste" });
+    await waitFor(() => expect(paste).toBeEnabled());
+    fireEvent.click(paste);
+    await waitFor(() =>
+      expect(importExplorerEntry).toHaveBeenCalledWith("C:/proj", "D:/Downloads/report.pdf", "C:/proj/src"),
+    );
+  });
+
+  it("copies and pastes with Ctrl+C and Ctrl+V on a focused row", async () => {
+    renderPanel();
+    const fileRow = await screen.findByTitle("C:/proj/a.ts");
+    fireEvent.keyDown(fileRow, { key: "c", ctrlKey: true });
+    expect(writeClipboardFiles).toHaveBeenCalledWith(["C:/proj/a.ts"]);
+    const folderRow = await screen.findByTitle("C:/proj/src");
+    fireEvent.keyDown(folderRow, { key: "v", ctrlKey: true });
+    await waitFor(() =>
+      expect(copyExplorerEntry).toHaveBeenCalledWith("C:/proj", "C:/proj/a.ts", "C:/proj/src"),
     );
   });
 
