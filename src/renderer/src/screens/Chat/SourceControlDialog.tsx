@@ -847,13 +847,15 @@ export function SourceControlDialog({
       onClose={() => void terminals.requestClose()}
     >
       <div className="source-control-dialog" ref={setDialogNode}>
-        <div className="source-control-header">
+        <div className={`source-control-header${narrow ? " is-compact" : ""}`}>
           <span className="file-changes-title">
             Source Control — {repoName}
           </span>
           <button type="button" className="source-control-branch" title="Manage local branches" aria-label="Manage local branches" disabled={busy} onClick={() => setBranchesOpen(true)}>
             <GitBranch size={13} />
-            {status.branch ?? "(detached)"}
+            <span className="source-control-branch-name">
+              {status.branch ?? "(detached)"}
+            </span>
             {status.upstream && (
               <span className="source-control-branch-track">
                 {status.ahead > 0 ? `↑${status.ahead}` : ""}
@@ -863,9 +865,12 @@ export function SourceControlDialog({
             )}
           </button>
           <div className="source-control-header-actions">
-            <button type="button" className="btn-ghost btn-sm source-control-terminal-toggle" aria-expanded={terminals.visible} aria-pressed={terminals.visible} title={terminals.visible ? "Hide terminal pane (sessions keep running)" : "Show terminal pane"} onClick={terminals.toggle}>Terminal</button>
+            <div className="source-control-action-scroll">
+            <button type="button" className="btn-ghost btn-sm source-control-terminal-toggle" aria-label="Terminal" aria-expanded={terminals.visible} aria-pressed={terminals.visible} title={terminals.visible ? "Hide terminal pane (sessions keep running)" : "Show terminal pane"} onClick={terminals.toggle}>
+              Terminal
+            </button>
             {remoteHost?.toLowerCase() === "github.com" && (
-              <button type="button" className="btn-ghost btn-sm" onClick={() => { void terminals.requestClose().then((closed) => { if (closed) openSettings("github"); }); }}>
+              <button type="button" className="btn-ghost btn-sm source-control-credentials" aria-label="Manage GitHub Credentials" title="Manage GitHub Credentials" onClick={() => { void terminals.requestClose().then((closed) => { if (closed) openSettings("github"); }); }}>
                 Manage GitHub Credentials
               </button>
             )}
@@ -878,6 +883,7 @@ export function SourceControlDialog({
                 void run(() => window.hermesAPI.gitFetch(dir), "Fetched")
               }
               title="Fetch"
+              aria-label="Fetch"
             >
               Fetch
             </button>
@@ -889,6 +895,7 @@ export function SourceControlDialog({
                 void run(() => window.hermesAPI.gitPull(dir), "Pulled")
               }
               title="Pull"
+              aria-label="Pull"
             >
               Pull
             </button>
@@ -900,6 +907,7 @@ export function SourceControlDialog({
                 void run(() => window.hermesAPI.gitPush(dir), "Pushed")
               }
               title="Push"
+              aria-label="Push"
             >
               Push
             </button>
@@ -909,9 +917,11 @@ export function SourceControlDialog({
               disabled={busy}
               onClick={() => void refresh()}
               title="Refresh"
+              aria-label="Refresh"
             >
               <RefreshCw size={14} />
             </button>
+            </div>
             <button
               type="button"
               className={`btn-ghost source-control-float-toggle${floating ? " is-active" : ""}`}

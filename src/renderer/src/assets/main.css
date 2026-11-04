@@ -23991,7 +23991,64 @@ body:has(.shell-vibrant),
   gap: 4px;
   margin-left: auto;
 }
+.source-control-header-actions .btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Non-compact: the scroll wrapper is transparent so the buttons keep their
+   place in the header's own flex row. */
+.source-control-action-scroll { display: contents; }
+/* Narrow header: drop the long title, keep the branch chip short, and put the
+   actions on ONE row at the tabs' compact height. The middle actions scroll
+   horizontally (like the tab strip) while float/close stay pinned at the end,
+   so nothing wraps into the ragged multi-line block this used to become. */
+.source-control-header.is-compact {
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.source-control-header.is-compact .file-changes-title { display: none; }
+.source-control-header.is-compact .source-control-branch {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 30%;
+}
+.source-control-header.is-compact .source-control-branch-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-control-header.is-compact .source-control-header-actions {
+  flex: 1 1 0;
+  min-width: 0;
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+.source-control-header.is-compact .source-control-action-scroll {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.source-control-header.is-compact .source-control-action-scroll::-webkit-scrollbar {
+  display: none;
+}
+.source-control-header.is-compact .source-control-action-scroll .btn-ghost {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 6px 8px;
+  font-size: calc(12px * var(--font-scale));
+}
+.source-control-header.is-compact .source-control-header-actions > .btn-ghost {
+  flex: 0 0 auto;
+}
 .source-control-branch {
+  min-width: 0;
   border: 1px solid color-mix(in srgb, var(--text-primary) 32%, var(--border));
   color: var(--text-primary);
   background: color-mix(in srgb, var(--text-primary) 8%, var(--bg-primary));
@@ -24034,6 +24091,12 @@ body:has(.shell-vibrant),
 .source-control-branch-row { padding: 6px 0; flex-wrap: wrap; border-top: 1px solid var(--border); }
 .source-control-branch-row > span { flex: 1; min-width: 100px; overflow-wrap: anywhere; }
 .source-control-branches :is(input, select, button):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.source-control-branch-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .source-control-branch-track {
   color: var(--text-secondary);
 }
@@ -24359,8 +24422,14 @@ body:has(.shell-vibrant),
   padding: 0 12px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-secondary);
+  /* A very narrow panel scrolls the strip instead of clipping the last tab. */
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.source-control-tabbar::-webkit-scrollbar { display: none; }
 .source-control-tab {
+  flex: 0 0 auto;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 6px;

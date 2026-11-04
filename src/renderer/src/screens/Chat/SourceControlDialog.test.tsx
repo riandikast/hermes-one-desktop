@@ -1130,6 +1130,11 @@ describe("SourceControlDialog", () => {
     try {
       renderDialog("/repo");
       const tabs = await screen.findByRole("tablist", { name: "Changes layout" });
+      // The header actions collapse to one compact icon row, matching the tabs.
+      expect(document.querySelector(".source-control-header.is-compact")).not.toBeNull();
+      expect(screen.getByRole("button", { name: "Fetch" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Pull" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Push" })).toBeTruthy();
       const changes = within(tabs).getByRole("tab", { name: "Changes" });
       const diff = within(tabs).getByRole("tab", { name: "Diff" });
       expect(changes.getAttribute("aria-selected")).toBe("true");
