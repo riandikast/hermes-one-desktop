@@ -61,6 +61,39 @@ it("lists the available knowledge bundles and saves the defaults", async () => {
   expect(readDefaultKnowledge()).toEqual(["beta"]);
 });
 
+it("filters a 150-bundle list and keeps hidden selections", async () => {
+  const many = Array.from({ length: 150 }, (_, index) => ({
+    name: `bundle-${String(index).padStart(3, "0")}`,
+    path: `/knowledge/bundle-${index}`,
+  }));
+  const api = (
+    window as unknown as {
+      hermesAPI: { listKnowledgeBundles: ReturnType<typeof vi.fn> };
+    }
+  ).hermesAPI;
+  api.listKnowledgeBundles.mockResolvedValue(many);
+
+  render(<UtilsPane />);
+  const first = await screen.findByRole("checkbox", { name: "bundle-000" });
+  expect(screen.getAllByRole("checkbox")).toHaveLength(150);
+
+  fireEvent.click(first);
+  expect(screen.getByText("1 selected")).toBeTruthy();
+
+  const search = screen.getByRole("searchbox", {
+    name: "Search knowledge bundles",
+  });
+  fireEvent.change(search, { target: { value: "bundle-149" } });
+  expect(screen.getAllByRole("checkbox")).toHaveLength(1);
+  expect(screen.getByRole("checkbox", { name: "bundle-149" })).toBeTruthy();
+  // The hidden selection is still stored; search only narrows the view.
+  expect(readDefaultKnowledge()).toEqual(["bundle-000"]);
+
+  fireEvent.change(search, { target: { value: "nothing-matches" } });
+  expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  expect(screen.getByText(/No bundles match/)).toBeTruthy();
+});
+
 it("ships send confirmation off and persists the opt-in", () => {
   expect(readSendConfirm()).toBe(false);
   render(<UtilsPane />);

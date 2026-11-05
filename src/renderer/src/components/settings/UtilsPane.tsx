@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Wrench } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Search, Wrench } from "lucide-react";
 import { useFileAutosaveDefault } from "./fileAutosave";
 import { useSendConfirm } from "./sendConfirm";
 import { useDefaultKnowledge } from "./defaultKnowledge";
@@ -19,6 +19,17 @@ export default function UtilsPane(): React.JSX.Element {
   const [bundles, setBundles] = useState<Array<{ name: string; path: string }>>([]);
   const [bundlesLoading, setBundlesLoading] = useState(true);
   const [bundlesFailed, setBundlesFailed] = useState(false);
+  const [bundleQuery, setBundleQuery] = useState("");
+
+  const filteredBundles = useMemo(() => {
+    const query = bundleQuery.trim().toLowerCase();
+    if (!query) return bundles;
+    return bundles.filter(
+      (bundle) =>
+        bundle.name.toLowerCase().includes(query) ||
+        bundle.path.toLowerCase().includes(query),
+    );
+  }, [bundles, bundleQuery]);
 
   // Same source as the chat's Knowledge chip, so the list is always the
   // bundles that actually exist on the Knowledge page.
@@ -142,33 +153,56 @@ export default function UtilsPane(): React.JSX.Element {
                 : "Attached automatically to every new session. Existing sessions keep their own selection — toggle bundles per chat from the Knowledge chip."}
             </div>
           </div>
-          <div
-            className="settings-knowledge-list"
-            role="group"
-            aria-label="Default knowledge bundles"
-          >
-            {bundlesLoading ? (
-              <span className="settings-knowledge-empty">Loading…</span>
-            ) : bundlesFailed ? (
-              <span className="settings-knowledge-empty" role="alert">
-                Could not load knowledge bundles.
-              </span>
-            ) : bundles.length === 0 ? (
-              <span className="settings-knowledge-empty">
-                No knowledge bundles yet. Create one on the Knowledge page.
-              </span>
-            ) : (
-              bundles.map((bundle) => (
-                <label key={bundle.name} className="settings-check" title={bundle.path}>
+          <div className="settings-knowledge">
+            {!bundlesLoading && !bundlesFailed && bundles.length > 0 && (
+              <div className="settings-knowledge-toolbar">
+                <label className="settings-knowledge-search">
+                  <Search size={14} aria-hidden="true" />
                   <input
-                    type="checkbox"
-                    checked={defaultKnowledge.includes(bundle.name)}
-                    onChange={() => toggleBundle(bundle.name)}
+                    type="search"
+                    value={bundleQuery}
+                    onChange={(event) => setBundleQuery(event.target.value)}
+                    placeholder="Search bundles"
+                    aria-label="Search knowledge bundles"
                   />
-                  <span className="settings-check-text">{bundle.name}</span>
                 </label>
-              ))
+                <span className="settings-knowledge-count">
+                  {defaultKnowledge.length} selected
+                </span>
+              </div>
             )}
+            <div
+              className="settings-knowledge-list"
+              role="group"
+              aria-label="Default knowledge bundles"
+            >
+              {bundlesLoading ? (
+                <span className="settings-knowledge-empty">Loading…</span>
+              ) : bundlesFailed ? (
+                <span className="settings-knowledge-empty" role="alert">
+                  Could not load knowledge bundles.
+                </span>
+              ) : bundles.length === 0 ? (
+                <span className="settings-knowledge-empty">
+                  No knowledge bundles yet. Create one on the Knowledge page.
+                </span>
+              ) : filteredBundles.length === 0 ? (
+                <span className="settings-knowledge-empty">
+                  No bundles match “{bundleQuery.trim()}”.
+                </span>
+              ) : (
+                filteredBundles.map((bundle) => (
+                  <label key={bundle.name} className="settings-check" title={bundle.path}>
+                    <input
+                      type="checkbox"
+                      checked={defaultKnowledge.includes(bundle.name)}
+                      onChange={() => toggleBundle(bundle.name)}
+                    />
+                    <span className="settings-check-text">{bundle.name}</span>
+                  </label>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>
