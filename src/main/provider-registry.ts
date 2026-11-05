@@ -8,11 +8,14 @@
  * `setModelConfig` to write the right `base_url:` when the user picks a
  * built-in provider entry that doesn't carry a baseUrl of its own.
  *
- * Only providers whose `/v1/chat/completions` endpoint we trust are
- * listed; anything else (`custom`, `auto`, OAuth-only providers,
- * user-defined entries) falls back to caller-supplied baseUrl.
+ * Native transport selection stays backend-owned (including Anthropic/Responses).
+ * OAuth and dynamic cloud endpoints are deliberately not filled from this table.
  */
+import { OFFICIAL_DEFAULT_PROVIDERS, officialProvider } from "../shared/official-providers";
+
 export const PROVIDER_BASE_URLS: Record<string, string> = {
+  ...Object.fromEntries(OFFICIAL_DEFAULT_PROVIDERS.filter(p => p.auth === "api_key" && p.baseUrl).map(p => [p.id, p.baseUrl])),
+  // Legacy compatible endpoints remain available.
   openai: "https://api.openai.com/v1",
   openrouter: "https://openrouter.ai/api/v1",
   "ollama-cloud": "https://ollama.com/v1",
@@ -35,8 +38,8 @@ export const PROVIDER_BASE_URLS: Record<string, string> = {
   alibaba: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
   xiaomi: "https://api.xiaomimimo.com/v1",
   zai: "https://api.z.ai/api/paas/v4",
-  anthropic: "https://api.anthropic.com/v1",
-  lmstudio: "http://localhost:1234/v1",
+  anthropic: "https://api.anthropic.com",
+  lmstudio: "http://127.0.0.1:1234/v1",
   atomicchat: "http://localhost:1337/v1",
   ollama: "http://localhost:11434/v1",
   vllm: "http://localhost:8000/v1",
@@ -49,6 +52,7 @@ export const PROVIDER_BASE_URLS: Record<string, string> = {
  * `auto`, or anything user-defined).
  */
 export function canonicalProviderBaseUrl(provider: string): string | null {
+  const p = officialProvider(provider);
   const direct = PROVIDER_BASE_URLS[provider.toLowerCase()];
-  return direct ?? null;
+  return (p?.auth === "api_key" ? p.baseUrl : "") || direct || null;
 }

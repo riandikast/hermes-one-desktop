@@ -43,7 +43,7 @@ describe("provider-registry", () => {
         "https://api.openai.com/v1",
       );
       expect(canonicalProviderBaseUrl("anthropic")).toBe(
-        "https://api.anthropic.com/v1",
+        "https://api.anthropic.com",
       );
       expect(canonicalProviderBaseUrl("openrouter")).toBe(
         "https://openrouter.ai/api/v1",
@@ -55,7 +55,7 @@ describe("provider-registry", () => {
 
     it("returns default URLs for local OpenAI-compatible providers", () => {
       expect(canonicalProviderBaseUrl("lmstudio")).toBe(
-        "http://localhost:1234/v1",
+        "http://127.0.0.1:1234/v1",
       );
       expect(canonicalProviderBaseUrl("atomicchat")).toBe(
         "http://localhost:1337/v1",

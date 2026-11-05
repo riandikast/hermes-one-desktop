@@ -59,6 +59,7 @@ import { providerListSafe } from "./secrets";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 import { type Attachment, escapeXmlAttr } from "../shared/attachments";
 import { type SessionModelOverride } from "../shared/model-override";
+import { OFFICIAL_DEFAULT_PROVIDERS } from "../shared/official-providers";
 import {
   OPENAI_COMPAT_PROVIDERS,
   customProviderEnvKey,
@@ -2536,6 +2537,7 @@ function sendMessageViaCli(
   // upstream fallback chain then misroutes the request (see #260 / the
   // `pickAutoApiKeyForCustomProvider` workaround in config.ts).
   const KNOWN_API_KEYS = [
+    ...OFFICIAL_DEFAULT_PROVIDERS.flatMap(p => p.envKeys),
     "OPENROUTER_API_KEY",
     "OPENAI_API_KEY",
     "OLLAMA_API_KEY",

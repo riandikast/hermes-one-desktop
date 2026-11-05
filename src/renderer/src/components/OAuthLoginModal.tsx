@@ -7,6 +7,7 @@ interface OAuthLoginModalProps {
   providerLabel: string;
   profile?: string;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
 type Status = "running" | "success" | "error";
@@ -22,6 +23,7 @@ function OAuthLoginModal({
   providerLabel,
   profile,
   onClose,
+  onSuccess,
 }: OAuthLoginModalProps): React.JSX.Element {
   const { t } = useI18n();
   const [log, setLog] = useState("");
@@ -44,6 +46,7 @@ function OAuthLoginModal({
         .then((res) => {
           if (res.success) {
             setStatus("success");
+            onSuccess?.();
           } else {
             setStatus("error");
             setError(res.error || t("providers.oauth.failed"));
@@ -55,7 +58,7 @@ function OAuthLoginModal({
         });
     }
     return cleanup;
-  }, [provider, profile, t]);
+  }, [provider, profile, t, onSuccess]);
 
   // Keep the streamed log scrolled to the newest line.
   useEffect(() => {

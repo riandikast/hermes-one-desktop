@@ -9,6 +9,7 @@ import {
 } from "./installer";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
 import { stripAnsi } from "./utils";
+import { providerSetupError } from "./provider-support";
 
 /**
  * Provider identifiers that authenticate via an interactive OAuth flow
@@ -28,6 +29,8 @@ export const OAUTH_LOGIN_PROVIDERS = [
   "google-gemini-cli",
   "minimax-oauth",
   "nous",
+  "anthropic",
+  "openrouter",
 ] as const;
 
 export type OAuthLoginProvider = (typeof OAUTH_LOGIN_PROVIDERS)[number];
@@ -94,6 +97,11 @@ export function runHermesAuthLogin(
         success: false,
         error: `Unsupported OAuth provider: ${provider}`,
       });
+      return;
+    }
+    const compatibilityError = providerSetupError(HERMES_REPO, provider, true);
+    if (compatibilityError) {
+      resolve({ success: false, error: compatibilityError });
       return;
     }
     if (activeProc) {

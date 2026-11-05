@@ -1,3 +1,5 @@
+import { officialProvider } from "../shared/official-providers";
+
 export const PROVIDERS_WITHOUT_API_KEYS = new Set([
   "custom",
   "lmstudio",
@@ -8,5 +10,6 @@ export const PROVIDERS_WITHOUT_API_KEYS = new Set([
 ]);
 
 export function providerDoesNotNeedApiKey(provider: string): boolean {
-  return PROVIDERS_WITHOUT_API_KEYS.has(provider);
+  const auth = officialProvider(provider)?.auth;
+  return PROVIDERS_WITHOUT_API_KEYS.has(provider) || !!(auth && auth !== "api_key");
 }

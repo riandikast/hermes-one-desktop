@@ -184,6 +184,8 @@ import {
   readLogs,
   type InstallProgress,
 } from "../installer";
+import { providerSetupError } from "../provider-support";
+import { OFFICIAL_DEFAULT_PROVIDERS } from "../../shared/official-providers";
 import {
   ensureLocalDashboardCompatibility,
   inspectLocalDashboardCompatibility,
@@ -1047,6 +1049,9 @@ export function registerIpcHandlers(context: IpcContext): void {
   // OAuth provider sign-in — spawns `hermes auth add <provider> --type
   // oauth`, streaming the CLI's output to the renderer's sign-in modal.
   ipcMain.handle("oauth-login", (event, provider: string, profile?: string) => {
+    if (isRemoteMode()) {
+      return { success: false, error: "Provider OAuth is unavailable for remote/SSH connections. Sign in on the backend host instead." };
+    }
     // Codex uses a device-code flow: it prints a URL + code instead
     // of opening a browser. Watch the stream for that prompt, then
     // open the page and pre-copy the code so the user just pastes.
@@ -1199,6 +1204,12 @@ export function registerIpcHandlers(context: IpcContext): void {
         await sshSetEnvValue(conn.ssh, key, value, profile);
         return true;
       }
+      if (conn.mode === "remote") throw new Error("Remote provider credentials must be configured on the backend host.");
+      if (value && OFFICIAL_DEFAULT_PROVIDERS.some(p => p.envKeys.includes(key))) {
+        const p = OFFICIAL_DEFAULT_PROVIDERS.find(p => p.envKeys.includes(key))!;
+        const error = providerSetupError(HERMES_REPO, p.id);
+        if (error) throw new Error(error);
+      }
       setEnvValue(key, value, profile);
       // Restart gateway so it picks up the new API key.
       // The earlier condition had a precedence bug —
@@ -1337,6 +1348,8 @@ export function registerIpcHandlers(context: IpcContext): void {
           activeSshProfile(profile),
         );
       }
+      const compatibilityError = providerSetupError(HERMES_REPO, provider);
+      if (compatibilityError) throw new Error(compatibilityError);
       // Mirror the activated model's context-window override and API-protocol
       // mode (if any) into config.yaml so the gauge, the agent's
       // auto-compaction threshold, and the runtime transport all match the

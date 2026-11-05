@@ -20,6 +20,7 @@ import { ChevronDown, Search, X, Eye, EyeOff } from "lucide-react";
 import { customProviderEnvKey } from "../../../../shared/url-key-map";
 import type { HermesAccount } from "../../../../shared/account";
 import "./Providers.css";
+import { OFFICIAL_DEFAULT_PROVIDERS } from "../../../../shared/official-providers";
 
 /** Preview a stored key as prefix + dots + last 4, so a set key is recognisable
  * without exposing it. */
@@ -178,6 +179,7 @@ function Providers({
     string | undefined
   >(undefined);
   const [modelSaved, setModelSaved] = useState(false);
+  const [modelReady, setModelReady] = useState(0);
   // Active-model picker modal: pick a configured provider, then one of its
   // configured models. Sourced from the model library (models.json).
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -296,6 +298,7 @@ function Providers({
 
     requestAnimationFrame(() => {
       modelLoaded.current = true;
+      setModelReady(n => n + 1);
     });
   }, [profile]);
 
@@ -325,6 +328,7 @@ function Providers({
         mc.provider === "custom" && Boolean(mc.baseUrl?.trim());
       requestAnimationFrame(() => {
         modelLoaded.current = true;
+      setModelReady(n => n + 1);
       });
     })();
   }, [visible, profile]);
@@ -337,7 +341,7 @@ function Providers({
     // them as `custom` + base_url so the gateway accepts the config and
     // host-derives the API key.
     const configProvider =
-      modelProvider in OPENAI_COMPATIBLE_BASE_URLS ? "custom" : modelProvider;
+      modelProvider in OPENAI_COMPATIBLE_BASE_URLS && !OFFICIAL_DEFAULT_PROVIDERS.some(p => p.id === modelProvider) ? "custom" : modelProvider;
     // Don't persist an incomplete custom selection. Opening "Local / Others"
     // sets provider=custom before the user picks a preset/URL; saving custom
     // with an empty base_url would clobber config.yaml with a dead endpoint.
@@ -367,7 +371,7 @@ function Providers({
     if (!modelLoaded.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      saveModelConfig();
+      void saveModelConfig().catch(() => toast.error("Model could not be saved. Check backend support before selecting this provider."));
     }, 500);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -389,7 +393,7 @@ function Providers({
     modelLibTimer.current = setTimeout(() => {
       const displayName = modelName.split("/").pop() || modelName;
       const libProvider =
-        modelProvider in OPENAI_COMPATIBLE_BASE_URLS ? "custom" : modelProvider;
+        modelProvider in OPENAI_COMPATIBLE_BASE_URLS && !OFFICIAL_DEFAULT_PROVIDERS.some(p => p.id === modelProvider) ? "custom" : modelProvider;
       window.hermesAPI
         .addModel(
           displayName,
@@ -406,7 +410,7 @@ function Providers({
     return () => {
       if (modelLibTimer.current) clearTimeout(modelLibTimer.current);
     };
-  }, [modelProvider, modelName, modelBaseUrl, modelProviderLabel]);
+  }, [modelProvider, modelName, modelBaseUrl, modelProviderLabel, modelReady]);
 
   async function handleBlur(key: string): Promise<void> {
     // Cancel any pending debounced save for this key — the blur handler
@@ -417,7 +421,12 @@ function Providers({
       envSaveTimers.current.delete(key);
     }
     const value = env[key] || "";
-    await window.hermesAPI.setEnv(key, value, profile);
+    try {
+      await window.hermesAPI.setEnv(key, value, profile);
+    } catch {
+      toast.error("Provider key could not be saved. Check backend support and configure remote credentials on the backend host.");
+      return;
+    }
     setSavedKey(key);
     setTimeout(() => setSavedKey(null), 2000);
   }
@@ -434,7 +443,7 @@ function Providers({
     if (pending) clearTimeout(pending);
     const timer = setTimeout(() => {
       envSaveTimers.current.delete(key);
-      void window.hermesAPI.setEnv(key, value, profile);
+      void window.hermesAPI.setEnv(key, value, profile).catch(() => toast.error("Provider key could not be saved. Check backend compatibility."));
     }, 400);
     envSaveTimers.current.set(key, timer);
   }
@@ -466,7 +475,7 @@ function Providers({
     return () => {
       for (const [key, timer] of timers) {
         clearTimeout(timer);
-        void window.hermesAPI.setEnv(key, envRef.current[key] || "", profile);
+        void window.hermesAPI.setEnv(key, envRef.current[key] || "", profile).catch(() => toast.error("Provider key could not be saved."));
       }
       timers.clear();
     };
@@ -548,7 +557,7 @@ function Providers({
           : r.provider;
       if (!brand || brand === "custom" || seen.has(brand)) continue;
       seen.add(brand);
-      const compat = brand in OPENAI_COMPATIBLE_BASE_URLS;
+      const compat = r.provider === "custom";
       out.push({
         key: `brand:${brand}`,
         brand,
@@ -558,6 +567,24 @@ function Providers({
         keyEnv: f.key,
         models: byBrand.get(brand) ?? [],
       });
+    }
+    // Shared-key regional/protocol routes remain selectable independently.
+    for (const p of OFFICIAL_DEFAULT_PROVIDERS) {
+      if (seen.has(p.id) || !p.envKeys.some(isSet)) continue;
+      seen.add(p.id);
+      out.push({ key: `brand:${p.id}`, brand: p.id, label: p.name, provider: p.id,
+        baseUrl: "", keyEnv: p.envKeys.find(isSet) ?? "", models: byBrand.get(p.id) ?? [] });
+    }
+    // Retain configured OAuth/cloud/unknown provider models when no static key exists.
+    for (const [brand, models] of byBrand) {
+      if (seen.has(brand) || brand === "custom" || !models.length) continue;
+      seen.add(brand);
+      out.push({ key: `brand:${brand}`, brand, label: t(PROVIDERS.labels[brand] ?? brand),
+        provider: models[0].provider, baseUrl: models[0].baseUrl, keyEnv: "", models });
+    }
+    if (modelProvider !== "auto" && modelProvider !== "custom" && !seen.has(modelProvider)) {
+      out.push({ key: `brand:${modelProvider}`, brand: modelProvider, label: t(PROVIDERS.labels[modelProvider] ?? modelProvider),
+        provider: modelProvider, baseUrl: modelBaseUrl, keyEnv: "", models: [] });
     }
     // 2) Named custom providers whose dedicated key is set. Source labels from
     //    the desktop store (providers.json) unioned with any legacy providers
@@ -588,7 +615,7 @@ function Providers({
       });
     }
     return out;
-  }, [libModels, customProviders, env, t]);
+  }, [env, libModels, customProviders, t, modelProvider, modelBaseUrl]);
 
   const activeProvider =
     pickerProviders.find((p) => p.key === pickGroupKey) ?? null;
@@ -693,12 +720,13 @@ function Providers({
       saved.provider,
       saved.baseUrl,
     );
-    // DashScope (`alibaba`) is the one native provider with a user-chosen
+    // Preserve explicit endpoint overrides for every native/provider route.
+    // DashScope (`alibaba`) is a native provider with a user-chosen
     // base_url (mainland vs international, picked at first-run Setup).
     // Re-picking a model must not drop it to "" — the save-side canonical
     // fill would silently flip a mainland user to the intl endpoint (#825).
     const keepDashScopeUrl =
-      nextProvider === "alibaba" && modelProvider === "alibaba" && modelBaseUrl;
+      nextProvider === modelProvider && modelBaseUrl;
     setModelProvider(nextProvider);
     setModelName(saved.model);
     setModelBaseUrl(

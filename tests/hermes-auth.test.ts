@@ -42,6 +42,8 @@ vi.mock("../src/main/installer", () => ({
   getEnhancedPath: () => process.env.PATH || "",
 }));
 
+vi.mock("../src/main/provider-support", () => ({ providerSetupError: vi.fn(() => null) }));
+
 vi.mock("../src/main/process-options", () => ({
   HIDDEN_SUBPROCESS_OPTIONS: {},
 }));
@@ -147,8 +149,8 @@ describe("isOAuthLoginProvider", () => {
   });
 
   it("rejects API-key providers and unknown values", () => {
-    expect(isOAuthLoginProvider("openrouter")).toBe(false);
-    expect(isOAuthLoginProvider("anthropic")).toBe(false);
+    expect(isOAuthLoginProvider("openrouter")).toBe(true);
+    expect(isOAuthLoginProvider("anthropic")).toBe(true);
     expect(isOAuthLoginProvider("kimi-coding")).toBe(false);
     expect(isOAuthLoginProvider("")).toBe(false);
   });
@@ -161,7 +163,7 @@ describe("runHermesAuthLogin", () => {
   });
 
   it("refuses an unsupported provider without spawning", async () => {
-    const result = await runHermesAuthLogin("openrouter", () => {});
+    const result = await runHermesAuthLogin("unknown", () => {});
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/unsupported/i);
     expect(spawnSpy).not.toHaveBeenCalled();

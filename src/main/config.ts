@@ -1334,6 +1334,8 @@ export function setModelConfig(
   const effectiveBaseUrl = baseUrl || canonicalProviderBaseUrl(provider) || "";
   if (effectiveBaseUrl) {
     content = upsertBlockChild(content, "model", "base_url", effectiveBaseUrl);
+  } else {
+    content = removeBlockChild(content, "model", "base_url");
   }
 
   // Workaround for upstream gateway bug — see pickAutoApiKeyForCustomProvider.

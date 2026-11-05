@@ -31,6 +31,7 @@ import {
 // same lookup without pulling in this whole file (and triggering a
 // circular import via `model-discovery → config → ...`).
 import { PROVIDER_BASE_URLS } from "./provider-registry";
+import { OFFICIAL_DEFAULT_PROVIDERS } from "../shared/official-providers";
 
 /** Providers whose `/models` we never call — either they don't expose it,
  *  use a different protocol, or rely on OAuth credentials we can't
@@ -44,6 +45,7 @@ const NON_DISCOVERABLE_PROVIDERS = new Set<string>([
   "alibaba",
   "minimax",
   "kimi-coding",
+  ...OFFICIAL_DEFAULT_PROVIDERS.filter(p => !p.modelListing && p.id !== "lmstudio").map(p => p.id),
 ]);
 
 /** OAuth/subscription providers — no static-key `/v1/models` endpoint.

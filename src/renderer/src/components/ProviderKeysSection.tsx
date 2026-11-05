@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import type { FieldDef } from "../constants";
+import { OFFICIAL_DEFAULT_PROVIDERS, officialProvider } from "../../../shared/official-providers";
 import {
   providerKeyRank,
   providerNameForEnvKey,
@@ -246,21 +247,21 @@ function ProviderModelsManager({
   }
 
   // Derive the key-status line from live discovery. `ok` means the endpoint
-  // accepted the key and returned a model list, so "verified" is truthful;
-  // providers that don't expose /models fall back to a plain "Connected".
+  // returned a model catalog, not proof of authenticated inference;
+  // providers that do not expose /models remain explicitly unverified.
   const hasKey = !!apiKey.trim();
   const status: ProviderKeyStatus = !hasKey
     ? { tone: "muted", text: t("providers.keys.status.needsKey") }
     : discovery.status === "loading"
       ? { tone: "loading", text: t("providers.keys.status.verifying") }
       : discovery.status === "ok"
-        ? { tone: "ok", text: t("providers.keys.status.verified") }
+        ? { tone: "ok", text: "Model catalog loaded — inference not verified" }
         : discovery.status === "unsupported" ||
             discovery.status === "unknown-host"
-          ? { tone: "ok", text: t("providers.keys.status.connected") }
+          ? { tone: "muted", text: "Key saved — connection not verified" }
           : discovery.status === "error"
             ? { tone: "muted", text: t("providers.keys.status.failed") }
-            : { tone: "ok", text: t("providers.keys.status.connected") };
+            : { tone: "muted", text: "Key saved — connection not verified" };
 
   // Report status + model count up to the config-modal header (which shows the
   // verification pill + "used by N models"). Destructure to primitives so the
@@ -634,7 +635,7 @@ export function ProviderKeysSection({
   }
 
   function closeConfig(): void {
-    if (editing) void onBlur(editing.key);
+    if (editing && !(officialProvider(editing.key) ?? OFFICIAL_DEFAULT_PROVIDERS.find(p => p.envKeys.includes(editing.key)))?.setupHint) void onBlur(editing.key);
     setEditing(null);
     setReplacingKey(false);
   }
@@ -788,6 +789,14 @@ export function ProviderKeysSection({
                     </span>
                   </button>
                 ))}
+                {OFFICIAL_DEFAULT_PROVIDERS.filter(p => !p.envKeys.length && p.setupHint && p.name.toLowerCase().includes(search.toLowerCase())).map(p => (
+                  <button key={p.id} type="button" className="provider-picker-item"
+                    onClick={() => openConfig({ key: p.id, label: p.name, type: "text", hint: p.setupHint! })}>
+                    <Globe size={22} aria-hidden />
+                    <span className="provider-picker-item-body"><span className="provider-picker-item-title">{p.name}</span>
+                      <span className="provider-picker-item-hint">{p.setupHint}</span></span>
+                  </button>
+                ))}
                 {/* Custom OpenAI-compatible endpoint — offered last */}
                 <button
                   type="button"
@@ -865,7 +874,7 @@ export function ProviderKeysSection({
                 </div>
 
                 <div className="models-modal-body">
-                  <section className="provider-field-block">
+                  {(officialProvider(editing.key) ?? OFFICIAL_DEFAULT_PROVIDERS.find(p => p.envKeys.includes(editing.key)))?.setupHint ? <p className="settings-field-hint">{(officialProvider(editing.key) ?? OFFICIAL_DEFAULT_PROVIDERS.find(p => p.envKeys.includes(editing.key)))?.setupHint}</p> : <section className="provider-field-block">
                     <label className="provider-field-label">
                       {t("providers.keys.apiKeyLabel")}
                     </label>
@@ -920,15 +929,15 @@ export function ProviderKeysSection({
                       </div>
                     </div>
                     <p className="provider-field-meta">{usedByText}</p>
-                  </section>
+                  </section>}
 
-                  <ProviderModelsManager
+                  {!(officialProvider(editing.key) ?? OFFICIAL_DEFAULT_PROVIDERS.find(p => p.envKeys.includes(editing.key)))?.setupHint && <ProviderModelsManager
                     envKey={editing.key}
                     apiKey={key}
                     showStatus={false}
                     onStatusChange={setEditStatus}
                     onModelCountChange={setEditModelCount}
-                  />
+                  />}
                 </div>
 
                 <div className="models-modal-footer">

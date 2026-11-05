@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { officialProvider } from "../../../../shared/official-providers";
 import { ArrowRight, ExternalLink, Check } from "../../assets/icons";
 import { PROVIDERS, LOCAL_PRESETS, DASHSCOPE_ENDPOINTS } from "../../constants";
 import { useI18n } from "../../components/useI18n";
 import VerifyWarningBanner from "../../components/VerifyWarningBanner";
+import OAuthLoginModal from "../../components/OAuthLoginModal";
 import BrandLogo from "../../components/common/BrandLogo";
 import {
   customProviderEnvKey,
@@ -31,6 +33,8 @@ function Setup({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showKey, setShowKey] = useState(false);
+  const [oauthOpen, setOauthOpen] = useState(false);
+  const [signedIn, setSignedIn] = useState<string | null>(null);
 
   const provider = PROVIDERS.setup.find((p) => p.id === selectedProvider)!;
   const isLocal = selectedProvider === "local";
@@ -82,10 +86,20 @@ function Setup({
       return;
     }
 
+    const official = officialProvider(selectedProvider);
+    if (official?.setupHint) {
+      setError(official.setupHint);
+      return;
+    }
     setSaving(true);
     setError("");
 
     try {
+      if ((official?.oauth || selectedProvider === "google-gemini-cli") && !provider.needsKey && signedIn !== selectedProvider) {
+        setSaving(false);
+        setOauthOpen(true);
+        return;
+      }
       if (isCustom) {
         const name = customName.trim();
         const url = baseUrl.trim();
@@ -133,6 +147,8 @@ function Setup({
 
   return (
     <div className="screen setup-screen">
+      {oauthOpen && <OAuthLoginModal provider={selectedProvider} providerLabel={t(provider.name)}
+        onClose={() => setOauthOpen(false)} onSuccess={() => setSignedIn(selectedProvider)} />}
       {verifyWarning && onReinstall && onDismissVerifyWarning && (
         <VerifyWarningBanner
           onReinstall={onReinstall}
@@ -421,7 +437,7 @@ function Setup({
           ) : (
             <>
               <div className="setup-field-hint">
-                {t("setup.noApiKeyRequired", { provider: t(provider.name) })}
+                {officialProvider(provider.id)?.setupHint ?? (officialProvider(provider.id)?.oauth ? "Continue opens the official sign-in flow. Finish authorization before setup can complete." : t("setup.noApiKeyRequired", { provider: t(provider.name) }))}
               </div>
 
               <label className="setup-label" style={{ marginTop: 16 }}>

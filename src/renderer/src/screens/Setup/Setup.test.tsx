@@ -13,6 +13,9 @@ vi.mock("../../components/VerifyWarningBanner", () => ({
 
 const api = {
   setEnv: vi.fn(),
+  oauthLogin: vi.fn(),
+  cancelOAuthLogin: vi.fn(),
+  onOAuthLoginProgress: vi.fn(() => () => {}),
   upsertCustomProvider: vi.fn(),
   addModel: vi.fn(),
   setModelConfig: vi.fn(),
@@ -51,6 +54,24 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("first setup custom provider", () => {
+  it("does not complete OAuth setup before an actual successful login", async () => {
+    api.oauthLogin.mockResolvedValue({ success: false, error: "Backend OAuth unavailable" });
+    render(createElement(Setup, { onComplete: complete }));
+    fireEvent.click(screen.getByRole("button", { name: "constants.openaiCodexName" }));
+    fireEvent.click(screen.getByRole("button", { name: "setup.continue" }));
+    expect(await screen.findByText(/Backend OAuth unavailable/)).toBeVisible();
+    expect(api.setModelConfig).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+  });
+  it("shows cloud setup requirements without fake key/config writes", async () => {
+    render(createElement(Setup, { onComplete: complete }));
+    fireEvent.click(screen.getByRole("button", { name: "AWS Bedrock" }));
+    fireEvent.click(screen.getByRole("button", { name: "setup.continue" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/cloud SDK/);
+    expect(api.setEnv).not.toHaveBeenCalled();
+    expect(api.setModelConfig).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+  });
   // @lat: [[provider-setup#Provider setup#Custom provider during first setup]]
   it("persists the same named provider, key, library model and active route as Providers", async () => {
     openCustom();

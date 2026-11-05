@@ -481,6 +481,8 @@ function activeAuthFile(profile: string): string {
 // so any user configured for DeepSeek, Groq, Mistral, etc. saw the
 // "set AI provider" first-run screen even with a valid key in .env.
 // See issue #236.
+import { officialProvider } from "../shared/official-providers";
+
 const PROVIDER_ENV_KEYS: Record<string, string> = {
   openrouter: "OPENROUTER_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",
@@ -557,7 +559,8 @@ export function expectedEnvKeyForModel(
   provider: string,
   baseUrl: string,
 ): string | null {
-  const direct = PROVIDER_ENV_KEYS[provider.trim().toLowerCase()];
+  const official = officialProvider(provider);
+  const direct = PROVIDER_ENV_KEYS[provider.trim().toLowerCase()] ?? official?.envKeys[0];
   if (direct) return direct;
   for (const [pattern, envKey] of URL_TO_ENV_KEY) {
     if (pattern.test(baseUrl)) return envKey;

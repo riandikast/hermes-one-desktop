@@ -34,6 +34,8 @@ export const DEFAULT_DASHSCOPE_BASE_URL = DASHSCOPE_ENDPOINTS[0].baseUrl;
 
 // ── Providers ───────────────────────────────────────────
 
+import { OFFICIAL_DEFAULT_PROVIDERS } from "../../shared/official-providers";
+
 export const PROVIDERS = {
   // Ordered for the Providers / model-picker dropdown.  Each value must
   // match a provider name `hermes-agent` recognises (see
@@ -645,6 +647,8 @@ export function providerRouteForEnvKey(envKey: string): {
     configProvider?: string;
     baseUrl?: string;
   };
+  const official = NATIVE_ENV_KEY_ROUTES[envKey];
+  if (official) return { ...official };
   const setup = (PROVIDERS.setup as ReadonlyArray<SetupRoute>).find(
     (p) => p.envKey === envKey,
   );
@@ -656,9 +660,37 @@ export function providerRouteForEnvKey(envKey: string): {
   }
   const preset = LOCAL_PRESETS.find((p) => p.envKey === envKey);
   if (preset) return { provider: "custom", baseUrl: preset.baseUrl ?? "" };
-  const native = NATIVE_ENV_KEY_ROUTES[envKey];
-  if (native) return { ...native };
+
   return { provider: "custom", baseUrl: "" };
+}
+
+// Additive official defaults: never remove fork/custom/legacy identities.
+for (const p of OFFICIAL_DEFAULT_PROVIDERS) {
+  PROVIDERS.labels[p.id] ??= p.name;
+  if (!PROVIDERS.options.some(o => o.value === p.id)) {
+    PROVIDERS.options.splice(PROVIDERS.options.findIndex(o => o.value === "custom"), 0, { value: p.id, label: p.name });
+  }
+  if (!PROVIDER_CARDS.some(o => o.id === p.id)) {
+    PROVIDER_CARDS.splice(PROVIDER_CARDS.findIndex(o => o.id === "local"), 0, { id: p.id, name: p.name });
+  }
+  if (!PROVIDERS.setup.some(o => o.id === p.id)) {
+    PROVIDERS.setup.splice(PROVIDERS.setup.findIndex(o => o.id === "custom"), 0, {
+      id: p.id, name: p.name, desc: p.setupHint ?? p.name, tag: "",
+      envKey: p.envKeys[0] ?? "", url: p.url, placeholder: "",
+      configProvider: p.id, baseUrl: "", needsKey: p.auth === "api_key" && !!p.envKeys.length,
+    });
+  }
+  // Regional siblings share a plugin, never a key; aliases retain native routing.
+  for (const key of p.envKeys) {
+    NATIVE_ENV_KEY_ROUTES[key] ??= { provider: p.id, baseUrl: "" };
+  }
+}
+for (const p of OFFICIAL_DEFAULT_PROVIDERS.filter(p => p.oauth)) {
+  if (!OAUTH_PROVIDERS.some(o => o.id === p.id)) {
+    OAUTH_PROVIDERS.push({ id: p.id, name: `${p.name} (OAuth)`, desc: p.id === "anthropic"
+      ? "Claude subscription OAuth requires extra usage credits. API keys remain available separately."
+      : "Sign in using the provider's official browser flow." });
+  }
 }
 
 // ── Theme ───────────────────────────────────────────────
@@ -1018,6 +1050,14 @@ export const SETTINGS_SECTIONS: SectionDef[] = [
     ],
   },
 ];
+
+const llmDefaults = SETTINGS_SECTIONS.find(s => s.title === "constants.sectionLlmProviders")!;
+for (const p of OFFICIAL_DEFAULT_PROVIDERS) {
+  const key = p.envKeys[0];
+  if (key && !llmDefaults.items.some(f => f.key === key)) {
+    llmDefaults.items.push({ key, label: `${p.name} API Key`, type: "password", hint: p.url });
+  }
+}
 
 // ── Gateway Sections ────────────────────────────────────
 

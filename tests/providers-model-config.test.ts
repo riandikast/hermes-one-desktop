@@ -32,6 +32,8 @@ describe("Providers default-model save", () => {
       setModelConfig,
       isGatewayRunning: () => true,
       restartGateway,
+      providerSetupError: () => null,
+      HERMES_REPO: "fixture",
     });
     expect(await handler!(null, "custom", "new-model", "https://new.test/v1", "work")).toBe(true);
     expect(setModelConfig).toHaveBeenCalledWith("custom", "new-model", "https://new.test/v1", "work", 128000, "chat_completions");
