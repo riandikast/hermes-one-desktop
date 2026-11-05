@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { fileSummaryFooters, mergePromptFileChanges, updatePromptFileSummary } from "./fileChangeSummary";
+import { fileSummaryFooters, mergePromptFileChanges, promptFileChangeOwner, updatePromptFileSummary } from "./fileChangeSummary";
 import type { ChatMessage, FileChange } from "./types";
 
 const change = (path: string, before: string | null, after: string | null): FileChange => ({ path, before, after, beforeKnown: true });
@@ -17,6 +17,22 @@ it("upserts one stable chip per manual prompt, preserving the earliest baseline 
   expect(chips[0]).toMatchObject({ id: chipId, changes: [change("C:/repo/a.ts", "before", "after"), change("C:/repo/b.ts", null, "created")] });
   const next = updatePromptFileSummary([...final, { ...prompt, id: "u2" }], [change("C:/repo/a.ts", "after", "new turn")]);
   expect(next.filter((row) => row.kind === "file_changes")).toHaveLength(2);
+});
+
+it("requires the exact prompt's canonical owner, even for identical prompt text", () => {
+  const messages: ChatMessage[] = [prompt, { ...prompt, id: "u2", canonicalDbId: 42 }];
+  expect(promptFileChangeOwner(messages, "u1")).toBeNull();
+  expect(promptFileChangeOwner(messages, "u2")).toBe(42);
+  expect(promptFileChangeOwner([{ ...prompt, id: "db-30" }], "db-30")).toBe(30);
+  expect(promptFileChangeOwner([{ ...prompt, id: "db--30" }], "db--30")).toBeNull();
+});
+
+it("adds a late child's summary to its spawning prompt, never the current one", () => {
+  const next: ChatMessage[] = [prompt, first, { ...prompt, id: "u2", content: "no edits" }, last];
+  const updated = updatePromptFileSummary(next, [change("child", "old", "new")], "u1");
+  expect(updated.map((row) => row.id)).toEqual(["u1", "answer1", "fc-u1", "u2", "answer2"]);
+  expect(fileSummaryFooters(updated, false).filter((row) => row.kind === "file_changes")).toHaveLength(1);
+  expect(updatePromptFileSummary(next, [change("ignored", "old", "new")], "missing")).toBe(next);
 });
 
 it("keeps creation/deletion and empty-file baselines distinct from unknown snapshots", () => {

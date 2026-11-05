@@ -968,8 +968,9 @@ const hermesAPI = {
   recordSessionFileChanges: (
     sessionId: string,
     changes: unknown,
+    userMessageId?: number,
   ): Promise<boolean> =>
-    ipcRenderer.invoke("record-session-file-changes", sessionId, changes),
+    ipcRenderer.invoke("record-session-file-changes", sessionId, changes, userMessageId),
 
   getSessionContextFolder: (sessionId: string): Promise<string[]> =>
     ipcRenderer.invoke("get-session-context-folder", sessionId),

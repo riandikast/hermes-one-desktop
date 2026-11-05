@@ -180,6 +180,8 @@ export function dbItemsToChatMessages(
           {
             id: `db-${it.id}`,
             role: "user",
+            ...(it.id > 0 ? { canonicalDbId: it.id } : {}),
+            ...(it.fileChanges?.length ? { fileChanges: it.fileChanges } : {}),
             content: stripKnowledgeIndexHeader(it.content || ""),
             ...(typeof it.timestamp === "number"
               ? { timestamp: it.timestamp }
@@ -453,12 +455,16 @@ function mergeDbMetadataIntoStreamed(
     (!s.attachments || s.attachments.length === 0);
   if (
     needsAttachments ||
-    (timestamp !== undefined && timestamp !== s.timestamp)
+    (timestamp !== undefined && timestamp !== s.timestamp) ||
+    (d.canonicalDbId !== undefined && d.canonicalDbId !== s.canonicalDbId) ||
+    d.fileChanges?.length
   ) {
     return {
       ...s,
       ...(needsAttachments ? { attachments: d.attachments } : {}),
       ...(timestamp !== undefined ? { timestamp } : {}),
+      ...(d.canonicalDbId !== undefined ? { canonicalDbId: d.canonicalDbId } : {}),
+      ...(d.fileChanges?.length ? { fileChanges: d.fileChanges } : {}),
     };
   }
   return s;

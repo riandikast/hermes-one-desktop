@@ -677,6 +677,7 @@ interface HermesAPI {
           content: string;
           timestamp: number;
           attachments?: Attachment[];
+          fileChanges?: SessionHistoryPage["items"][number]["fileChanges"];
         }
       | {
           kind: "assistant";
@@ -726,9 +727,11 @@ interface HermesAPI {
     userContent: string,
   ) => Promise<boolean>;
   clearSessionLocalErrors: (sessionId: string) => Promise<boolean>;
+  /** Returns false until userMessageId identifies a stored user row in this session. */
   recordSessionFileChanges: (
     sessionId: string,
     changes: unknown,
+    userMessageId?: number,
   ) => Promise<boolean>;
   getSessionContextFolder: (sessionId: string) => Promise<string[]>;
   watchContextFolder: (folder: string) => Promise<void>;

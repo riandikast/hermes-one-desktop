@@ -10,6 +10,7 @@ import type { HistoryItem } from "./sessions";
 const TABLE = "desktop_session_continuations";
 const ERROR_TABLE = "desktop_session_local_errors";
 const FILE_CHANGES_TABLE = "desktop_session_file_changes";
+const PROMPT_FILE_CHANGES_TABLE = "desktop_prompt_file_changes";
 const SYNTHETIC_ID_BASE = -900_000_000;
 const ERROR_SYNTHETIC_ID_BASE = -800_000_000;
 
@@ -51,10 +52,12 @@ function ensureTable(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_${ERROR_TABLE}_session
       ON ${ERROR_TABLE}(session_id);
-    CREATE TABLE IF NOT EXISTS ${FILE_CHANGES_TABLE} (
-      session_id TEXT PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS ${PROMPT_FILE_CHANGES_TABLE} (
+      session_id TEXT NOT NULL,
+      user_message_id INTEGER NOT NULL,
       changes_json TEXT NOT NULL,
-      updated_at REAL NOT NULL DEFAULT (strftime('%s', 'now'))
+      updated_at REAL NOT NULL DEFAULT (strftime('%s', 'now')),
+      PRIMARY KEY (session_id, user_message_id)
     );
   `);
 }
@@ -350,64 +353,107 @@ export function loadSessionLocalErrors(
     .filter((row) => row.userContent.trim() && row.error.trim());
 }
 
-/** Persist the file-changes summary of a finished turn so the badge survives
- *  a session reopen (the live attach is renderer-memory only). */
-export function persistSessionFileChanges(
-  sessionId: string,
-  changes: unknown,
-): void {
-  if (!sessionId || !Array.isArray(changes) || changes.length === 0) return;
-  const db = getDbConnection(false);
-  if (!db) return;
-  ensureTable(db);
-  db.prepare(
-    `INSERT INTO ${FILE_CHANGES_TABLE} (session_id, changes_json, updated_at)
-     VALUES (?, ?, strftime('%s', 'now'))
-     ON CONFLICT(session_id) DO UPDATE SET
-       changes_json = excluded.changes_json,
-       updated_at = excluded.updated_at`,
-  ).run(sessionId, JSON.stringify(changes));
+function normalizeFileChanges(changes: unknown): StoredFileChange[] {
+  if (!Array.isArray(changes)) return [];
+  return changes.flatMap((change): StoredFileChange[] => {
+    if (!isRecord(change) || typeof change.path !== "string" ||
+        !change.path.trim() || change.path.includes("\0")) return [];
+    return [{
+      path: change.path,
+      before: typeof change.before === "string" ? change.before : null,
+      after: typeof change.after === "string" ? change.after : null,
+      ...(typeof change.beforeKnown === "boolean" ? { beforeKnown: change.beforeKnown } : {}),
+      ...(Array.isArray(change.removed) ? { removed: change.removed.filter((line): line is string => typeof line === "string") } : {}),
+      ...(Array.isArray(change.added) ? { added: change.added.filter((line): line is string => typeof line === "string") } : {}),
+    }];
+  });
 }
 
-/** Load the persisted file-changes summary for a session (empty when none). */
-export function loadSessionFileChanges(
-  db: Database.Database,
-  sessionId: string,
-): StoredFileChange[] {
-  if (!tableExists(db, FILE_CHANGES_TABLE)) return [];
-  const row = db
-    .prepare(
-      `SELECT changes_json FROM ${FILE_CHANGES_TABLE} WHERE session_id = ?`,
-    )
-    .get(sessionId) as { changes_json: string } | undefined;
-  if (!row?.changes_json) return [];
+function parseFileChanges(json: string): StoredFileChange[] {
   try {
-    const parsed = JSON.parse(row.changes_json);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (c): c is StoredFileChange =>
-        isRecord(c) && typeof c.path === "string" && c.path.length > 0,
-    );
+    return normalizeFileChanges(JSON.parse(json));
   } catch {
     return [];
   }
 }
 
-/** Attach a session's persisted file changes to its LAST assistant bubble so
- *  a reopened transcript shows the same badge as the live one. */
+/** Merge only within one explicit prompt; retain its first known baseline. */
+function mergeFileChanges(previous: StoredFileChange[], latest: StoredFileChange[]): StoredFileChange[] {
+  const merged = new Map<string, StoredFileChange>();
+  for (const change of [...previous, ...latest]) {
+    const key = change.path.replace(/\//g, "\\").toLowerCase();
+    const first = merged.get(key);
+    merged.set(key, first ? {
+      ...change,
+      path: first.path,
+      before: first.before !== null || first.beforeKnown ? first.before : change.before,
+      beforeKnown: first.beforeKnown || change.beforeKnown,
+      removed: first.removed ?? change.removed,
+    } : change);
+  }
+  return [...merged.values()];
+}
+
+/** Missing/unverified owners are never assigned to the latest turn. */
+export function persistSessionFileChanges(
+  sessionId: string,
+  changes: unknown,
+  userMessageId?: number,
+): boolean {
+  if (typeof sessionId !== "string" || !sessionId || typeof userMessageId !== "number" ||
+      !Number.isSafeInteger(userMessageId) || userMessageId <= 0) return false;
+  const normalized = normalizeFileChanges(changes);
+  if (!normalized.length) return false;
+  const db = getDbConnection(false);
+  if (!db) return false;
+  const owner = db.prepare(
+    "SELECT 1 FROM messages WHERE session_id = ? AND id = ? AND role = 'user'",
+  ).get(sessionId, userMessageId);
+  if (!owner) return false;
+  ensureTable(db);
+  db.transaction(() => {
+    const row = db.prepare(
+      `SELECT changes_json FROM ${PROMPT_FILE_CHANGES_TABLE} WHERE session_id = ? AND user_message_id = ?`,
+    ).get(sessionId, userMessageId) as { changes_json: string } | undefined;
+    const merged = mergeFileChanges(row ? parseFileChanges(row.changes_json) : [], normalized);
+    db.prepare(
+      `INSERT INTO ${PROMPT_FILE_CHANGES_TABLE} (session_id, user_message_id, changes_json, updated_at)
+       VALUES (?, ?, ?, strftime('%s', 'now'))
+       ON CONFLICT(session_id, user_message_id) DO UPDATE SET
+         changes_json = excluded.changes_json,
+         updated_at = excluded.updated_at`,
+    ).run(sessionId, userMessageId, JSON.stringify(merged));
+  })();
+  return true;
+}
+
+/** Legacy session-latest rows have no provable owner; deliberately ignore them. */
+export function loadSessionFileChanges(
+  db: Database.Database,
+  sessionId: string,
+  userMessageIds?: ReadonlyArray<number>,
+): Map<number, StoredFileChange[]> {
+  const changes = new Map<number, StoredFileChange[]>();
+  if (userMessageIds?.length === 0) return changes;
+  if (!tableExists(db, PROMPT_FILE_CHANGES_TABLE)) return changes;
+  const rows = db.prepare(
+    `SELECT f.user_message_id, f.changes_json FROM ${PROMPT_FILE_CHANGES_TABLE} f
+     JOIN messages m ON m.id = f.user_message_id AND m.session_id = f.session_id AND m.role = 'user'
+     WHERE f.session_id = ?${userMessageIds ? " AND f.user_message_id IN (SELECT value FROM json_each(?))" : ""}`,
+  ).all(sessionId, ...(userMessageIds ? [JSON.stringify(userMessageIds)] : [])) as Array<{ user_message_id: number; changes_json: string }>;
+  for (const row of rows) changes.set(row.user_message_id, parseFileChanges(row.changes_json));
+  return changes;
+}
+
+/** Attach to the owning user row, even when its answer is on another page. */
 export function attachSessionFileChanges(
   items: ReadonlyArray<HistoryItem>,
-  changes: ReadonlyArray<StoredFileChange>,
+  changes: ReadonlyMap<number, StoredFileChange[]>,
 ): HistoryItem[] {
-  if (changes.length === 0) return [...items];
-  for (let i = items.length - 1; i >= 0; i--) {
-    const item = items[i];
-    if (item.kind !== "assistant") continue;
-    const output = items.slice();
-    output[i] = { ...item, fileChanges: [...changes] };
-    return output;
-  }
-  return [...items];
+  return items.map((item) => {
+    const snapshots = item.kind === "user" ? changes.get(item.id) : undefined;
+    return snapshots?.length ? { ...item, fileChanges: [...snapshots] } : item;
+  });
 }
 
 export function continuationItemsToHistory(
@@ -491,5 +537,10 @@ export function deleteSessionContinuationForSession(
     db.prepare(`DELETE FROM ${ERROR_TABLE} WHERE session_id = ?`).run(
       sessionId,
     );
+  }
+  for (const table of [FILE_CHANGES_TABLE, PROMPT_FILE_CHANGES_TABLE]) {
+    if (tableExists(db, table)) {
+      db.prepare(`DELETE FROM ${table} WHERE session_id = ?`).run(sessionId);
+    }
   }
 }

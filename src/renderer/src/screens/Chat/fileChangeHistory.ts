@@ -39,7 +39,7 @@ export function groupFileChangeHistory(
         beforeKnown: false,
       });
     }
-    for (const row of rows) {
+    for (const row of [prompt, ...rows]) {
       const snapshots =
         row.kind === "file_changes"
           ? row.changes
@@ -89,10 +89,12 @@ export function mergeFileChangeHistory(
   const appended: FileChangeTurn[] = [];
   for (let i = liveTurns.length - 1; i >= 0; i--) {
     const turn = liveTurns[i];
+    const canonicalId = turn.prompt.canonicalDbId;
     let index = turns.findIndex(
-      (candidate, j) => !used.has(j) && candidate.prompt.id === turn.prompt.id,
+      (candidate, j) => !used.has(j) && (candidate.prompt.id === turn.prompt.id ||
+        (canonicalId !== undefined && (candidate.prompt.canonicalDbId === canonicalId || candidate.prompt.id === `db-${canonicalId}`))),
     );
-    if (index < 0) {
+    if (index < 0 && canonicalId === undefined) {
       for (let j = turns.length - 1; j >= 0; j--) {
         if (!used.has(j) && turns[j].prompt.content === turn.prompt.content) {
           index = j;
@@ -125,7 +127,7 @@ export function mergeFileChangeHistory(
 export async function loadFileChangeHistory(
   sessionId: string,
 ): Promise<ChatMessage[]> {
-  // Full public history API includes continuation and the latest local snapshot overlay.
+  // Public history includes continuation and snapshots on their canonical owning prompts.
   const items: DbHistoryItem[] =
     await window.hermesAPI.getSessionMessages(sessionId);
   const messages = dbItemsToChatMessages(items);

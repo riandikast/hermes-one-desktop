@@ -33,6 +33,22 @@ it("repairs streamed file paths from canonical tool rows while retaining React i
   ]);
 });
 
+it("adopts canonical prompt ids and archived snapshots without replacing React identities", () => {
+  const changes = [{ path: "C:/repo/a", before: "old", after: "new", beforeKnown: true }];
+  const live: ChatMessage[] = [
+    { id: "local-send-1", role: "user", content: "repeat" },
+    { id: "live-answer", role: "agent", content: "done" },
+  ];
+  const canonical = dbItemsToChatMessages([
+    { id: 10, kind: "user", content: "repeat", fileChanges: changes },
+    { id: 11, kind: "assistant", content: "done" },
+  ]);
+  expect(reconcileStreamedWithDb(live, canonical)).toMatchObject([
+    { id: "local-send-1", canonicalDbId: 10, fileChanges: changes },
+    { id: "live-answer" },
+  ]);
+});
+
 describe("dbTailShowsLiveTurnDone", () => {
   const user = (id: string, content: string): ChatMessage => ({
     id,

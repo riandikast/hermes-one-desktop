@@ -2346,10 +2346,8 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(
     "record-session-file-changes",
-    (_event, sessionId: string, changes: unknown) => {
-      persistSessionFileChanges(sessionId, changes);
-      return true;
-    },
+    (_event, sessionId: string, changes: unknown, userMessageId?: number) =>
+      persistSessionFileChanges(sessionId, changes, userMessageId),
   );
 
   // Per-session linked working folders (issue #27): a desktop-only binding

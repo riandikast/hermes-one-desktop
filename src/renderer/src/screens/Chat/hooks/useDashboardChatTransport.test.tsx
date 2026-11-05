@@ -22,6 +22,7 @@ import {
 } from "./useDashboardChatTransport";
 import type { ActiveTurn, ChatMessage, UsageState } from "../types";
 import { FileChangeHistoryDialog } from "../FileChangeHistoryDialog";
+import { groupFileChangeHistory } from "../fileChangeHistory";
 import { MessageRow } from "../MessageRow";
 import { reconcileTailAfterDbRefresh } from "../sessionHistory";
 import { explicitModelLimit } from "../providerRetry";
@@ -760,6 +761,9 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
     const api: HarnessApi = {};
     renderWithI18n(<Harness api={api} history />);
     await act(async () => { await api.send?.("edit multiple files"); });
+    await act(async () => {
+      api.setMessages?.((rows) => rows.map((row) => row.role === "user" && row.content === "edit multiple files" ? { ...row, canonicalDbId: 41 } : row));
+    });
     const paths = ["C:/Unity Project/Assets/A.cs", "C:/Unity Project/Assets/B.cs"];
     await act(async () => {
       dashboardMock.onEvent?.({ type: "tool.start", session_id: "live", payload: {
@@ -770,14 +774,14 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
         result: shape === "result" ? JSON.stringify({ success: true, files_modified: paths }) : "ok",
         ...(shape === "top-level" ? { files_modified: paths } : {}),
       } });
-      dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text: "done" } });
+      dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text: "done", persisted_turn: { user_row_id: 41, submission_id: api.messages?.findLast((row) => row.role === "user")?.id } } });
     });
     expect(api.messages?.filter((row) => row.kind === "file_changes")).toMatchObject([
       { changes: paths.map((path) => ({ path, before: null, after: null })) },
     ]);
     expect(document.querySelector(".file-change-history-count")?.textContent).toContain("2");
     expect(window.hermesAPI.recordSessionFileChanges).toHaveBeenLastCalledWith(
-      "stored", paths.map((path) => expect.objectContaining({ path })),
+      "stored", paths.map((path) => expect.objectContaining({ path })), 41,
     );
   });
 
@@ -817,6 +821,9 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
     const api: HarnessApi = {};
     render(<Harness api={api} />);
     await act(async () => { await api.send?.("edit files"); });
+    await act(async () => {
+      api.setMessages?.((rows) => rows.map((row) => row.role === "user" && row.content === "edit files" ? { ...row, canonicalDbId: 41 } : row));
+    });
     const edit = async (path: string, before: string, after: string, id: string): Promise<void> => {
       await act(async () => {
         dashboardMock.onEvent?.({ type: "tool.start", session_id: "live", payload: { name: "patch", tool_id: id, args: { path, old_string: before, new_string: after } } });
@@ -824,7 +831,7 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
       });
     };
     const finish = async (text: string): Promise<void> => {
-      await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text } }); });
+      await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text, persisted_turn: { user_row_id: 41, submission_id: api.messages?.findLast((row) => row.role === "user")?.id } } }); });
     };
     await edit("C:/repo/a.ts", "before", "middle", "p1");
     await finish("interim answer");
@@ -854,11 +861,101 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
     expect(window.hermesAPI.recordSessionFileChanges).toHaveBeenLastCalledWith("stored", expect.arrayContaining([
       expect.objectContaining({ path: "C:/repo/a.ts", before: "before", after: "after" }),
       expect.objectContaining({ path: "C:/repo/b.ts" }),
-    ]));
+    ]), 41);
     await act(async () => { await api.send?.("new manual request"); });
     await edit("C:/repo/a.ts", "after", "next", "p4");
     await finish("next answer");
     expect(api.messages?.filter((row) => row.kind === "file_changes")).toHaveLength(2);
+  });
+
+  it("collects real child edits under the spawning prompt even after a later no-edit prompt", async () => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      return {};
+    });
+    let release!: (page: { items: unknown[]; hasMore: boolean; oldestId: number; newestId: number }) => void;
+    const read = vi.fn(() => new Promise((resolve) => { release = resolve; }));
+    Object.assign(window.hermesAPI, { getSessionMessagesBefore: read, recordSessionFileChanges: vi.fn(async () => true) });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} />);
+    await act(async () => { await api.send?.("edit via child"); });
+    expect(dashboardMock.request).toHaveBeenCalledWith("prompt.submit", { session_id: "live", text: "edit via child" });
+    const spawnedPromptId = api.messages?.findLast((row) => row.role === "user")?.id;
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "subagent.start", session_id: "live", payload: {
+        subagent_id: "child", child_session_id: "child-session",
+      } });
+      dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: {
+        text: "child working", persisted_turn: { user_row_id: 51, submission_id: api.messages?.findLast((row) => row.role === "user")?.id },
+      } });
+    });
+    await act(async () => {
+      api.setMessages?.((rows) => reconcileTailAfterDbRefresh(rows, dbItemsToChatMessages([
+        { kind: "user", id: 51, content: "edit via child" },
+      ]), { lastSyncedDbId: 0 }));
+    });
+    expect(api.messages?.find((row) => row.role === "user" && row.content === "edit via child")).toMatchObject({ id: spawnedPromptId, canonicalDbId: 51 });
+    await act(async () => { await api.send?.("no edits here"); });
+    await act(async () => {
+      release({ items: [
+        { id: 100, kind: "tool_call", callId: "actual", name: "patch", args: JSON.stringify({ path: "C:/repo/child.ts", old_string: "before", new_string: "after" }) },
+        { id: 101, kind: "tool_result", callId: "actual", name: "patch", content: "{}" },
+      ], hasMore: false, oldestId: 100, newestId: 101 });
+    });
+    expect(read).toHaveBeenCalledWith("child-session", undefined, 100);
+    expect(groupFileChangeHistory(api.messages ?? []).map((turn) => ({ id: turn.prompt.id, owner: turn.prompt.canonicalDbId, changes: turn.changes }))).toMatchObject([
+      { owner: 51, changes: [{ path: "C:/repo/child.ts" }] },
+    ]);
+    expect(window.hermesAPI.recordSessionFileChanges).toHaveBeenLastCalledWith(
+      "stored", [expect.objectContaining({ path: "C:/repo/child.ts", before: "before", after: "after" })], 51,
+    );
+    const turns = groupFileChangeHistory(api.messages ?? [], true);
+    expect(turns.map((turn) => [turn.prompt.content, turn.changes.length])).toEqual([
+      ["bad provider turn", 0], ["edit via child", 1], ["no edits here", 0],
+    ]);
+    view.unmount();
+  });
+
+  it("defers snapshots until the exact prompt gets a canonical row, not a later no-edit prompt", async () => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      return {};
+    });
+    Object.assign(window.hermesAPI, {
+      readFile: vi.fn(async () => ({ content: "after" })),
+      recordSessionFileChanges: vi.fn(async () => true),
+    });
+    const api: HarnessApi = {};
+    render(<Harness api={api} />);
+    await act(async () => { await api.send?.("repeat"); });
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "tool.complete", session_id: "live", payload: {
+        name: "patch", tool_id: "owned", args: { path: "C:/repo/a.ts", old_string: "before", new_string: "after" }, result: "{}",
+      } });
+      dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: {
+        text: "edited", persisted_turn: { user_row_id: 999, submission_id: "older-submission" },
+      } });
+      expect(api.messages?.findLast((row) => row.role === "user")).not.toHaveProperty("canonicalDbId");
+    });
+    expect(window.hermesAPI.recordSessionFileChanges).not.toHaveBeenCalled();
+    const promptId = api.messages?.findLast((row) => row.role === "user")?.id;
+    await act(async () => {
+      api.setMessages?.((rows) => rows.map((row) => row.id === promptId
+        ? { ...row, canonicalDbId: 51 } : row));
+    });
+    expect(window.hermesAPI.recordSessionFileChanges).toHaveBeenLastCalledWith(
+      "stored", [expect.objectContaining({ path: "C:/repo/a.ts" })], 51,
+    );
+    const saves = vi.mocked(window.hermesAPI.recordSessionFileChanges).mock.calls.length;
+    await act(async () => { await api.send?.("repeat"); });
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: {
+        text: "no edits", persisted_turn: { user_row_id: 61 },
+      } });
+    });
+    expect(window.hermesAPI.recordSessionFileChanges).toHaveBeenCalledTimes(saves);
   });
 
   it("discards a slow interim finalize when streaming resumes before its read finishes", async () => {

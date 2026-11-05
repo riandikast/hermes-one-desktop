@@ -117,7 +117,7 @@ describe("desktop session continuations", () => {
     ]);
   });
 
-  it("attaches persisted file changes to the LAST assistant bubble", () => {
+  it("attaches persisted file changes only to their canonical owning user row", () => {
     const items = [
       { kind: "user" as const, id: 1, content: "deploy", timestamp: 1 },
       {
@@ -138,21 +138,22 @@ describe("desktop session continuations", () => {
     ];
     const changes = [{ path: "C:\\repo\\a.txt", before: "x", after: "y" }];
 
-    const attached = attachSessionFileChanges(items, changes);
+    const attached = attachSessionFileChanges(items, new Map([[1, changes]]));
 
-    // Badge lands on the LAST assistant bubble (id 4), not the earlier one.
-    expect(attached[3]).toMatchObject({
-      kind: "assistant",
-      content: "final",
+    expect(attached[0]).toMatchObject({
+      kind: "user",
+      content: "deploy",
       fileChanges: changes,
     });
     expect(attached[1]).not.toHaveProperty("fileChanges");
+    expect(attached[2]).not.toHaveProperty("fileChanges");
+    expect(attached[3]).not.toHaveProperty("fileChanges");
   });
 
   it("leaves items unchanged when there are no persisted file changes", () => {
     const items = [
       { kind: "assistant" as const, id: 1, content: "ok", timestamp: 1 },
     ];
-    expect(attachSessionFileChanges(items, [])).toEqual(items);
+    expect(attachSessionFileChanges(items, new Map())).toEqual(items);
   });
 });

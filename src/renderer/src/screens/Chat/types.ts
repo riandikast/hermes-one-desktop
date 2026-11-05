@@ -39,6 +39,8 @@ export interface ChatBubbleMessage {
   localOnly?: boolean;
   /** Renderer-local turn identity used to anchor local failures. */
   turnId?: string;
+  /** Canonical DB identity, retained separately from the stable React id. */
+  canonicalDbId?: number;
   /** Epoch-ms the message was recorded; surfaced as a hover timestamp. */
   timestamp?: number;
   /** Renderer-only progress row while a slash command is executing. */

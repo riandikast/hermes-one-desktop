@@ -10,7 +10,8 @@ import {
   normalizeMessageText,
 } from "../chatMessages";
 import { isAutoInjectedPrompt } from "../autoPrompts";
-import { lastManualPromptIndex, updatePromptFileSummary } from "../fileChangeSummary";
+import { lastManualPromptIndex, mergePromptFileChanges, promptFileChangeOwner, updatePromptFileSummary } from "../fileChangeSummary";
+import { ChildFileChangeCollector } from "../childFileChanges";
 import {
   applyDashboardStreamEvent,
   type DashboardStreamEvent,
@@ -1359,6 +1360,61 @@ export function useDashboardChatTransport({
   const landedFilePathsRef = useRef<Set<string>>(new Set());
   // Only the latest finalize may publish; resumed work invalidates async reads.
   const fileChangesRevisionRef = useRef(0);
+
+  // A completion can precede canonical DB reconciliation. Keep each prompt's
+  // save separate until its exact user row id arrives; never save to "latest".
+  const pendingFileArchivesRef = useRef(new Map<string, { sessionId: string; changes: FileChange[] }>());
+  const archiveWriteRef = useRef<Promise<void>>(Promise.resolve());
+  const flushFileArchives = useCallback((): void => {
+    archiveWriteRef.current = archiveWriteRef.current.catch(() => undefined).then(async () => {
+      const record = window.hermesAPI.recordSessionFileChanges;
+      if (!dashboardShouldPersistLocalOverlays(connectionMode) || typeof record !== "function") return;
+      for (const [promptId, pending] of pendingFileArchivesRef.current) {
+        if (pending.sessionId !== storedSessionIdRef.current) continue;
+        const owner = promptFileChangeOwner(messagesRef.current, promptId);
+        if (owner === null) continue;
+        try {
+          const saved = await record(pending.sessionId, pending.changes, owner);
+          if (saved && pendingFileArchivesRef.current.get(promptId) === pending) {
+            pendingFileArchivesRef.current.delete(promptId);
+          }
+        } catch {
+          // Retry on the next canonical reconciliation; no unowned fallback.
+        }
+      }
+    });
+  }, [connectionMode]);
+  useEffect(() => {
+    if (pendingFileArchivesRef.current.size) flushFileArchives();
+  }, [messages, flushFileArchives]);
+  const childFileCollectorRef = useRef<ChildFileChangeCollector | null>(null);
+  useEffect(() => {
+    if (!enabled || connectionMode !== "local") return;
+    const collector = new ChildFileChangeCollector(
+      (childId, beforeId, limit) => window.hermesAPI.getSessionMessagesBefore(childId, beforeId, limit),
+      (owner, changes) => {
+        if (owner.sessionId !== storedSessionIdRef.current) return;
+        const next = updatePromptFileSummary(messagesRef.current, changes, owner.promptId);
+        if (next === messagesRef.current) return;
+        messagesRef.current = next;
+        setMessages(next);
+        const ownerIndex = next.findIndex((row) => row.id === owner.promptId);
+        const cumulative = next.slice(ownerIndex + 1).find((row) => row.kind === "file_changes");
+        const previous = pendingFileArchivesRef.current.get(owner.promptId);
+        pendingFileArchivesRef.current.set(owner.promptId, {
+          sessionId: owner.sessionId,
+          changes: cumulative?.kind === "file_changes" ? cumulative.changes
+            : mergePromptFileChanges(previous?.changes ?? [], changes),
+        });
+        flushFileArchives();
+      },
+    );
+    childFileCollectorRef.current = collector;
+    return () => {
+      collector.dispose();
+      if (childFileCollectorRef.current === collector) childFileCollectorRef.current = null;
+    };
+  }, [enabled, connectionMode, hermesSessionId, flushFileArchives, setMessages]);
   // Working-tree snapshot taken at TURN START (path → status|after). At
   // finalize the current tree is compared against it so ONLY files the agent
   // actually modified THIS turn are reported — files that were already dirty
@@ -1655,6 +1711,8 @@ export function useDashboardChatTransport({
     const revision = ++fileChangesRevisionRef.current;
     const generation = sendGenerationRef.current;
     const turnMessages = messagesRef.current;
+    const prompt = turnMessages[lastManualPromptIndex(turnMessages)];
+    if (!prompt) return;
     const storedSessionId = storedSessionIdRef.current;
     const captured = Array.from(fileChangesRef.current.values()).filter((change) => landedFilePathsRef.current.has(normalizePathKey(change.path)));
     console.info("[file-changes] captured", {
@@ -1738,16 +1796,12 @@ export function useDashboardChatTransport({
       setMessages(next);
       const summary = next.at(-1);
       const cumulative = summary?.kind === "file_changes" ? summary.changes : changes;
-      const record = window.hermesAPI.recordSessionFileChanges;
-      if (
-        dashboardShouldPersistLocalOverlays(connectionMode) &&
-        storedSessionId &&
-        typeof record === "function"
-      ) {
-        void record(storedSessionId, cumulative).catch(() => undefined);
+      if (dashboardShouldPersistLocalOverlays(connectionMode) && storedSessionId) {
+        pendingFileArchivesRef.current.set(prompt.id, { sessionId: storedSessionId, changes: cumulative });
+        flushFileArchives();
       }
     })().catch(() => undefined);
-  }, [connectionMode, contextFolder, setMessages]);
+  }, [connectionMode, contextFolder, setMessages, flushFileArchives]);
 
   const resetQuietFinalize = useCallback((): void => {
     clearQuietFinalize();
@@ -1891,6 +1945,10 @@ export function useDashboardChatTransport({
   const handleGatewayEvent = useCallback(
     (event: DashboardStreamEvent): void => {
       if (event.type.startsWith("subagent.")) {
+        const prompt = messagesRef.current[lastManualPromptIndex(messagesRef.current)];
+        const sessionId = storedSessionIdRef.current;
+        childFileCollectorRef.current?.event(event, runtimeSessionIdRef.current,
+          prompt && sessionId ? { sessionId, promptId: prompt.id } : null);
         onSubagentEvent(event);
         return;
       }
@@ -2472,6 +2530,9 @@ export function useDashboardChatTransport({
           }
         }
         const activeTurn = activeTurnRef.current;
+        // Snapshot owners come from canonical DB reconciliation. This gateway's
+        // prompt.submit contract cannot correlate arbitrary completion receipts
+        // to our submission, so never assign a row id from "latest" completion.
         if (activeTurn) activeTurn.status = failed ? "failed" : "completed";
         activeTurnRef.current = null;
         // A knowledge toggle made DURING this turn was latched; apply it now
@@ -3582,11 +3643,12 @@ export function useDashboardChatTransport({
       const optimisticUser: ChatMessage | null = isRecovery
         ? null
         : {
-            id: `local-send-${Date.now()}`,
+            id: `local-send-${Date.now()}-${sendGeneration}`,
             role: "user",
             content: text,
             ...(attachments?.length ? { attachments } : {}),
           };
+
       if (optimisticUser) {
         messagesRef.current = [
           ...clearStaleTurnErrors(messagesRef.current),

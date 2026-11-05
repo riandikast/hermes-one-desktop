@@ -5,7 +5,7 @@ import {
   loadFileChangeHistory,
   mergeFileChangeHistory,
 } from "./fileChangeHistory";
-import type { ChatMessage, FileChange } from "./types";
+import type { ChatBubbleMessage, ChatMessage, FileChange } from "./types";
 import chatSource from "./Chat.tsx?raw";
 
 const change: FileChange = {
@@ -13,7 +13,7 @@ const change: FileChange = {
   before: "old",
   after: "new",
 };
-const user = (id: string, content: string): ChatMessage => ({
+const user = (id: string, content: string): ChatBubbleMessage => ({
   id,
   role: "user",
   content,
@@ -37,6 +37,15 @@ const edits = (id: string, path: string): ChatMessage[] => [
   },
 ];
 describe("file change history", () => {
+  it("restores snapshots from owning prompts and matches canonical ids before repeated text", () => {
+    const first: ChatMessage = { ...user("db-1", "same"), canonicalDbId: 1, fileChanges: [change] };
+    const second = user("db-3", "same");
+    expect(groupFileChangeHistory([first, second]).map((turn) => turn.prompt.id)).toEqual(["db-1"]);
+    const live: ChatMessage = { ...user("local", "same"), canonicalDbId: 1, fileChanges: [{ ...change, after: "continued" }] };
+    expect(mergeFileChangeHistory([first, second], [live])).toMatchObject([
+      { prompt: { id: "db-1" }, changes: [{ after: "continued" }] },
+    ]);
+  });
   // @lat: [[file-changes#Per-prompt model answer]]
   it("keeps only each manual turn's final answer, not progress, tools, reasoning or notices", () => {
     const turns = groupFileChangeHistory([

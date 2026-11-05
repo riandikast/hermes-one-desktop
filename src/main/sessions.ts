@@ -21,6 +21,7 @@ import {
   loadSessionFileChanges,
   loadSessionLocalErrors,
   mergeSessionLocalErrors,
+  type StoredFileChange,
 } from "./session-continuation-store";
 import { deleteSessionContextFolderForSession } from "./session-context-folder-store";
 import { deleteSessionModelOverrideForSession } from "./session-model-override-store";
@@ -68,6 +69,8 @@ export type HistoryItem =
       content: string;
       timestamp: number;
       attachments?: Attachment[];
+      /** Snapshots owned by this canonical prompt, independent of answer pages. */
+      fileChanges?: StoredFileChange[];
     }
   | {
       kind: "assistant";
@@ -862,10 +865,8 @@ export function getSessionMessages(
 /**
  * One backward page of history: the rows just before `beforeId`, oldest-first.
  *
- * Session-level overlays (continuation items, local errors, file-change chips)
- * are deliberately NOT applied here: they are prepended once when the session
- * opens, and re-applying them per page would duplicate them in the transcript.
- * A page is raw stored history.
+ * Prompt-owned overlays apply only to rows on this page. The continuation
+ * prefix is prepended only on the oldest page.
  */
 export function getSessionMessagesBefore(
   sessionId: string,
@@ -906,8 +907,8 @@ export function getSessionMessagesBefore(
   //  - local errors are matched only against rows in THIS page (an error whose
   //    prompt lives on an older page appears when that page loads, not pinned
   //    to the bottom of the window now);
-  //  - the file-change chip belongs to the newest assistant turn, so it is
-  //    attached only on the newest page (beforeId === 0);
+  //  - snapshots attach only to their canonical user row, including when its
+  //    answer lies on a separate page;
   //  - the continuation prefix sits above every stored row, so it is prepended
   //    only once the OLDEST page has been reached (hasMore === false).
   // Unmatched historical errors must never be replayed as new tail rows.
@@ -916,10 +917,9 @@ export function getSessionMessagesBefore(
     loadSessionLocalErrors(db, sessionId),
     { appendUnmatched: false },
   );
-  const withChanges =
-    beforeId > 0
-      ? withErrors
-      : attachSessionFileChanges(withErrors, loadSessionFileChanges(db, sessionId));
+  const withChanges = attachSessionFileChanges(withErrors, loadSessionFileChanges(
+    db, sessionId, withErrors.filter((item) => item.kind === "user").map((item) => item.id),
+  ));
   const items = hasMore
     ? withChanges
     : [...loadSessionContinuationItems(db, sessionId), ...withChanges];
@@ -961,7 +961,7 @@ export function applySessionLocalOverlays(
   );
   const withFileChanges = attachSessionFileChanges(
     withLocalErrors,
-    loadSessionFileChanges(db, sessionId),
+    loadSessionFileChanges(db, sessionId, withLocalErrors.filter((item) => item.kind === "user").map((item) => item.id)),
   );
   return [...loadSessionContinuationItems(db, sessionId), ...withFileChanges];
 }
