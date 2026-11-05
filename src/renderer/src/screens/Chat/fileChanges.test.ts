@@ -277,6 +277,39 @@ describe("changedFilesFromToolRows", () => {
     expect(changedFilesFromToolRows(messages, 1)).toEqual([]);
   });
 
+  it("retains every authoritative path from a namespaced multi-file patch result", () => {
+    const messages = [
+      toolCall("functions.patch", "batch", "Friendly patch label"),
+      toolResult("batch", JSON.stringify({ success: true, files_modified: [
+        "C:/Unity Project/Assets/A.cs", "C:/Unity Project/Assets/B.cs",
+        "c:\\Unity Project\\Assets\\A.cs",
+      ] })),
+    ];
+    expect(changedFilesFromToolRows(messages, 0)).toEqual([
+      "C:/Unity Project/Assets/A.cs", "C:/Unity Project/Assets/B.cs",
+    ]);
+  });
+
+  it("uses structured arguments behind friendly labels and accepts extensionless files", () => {
+    const messages = [
+      { ...toolCall("functions.write_file", "write", "Writing Dockerfile"),
+        filePreviewArgs: JSON.stringify({ path: "Dockerfile" }) },
+      toolResult("write", JSON.stringify({ verified: true })),
+      toolCall("apply_patch", "patch", ""),
+      toolResult("patch", JSON.stringify({ success: true, files_modified: ["src/my file.ts", "README"] })),
+    ];
+    expect(changedFilesFromToolRows(messages, 0, "C:/repo")).toEqual([
+      "C:/repo/Dockerfile", "C:/repo/src/my file.ts", "C:/repo/README",
+    ]);
+  });
+
+  it("does not infer edits from unsuccessful results without an error string", () => {
+    expect(changedFilesFromToolRows([
+      toolCall("patch", "failed", JSON.stringify({ path: "/repo/a.ts" })),
+      toolResult("failed", JSON.stringify({ success: false })),
+    ], 0)).toEqual([]);
+  });
+
   it("dedupes case-insensitively across path forms", () => {
     const messages = [
       toolCall("patch", "c1", ""),

@@ -14,10 +14,11 @@ import { lastManualPromptIndex, updatePromptFileSummary } from "../fileChangeSum
 import {
   applyDashboardStreamEvent,
   type DashboardStreamEvent,
-  WRITE_TOOL_NAMES,
 } from "../dashboardEventAdapter";
 import {
   extractToolPath,
+  fileEditPaths,
+  isFileEditTool,
   changedFilesFromToolRows,
   normalizePathKey,
 } from "../fileChanges";
@@ -1171,7 +1172,7 @@ export function dashboardContinuationItemsFromTranscript(
         kind: "tool_call",
         callId: message.callId,
         name: message.name,
-        args: message.args,
+        args: message.filePreviewArgs || message.args,
       });
       continue;
     }
@@ -1354,6 +1355,8 @@ export function useDashboardChatTransport({
   // Per-manual-prompt capture: earliest before/latest after, retained through
   // automatic continuations and published as one cumulative footer.
   const fileChangesRef = useRef<Map<string, FileChange>>(new Map());
+  // Before-snapshots are provisional until the matching edit actually lands.
+  const landedFilePathsRef = useRef<Set<string>>(new Set());
   // Only the latest finalize may publish; resumed work invalidates async reads.
   const fileChangesRevisionRef = useRef(0);
   // Working-tree snapshot taken at TURN START (path → status|after). At
@@ -1644,19 +1647,16 @@ export function useDashboardChatTransport({
   // FOREIGN-TURN liveness is handled by the active_list poller (see the
   // foreign-turn watcher effect below).
 
-  // Per-turn file-changes summary: merge the tool-event capture (paths from
-  // write tools) with git working-tree detection (authoritative — catches
-  // terminal writes and missed tools; before-content from the HEAD blob),
-  // push a renderer-only `file_changes` chip row into the transcript (its own
-  // row — independent of the answer bubble, so a missing answer can never
-  // swallow the badge), and persist for reopen. Runs at message.complete and
-  // the quiet-finalize recovery path.
+  // Per-prompt summary: merge landed tool snapshots with transcript results.
+  // Git working-tree detection is disabled; do not attribute unrelated dirty
+  // files or command side effects. Keep a dedicated chip, independent of the
+  // answer bubble, and persist the latest snapshots for reopen.
   const finalizeFileChanges = useCallback((): void => {
     const revision = ++fileChangesRevisionRef.current;
     const generation = sendGenerationRef.current;
     const turnMessages = messagesRef.current;
     const storedSessionId = storedSessionIdRef.current;
-    const captured = Array.from(fileChangesRef.current.values());
+    const captured = Array.from(fileChangesRef.current.values()).filter((change) => landedFilePathsRef.current.has(normalizePathKey(change.path)));
     console.info("[file-changes] captured", {
       toolPaths: captured.map((c) => c.path),
     });
@@ -1729,9 +1729,9 @@ export function useDashboardChatTransport({
         }
       }
 
-      const changes = Array.from(byPath.values()).filter(
-        (c) => c.after !== null || c.before !== null,
-      );
+      // A landed edit is still a change when deleted, remote, unreadable or
+      // too large to snapshot. Content availability must not hide its path.
+      const changes = Array.from(byPath.values());
       if (generation !== sendGenerationRef.current || revision !== fileChangesRevisionRef.current || !changes.length) return;
       const next = updatePromptFileSummary(messagesRef.current, changes);
       messagesRef.current = next;
@@ -2120,7 +2120,7 @@ export function useDashboardChatTransport({
           "function_name",
           "tool_name",
         ).toLowerCase();
-        const matched = WRITE_TOOL_NAMES.some((w) => toolName.includes(w));
+        const matched = isFileEditTool(toolName);
         if (matched) {
           // The path may live in a nested args/context field, OR at the top
           // level of the payload itself (some gateways put `path` directly on
@@ -2263,7 +2263,7 @@ export function useDashboardChatTransport({
           "function_name",
           "tool_name",
         ).toLowerCase();
-        const matched = WRITE_TOOL_NAMES.some((w) => toolName.includes(w));
+        const matched = isFileEditTool(toolName);
 
         // Patch-style tools carry the exact hunk — at the payload TOP LEVEL
         // for some gateways ({mode, path, old_string, new_string}) or nested
@@ -2299,6 +2299,7 @@ export function useDashboardChatTransport({
         const capturePath = (path: string): void => {
           const capture = fileChangesRef.current;
           const key = normalizePathKey(path);
+          landedFilePathsRef.current.add(key);
           const existing = capture.get(key);
           if (existing) {
             if (removed || added) {
@@ -2355,7 +2356,7 @@ export function useDashboardChatTransport({
               const index = messagesRef.current.findLastIndex((row) => row.kind === "tool_result");
               if (index >= 0) {
                 const updated = messagesRef.current.map((row, i) => i === index
-                  ? { ...row, fileChanges: Array.from(capture.values()) } : row);
+                  ? { ...row, fileChanges: Array.from(capture.values()).filter((change) => landedFilePathsRef.current.has(normalizePathKey(change.path))) } : row);
                 messagesRef.current = updated;
                 setMessages(updated);
               }
@@ -2363,32 +2364,19 @@ export function useDashboardChatTransport({
             .catch(() => undefined);
         };
 
-        // Authoritative: the tool's own files_modified list — never guesses.
-        // ONLY for file-edit tools (matched): terminal/process tools report
-        // files written by SUBPROCESSES (game logs, build artifacts) that the
-        // agent never edited — the "godot.log edited" false positives.
-        const filesModified =
-          matched && Array.isArray(toolPayload.files_modified)
-            ? toolPayload.files_modified.filter(
-                (p): p is string => typeof p === "string",
-              )
-            : [];
-        for (const p of filesModified) capturePath(p);
-
-        // Fallback: name match + path extraction (nested args OR the payload
-        // top level, where some gateways put `path` directly).
-        if (matched && filesModified.length === 0) {
-          const args =
-            (toolPayload.args as unknown) ??
-            toolPayload.input ??
-            toolPayload.arguments;
-          const path =
-            extractToolPath(args, lastSyncedCwdRef.current ?? contextFolder) ??
-            extractToolPath(
-              toolPayload,
-              lastSyncedCwdRef.current ?? contextFolder,
-            );
-          if (path) capturePath(path);
+        // The gateway puts tool metadata inside result/output (often JSON),
+        // not on the event itself. Recover every landed path with the same
+        // parser used by stored history; never scan serialized arrays as text.
+        if (matched && !toolPayload.error && toolPayload.status !== "failed") {
+          const callId = payloadText(toolPayload, "tool_id", "tool_call_id", "callId", "id");
+          const call = messagesRef.current.findLast((row) => row.kind === "tool_call" && row.callId === callId);
+          const args = toolPayload.args ?? toolPayload.input ?? toolPayload.arguments ??
+            (call?.kind === "tool_call" ? call.filePreviewArgs || call.args : undefined) ?? toolPayload;
+          const result = Array.isArray(toolPayload.files_modified)
+            ? toolPayload : toolPayload.result ?? toolPayload.result_text ?? toolPayload.output ?? toolPayload.content ?? toolPayload;
+          for (const path of fileEditPaths(toolName, result, args, lastSyncedCwdRef.current ?? contextFolder)) {
+            capturePath(path);
+          }
         }
       }
 
@@ -2423,7 +2411,7 @@ export function useDashboardChatTransport({
       if (event.type === "tool.complete" && fileChangesRef.current.size) {
         const index = nextMessages.findLastIndex((row) => row.kind === "tool_result");
         if (index >= 0) nextMessages = nextMessages.map((row, i) => i === index
-          ? { ...row, fileChanges: Array.from(fileChangesRef.current.values()) } : row);
+          ? { ...row, fileChanges: Array.from(fileChangesRef.current.values()).filter((change) => landedFilePathsRef.current.has(normalizePathKey(change.path))) } : row);
       }
       messagesRef.current = nextMessages;
       setMessages(nextMessages);
@@ -3545,6 +3533,7 @@ export function useDashboardChatTransport({
       fileChangesRevisionRef.current++;
       if (!isRecovery && !isAutoInjectedPrompt(text) && !pendingClarifyRequestIdRef.current) {
         fileChangesRef.current = new Map();
+        landedFilePathsRef.current = new Set();
       }
       // Fresh turn, fresh recovery budget.
       quietFinalizeErrorsRef.current = 0;

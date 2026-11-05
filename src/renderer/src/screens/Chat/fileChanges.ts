@@ -24,29 +24,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function looksLikeAbsolutePath(candidate: string): boolean {
-  const trimmed = candidate.trim();
-  if (!trimmed) return false;
-  // Windows drive letter (C:\...) or POSIX absolute (/...). Reject
-  // whitespace/quotes so "my file path" or JSON noise don't match. The
-  // POSIX branch is ANCHORED (^/) — an unanchored /(?!\/) matched any slash
-  // anywhere, so "src/a.js" was wrongly treated as absolute.
-  if (/[\s"']/.test(trimmed)) return false;
-  return /^[A-Za-z]:[\\/]|^\//.test(trimmed);
-}
 
-/** A relative file-ish path: no whitespace/quotes, not absolute, and shaped
- *  like a path (contains a separator, or starts with ./ ..\ ../ etc.) or a
- *  bare filename (has an extension, or the key was an explicit path key). */
-function looksLikeRelativePath(candidate: string): boolean {
-  const trimmed = candidate.trim();
-  if (!trimmed) return false;
-  if (/[\s"']/.test(trimmed)) return false;
-  if (looksLikeAbsolutePath(trimmed)) return false;
-  if (/^\.{1,2}[\\/]/.test(trimmed)) return true;
-  if (/[\\/]/.test(trimmed)) return true;
-  return /\.[^\\/]+$/.test(trimmed);
-}
 
 function joinPath(base: string, rel: string): string {
   const sep = base.includes("\\") ? "\\" : "/";
@@ -130,19 +108,14 @@ export function extractToolPath(
       const value = args[key];
       if (typeof value !== "string") continue;
       const trimmed = value.trim();
-      if (looksLikeAbsolutePath(trimmed)) {
+      // Explicit path fields are not shell tokens: spaces and extensionless
+      // filenames are valid. Never truncate them with the description scanner.
+      if (!trimmed || [...trimmed].some((char) => char.charCodeAt(0) < 32) ||
+          (/^[a-z][a-z\d+.-]*:/i.test(trimmed) && !/^[a-z]:[\\/]/i.test(trimmed))) continue;
+      if (/^(?:[a-z]:[\\/]|\/|\\\\)/i.test(trimmed)) {
         return normalizePath(trimmed);
       }
-      if (baseDir && looksLikeRelativePath(trimmed)) {
-        relativePath = normalizePath(joinPath(baseDir, trimmed));
-        continue;
-      }
-      // Non-git / empty-folder case: baseDir is null but `path: "src/foo.ts"`
-      // is still a real edit. Return the relative as-is so the non-git
-      // transcript fallback doesn't silently drop every relative edit.
-      if (!baseDir && looksLikeRelativePath(trimmed)) {
-        relativePath = normalizePath(trimmed);
-      }
+      relativePath = normalizePath(baseDir ? joinPath(baseDir, trimmed) : trimmed);
     }
     if (relativePath) return relativePath;
     try {
@@ -185,14 +158,53 @@ export interface DiffLine {
   text: string;
 }
 
-/** File-edit tools whose results count as changes — the OFFICIAL desktop's
- *  FILE_EDIT_TOOL_NAMES semantics ({ edit_file, patch, write_file }): only
- *  the agent's explicit edits count; command executors never do. */
+/** Explicit file mutations only; shell/build side effects are not agent edits. */
 export const FILE_EDIT_TOOL_NAMES = new Set([
-  "edit_file",
-  "patch",
-  "write_file",
+  "edit_file", "patch", "write_file", "patch_file", "create_file",
+  "delete_file", "move_file", "copy_file", "rename_file", "apply_patch",
+  "str_replace", "save_file", "edit", "replace", "remove", "update",
 ]);
+
+export function isFileEditTool(name: string): boolean {
+  return FILE_EDIT_TOOL_NAMES.has(name.toLowerCase().split(/\.|__/).at(-1) ?? "");
+}
+
+function resultRecord(value: unknown): Record<string, unknown> | null {
+  if (isRecord(value)) return value;
+  if (typeof value !== "string") return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Read all landed paths, never just the first path in a serialized batch result. */
+export function fileEditPaths(
+  name: string,
+  result: unknown,
+  args?: unknown,
+  baseDir?: string | null,
+): string[] {
+  if (!isFileEditTool(name)) return [];
+  const record = resultRecord(result);
+  if (record && (record.error || record.success === false || record.ok === false || record.status === "failed")) return [];
+  if (record && Array.isArray(record.files_modified)) {
+    const paths = record.files_modified.flatMap((path) => {
+      const resolved = typeof path === "string" ? extractToolPath({ path }, baseDir) : null;
+      return resolved ? [resolved] : [];
+    });
+    const unique = new Map<string, string>();
+    for (const path of paths) {
+      const key = normalizePathKey(path);
+      if (!unique.has(key)) unique.set(key, path);
+    }
+    return [...unique.values()];
+  }
+  const path = extractToolPath(record ?? result, baseDir) ?? extractToolPath(args, baseDir);
+  return path ? [path] : [];
+}
 
 /** Case-insensitive, separator-normalized key for deduping change rows: the
  *  stream capture, the transcript derivation and the git diff can report the
@@ -215,6 +227,7 @@ export function changedFilesFromToolRows(
     callId?: string;
     name?: string;
     args?: string;
+    filePreviewArgs?: string;
     content?: string;
     status?: string;
   }>,
@@ -223,36 +236,28 @@ export function changedFilesFromToolRows(
 ): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
+  const results = new Map<string, string>();
+  for (let i = startIndex; i < messages.length; i++) {
+    const row = messages[i];
+    if (row.kind === "tool_result" && row.callId && !results.has(row.callId)) {
+      results.set(row.callId, row.content ?? "");
+    }
+  }
   for (let i = startIndex; i < messages.length; i++) {
     const msg = messages[i];
     if (!msg || msg.kind !== "tool_call") continue;
     const name = String(msg.name ?? "").toLowerCase();
-    if (!FILE_EDIT_TOOL_NAMES.has(name)) continue;
+    if (!isFileEditTool(name)) continue;
     if (msg.status === "failed") continue;
-    // Pair with the result row; a missing result means the edit never settled.
-    let resultContent: string | null = null;
-    for (let j = i + 1; j < messages.length; j++) {
-      const r = messages[j];
-      if (!r || r.kind !== "tool_result" || r.callId !== msg.callId) continue;
-      resultContent = r.content ?? null;
-      break;
+    // Pair once by stable call id; keep footer derivation linear in history size.
+    const resultContent = msg.callId ? results.get(msg.callId) : undefined;
+    if (resultContent === undefined) continue;
+    for (const path of fileEditPaths(name, resultContent, msg.filePreviewArgs || msg.args || "", baseDir)) {
+      const key = normalizePathKey(path);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(path);
     }
-    if (resultContent === null) continue;
-    // A failed edit carries an error in the result JSON and no landed path.
-    try {
-      const parsed = JSON.parse(resultContent) as { error?: unknown };
-      if (parsed && typeof parsed === "object" && parsed.error) continue;
-    } catch {
-      /* raw text result — fine */
-    }
-    const path =
-      extractToolPath(resultContent, baseDir) ??
-      extractToolPath(msg.args ?? "", baseDir);
-    if (!path) continue;
-    const key = normalizePathKey(path);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(path);
   }
   return out;
 }

@@ -1,5 +1,6 @@
 import type { ChatToolEvent } from "../../../../shared/chat-stream";
 import { isLossyChunkCopy } from "./lossyText";
+import { extractToolPath, isFileEditTool } from "./fileChanges";
 import { markReasoningSettled } from "./reasoningStall";
 import type {
   ActiveTurn,
@@ -19,31 +20,7 @@ export interface DashboardEventState {
   reasoningSegmentClosed: boolean;
 }
 
-/** Tool names that EDIT files — captured for the file-changes summary.
- *  Matches the official desktop's FILE_EDIT_TOOL_NAMES semantics (edit_file |
- *  patch | write_file): only file-edit tools count as changes. Command
- *  executors (terminal/process/bash/exec/run_command/…) are deliberately
- *  EXCLUDED — their `files_modified` reports subprocess side effects (game
- *  logs, build artifacts) the agent never edited, which produced the false
- *  "godot.log edited" chips. */
-export const WRITE_TOOL_NAMES = [
-  "write_file",
-  "edit_file",
-  "patch_file",
-  "create_file",
-  "delete_file",
-  "move_file",
-  "copy_file",
-  "rename_file",
-  "apply_patch",
-  "str_replace",
-  "save_file",
-  "patch",
-  "edit",
-  "replace",
-  "remove",
-  "update",
-];
+
 
 interface ApplyDashboardEventOptions {
   activeTurn?: ActiveTurn | null;
@@ -143,6 +120,7 @@ function resultFromPayload(payload: unknown): string {
   if (!isRecord(payload)) return "";
   const result =
     stableStringify(payload.result) ||
+    stableStringify(payload.result_text) ||
     stableStringify(payload.output) ||
     stableStringify(payload.content) ||
     textFromPayload(payload, "text");
@@ -153,7 +131,7 @@ function resultFromPayload(payload: unknown): string {
 
 function payloadToolName(payload: unknown): string {
   if (!isRecord(payload)) return "";
-  return textFromPayload(payload, "name", "tool", "function", "function_name");
+  return textFromPayload(payload, "name", "tool", "function", "function_name", "tool_name");
 }
 
 function isClarifyToolEvent(event: DashboardStreamEvent): boolean {
@@ -260,7 +238,7 @@ type PreviewToolEvent = ChatToolEvent & { filePreviewArgs?: string };
 function toolEventFromGatewayEvent(event: DashboardStreamEvent): PreviewToolEvent {
   const payload = isRecord(event.payload) ? event.payload : {};
   const name =
-    textFromPayload(payload, "name", "tool", "function", "function_name") ||
+    textFromPayload(payload, "name", "tool", "function", "function_name", "tool_name") ||
     "tool";
   const callId =
     textFromPayload(payload, "tool_id", "tool_call_id", "callId", "id") ||
@@ -272,9 +250,13 @@ function toolEventFromGatewayEvent(event: DashboardStreamEvent): PreviewToolEven
   const result = complete ? resultFromPayload(payload) : "";
   // Labels often replace args in the UI. Preserve structured file-tool payloads
   // separately so previewing never parses a human label as source code.
-  const fileArgs = /(?:^|__)(?:read_file|readfile|write_file|writefile|patch|patch_file|apply_patch|edit_file)$/.test(name)
+  let fileArgs = isFileEditTool(name) || /(?:^|[.]|__)(?:read_file|readfile|writefile)$/i.test(name)
     ? stableStringify(payload.args ?? payload.input ?? payload.arguments ??
         (payload.path || payload.file_path || payload.patch ? payload : undefined)) : "";
+  if (fileArgs.length > 256 * 1024) {
+    const path = extractToolPath(fileArgs);
+    fileArgs = path ? JSON.stringify({ path }) : "";
+  }
 
   return {
     callId,

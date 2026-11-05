@@ -15,6 +15,39 @@ it("preserves canonical reasoning.delta verbatim, including status-like words", 
   expect((state.messages[0] as { text: string }).text).toBe("Thinking... analyzing... don't see any visible thinking done");
 });
 
+it("retains namespaced edit arguments behind friendly tool labels", () => {
+  const args = { path: "C:/Unity Project/Dockerfile", content: "FROM scratch" };
+  const state = applyDashboardStreamEvent({ messages: [], reasoningSegmentClosed: false }, {
+    type: "tool.start", payload: {
+      name: "functions.create_file", tool_id: "create", context: "Creating a file", args,
+    },
+  });
+  expect(state.messages[0]).toMatchObject({
+    kind: "tool_call", args: "Creating a file", filePreviewArgs: JSON.stringify(args),
+  });
+});
+
+it("accepts tool_name and result_text aliases without losing landed paths", () => {
+  const result = JSON.stringify({ success: true, files_modified: ["C:/repo/a.ts", "C:/repo/b.ts"] });
+  const state = applyDashboardStreamEvent({ messages: [], reasoningSegmentClosed: false }, {
+    type: "tool.complete", payload: { tool_name: "patch", tool_id: "alias", result_text: result },
+  });
+  expect(state.messages).toMatchObject([
+    { kind: "tool_call", name: "patch", callId: "alias" },
+    { kind: "tool_result", name: "patch", content: result },
+  ]);
+});
+
+it("keeps path metadata when oversized write arguments cannot be retained", () => {
+  const state = applyDashboardStreamEvent({ messages: [], reasoningSegmentClosed: false }, {
+    type: "tool.start", payload: {
+      name: "write_file", tool_id: "large", context: "Writing a large file",
+      args: { path: "C:/repo/Dockerfile", content: "x".repeat(300 * 1024) },
+    },
+  });
+  expect(state.messages[0]).toMatchObject({ filePreviewArgs: JSON.stringify({ path: "C:/repo/Dockerfile" }) });
+});
+
 describe("mergeStreamedWithFinal", () => {
   it("uses final when nothing was streamed (remote / suppressed-delta path)", () => {
     expect(mergeStreamedWithFinal("", "Final answer")).toBe("Final answer");

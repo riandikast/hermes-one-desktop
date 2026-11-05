@@ -1,42 +1,24 @@
 # File-changes summary
 
-Assistant turns that modify files show a "N files changed" badge on the
-response bubble; clicking opens a dialog with a side-by-side before/after diff.
+Completed file-edit tools produce a cumulative “N files changed” chip per manual prompt. Clicking it opens the recorded paths and available before/after snapshots.
 
-[[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts]] captures
-per-turn changes live from the tool stream: on `tool.start` of a write tool
-(`WRITE_TOOL_NAMES` in the dashboard event adapter), [[src/renderer/src/screens/Chat/fileChanges.ts#extractToolPath]]
-pulls the target path from the tool args and the file is snapshotted before;
-on `tool.complete` the after-content is read. The accumulated
-`{ path, before, after }` list is attached to the assistant message
-(`fileChanges` on `ChatBubbleMessage`) at `message.complete`. [[src/renderer/src/screens/Chat/MessageRow.tsx]]
-renders the badge; [[src/renderer/src/screens/Chat/FileChangesDialog.tsx]]
-shows the list + side-by-side read-only CodeMirror panes.
+[[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts]] captures provisional baselines on `tool.start` and confirms landed paths on `tool.complete`. [[src/renderer/src/screens/Chat/fileChanges.ts#isFileEditTool]] is shared by live capture, structured argument retention, and transcript derivation; bare, dotted and double-underscore namespaced edit tools use the same allowlist.
 
-[[src/renderer/src/screens/Chat/fileChanges.ts#extractToolPath]] also resolves
-RELATIVE path keys (`path: "config.yaml"`) against the session cwd
-(`lastSyncedCwdRef` / context folder) — many tools invoke write tools with
-relative paths, which the old absolute-only matcher silently missed. The
-absolute-check regex is anchored (`^/`), so `src/a.js`-style values are no
-longer misread as absolute.
+[[src/renderer/src/screens/Chat/fileChanges.ts#fileEditPaths]] parses JSON tool results and collects every `files_modified` entry before falling back to result/argument paths. Paths in explicit fields preserve spaces and extensionless filenames; relative paths resolve against the session cwd when available. Structured arguments take precedence over friendly tool labels. DB reconciliation repairs incomplete edit arguments/results without changing React IDs, and recovery serialization retains structured arguments. The adapter accepts `tool_name`/`result_text` aliases and preserves path-only metadata when full arguments exceed its size cap. Failed results and command-executor side effects are excluded. Working-tree Git detection remains disabled; unrelated dirty files and build logs are not attributed to the agent.
 
-The summary is a dedicated `file_changes` transcript row, independent of the answer bubble. Both `message.complete` and quiet-finalize upsert the same manual prompt summary rather than freezing the first interim snapshot. Detection is hybrid and TURN-SCOPED: the tool-event capture merges with [[src/main/git.ts#getGitWorkingTreeChanges]], but git is only authoritative for what CHANGED DURING THE TURN — the transport snapshots the working tree at send time (`gitSnapshotRef`, keyed by `status|content` via [[src/renderer/src/screens/Chat/fileChanges.ts#gitSnapshotKey]]) and at finalize [[src/renderer/src/screens/Chat/fileChanges.ts#gitChangedDuringTurn]] excludes every entry identical to the snapshot. So files that were already dirty BEFORE the turn (pre-existing edits, line-ending churn) or only READ never appear as "changed by the agent" — `git status --porcelain` alone lists the whole dirty tree and falsely attributed them. Git is never initialized on the user's folder (mutating their workspace is bad practice). Terminal-like tools only count a path in the command as a change candidate when the command actually WRITES (`>`/`>>`, `cp`, `mv`, `sed -i`, `touch`, `git add`, …) — a read-only `grep godot.log` no longer registers the game log (which keeps being written) as "edited by the model". Tool capture also reads the payload TOP LEVEL (some gateways put `path`/`old_string`/`new_string` directly on the tool payload, e.g. a bare `Patch` tool with `{mode, path, old_string, new_string}`) and, most authoritatively, the tool's own `files_modified` array — the exact changed paths, no path guessing needed. Files over 2MB are skipped. The summary is PERSISTED so it survives reopen: at `message.complete` the
-transport calls `recordSessionFileChanges` (preload → main
-`persistSessionFileChanges` in [[src/main/session-continuation-store.ts]]),
-stored per session in the local `desktop_session_file_changes` table.
-[[src/main/sessions.ts#applySessionLocalOverlays]] re-attaches the stored
-changes to the LAST assistant `HistoryItem` of the session on load, and
-`dbItemsToChatMessages` copies them onto the reopened bubble — same badge,
-live or reopened.
+A landed path stays listed even if snapshots cannot be read, including deleted or unavailable files. Missing content means unavailable diff, not an absent edit. Only successful completions publish provisional baselines, so failed patches do not become false changes.
 
-Capture is dashboard-transport only — the legacy transport's progress strings
-don't carry reliable paths. Reads are best-effort; failures are swallowed.
+The latest cumulative snapshots persist via `recordSessionFileChanges` and [[src/main/session-continuation-store.ts#persistSessionFileChanges]] in `desktop_session_file_changes`. [[src/main/sessions.ts#applySessionLocalOverlays]] restores that session-latest overlay. Older prompt chips and the history dialog recover paths from stored tool calls/results; historical full-content snapshots are not a per-prompt archive. The legacy overlay has no owning prompt ID and still attaches to the latest assistant answer; it can therefore be stale after a later no-edit prompt. Correct historical snapshot ownership requires a separate persistence change, not merging unrelated prompts. No schema change or Git initialization is performed.
+
+Capture is dashboard-transport only. Shell edits, nested `execute_code` operations without structured child edit events, and child-agent edits absent from the parent's transcript are not inferred from arbitrary stdout. Snapshot reads remain best-effort.
+
+Regressions: [[src/renderer/src/screens/Chat/fileChanges.test.ts]], [[src/renderer/src/screens/Chat/dashboardEventAdapter.test.ts]], and [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.test.tsx]] cover multi-file results, namespaced edits, spaced/extensionless paths, friendly labels, missing snapshots, failed edits and persistence.
 
 ## Cumulative prompt footer
 
 Each manual user prompt owns one cumulative summary. Runtime-injected continuations and automatic recovery keep the earliest before-content and latest after-content; a new manual prompt starts a separate summary.
 
-[[src/renderer/src/screens/Chat/fileChangeSummary.ts#updatePromptFileSummary]] reuses the existing chip ID and merges normalized paths without mutating historical snapshots. [[src/renderer/src/screens/Chat/fileChangeSummary.ts#fileSummaryFooters]] moves summaries below their prompt's latest response for display, including legacy assistant overlays; only the active prompt's footer is hidden while generating. Tool-result snapshots remain available to the file-history dialog throughout streaming.
+[[src/renderer/src/screens/Chat/fileChangeSummary.ts#updatePromptFileSummary]] reuses the existing chip ID and merges normalized paths without mutating historical snapshots. [[src/renderer/src/screens/Chat/fileChangeSummary.ts#fileSummaryFooters]] moves summaries below their prompt's latest response for display, including legacy assistant overlays and tool-result snapshots; only the active prompt's footer is hidden while generating. Missing chip paths are recovered from each prompt's landed tool results using the same parser as history. Tool-result pairing is linear in transcript size, and history remains available throughout streaming.
 
 The transport retains capture through interim completions and recovery, invalidates stale async finalizers when work resumes, and persists each cumulative update with the existing overlay API. Stream resumption after an interim completion restores loading immediately. Existing persistence remains session-scoped (latest overlay); no DB schema or older history storage changes.
 

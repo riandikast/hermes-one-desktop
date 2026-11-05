@@ -1,4 +1,5 @@
 import { originalKnowledgePrompt } from "../../../../shared/knowledge-envelope";
+import { isFileEditTool } from "./fileChanges";
 import type { Attachment } from "../../../../shared/attachments";
 import {
   isAssistantError,
@@ -430,7 +431,14 @@ function mergeDbMetadataIntoStreamed(
   streamed: ChatMessage,
   db: ChatMessage,
 ): ChatMessage {
-  // Only bubble messages carry mergeable metadata.
+  // Friendly live labels and truncated outputs must not block canonical DB
+  // repair. Keep the React identity/status and live snapshots, adopt edit data.
+  if (streamed.kind === "tool_call" && db.kind === "tool_call" && isFileEditTool(db.name)) {
+    return { ...streamed, filePreviewArgs: db.filePreviewArgs || db.args || streamed.filePreviewArgs };
+  }
+  if (streamed.kind === "tool_result" && db.kind === "tool_result" && isFileEditTool(db.name || streamed.name)) {
+    return { ...streamed, content: db.content || streamed.content };
+  }
   if (!isBubbleMessage(streamed)) return streamed;
   const s = streamed as ChatBubbleMessage;
   const d = db as ChatBubbleMessage;

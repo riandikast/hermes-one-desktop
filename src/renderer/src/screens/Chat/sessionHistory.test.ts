@@ -5,6 +5,7 @@ import {
   dbTailShowsLiveTurnDone,
   hasPendingToolInTail,
   preserveLocalAssistantErrors,
+  reconcileStreamedWithDb,
   type DbHistoryItem,
 } from "./sessionHistory";
 import type { ChatMessage } from "./types";
@@ -14,6 +15,24 @@ import type { ChatMessage } from "./types";
 // ending early deletes the just-sent user message and resurrects the previous
 // answer. Since the read is now cursor-scoped (only the un-reconciled tail),
 // the guard decides from the tail plus the live transcript.
+it("repairs streamed file paths from canonical tool rows while retaining React identities", () => {
+  const paths = ["C:/repo/a.ts", "C:/repo/b.ts"];
+  const args = JSON.stringify({ path: paths[0] });
+  const result = JSON.stringify({ success: true, files_modified: paths });
+  const live: ChatMessage[] = [
+    { id: "live-call", kind: "tool_call", role: "agent", callId: "edit", name: "patch", args: "Updating files", status: "completed" },
+    { id: "live-result", kind: "tool_result", role: "agent", callId: "edit", name: "patch", content: "Done" },
+  ];
+  const db: ChatMessage[] = [
+    { ...live[0], id: "db-call", args },
+    { ...live[1], id: "db-result", content: result },
+  ] as ChatMessage[];
+  expect(reconcileStreamedWithDb(live, db)).toMatchObject([
+    { id: "live-call", filePreviewArgs: args, status: "completed" },
+    { id: "live-result", content: result },
+  ]);
+});
+
 describe("dbTailShowsLiveTurnDone", () => {
   const user = (id: string, content: string): ChatMessage => ({
     id,

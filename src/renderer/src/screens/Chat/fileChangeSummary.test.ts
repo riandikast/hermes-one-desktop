@@ -39,8 +39,9 @@ it("moves chips to the prompt footer, hides only the active footer, and leaves s
   expect(messages.filter((row) => row.kind === "file_changes")).toHaveLength(2);
 });
 
-it("normalizes reopened assistant overlays to one footer, not tool-result snapshots mid-stream", () => {
+it("merges tool-result snapshots into the prompt footer but hides it mid-stream", () => {
   const messages: ChatMessage[] = [prompt, { ...first, fileChanges: [change("a", "before", "after")] },
     { id: "tool", role: "agent", kind: "tool_result", name: "patch", callId: "t", content: "ok", fileChanges: [change("b", null, "new")] }, last];
-  expect(fileSummaryFooters(messages, false).at(-1)).toMatchObject({ kind: "file_changes", changes: [change("a", "before", "after")] });
+  expect(fileSummaryFooters(messages, false).at(-1)).toMatchObject({ kind: "file_changes", changes: [change("a", "before", "after"), change("b", null, "new")] });
+  expect(fileSummaryFooters(messages, true).some((row) => row.kind === "file_changes")).toBe(false);
 });

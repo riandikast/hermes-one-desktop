@@ -8,6 +8,22 @@ vi.mock("./MessageRow", () => ({ HermesAvatar: () => null, MessageRow: ({ msg }:
 vi.mock("./HistoryRow", () => ({ ReasoningRow: () => null, ToolActivityGroup: () => null }));
 vi.mock("../../components/AgentMarkdown", () => ({ AgentMarkdown: () => null }));
 
+it("recovers reopened prompt chips from multi-file tool results without an assistant overlay", () => {
+  const changes = ["C:/repo/a.ts", "C:/repo/b.ts"];
+  const messages: ChatMessage[] = [
+    { id: "u1", role: "user", content: "edit two files" },
+    { id: "tc", kind: "tool_call", role: "agent", callId: "edit", name: "functions.patch", args: "Patch two files" },
+    { id: "tr", kind: "tool_result", role: "agent", callId: "edit", name: "functions.patch", content: JSON.stringify({ success: true, files_modified: changes }) },
+    { id: "answer", role: "agent", content: "done" },
+    { id: "u2", role: "user", content: "next prompt" },
+  ];
+  const onOpen = vi.fn();
+  render(<MessageList messages={messages} isLoading toolProgress={null} onApprove={vi.fn()} onDeny={vi.fn()} onClarifyResolved={vi.fn()} onOpenFileChanges={onOpen} />);
+  const chip = screen.getByRole("button", { name: /2 files changed/ });
+  fireEvent.click(chip);
+  expect(onOpen).toHaveBeenCalledWith(changes.map((path) => expect.objectContaining({ path })));
+});
+
 it("renders one cumulative footer below the latest response, hides it during continuation, preserves earlier prompt footers", () => {
   const a = { path: "a", before: "before", after: "middle" };
   const b = { path: "b", before: null, after: "created" };

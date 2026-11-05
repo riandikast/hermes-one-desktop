@@ -746,6 +746,66 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
     expect(api.messages?.filter((row) => row.kind === "file_changes")).toHaveLength(1);
   });
 
+  it.each(["result", "top-level"])("keeps all landed paths from %s in chips and history even when file snapshots cannot be read", async (shape) => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      return {};
+    });
+    Object.assign(window.hermesAPI, {
+      readFile: vi.fn().mockRejectedValue(new Error("File no longer available")),
+      recordSessionFileChanges: vi.fn(async () => true),
+    });
+    const api: HarnessApi = {};
+    renderWithI18n(<Harness api={api} history />);
+    await act(async () => { await api.send?.("edit multiple files"); });
+    const paths = ["C:/Unity Project/Assets/A.cs", "C:/Unity Project/Assets/B.cs"];
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "tool.start", session_id: "live", payload: {
+        name: "functions.patch", tool_id: "multi", context: "Patching two files",
+      } });
+      dashboardMock.onEvent?.({ type: "tool.complete", session_id: "live", payload: {
+        name: "functions.patch", tool_id: "multi",
+        result: shape === "result" ? JSON.stringify({ success: true, files_modified: paths }) : "ok",
+        ...(shape === "top-level" ? { files_modified: paths } : {}),
+      } });
+      dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text: "done" } });
+    });
+    expect(api.messages?.filter((row) => row.kind === "file_changes")).toMatchObject([
+      { changes: paths.map((path) => ({ path, before: null, after: null })) },
+    ]);
+    expect(document.querySelector(".file-change-history-count")?.textContent).toContain("2");
+    expect(window.hermesAPI.recordSessionFileChanges).toHaveBeenLastCalledWith(
+      "stored", paths.map((path) => expect.objectContaining({ path })),
+    );
+  });
+
+  it("does not publish a failed patch's provisional before snapshot", async () => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      return {};
+    });
+    Object.assign(window.hermesAPI, {
+      readFile: vi.fn(async () => ({ content: "unchanged" })),
+      recordSessionFileChanges: vi.fn(async () => true),
+    });
+    const api: HarnessApi = {};
+    render(<Harness api={api} />);
+    await act(async () => { await api.send?.("try editing"); });
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "tool.start", session_id: "live", payload: {
+        name: "patch", tool_id: "failed", args: { path: "C:/repo/no-change.ts", old_string: "missing", new_string: "new" },
+      } });
+      dashboardMock.onEvent?.({ type: "tool.complete", session_id: "live", payload: {
+        name: "patch", tool_id: "failed", result: JSON.stringify({ success: false, error: "No match" }),
+      } });
+      dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text: "could not edit" } });
+    });
+    expect(api.messages?.some((row) => row.kind === "file_changes")).toBe(false);
+    expect(window.hermesAPI.recordSessionFileChanges).not.toHaveBeenCalled();
+  });
+
   it.each(["stream", "injected", "disk"] as const)("updates the same prompt summary across interim completion and %s continuation", async (mode) => {
     dashboardMock.request.mockImplementation(async (method) => {
       if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
@@ -830,6 +890,16 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
     expect(api.messages?.filter((row) => row.kind === "file_changes")).toMatchObject([
       { changes: [{ path: "C:/repo/a.ts", before: "before", after: "latest" }] },
     ]);
+  });
+
+  it("preserves structured file paths through recovery continuation serialization", () => {
+    const args = JSON.stringify({ path: "C:/repo/Dockerfile", content: "FROM scratch" });
+    const items = dashboardContinuationItemsFromTranscript([
+      { id: "user", role: "user", content: "edit file" },
+      { id: "tool", kind: "tool_call", role: "agent", name: "write_file", callId: "edit", args: "Writing a file", filePreviewArgs: args },
+      { id: "result", kind: "tool_result", role: "agent", name: "write_file", callId: "edit", content: "{}" },
+    ]);
+    expect(items[1]).toMatchObject({ kind: "tool_call", args });
   });
 
   it("does not reseed renderer-local or injected prompts into a recovered session", () => {
