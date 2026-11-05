@@ -755,6 +755,17 @@ describe("Chat.tsx wiring: no silent placeholder handlers", () => {
   });
 });
 
+describe("default knowledge for new sessions", () => {
+  it("seeds a new chat from Settings → Utils, letting a handoff override", () => {
+    expect(chatSource).toContain(
+      "sessionStartKnowledge(initialSessionId, initialKnowledgeBundles)",
+    );
+    // An explicit empty handoff must still persist, so defaults never re-apply
+    // when that session is reopened.
+    expect(chatSource).toContain("prev.length > 0 || !initialSessionId");
+  });
+});
+
 describe("text size preference", () => {
   it("scales text through the root multiplier, not the window zoom", () => {
     // Appearance › Font size must resize text only. Every font-size multiplies

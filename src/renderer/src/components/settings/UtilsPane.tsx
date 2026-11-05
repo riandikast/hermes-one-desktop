@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Wrench } from "lucide-react";
 import { useFileAutosaveDefault } from "./fileAutosave";
 import { useSendConfirm } from "./sendConfirm";
+import { useDefaultKnowledge } from "./defaultKnowledge";
 
 /**
  * Utilities that shape how the app's built-in tools behave. Starts with the
@@ -13,6 +14,36 @@ export default function UtilsPane(): React.JSX.Element {
   const [saveError, setSaveError] = useState(false);
   const [sendConfirm, setSendConfirm] = useSendConfirm();
   const [confirmError, setConfirmError] = useState(false);
+  const [defaultKnowledge, setDefaultKnowledge] = useDefaultKnowledge();
+  const [knowledgeError, setKnowledgeError] = useState(false);
+  const [bundles, setBundles] = useState<Array<{ name: string; path: string }>>([]);
+  const [bundlesLoading, setBundlesLoading] = useState(true);
+  const [bundlesFailed, setBundlesFailed] = useState(false);
+
+  // Same source as the chat's Knowledge chip, so the list is always the
+  // bundles that actually exist on the Knowledge page.
+  useEffect(() => {
+    let cancelled = false;
+    const load = window.hermesAPI?.listKnowledgeBundles;
+    if (typeof load !== "function") {
+      setBundlesLoading(false);
+      return;
+    }
+    void load
+      .call(window.hermesAPI)
+      .then((list) => {
+        if (!cancelled && Array.isArray(list)) setBundles(list);
+      })
+      .catch(() => {
+        if (!cancelled) setBundlesFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setBundlesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const choose = (next: boolean): void => {
     if (next === autoSave) return;
@@ -22,6 +53,13 @@ export default function UtilsPane(): React.JSX.Element {
   const chooseConfirm = (next: boolean): void => {
     if (next === sendConfirm) return;
     setConfirmError(!setSendConfirm(next));
+  };
+
+  const toggleBundle = (name: string): void => {
+    const next = defaultKnowledge.includes(name)
+      ? defaultKnowledge.filter((item) => item !== name)
+      : [...defaultKnowledge, name];
+    setKnowledgeError(!setDefaultKnowledge(next));
   };
 
   return (
@@ -90,6 +128,47 @@ export default function UtilsPane(): React.JSX.Element {
                 {value ? "On" : "Off"}
               </button>
             ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-group">
+        <div className="settings-row settings-row--stacked">
+          <div className="settings-row-text">
+            <div className="settings-row-label">Default knowledge</div>
+            <div className="settings-row-hint">
+              {knowledgeError
+                ? "Could not save the knowledge defaults."
+                : "Attached automatically to every new session. Existing sessions keep their own selection — toggle bundles per chat from the Knowledge chip."}
+            </div>
+          </div>
+          <div
+            className="settings-knowledge-list"
+            role="group"
+            aria-label="Default knowledge bundles"
+          >
+            {bundlesLoading ? (
+              <span className="settings-knowledge-empty">Loading…</span>
+            ) : bundlesFailed ? (
+              <span className="settings-knowledge-empty" role="alert">
+                Could not load knowledge bundles.
+              </span>
+            ) : bundles.length === 0 ? (
+              <span className="settings-knowledge-empty">
+                No knowledge bundles yet. Create one on the Knowledge page.
+              </span>
+            ) : (
+              bundles.map((bundle) => (
+                <label key={bundle.name} className="settings-check" title={bundle.path}>
+                  <input
+                    type="checkbox"
+                    checked={defaultKnowledge.includes(bundle.name)}
+                    onChange={() => toggleBundle(bundle.name)}
+                  />
+                  <span className="settings-check-text">{bundle.name}</span>
+                </label>
+              ))
+            )}
           </div>
         </div>
       </div>

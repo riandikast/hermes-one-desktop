@@ -42,6 +42,8 @@ File explorer row menu: New File/Folder, Copy/Paste (in-app + OS FileNameW clipb
 
 Explorer now supports saved SSH hosts as extra roots (ssh://<id>/abs/path) even with no local folder; panel mounts from display controls unconditionally. read-directory/read-file/write-file/explorer-* route remote paths to ssh-explorer.ts (ssh2 + remote python3; scripts in ssh-scripts.ts are tested locally). Auth: agent/default keys first, password prompted only after the first attempt fails, held in memory only; TOFU host keys in ~/.ssh/known_hosts. Remote delete is permanent; local↔remote copy refused; OS clipboard not used for remote. See lat.md/context-folder.md.
 
+Default knowledge (Settings → Utils, `hermes.knowledge.defaults`) seeds every NEW session's `attachedKnowledgeBundles`; an explicit handoff wins, existing sessions restore their own `hermes.session.knowledge.<id>` list, and a new chat persists even an empty list so defaults never re-apply. See lat.md/knowledge-injection.md.
+
 Send-prompt confirmation is opt-in and OFF by default (`hermes.sendConfirm`, Settings → Utils): ChatInput sends on the first Enter unless enabled; turning it off clears an armed dialog. See lat.md/chat-commands.md.
 
 Source Control header is responsive: below a 760px panel width the title hides, the branch chip truncates and the action row stays one line at tab height (middle buttons scroll; float/close pinned); the tab strip scrolls instead of clipping. Source Control has a header float toggle (persisted `hermes.sourceControl.floating`): floating mode reuses FloatingDialog (drag/resize) with the page title/close hidden; below a 760px panel width the Changes and Graph splits become tabs, and below 760px of window width floating is disabled. See lat.md/source-control.md.

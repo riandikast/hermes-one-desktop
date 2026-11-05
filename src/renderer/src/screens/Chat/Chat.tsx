@@ -128,6 +128,7 @@ import type {
 } from "./types";
 import { buildSessionHandoff, type HandoffSessionContext } from "./sessionHandoff";
 import { knowledgeChangeNotice } from "./hooks/knowledgeChange";
+import { sessionStartKnowledge } from "../../components/settings/defaultKnowledge";
 import { recoveryNoticeMessage } from "./recoveryEngine";
 
 import type { ContextUsage } from "./ContextGauge";
@@ -644,7 +645,9 @@ function Chat({
 
   const [attachedKnowledgeBundles, setAttachedKnowledgeBundles] = useState<
     string[]
-  >(() => initialKnowledgeBundles ?? []);
+  >(() =>
+    sessionStartKnowledge(initialSessionId, initialKnowledgeBundles),
+  );
 
   // PLAN / BUILD mode toggle. Persisted PER SESSION so a re-opened
 
@@ -864,7 +867,9 @@ function Chat({
         // persist them under the new session ID so they don't auto-reset to empty.
 
         setAttachedKnowledgeBundles((prev) => {
-          if (prev.length > 0) {
+          // Persist defaults for a brand-new chat even when the user cleared
+          // them, so reopening that session never re-applies the defaults.
+          if (prev.length > 0 || !initialSessionId) {
             try {
               localStorage.setItem(
                 `hermes.session.knowledge.${hermesSessionId}`,

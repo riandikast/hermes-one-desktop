@@ -3,9 +3,16 @@ import { beforeEach, expect, it, vi } from "vitest";
 import UtilsPane from "./UtilsPane";
 import { readFileAutosaveDefault } from "./fileAutosave";
 import { readSendConfirm } from "./sendConfirm";
+import { readDefaultKnowledge } from "./defaultKnowledge";
 
 beforeEach(() => {
   localStorage.clear();
+  (window as unknown as { hermesAPI: unknown }).hermesAPI = {
+    listKnowledgeBundles: vi.fn().mockResolvedValue([
+      { name: "alpha", path: "/knowledge/alpha" },
+      { name: "beta", path: "/knowledge/beta" },
+    ]),
+  };
 });
 
 const autosaveGroup = (): ReturnType<typeof within> =>
@@ -32,6 +39,26 @@ it("persists the default and broadcasts it to open editors", () => {
   fireEvent.click(autosaveGroup().getByRole("button", { name: "On" }));
   expect(localStorage.getItem("hermes.fileEditor.autoSave")).toBe("true");
   window.removeEventListener("hermes-file-autosave-changed", changed);
+});
+
+it("lists the available knowledge bundles and saves the defaults", async () => {
+  render(<UtilsPane />);
+  const alpha = await screen.findByRole("checkbox", { name: "alpha" });
+  const beta = screen.getByRole("checkbox", { name: "beta" });
+  expect(alpha).not.toBeChecked();
+  expect(beta).not.toBeChecked();
+
+  fireEvent.click(alpha);
+  fireEvent.click(beta);
+  expect(readDefaultKnowledge()).toEqual(["alpha", "beta"]);
+  expect(alpha).toBeChecked();
+  expect(beta).toBeChecked();
+  expect(localStorage.getItem("hermes.knowledge.defaults")).toBe(
+    JSON.stringify(["alpha", "beta"]),
+  );
+
+  fireEvent.click(alpha);
+  expect(readDefaultKnowledge()).toEqual(["beta"]);
 });
 
 it("ships send confirmation off and persists the opt-in", () => {
