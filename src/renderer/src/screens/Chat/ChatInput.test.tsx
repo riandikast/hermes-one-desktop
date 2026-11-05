@@ -1,5 +1,5 @@
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ChatInput pulls translations through useI18n (which requires the i18next
 // provider). Stub it so the component can render in isolation; the keys are
@@ -88,8 +88,8 @@ describe("ChatInput — CJK IME Enter handling", () => {
     // compositionend commits the last syllable; React flushes the full value.
     fireEvent.compositionEnd(textarea, { target: { value: "안녕하세요" } });
     fireEvent.change(textarea, { target: { value: "안녕하세요" } });
-    fireEvent.keyDown(textarea, { key: "Enter" }); // arms confirmation
-    fireEvent.keyDown(textarea, { key: "Enter" }); // now confirmed submit
+    fireEvent.keyDown(textarea, { key: "Enter" }); // sends (gate is off by default)
+    fireEvent.keyDown(textarea, { key: "Enter" }); // no payload left
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(onSubmit).toHaveBeenCalledWith("안녕하세요", []);
@@ -237,6 +237,10 @@ describe("ChatInput - mention chip citation badges", () => {
   });
 
   describe("send confirmation gate", () => {
+    // The gate is opt-in; these tests cover the enabled behaviour.
+    beforeEach(() => localStorage.setItem("hermes.sendConfirm", "true"));
+    afterEach(() => localStorage.removeItem("hermes.sendConfirm"));
+
     /** Type text and press Enter once (arms), twice (sends). */
     function arm(text: string): HTMLTextAreaElement {
       const ta = screen.getByPlaceholderText(
@@ -325,6 +329,30 @@ describe("ChatInput - mention chip citation badges", () => {
       arm("/clear");
       expect(onSubmit).toHaveBeenCalledTimes(1);
       expect(document.querySelector(".send-confirm-dialog")).toBeNull();
+    });
+
+    it("sends immediately when the preference is off (default)", () => {
+      localStorage.removeItem("hermes.sendConfirm");
+      const { onSubmit, textarea } = renderInput();
+      fireEvent.change(textarea, { target: { value: "straight through" } });
+      fireEvent.keyDown(textarea, { key: "Enter" });
+      expect(onSubmit).toHaveBeenCalledExactlyOnceWith("straight through", []);
+      expect(document.querySelector(".send-confirm-dialog")).toBeNull();
+    });
+
+    it("drops an armed send when the preference is switched off", () => {
+      const { onSubmit } = renderInput();
+      const ta = screen.getByPlaceholderText("chat.typeMessage") as HTMLTextAreaElement;
+      fireEvent.change(ta, { target: { value: "pending" } });
+      fireEvent.keyDown(ta, { key: "Enter" });
+      expect(screen.getByRole("dialog")).toBeTruthy();
+
+      act(() => {
+        localStorage.setItem("hermes.sendConfirm", "false");
+        window.dispatchEvent(new Event("hermes-send-confirm-changed"));
+      });
+      expect(document.querySelector(".send-confirm-dialog")).toBeNull();
+      expect(onSubmit).not.toHaveBeenCalled();
     });
 
     it("says no project is bound when there are no folders", () => {

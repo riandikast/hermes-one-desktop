@@ -110,11 +110,17 @@ Bubbles reveal copy / revert / unsend buttons on hover, and the bubble keeps a f
 
 [[src/renderer/src/screens/Chat/MessageRow.tsx#MessageRow]] renders `.chat-bubble-actions` (copy for every message; revert-to-checkpoint and unsend for user bubbles) absolutely at the bubble's top-right, hidden until `.chat-bubble:hover`. Because `.chat-bubble` is a scroll container (`overflow-x: auto` for wide content), an absolutely-positioned action row that sticks out of a narrow bubble would be cut at the bubble's edge — so `.chat-bubble` has `min-width: 108px` (the 92px action row + 8px right offset plus margin), keeping the buttons inside even for a one-word "ok" bubble.
 
+## Send confirmation
+
+Off by default: Enter sends the prompt immediately. Settings → Utils can opt into a two-step send.
+
+When enabled (`hermes.sendConfirm`, owned by [[src/renderer/src/components/settings/sendConfirm.ts]] and read through `useSendConfirm`), the first Enter only arms the send and opens [[src/renderer/src/screens/Chat/SendConfirmDialog.tsx]], which names the target project and its full path; a second Enter (or the dialog button) sends, Escape or editing cancels, and slash commands skip the gate. Turning the preference off clears an armed send immediately. Regression: [[src/renderer/src/screens/Chat/ChatInput.test.tsx]] and [[src/renderer/src/components/settings/UtilsPane.test.tsx]].
+
 ## Interrupt confirmation
 
 Stopping a turn requires a second click, preventing accidental interruption.
 
-The stop (interrupt) button uses the same double-action gate as the send prompt ([[src/renderer/src/screens/Chat/ChatInput.tsx]]): the first click only ARMS the confirmation (banner "Press again to interrupt, Esc to cancel" + a pulsing outlined stop button), the second click aborts, and Escape cancels. Aborting is destructive (the streamed turn is cut), so an accidental single click must not kill a long run. The armed state auto-resets when the turn ends.
+The stop (interrupt) button uses the same double-action pattern as the send prompt ([[src/renderer/src/screens/Chat/ChatInput.tsx]]; the send gate itself is opt-in): the first click only ARMS the confirmation (banner "Press again to interrupt, Esc to cancel" + a pulsing outlined stop button), the second click aborts, and Escape cancels. Aborting is destructive (the streamed turn is cut), so an accidental single click must not kill a long run. The armed state auto-resets when the turn ends.
 
 The send-prompt confirmation uses the shared theme palette: a `--bg-secondary` dialog, `--bg-primary` project inset, `--border` strokes, and `--accent` send icon. Its Enter/Escape and double-action behavior is unchanged.
 

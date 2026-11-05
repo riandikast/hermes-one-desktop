@@ -8,6 +8,7 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
+import { useSendConfirm } from "../../components/settings/sendConfirm";
 import {
   Square as Stop,
   Search,
@@ -133,6 +134,13 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const displayValue = useMemo(() => displayText(input), [input]);
     const [mentionOpen, setMentionOpen] = useState(false);
     const [confirmPending, setConfirmPending] = useState<string | null>(null);
+    // Opt-in from Settings → Utils; OFF by default means Enter sends at once.
+    const [sendConfirm] = useSendConfirm();
+    useEffect(() => {
+      // Turning the preference off while a send is armed must not leave a
+      // dialog (or a second-Enter requirement) behind.
+      if (!sendConfirm) setConfirmPending(null);
+    }, [sendConfirm]);
     // Interrupt (stop) confirmation — same double-action pattern as the send
     // prompt: first click arms, second fires, Esc cancels. Prevents
     // accidental aborts of a long turn (an abort is destructive — the
@@ -457,11 +465,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       const hasPayload = text.length > 0 || attachments.length > 0;
       if (!hasPayload) return;
 
-      // Double-Enter confirmation gate: the first Enter arms a pending send and
-      // opens the confirm dialog (which names the target project); a second
-      // Enter dispatches it. Esc or editing the text cancels. Slash commands
-      // skip the gate (they are explicit).
-      if (!text.startsWith("/") && confirmPending !== text) {
+      // Optional double-Enter confirmation gate: the first Enter arms a pending
+      // send and opens the confirm dialog (which names the target project); a
+      // second Enter dispatches it. Esc or editing the text cancels. Slash
+      // commands skip the gate. Disabled by default (Settings → Utils).
+      if (sendConfirm && !text.startsWith("/") && confirmPending !== text) {
         setConfirmPending(text);
         return;
       }
