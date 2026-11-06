@@ -32,6 +32,7 @@ import type {
 import { stageAttachment, clearStagedAttachments } from "../attachment-staging";
 import { searchFileContents } from "../file-content-search";
 import { captureWorkspaceSnapshot } from "../workspace-snapshot";
+import { getSessionTurnActivity, stopSessionTurn } from "../turn-activity";
 import {
   copyExplorerEntry,
   createExplorerEntry,
@@ -3868,6 +3869,14 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("git-remote-rename", (_event, dir: string, oldName: string, newName: string) => gitRemoteRename(dir, oldName, newName));
   ipcMain.handle("git-branch-upstream", (_event, dir: string, action: "set" | "unset" | "publish", branch: string, remote: string, target: string, fingerprint?: string) => gitBranchUpstream(dir, action, branch, remote, target, fingerprint));
   ipcMain.handle("capture-workspace-snapshot", (_event, folder: string) => captureWorkspaceSnapshot(folder));
+  // Cross-process turn liveness: a stored session's state.db lease is the only
+  // signal for a turn running outside this window's backend.
+  ipcMain.handle("session-turn-activity", (_event, sessionId: string) =>
+    getSessionTurnActivity(sessionId),
+  );
+  ipcMain.handle("stop-session-turn", (_event, sessionId: string) =>
+    stopSessionTurn(sessionId),
+  );
   ipcMain.handle("git-init", (_event, dir: string) => gitInit(dir));
   ipcMain.handle("git-repo-status", async (_event, dir: string) =>
     gitRepoStatus(dir),

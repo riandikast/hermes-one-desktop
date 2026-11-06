@@ -45,6 +45,10 @@ const dashboardMock = vi.hoisted(() => ({
   request: vi.fn(),
 }));
 
+const confirmMock = vi.hoisted(() => ({ appConfirm: vi.fn(async () => true) }));
+
+vi.mock("../../../components/modal/appConfirm", () => confirmMock);
+
 vi.mock("../dashboardGatewayClient", () => ({
   DashboardGatewayClient: class MockDashboardGatewayClient {
     close = dashboardMock.close;
@@ -1471,6 +1475,91 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
     await act(async () => { await Promise.resolve(); });
     expect(api.isLoading).toBe(false);
     expect(read).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it("paints progress from the state.db turn lease when another process owns the turn", async () => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.resume") {
+        return { session_id: "live-idle", stored_session_id: "stored", running: false };
+      }
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      return {};
+    });
+    const getSessionTurnActivity = vi.fn(async () => ({
+      active: true, holderPid: 4242, holderAlive: true, platform: "cli",
+      acquiredAt: Date.now() - 1_000, expiresAt: Date.now() + 240_000,
+    }));
+    Object.assign(window.hermesAPI, {
+      getSessionTurnActivity,
+      getSessionMessages: vi.fn(async () => []),
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} active={false} storedSessionId="stored" />);
+    await act(async () => { if (api.activeTurnRef) api.activeTurnRef.current = null; });
+    await waitFor(() => expect(api.isLoading).toBe(true));
+    expect(getSessionTurnActivity).toHaveBeenCalledWith("stored");
+    view.unmount();
+  });
+
+  it("picks up a turn another process starts while the tab is open", async () => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.resume") {
+        return { session_id: "live-idle", stored_session_id: "stored", running: false };
+      }
+      if (method === "session.active_list") return { sessions: [] };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      return {};
+    });
+    let leased = false;
+    Object.assign(window.hermesAPI, {
+      getSessionTurnActivity: vi.fn(async () => ({
+        active: leased, holderPid: leased ? 4242 : null, holderAlive: leased ? true : null,
+        platform: leased ? "cli" : null,
+        acquiredAt: leased ? Date.now() - 1_000 : null,
+        expiresAt: leased ? Date.now() + 240_000 : null,
+      })),
+      getSessionMessages: vi.fn(async () => []),
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} active storedSessionId="stored" />);
+    await act(async () => { if (api.activeTurnRef) api.activeTurnRef.current = null; });
+    await waitFor(() => expect(dashboardMock.request).toHaveBeenCalledWith("session.active_list"), { timeout: 3_000 });
+    expect(api.isLoading).not.toBe(true);
+    leased = true;
+    // The 2s poll must notice without any local send, and without the old 5s
+    // post-mount grace (opening a chat is not local activity).
+    await waitFor(() => expect(api.isLoading).toBe(true), { timeout: 4_000 });
+    view.unmount();
+  }, 12_000);
+
+  it("stops a turn owned by another process only after the user confirms", async () => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.resume") throw new Error("Session stored already has a live owner");
+      if (method === "session.active_list") return { sessions: [] };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      return {};
+    });
+    const getSessionTurnActivity = vi.fn(async () => ({
+      active: true, holderPid: 4242, holderAlive: true, platform: "cli",
+      acquiredAt: Date.now() - 1_000, expiresAt: Date.now() + 240_000,
+    }));
+    const stopSessionTurn = vi.fn(async () => ({ stopped: true, pid: 4242 }));
+    Object.assign(window.hermesAPI, { getSessionTurnActivity, stopSessionTurn });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} active={false} storedSessionId="stored" />);
+
+    confirmMock.appConfirm.mockResolvedValueOnce(false);
+    await act(async () => { api.abort?.(); });
+    await waitFor(() => expect(confirmMock.appConfirm).toHaveBeenCalledTimes(1));
+    expect(stopSessionTurn).not.toHaveBeenCalled();
+
+    confirmMock.appConfirm.mockResolvedValueOnce(true);
+    await act(async () => { api.abort?.(); });
+    await waitFor(() => expect(stopSessionTurn).toHaveBeenCalledWith("stored"));
     view.unmount();
   });
 

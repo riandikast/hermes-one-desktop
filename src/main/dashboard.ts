@@ -757,3 +757,17 @@ export function getDashboardConnection(
     token: managed.connection.token,
   };
 }
+
+/**
+ * PIDs of the backends THIS app spawned (one per profile/window). Used to
+ * refuse terminating a turn lease that belongs to our own runtime — that path
+ * must go through `session.interrupt`, never a kill.
+ */
+export function getManagedDashboardPids(): number[] {
+  const pids: number[] = [];
+  for (const managed of dashboards.values()) {
+    if (managed.proc.exitCode !== null || managed.proc.killed) continue;
+    if (typeof managed.proc.pid === "number") pids.push(managed.proc.pid);
+  }
+  return pids;
+}

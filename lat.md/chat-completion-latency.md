@@ -56,15 +56,21 @@ Quiet-finalize needs full user-message counts to prove that persisted history ca
 
 ## Reopening a session that another app is running
 
-A reopened chat shows live progress immediately when its turn was started by another client, not only after the poll.
+A reopened chat shows live progress immediately when its turn runs in another process, and its Stop button can actually end that turn.
 
-[[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts]] used to learn "running" only from the 2 s `session.active_list` poll, whose `working` gate also waits out the 5 s post-local-turn grace — a short turn started by an external app (anything else driving the same gateway) finished before the spinner ever appeared. The mount bootstrap now calls `session.resume` (which already reports `running`), remembers that flag in `runtimeWasRunningRef` — captured inside `ensureRuntimeSession`, because that helper resolves only the id — and paints loading via `beginForeignTurn` before the first poll.
+`session.active_list` only lists live sessions in the backend THIS window spawned. An app that drives its own `hermes` run (a CLI/oneshot client such as Craft Anything) writes the transcript through a different process, so the desktop's backend neither lists it nor reports `running` on resume — the chat looked idle while another app was mid-turn, with no interrupt button.
 
-The bootstrap reads its callbacks through refs and keeps `beginForeignTurn`/`reconcileForeignTail` out of its dependency array: with them in deps, any unrelated re-render cancelled the in-flight attach and restarted it forever, so `session.resume` never landed.
+Three signals now cover it:
 
-The poller also no longer requires a runtime id. It matches `session.active_list` rows by runtime id **or** by the stored session key, so a session owned by an external client — including one where this client's own attach is refused as already-owned — still shows its spinner. Each effect instance only clears loading when it was the one that painted it, so a dependency change (or a stale unmount) cannot stomp a live turn's state.
+- **Resume flag.** The mount bootstrap uses `session.resume`'s own `running` (`runtimeWasRunningRef`, captured inside `ensureRuntimeSession`, which resolves only the id) and paints `beginForeignTurn` before the first poll. The bootstrap reads its callbacks through refs and keeps `ensureClient`/`ensureRuntimeSession`/`beginForeignTurn` out of its dependency array — with them in deps, any unrelated re-render cancelled the in-flight attach, and the effect's cleanup then cleared the spinner it had just set.
+- **Cross-process turn lease.** Every runtime takes a `session_turn_leases` row in state.db for the duration of a turn and deletes it when the turn ends. [[src/main/turn-activity.ts#getSessionTurnActivity]] resolves the conversation's lineage root (following `end_reason = 'compression'` parents, mirroring the backend), reads the row, parses `pid=`/`platform=`, and probes the PID: a dead holder means finished, a live holder keeps the lease authoritative for 2 minutes past expiry (the row is refreshed on transcript writes, so a long silent model call can outlive the TTL). The poller adds that lease to `session.active_list` each 2s tick, so a session owned by another process shows its spinner and finalizes when the lease disappears.
+- **Opening a chat is not local activity.** `lastLocalActivityAtRef` starts at `0` on a session/connection reset and is only stamped by real sends and finishes, so the 5s "let the gateway settle" grace no longer hides a turn that was already running when the tab opened.
 
-Pinned by `useDashboardChatTransport.test.tsx`: "paints progress immediately when a reopened session is still running in another client", "detects an external app's running turn by stored key even when our own attach is refused", and "stays idle when the reopened session is not running anywhere".
+The poller also matches `session.active_list` rows by runtime id **or** the stored session key, no longer requires a runtime id, and keeps polling a foreign turn it painted itself (a local-turn guard would have dropped it on the next tick). Only an effect run that painted the spinner may clear it.
+
+**Stopping a foreign turn.** `session.interrupt` reaches only this backend, so [[src/main/turn-activity.ts#stopSessionTurn]] terminates the lease holder instead — after an explicit `appConfirm` naming the pid and platform, and never when the holder is the desktop's own backend ([[src/main/dashboard.ts#getManagedDashboardPids]]) or this process. Exposed as `getSessionTurnActivity`/`stopSessionTurn` over IPC and preload; the confirm path lives in `useDashboardChatTransport`'s `abort`.
+
+Pinned by `useDashboardChatTransport.test.tsx` ("paints progress immediately when a reopened session is still running in another client", "paints progress from the state.db turn lease when another process owns the turn", "picks up a turn another process starts while the tab is open", "detects an external app's running turn by stored key even when our own attach is refused", "stops a turn owned by another process only after the user confirms", "stays idle when the reopened session is not running anywhere") and [[src/main/turn-activity.test.ts]] against a real SQLite schema.
 
 ## Result (same real session, same code path)
 

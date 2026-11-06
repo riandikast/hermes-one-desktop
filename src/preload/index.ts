@@ -3,6 +3,7 @@ import type { AppLocale } from "../shared/i18n/types";
 import type { AndroidDevice, LogcatSnapshot, LogcatStartResult } from "../shared/android-logcat";
 import type { Attachment } from "../shared/attachments";
 import type { WorkspaceSnapshot } from "../shared/workspace-snapshot";
+import type { SessionTurnActivity, StopSessionTurnResult } from "../shared/turn-activity";
 import type { SessionHistoryPage } from "../shared/session-history";
 import type { SessionModelOverride } from "../shared/model-override";
 import type { DesktopSessionContinuationItem } from "../shared/session-continuation";
@@ -1881,6 +1882,10 @@ const hermesAPI = {
   gitInit: (dir: string) => ipcRenderer.invoke("git-init", dir),
   captureWorkspaceSnapshot: (folder: string): Promise<WorkspaceSnapshot> =>
     ipcRenderer.invoke("capture-workspace-snapshot", folder),
+  getSessionTurnActivity: (sessionId: string): Promise<SessionTurnActivity> =>
+    ipcRenderer.invoke("session-turn-activity", sessionId),
+  stopSessionTurn: (sessionId: string): Promise<StopSessionTurnResult> =>
+    ipcRenderer.invoke("stop-session-turn", sessionId),
   gitRepoStatus: (dir: string) => ipcRenderer.invoke("git-repo-status", dir),
   gitLog: (dir: string, opts?: { max?: number; from?: string; to?: string }) =>
     ipcRenderer.invoke("git-log", dir, opts),

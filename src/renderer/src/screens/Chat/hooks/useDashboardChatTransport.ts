@@ -14,6 +14,7 @@ import { lastManualPromptIndex, mergePromptFileChanges, promptFileChangeOwner, u
 import { ChildFileChangeCollector } from "../childFileChanges";
 import { workspaceChanges } from "../workspaceChanges";
 import type { WorkspaceSnapshot } from "../../../../../shared/workspace-snapshot"; // desktop-only snapshot contract
+import { appConfirm } from "../../../components/modal/appConfirm";
 import {
   applyDashboardStreamEvent,
   type DashboardStreamEvent,
@@ -1611,7 +1612,10 @@ export function useDashboardChatTransport({
     // Foreign-turn bookkeeping: re-baseline so a stale tail signature from a
     // previous session can't flag loading on the new one.
     foreignTurnRef.current = false;
-    lastLocalActivityAtRef.current = Date.now();
+    // Opening a session is NOT local activity: a 5s "let the gateway settle"
+    // grace here delayed the spinner for a turn another app was already
+    // running. Only real local sends/finishes stamp this.
+    lastLocalActivityAtRef.current = 0;
   }, [connectionMode, profile]);
 
   // Turn stall watchdog: `prompt.submit` is only an ACK — the turn completes
@@ -3531,21 +3535,55 @@ export function useDashboardChatTransport({
   const reconcileForeignTailRef = useRef(reconcileForeignTail);
   reconcileForeignTailRef.current = reconcileForeignTail;
 
+  /**
+   * Is a turn running on this stored session in ANY process? A session driven
+   * by another app (a `hermes` CLI/oneshot run, the installed gateway, another
+   * window) never appears in THIS backend's `session.active_list`, but every
+   * runtime takes the same state.db turn lease — main reads it for us.
+   */
+  const readSessionTurnActivity = useCallback(async (storedId: string): Promise<boolean> => {
+    const api = window.hermesAPI;
+    if (!storedId || !api?.getSessionTurnActivity) return false;
+    try {
+      const activity = await api.getSessionTurnActivity(storedId);
+      return activity?.active === true;
+    } catch {
+      return false;
+    }
+  }, []);
+  const readSessionTurnActivityRef = useRef(readSessionTurnActivity);
+  readSessionTurnActivityRef.current = readSessionTurnActivity;
+  // `ensureClient`/`ensureRuntimeSession` are recreated whenever a transport
+  // dependency changes. A poller that listed them as deps was torn down (and
+  // its cleanup cleared the spinner) by any such re-render mid-turn.
+  const ensureClientRef = useRef(ensureClient);
+  ensureClientRef.current = ensureClient;
+  const ensureRuntimeSessionRef = useRef(ensureRuntimeSession);
+  ensureRuntimeSessionRef.current = ensureRuntimeSession;
+
   useEffect(() => {
     if (!enabled || !hermesSessionId) return;
     if (runtimeSessionIdRef.current) return;
     let cancelled = false;
     void (async () => {
       try {
-        const client = await ensureClient();
+        const client = await ensureClientRef.current();
         if (cancelled) return;
-        await ensureRuntimeSession(client);
+        await ensureRuntimeSessionRef.current(client);
         if (cancelled) return;
         // `session.resume` already reports whether the session was running. Paint
         // the live state NOW: waiting for the 2s poll also waits out the 5s
         // post-local-turn grace, so a turn started by another client (or an
         // external app) finished before this tab ever showed a spinner.
-        if (runtimeWasRunningRef.current) {
+        // Same backend → resume already told us. Different process (an app that
+        // drives its own `hermes` run, the installed gateway) → the state.db
+        // turn lease is the only evidence, and it also covers a resume this
+        // backend refused because the session is owned elsewhere.
+        const runningElsewhere = runtimeWasRunningRef.current
+          ? false
+          : await readSessionTurnActivityRef.current(hermesSessionId);
+        if (cancelled) return;
+        if (runtimeWasRunningRef.current || runningElsewhere) {
           beginForeignTurnRef.current();
           await reconcileForeignTailRef.current();
         }
@@ -3558,7 +3596,7 @@ export function useDashboardChatTransport({
     };
     // Callbacks are read through refs: an unrelated re-render must not cancel
     // and restart the one-shot bootstrap before its resume lands.
-  }, [enabled, hermesSessionId, ensureClient, ensureRuntimeSession]);
+  }, [enabled, hermesSessionId]);
 
   const FOREIGN_TURN_POLL_MS = 2_000;
   // After a LOCAL turn ends the gateway can still report the session as
@@ -3590,19 +3628,23 @@ export function useDashboardChatTransport({
       // keep polling even when no runtime id was established here.
       const storedId = storedSessionIdRef.current;
       if (!runtimeId && !storedId) return;
-      // A local turn owns the UI — never fight it.
-      if (activeTurnRef.current) {
-        if (foreignTurnRef.current) foreignTurnRef.current = false;
-        return;
-      }
+      // A LOCAL turn owns the UI — never fight it. A foreign turn this poller
+      // painted itself must keep polling: its synthetic activeTurn is what the
+      // spinner reads, and only a later tick can see it end.
+      if (activeTurnRef.current && !foreignTurnRef.current) return;
       const client =
-        clientRef.current ?? (await ensureClient().catch(() => null));
+        clientRef.current ?? (await ensureClientRef.current().catch(() => null));
       if (!client || disposed) return;
-      const res = (await client
-        .request("session.active_list")
-        .catch(() => null)) as
-        | { sessions?: Array<{ id?: string; status?: string; session_key?: string }> }
-        | null;
+      // Two independent liveness sources: this backend's live TUI sessions and
+      // the cross-process state.db lease (a turn another app is running).
+      const [res, leaseActive] = await Promise.all([
+        client.request("session.active_list").catch(() => null) as Promise<
+          { sessions?: Array<{ id?: string; status?: string; session_key?: string }> } | null
+        >,
+        storedId
+          ? readSessionTurnActivityRef.current(storedId)
+          : Promise.resolve(false),
+      ]);
       if (disposed) return;
       const entry = res?.sessions?.find(
         (s) =>
@@ -3610,6 +3652,7 @@ export function useDashboardChatTransport({
           (!!storedId && (s.session_key === storedId || s.id === storedId)),
       );
       const busy =
+        leaseActive ||
         entry?.status === "working" ||
         entry?.status === "waiting";
       // NOTE: "starting" is deliberately NOT treated as busy. On a cold resume
@@ -3660,7 +3703,7 @@ export function useDashboardChatTransport({
         setIsLoading(false);
       }
     };
-  }, [active, enabled, ensureClient, setIsLoading]);
+  }, [active, enabled, setIsLoading]);
 
   const sendMessage = useCallback(
     async (text: string, attachments?: Attachment[], recoveryGeneration?: number, onModelVerified?: () => void): Promise<boolean> => {
@@ -4305,6 +4348,40 @@ export function useDashboardChatTransport({
           ctrl?.close();
         }
       })();
+    } else {
+      // No runtime session here: the turn is running in ANOTHER process (an app
+      // driving its own `hermes` run, the installed gateway, another window).
+      // Our gateway cannot interrupt it — the only way to stop it is to end
+      // that process, so ask before doing something destructive.
+      const storedId = storedSessionIdRef.current;
+      const api = window.hermesAPI;
+      if (storedId && api?.getSessionTurnActivity && api.stopSessionTurn) {
+        void (async () => {
+          const activity = await api
+            .getSessionTurnActivity(storedId)
+            .catch(() => null);
+          if (!activity?.active) return;
+          const who = activity.holderPid
+            ? `${activity.platform ?? "another process"}, pid ${activity.holderPid}`
+            : activity.platform ?? "another process";
+          const accepted = await appConfirm(
+            `This turn is running in ${who}, outside this window, so it cannot be interrupted here.\n\n` +
+              `End that process to stop the turn? The transcript is already saved; ` +
+              `the other app may need to be restarted.`,
+          );
+          if (!accepted) {
+            // Still running — put the live state back.
+            beginForeignTurnRef.current();
+            await reconcileForeignTailRef.current();
+            return;
+          }
+          const result = await api.stopSessionTurn(storedId).catch(() => null);
+          if (!result?.stopped) {
+            beginForeignTurnRef.current();
+            await reconcileForeignTailRef.current();
+          }
+        })();
+      }
     }
     // Clear loading immediately — don't wait for the gateway to confirm.
     activeTurnRef.current = null;
