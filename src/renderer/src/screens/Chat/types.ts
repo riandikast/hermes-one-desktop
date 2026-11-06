@@ -21,6 +21,10 @@ export interface FileChange {
   before: string | null;
   after: string | null;
   beforeKnown?: boolean;
+  /** False means unavailable/binary content, not a deletion. */
+  afterKnown?: boolean;
+  /** Workspace comparison proves timing, not agent attribution. */
+  source?: "workspace";
   removed?: string[];
   added?: string[];
 }

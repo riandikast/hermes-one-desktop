@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import type { AppLocale } from "../shared/i18n/types";
 import type { AndroidDevice, LogcatSnapshot, LogcatStartResult } from "../shared/android-logcat";
 import type { Attachment } from "../shared/attachments";
+import type { WorkspaceSnapshot } from "../shared/workspace-snapshot";
 import type { SessionHistoryPage } from "../shared/session-history";
 import type { SessionModelOverride } from "../shared/model-override";
 import type { DesktopSessionContinuationItem } from "../shared/session-continuation";
@@ -1878,6 +1879,8 @@ const hermesAPI = {
   gitRemoteRename: (dir: string, oldName: string, newName: string) => ipcRenderer.invoke("git-remote-rename", dir, oldName, newName),
   gitBranchUpstream: (dir: string, action: "set" | "unset" | "publish", branch: string, remote: string, target: string, fingerprint?: string) => ipcRenderer.invoke("git-branch-upstream", dir, action, branch, remote, target, fingerprint),
   gitInit: (dir: string) => ipcRenderer.invoke("git-init", dir),
+  captureWorkspaceSnapshot: (folder: string): Promise<WorkspaceSnapshot> =>
+    ipcRenderer.invoke("capture-workspace-snapshot", folder),
   gitRepoStatus: (dir: string) => ipcRenderer.invoke("git-repo-status", dir),
   gitLog: (dir: string, opts?: { max?: number; from?: string; to?: string }) =>
     ipcRenderer.invoke("git-log", dir, opts),

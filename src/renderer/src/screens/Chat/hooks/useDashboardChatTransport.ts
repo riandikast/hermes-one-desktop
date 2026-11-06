@@ -12,6 +12,8 @@ import {
 import { isAutoInjectedPrompt } from "../autoPrompts";
 import { lastManualPromptIndex, mergePromptFileChanges, promptFileChangeOwner, updatePromptFileSummary } from "../fileChangeSummary";
 import { ChildFileChangeCollector } from "../childFileChanges";
+import { workspaceChanges } from "../workspaceChanges";
+import type { WorkspaceSnapshot } from "../../../../../shared/workspace-snapshot"; // desktop-only snapshot contract
 import {
   applyDashboardStreamEvent,
   type DashboardStreamEvent,
@@ -1415,12 +1417,27 @@ export function useDashboardChatTransport({
       if (childFileCollectorRef.current === collector) childFileCollectorRef.current = null;
     };
   }, [enabled, connectionMode, hermesSessionId, flushFileArchives, setMessages]);
-  // Working-tree snapshot taken at TURN START (path → status|after). At
-  // finalize the current tree is compared against it so ONLY files the agent
-  // actually modified THIS turn are reported — files that were already dirty
-  // before the turn (pre-existing edits, line-ending churn) or merely READ
-  // never appear as "changed by the agent".
-  const gitSnapshotRef = useRef<Map<string, string> | null>(null);
+  // Retain the same baseline through continuations/recovery. Workspace changes
+  // prove timing only, never attribution to the agent.
+  const gitSnapshotRef = useRef<{ folder: string; promptId: string; snapshot: WorkspaceSnapshot } | null>(null);
+  const workspaceWarningRef = useRef("");
+  const workspaceEpochRef = useRef(0);
+  const reportWorkspaceWarning = useCallback((warning?: string): void => {
+    if (!warning || workspaceWarningRef.current === warning) return;
+    workspaceWarningRef.current = warning;
+    const notice: ChatMessage = { id: `workspace-warning-${Date.now()}`, role: "agent", localOnly: true,
+      content: `Workspace change detection: ${warning}` };
+    messagesRef.current = [...messagesRef.current, notice];
+    setMessages(messagesRef.current);
+  }, [setMessages]);
+  useEffect(() => {
+    workspaceEpochRef.current++;
+    gitSnapshotRef.current = null;
+  }, [hermesSessionId, connectionMode, contextFolder]);
+  useEffect(() => () => {
+    workspaceEpochRef.current++;
+    gitSnapshotRef.current = null;
+  }, []); // release baseline on unmount
   const pendingClarifyRequestIdRef = useRef<string | null>(null);
   const pendingRecoveredContinuationRef = useRef<
     DesktopSessionContinuationItem[]
@@ -1703,10 +1720,8 @@ export function useDashboardChatTransport({
   // FOREIGN-TURN liveness is handled by the active_list poller (see the
   // foreign-turn watcher effect below).
 
-  // Per-prompt summary: merge landed tool snapshots with transcript results.
-  // Git working-tree detection is disabled; do not attribute unrelated dirty
-  // files or command side effects. Keep a dedicated chip, independent of the
-  // answer bubble, and persist the latest snapshots for reopen.
+  // Per-prompt summary combines confirmed edits with separately labelled
+  // workspace evidence. Pre-existing unchanged dirt is never included.
   const finalizeFileChanges = useCallback((): void => {
     const revision = ++fileChangesRevisionRef.current;
     const generation = sendGenerationRef.current;
@@ -1714,6 +1729,7 @@ export function useDashboardChatTransport({
     const prompt = turnMessages[lastManualPromptIndex(turnMessages)];
     if (!prompt) return;
     const storedSessionId = storedSessionIdRef.current;
+    const workspaceBaseline = gitSnapshotRef.current;
     const captured = Array.from(fileChangesRef.current.values()).filter((change) => landedFilePathsRef.current.has(normalizePathKey(change.path)));
     console.info("[file-changes] captured", {
       toolPaths: captured.map((c) => c.path),
@@ -1769,16 +1785,33 @@ export function useDashboardChatTransport({
       console.info("[file-changes] transcript", { transcriptPaths });
       for (const p of transcriptPaths) add(p, {});
 
-      // 3. Git working-tree diff disabled: it spawns git.exe multiple times per
-      // turn on Windows and flashes console windows in Electron dev/portable.
-      // Tool-source capture still reports files touched through Hermes tools.
-      gitSnapshotRef.current = null;
+      // 3. Git-backed byte comparison supplements explicit tools without
+      // claiming concurrent workspace changes were necessarily agent edits.
+      if (connectionMode === "local" && workspaceBaseline?.promptId === prompt.id && workspaceBaseline.snapshot.root) {
+        try {
+          const after = await window.hermesAPI.captureWorkspaceSnapshot(workspaceBaseline.folder);
+          if (gitSnapshotRef.current !== workspaceBaseline || generation !== sendGenerationRef.current || revision !== fileChangesRevisionRef.current) return;
+          reportWorkspaceWarning(after.warning);
+          for (const change of workspaceChanges(workspaceBaseline.snapshot, after)) {
+            const key = normalizePathKey(change.path);
+            const direct = byPath.get(key);
+            byPath.set(key, direct ? {
+              ...direct, before: change.before, beforeKnown: change.beforeKnown,
+              after: change.after, afterKnown: change.afterKnown,
+              removed: undefined, added: undefined,
+            } : change);
+          }
+        } catch {
+          if (gitSnapshotRef.current !== workspaceBaseline || generation !== sendGenerationRef.current) return;
+          reportWorkspaceWarning("comparison unavailable; direct tool edits only.");
+        }
+      }
 
       // 4. Fill after-content for entries still missing it (async reads —
       //    files that no longer exist stay null; deletions are kept only when
       //    the before is known).
       for (const c of byPath.values()) {
-        if (c.after !== null) continue;
+        if (c.after !== null || c.afterKnown !== undefined) continue;
         try {
           const res = await window.hermesAPI.readFile(c.path);
           c.after = res?.content ?? null;
@@ -1801,7 +1834,7 @@ export function useDashboardChatTransport({
         flushFileArchives();
       }
     })().catch(() => undefined);
-  }, [connectionMode, contextFolder, setMessages, flushFileArchives]);
+  }, [connectionMode, contextFolder, setMessages, flushFileArchives, reportWorkspaceWarning]);
 
   const resetQuietFinalize = useCallback((): void => {
     clearQuietFinalize();
@@ -1929,7 +1962,7 @@ export function useDashboardChatTransport({
     setIsLoading,
   ]);
 
-  useEffect(() => {
+  useEffect(() => () => {
     clearQuietFinalize();
     if (completeSyncTimerRef.current !== null) {
       clearTimeout(completeSyncTimerRef.current);
@@ -3595,6 +3628,8 @@ export function useDashboardChatTransport({
       if (!isRecovery && !isAutoInjectedPrompt(text) && !pendingClarifyRequestIdRef.current) {
         fileChangesRef.current = new Map();
         landedFilePathsRef.current = new Set();
+        gitSnapshotRef.current = null;
+        workspaceWarningRef.current = "";
       }
       // Fresh turn, fresh recovery budget.
       quietFinalizeErrorsRef.current = 0;
@@ -3687,11 +3722,7 @@ export function useDashboardChatTransport({
         text,
         attachments,
       );
-      // FILE-CHANGES: skip git snapshot. It costs several git.exe subprocesses
-      // per send on Windows and visibly flashes console windows. Tool-source
-      // capture still covers Hermes file-edit tools; direct shell edits may be
-      // omitted from the changed-files attachment.
-      gitSnapshotRef.current = null;
+      // Workspace baseline is captured immediately before prompt submission.
       const mergePendingRecoveredContinuation = (
         existing: DesktopSessionContinuationItem[],
       ): DesktopSessionContinuationItem[] => {
@@ -3921,6 +3952,23 @@ export function useDashboardChatTransport({
           if (index) wireText = encodeKnowledgePrompt(text, index, submitText);
           break;
         }
+        const workspaceFolder = contextFolder?.trim();
+        const workspacePrompt = messagesRef.current[lastManualPromptIndex(messagesRef.current)];
+        if (connectionMode === "local" && workspaceFolder && workspacePrompt && !gitSnapshotRef.current) {
+          const capture = window.hermesAPI.captureWorkspaceSnapshot;
+          if (typeof capture === "function") {
+            try {
+              const epoch = workspaceEpochRef.current;
+              const snapshot = await capture(workspaceFolder);
+              if (cancelled() || epoch !== workspaceEpochRef.current) return true; // stale session/folder capture
+              gitSnapshotRef.current = { folder: workspaceFolder, promptId: workspacePrompt.id, snapshot };
+              reportWorkspaceWarning(snapshot.warning);
+            } catch {
+              if (cancelled()) return true;
+              reportWorkspaceWarning("baseline unavailable; direct tool edits only.");
+            }
+          } else reportWorkspaceWarning("desktop rebuild/restart required; direct tool edits only.");
+        }
         submitted = true;
         if (sendTimingRef.current) sendTimingRef.current.submitted = true;
         markSendStage("submit");
@@ -3983,6 +4031,7 @@ export function useDashboardChatTransport({
       ensureSelectedModel,
       resetQuietFinalize,
       syncDashboardAttachments,
+      reportWorkspaceWarning,
       setIsLoading,
       setMessages,
       setToolProgress,

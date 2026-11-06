@@ -38,6 +38,18 @@ function historySection(region: HTMLElement, title: string): HTMLDetailsElement 
 }
 afterEach(cleanup);
 describe("file change history dialog", () => {
+  it("labels workspace-only evidence without calling unavailable binary content deleted", () => {
+    const binary: FileChange = { path: "C:/repo/data.bin", before: null, after: null, beforeKnown: false, afterKnown: false, source: "workspace" };
+    const view = renderWithI18n(<FileChangeHistoryDialog sessionId={null} messages={[messages[0], { id: "workspace", kind: "file_changes", role: "agent", changes: [binary] }]} onClose={vi.fn()} />);
+    selectPrompt("Manual prompt");
+    expect(screen.getByText("Workspace change")).toBeInTheDocument();
+    expect(screen.queryByText("Deleted")).not.toBeInTheDocument();
+    view.unmount();
+    renderWithI18n(<FileChangesDialog changes={[binary]} onClose={vi.fn()} />);
+    expect(screen.getAllByText(/Workspace change/)).toHaveLength(2);
+    expect(screen.getAllByText("Changed — snapshot unavailable")).toHaveLength(2);
+  });
+
   it("shows Prompt, Model answer, and Files as matching collapsed disclosures", () => {
     renderWithI18n(<FileChangeHistoryDialog sessionId={null} messages={[...messages, { id: "answer", role: "agent", content: "Short answer" }]} onClose={vi.fn()} />);
     const list = within(screen.getByRole("navigation", { name: "File change history" }));

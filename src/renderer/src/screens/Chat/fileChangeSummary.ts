@@ -20,6 +20,7 @@ export function mergePromptFileChanges(previous: readonly FileChange[], latest: 
       before: first.before !== null || first.beforeKnown ? first.before : change.before,
       beforeKnown: first.beforeKnown || change.beforeKnown,
       removed: first.removed ?? change.removed,
+      ...((first.source || change.source) ? { source: first.source === "workspace" && change.source === "workspace" ? "workspace" as const : undefined } : {}),
     } : change);
   }
   return [...merged.values()];

@@ -185,7 +185,7 @@ export function FileChangeHistoryDialog({
                     const target = resolveHistoryExplorerTarget(change.path, cwd);
                     const canExplore = !!target;
                     const status =
-                      change.after === null
+                      change.after === null && change.afterKnown !== false
                         ? "deleted"
                         : change.before === null && change.beforeKnown
                           ? "created"
@@ -204,7 +204,8 @@ export function FileChangeHistoryDialog({
                           {change.path}
                         </button>
                         <span className={`file-change-history-status file-change-history-status--${status}`}>
-                          {t(`chat.fileChangeHistory.${status}`)}
+                          {change.source === "workspace" ? "Workspace change" : t(`chat.fileChangeHistory.${status}`)}
+                          {change.source === "workspace" && <span className="sr-only"> — changed during this prompt; may include concurrent manual edits or build output.</span>}
                         </span>
                         <button
                           type="button"

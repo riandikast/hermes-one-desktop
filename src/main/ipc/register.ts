@@ -31,6 +31,7 @@ import type {
 } from "../../shared/session-continuation";
 import { stageAttachment, clearStagedAttachments } from "../attachment-staging";
 import { searchFileContents } from "../file-content-search";
+import { captureWorkspaceSnapshot } from "../workspace-snapshot";
 import {
   copyExplorerEntry,
   createExplorerEntry,
@@ -3866,6 +3867,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle("git-remote-add", (_event, dir: string, name: string, url: string) => gitRemoteAdd(dir, name, url));
   ipcMain.handle("git-remote-rename", (_event, dir: string, oldName: string, newName: string) => gitRemoteRename(dir, oldName, newName));
   ipcMain.handle("git-branch-upstream", (_event, dir: string, action: "set" | "unset" | "publish", branch: string, remote: string, target: string, fingerprint?: string) => gitBranchUpstream(dir, action, branch, remote, target, fingerprint));
+  ipcMain.handle("capture-workspace-snapshot", (_event, folder: string) => captureWorkspaceSnapshot(folder));
   ipcMain.handle("git-init", (_event, dir: string) => gitInit(dir));
   ipcMain.handle("git-repo-status", async (_event, dir: string) =>
     gitRepoStatus(dir),

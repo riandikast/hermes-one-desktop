@@ -106,6 +106,7 @@ function Harness({
   fallbackOnUnavailable = false,
   initialConnectionMode = "local",
   initialPlanMode = false,
+  contextFolder = null,
   modelBaseUrl,
   profile,
   onDashboardUnavailable,
@@ -123,6 +124,7 @@ function Harness({
   fallbackOnUnavailable?: boolean;
   initialConnectionMode?: "local" | "remote" | "ssh";
   initialPlanMode?: boolean;
+  contextFolder?: string | null;
   modelBaseUrl?: string;
   profile?: string;
   onDashboardUnavailable?: (reason: string) => void;
@@ -155,7 +157,7 @@ function Harness({
   const transport = useDashboardChatTransport({
     active,
     activeTurnRef,
-    contextFolder: null,
+    contextFolder,
     connectionMode,
     enabled: true,
     fallbackOnUnavailable,
@@ -868,6 +870,74 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
     expect(api.messages?.filter((row) => row.kind === "file_changes")).toHaveLength(2);
   });
 
+  it("captures a Git baseline before submit and supplements shell edits without inheriting earlier dirt", async () => {
+    const capture = vi.fn();
+    const state = (main: string, extra = false): import("../../../../../shared/workspace-snapshot").WorkspaceSnapshot => ({ root: "C:/repo", files: [
+      { path: "C:/repo/main.ts", fingerprint: main, content: main },
+      { path: "C:/repo/dirty.ts", fingerprint: "pre-existing", content: "pre-existing" },
+      ...(extra ? [{ path: "C:/repo/new.ts", fingerprint: "new", content: "new" }] : []),
+    ] });
+    capture.mockResolvedValueOnce(state("dirty before")).mockResolvedValueOnce(state("after script", true))
+      .mockResolvedValueOnce(state("after script", true)).mockResolvedValueOnce(state("after script", true));
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      if (method === "prompt.submit") expect(capture).toHaveBeenCalled();
+      return {};
+    });
+    Object.assign(window.hermesAPI, { captureWorkspaceSnapshot: capture, getFolderIndex: vi.fn(async () => ""), recordSessionFileChanges: vi.fn(async () => true) });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} contextFolder="C:/repo" />);
+    await act(async () => { await api.send?.("run patch script"); });
+    expect(dashboardMock.request).toHaveBeenCalledWith("prompt.submit", { session_id: "live", text: "run patch script" });
+    await act(async () => {
+      api.setMessages?.((rows) => rows.map((row) => row.role === "user" && row.content === "run patch script" ? { ...row, canonicalDbId: 41 } : row));
+    });
+    await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text: "done" } }); });
+    expect(groupFileChangeHistory(api.messages ?? [])[0].changes).toEqual([
+      expect.objectContaining({ path: "C:/repo/main.ts", before: "dirty before", after: "after script", source: "workspace" }),
+      expect.objectContaining({ path: "C:/repo/new.ts", source: "workspace" }),
+    ]);
+    expect(window.hermesAPI.recordSessionFileChanges).toHaveBeenLastCalledWith("stored", expect.arrayContaining([expect.objectContaining({ source: "workspace" })]), 41);
+    await act(async () => { await api.send?.("no edits"); });
+    await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text: "unchanged" } }); });
+    expect(groupFileChangeHistory(api.messages ?? [], true).at(-1)).toMatchObject({ prompt: { content: "no edits" }, changes: [] });
+    expect(capture).toHaveBeenCalledTimes(4);
+    view.unmount();
+  });
+
+  it("rejects delayed workspace comparisons after a newer prompt and never captures remote workspaces", async () => {
+    const state: import("../../../../../shared/workspace-snapshot").WorkspaceSnapshot = { root: "C:/repo", files: [] };
+    let release!: (value: typeof state) => void;
+    const capture = vi.fn().mockResolvedValueOnce(state)
+      .mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }))
+      .mockResolvedValue(state);
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      return {};
+    });
+    Object.assign(window.hermesAPI, { captureWorkspaceSnapshot: capture, getFolderIndex: vi.fn(async () => "") });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} contextFolder="C:/repo" />);
+    await act(async () => { await api.send?.("first"); });
+    await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text: "done" } }); });
+    expect(capture).toHaveBeenCalledTimes(2);
+    await act(async () => { await api.send?.("second"); });
+    await act(async () => { release({ root: "C:/repo", files: [{ path: "C:/repo/stale", fingerprint: "old reply", content: "stale" }] } as typeof state); });
+    expect(groupFileChangeHistory(api.messages ?? [])).toEqual([]);
+    view.unmount();
+    capture.mockClear();
+    const remoteApi: HarnessApi = {};
+    const remote = render(<Harness api={remoteApi} contextFolder="C:/repo" initialConnectionMode="remote" />);
+    await act(async () => { await remoteApi.send?.("remote edit"); });
+    expect(capture).not.toHaveBeenCalled();
+    remote.unmount();
+
+  });
+
   it("collects real child edits under the spawning prompt even after a later no-edit prompt", async () => {
     dashboardMock.request.mockImplementation(async (method) => {
       if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
@@ -1284,6 +1354,27 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("cancels delayed completion reads on unmount", async () => {
+    vi.useFakeTimers();
+    try {
+      dashboardMock.request.mockImplementation(async (method) => {
+        if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+        if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+        if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+        return {};
+      });
+      const api: HarnessApi = {};
+      const view = render(<Harness api={api} active={false} />);
+      await act(async () => { await api.send?.("finish then close"); });
+      await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text: "done" } }); });
+      view.unmount();
+      const read = vi.fn(async () => []);
+      Object.assign(window.hermesAPI, { getSessionMessages: read });
+      await act(async () => { await vi.advanceTimersByTimeAsync(7200); });
+      expect(read).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
   });
 
   it("does not poll session.active_list while the tab is hidden", async () => {

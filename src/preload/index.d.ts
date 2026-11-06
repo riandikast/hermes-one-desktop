@@ -1,6 +1,7 @@
 import type { AppLocale } from "../shared/i18n/types";
 import type { AndroidDevice, LogcatSnapshot, LogcatStartResult } from "../shared/android-logcat";
 import type { Attachment } from "../shared/attachments";
+import type { WorkspaceSnapshot } from "../shared/workspace-snapshot";
 import type { SessionHistoryPage } from "../shared/session-history";
 import type { SessionModelOverride } from "../shared/model-override";
 import type { DesktopSessionContinuationItem } from "../shared/session-continuation";
@@ -1421,6 +1422,7 @@ interface HermesAPI {
   gitRemoteRename: (dir: string, oldName: string, newName: string) => Promise<GitActionResult>;
   gitBranchUpstream: (dir: string, action: "set" | "unset" | "publish", branch: string, remote: string, target: string, fingerprint?: string) => Promise<GitActionResult>;
   gitInit: (dir: string) => Promise<GitActionResult>;
+  captureWorkspaceSnapshot: (folder: string) => Promise<WorkspaceSnapshot>;
   gitRepoStatus: (dir: string) => Promise<GitStatusResult>;
   gitLog: (dir: string, opts?: { max?: number; from?: string; to?: string }) => Promise<GitLogResult>;
   gitCommitDiff: (dir: string, hash: string) => Promise<GitActionResult>;

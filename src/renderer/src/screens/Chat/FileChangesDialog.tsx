@@ -11,6 +11,7 @@ function diffStats(change: FileChange): React.JSX.Element {
   if (change.before === null && change.after !== null && change.beforeKnown) {
     return <span>Created</span>;
   }
+  if (change.afterKnown === false) return <span>Changed — snapshot unavailable</span>;
   if (change.before !== null && change.after === null) {
     return <span>Deleted</span>;
   }
@@ -163,7 +164,7 @@ export function FileChangesDialog({
               <span className="file-changes-item-name">
                 {c.path.split(/[\\/]/).pop() || c.path}
               </span>
-              <span className="file-changes-item-stats">{diffStats(c)}</span>
+              <span className="file-changes-item-stats">{c.source === "workspace" && "Workspace change · "}{diffStats(c)}</span>
             </button>
           ))}
         </div>
@@ -171,8 +172,8 @@ export function FileChangesDialog({
           <div className="file-changes-diff">
             <div className="file-changes-diff-header">
               <span className="file-changes-diff-file">{fileName}</span>
-              <span className="file-changes-diff-stats">
-                {diffStats(selected)}
+              <span className="file-changes-diff-stats" title={selected.source === "workspace" ? "Changed during this prompt; may include concurrent manual edits or build output." : undefined}>
+                {selected.source === "workspace" && "Workspace change · "}{diffStats(selected)}
               </span>
             </div>
             {diff ? (

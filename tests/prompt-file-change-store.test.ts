@@ -44,6 +44,14 @@ beforeEach(() => {
 afterEach(() => { sqlite.close(); state.db = null; });
 
 describe("prompt-owned file-change archive", () => {
+  it("preserves workspace provenance and unavailable binary snapshots after reopening", () => {
+    const workspace = { path: "C:/repo/data.bin", before: null, after: null, beforeKnown: false, afterKnown: false, source: "workspace" };
+    expect(persistSessionFileChanges("session-a", [workspace], 1)).toBe(true);
+    expect(loadSessionFileChanges(state.db!, "session-a").get(1)).toEqual([workspace]);
+    expect(persistSessionFileChanges("session-a", [{ ...workspace, source: undefined }], 1)).toBe(true);
+    expect(loadSessionFileChanges(state.db!, "session-a").get(1)?.[0]).not.toHaveProperty("source");
+  });
+
   it("retains two identical editing prompts across a later no-edit prompt and merges only the same owner", () => {
     expect(persistSessionFileChanges("session-a", [change()], 1)).toBe(true);
     expect(persistSessionFileChanges("session-a", [change("new", "second prompt result")], 3)).toBe(true);

@@ -21,6 +21,8 @@ export interface StoredFileChange {
   before: string | null;
   after: string | null;
   beforeKnown?: boolean;
+  afterKnown?: boolean;
+  source?: "workspace";
   removed?: string[];
   added?: string[];
 }
@@ -363,6 +365,8 @@ function normalizeFileChanges(changes: unknown): StoredFileChange[] {
       before: typeof change.before === "string" ? change.before : null,
       after: typeof change.after === "string" ? change.after : null,
       ...(typeof change.beforeKnown === "boolean" ? { beforeKnown: change.beforeKnown } : {}),
+      ...(typeof change.afterKnown === "boolean" ? { afterKnown: change.afterKnown } : {}),
+      ...(change.source === "workspace" ? { source: "workspace" as const } : {}),
       ...(Array.isArray(change.removed) ? { removed: change.removed.filter((line): line is string => typeof line === "string") } : {}),
       ...(Array.isArray(change.added) ? { added: change.added.filter((line): line is string => typeof line === "string") } : {}),
     }];
@@ -389,6 +393,7 @@ function mergeFileChanges(previous: StoredFileChange[], latest: StoredFileChange
       before: first.before !== null || first.beforeKnown ? first.before : change.before,
       beforeKnown: first.beforeKnown || change.beforeKnown,
       removed: first.removed ?? change.removed,
+      ...((first.source || change.source) ? { source: first.source === "workspace" && change.source === "workspace" ? "workspace" as const : undefined } : {}),
     } : change);
   }
   return [...merged.values()];
