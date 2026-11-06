@@ -208,6 +208,8 @@ describe("file change history", () => {
       /fileChangeHistoryOpen && \(\s*<FileChangeHistoryDialog/,
     );
     expect(chatSource).toContain("sessionId={hermesSessionId}");
+    expect(chatSource).toContain("setFileChangesOpen({ changes, summaryId })");
+    expect(chatSource).toMatch(/<FileChangesDialog\s+changes=\{fileChangesOpen.changes\}\s+summaryId=\{fileChangesOpen.summaryId\}\s+messages=\{messages\}/);
     expect(chatSource).not.toContain('toolProgress || "Waiting on provider"');
   });
   it("includes every old turn beyond a recent message page", async () => {

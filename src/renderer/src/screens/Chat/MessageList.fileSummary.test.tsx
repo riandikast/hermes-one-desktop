@@ -21,7 +21,7 @@ it("recovers reopened prompt chips from multi-file tool results without an assis
   render(<MessageList messages={messages} isLoading toolProgress={null} onApprove={vi.fn()} onDeny={vi.fn()} onClarifyResolved={vi.fn()} onOpenFileChanges={onOpen} />);
   const chip = screen.getByRole("button", { name: /2 files changed/ });
   fireEvent.click(chip);
-  expect(onOpen).toHaveBeenCalledWith(changes.map((path) => expect.objectContaining({ path })));
+  expect(onOpen).toHaveBeenCalledWith(changes.map((path) => expect.objectContaining({ path })), expect.any(String));
 });
 
 it("renders one cumulative footer below the latest response, hides it during continuation, preserves earlier prompt footers", () => {
@@ -42,7 +42,7 @@ it("renders one cumulative footer below the latest response, hides it during con
   expect(screen.getByTestId("final").compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(view.container.querySelectorAll(".chat-file-changes-row")).toHaveLength(1);
   fireEvent.click(chip);
-  expect(onOpen).toHaveBeenCalledWith([{ ...a, after: "after" }, b]);
+  expect(onOpen).toHaveBeenCalledWith([{ ...a, after: "after" }, b], "fc1");
   view.rerender(<MessageList {...props} isLoading />);
   expect(view.container.querySelector(".chat-file-changes-row")).toBeNull();
   view.rerender(<MessageList {...props} messages={[...messages, { id: "u2", role: "user", content: "next request" }]} isLoading />);

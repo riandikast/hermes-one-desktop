@@ -8,6 +8,7 @@ import { FileChangesDialog } from "./FileChangesDialog";
 import type { ChatMessage, FileChange } from "./types";
 import { resolveHistoryExplorerTarget } from "./fileChangeHistory";
 import { readFileSync } from "node:fs";
+import { fileSummaryFooters } from "./fileChangeSummary";
 
 const readDirectory = vi.fn();
 afterEach(() => vi.restoreAllMocks());
@@ -38,6 +39,27 @@ function historySection(region: HTMLElement, title: string): HTMLDetailsElement 
 }
 afterEach(cleanup);
 describe("file change history dialog", () => {
+  it("keeps an already-open chip dialog synced with late workspace and child files", () => {
+    const chip: ChatMessage = { id: "chip", kind: "file_changes", role: "agent", changes: [change] };
+    const initial = [...messages.slice(0, 1), chip];
+    const props = { changes: [change], summaryId: "chip", messages: initial, onClose: vi.fn() };
+    const view = renderWithI18n(<FileChangesDialog {...props} />);
+    const late: FileChange = { path: "C:/repo/main.php", before: "old", after: "new", source: "workspace" };
+    const updated: ChatMessage[] = [...initial.slice(0, 1), { ...chip, changes: [change, late] },
+      { id: "new-prompt", role: "user", content: "Manual prompt" },
+      { id: "other-chip", kind: "file_changes", role: "agent", changes: [{ ...change, path: "C:/other/unrelated.ts" }] }];
+    view.rerender(<FileChangesDialog {...props} messages={updated} />);
+    const summary = fileSummaryFooters(updated, false).find((row) => row.kind === "file_changes");
+    expect(summary?.kind === "file_changes" && summary.changes).toHaveLength(2);
+    expect(document.querySelectorAll(".file-changes-item")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /unrelated.ts/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /main.php/ }));
+    expect(document.querySelector(".file-changes-diff-file")?.textContent).toBe("main.php");
+    expect([...document.querySelectorAll(".file-changes-diff-line")].map((line) => line.textContent)).toEqual(["-old", "+new"]);
+    view.rerender(<FileChangesDialog {...props} messages={[]} />);
+    expect(document.querySelectorAll(".file-changes-item")).toHaveLength(1);
+    expect(document.querySelector(".file-changes-diff-file")?.textContent).toBe("long path.ts");
+  });
   it("labels workspace-only evidence without calling unavailable binary content deleted", () => {
     const binary: FileChange = { path: "C:/repo/data.bin", before: null, after: null, beforeKnown: false, afterKnown: false, source: "workspace" };
     const view = renderWithI18n(<FileChangeHistoryDialog sessionId={null} messages={[messages[0], { id: "workspace", kind: "file_changes", role: "agent", changes: [binary] }]} onClose={vi.fn()} />);
@@ -147,7 +169,7 @@ describe("file change history dialog", () => {
     const onOpen = vi.fn();
     renderWithI18n(<FileChangesRow msg={chip} onOpen={onOpen} />);
     fireEvent.click(screen.getByRole("button"));
-    expect(onOpen).toHaveBeenCalledExactlyOnceWith(chip.changes);
+    expect(onOpen).toHaveBeenCalledExactlyOnceWith(chip.changes, chip.id);
     cleanup();
     renderWithI18n(<FileChangesDialog changes={onOpen.mock.calls[0][0]} onClose={vi.fn()} />);
     const chipDiff = [...document.querySelectorAll(".file-changes-diff-line")].map((line) => line.textContent);

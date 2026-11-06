@@ -193,7 +193,7 @@ export const FileChangesRow = memo(function FileChangesRow({
   onOpen,
 }: {
   msg: FileChangesMessage;
-  onOpen?: (changes: FileChange[]) => void;
+  onOpen?: (changes: FileChange[], summaryId?: string) => void;
 }): React.JSX.Element {
   const { t } = useI18n();
   const count = msg.changes.length;
@@ -201,7 +201,7 @@ export const FileChangesRow = memo(function FileChangesRow({
     <button
       type="button"
       className="chat-file-changes-row"
-      onClick={() => onOpen?.(msg.changes)}
+      onClick={() => onOpen?.(msg.changes, msg.id)}
       title={t("chat.fileChangeHistory.view")}
     >
       <FilePlus2 size={13} />
@@ -233,7 +233,7 @@ interface MessageListProps {
   agentAvatar?: AgentAvatarInfo;
   onRevertCheckpoint?: (msgId: string) => void;
   onUnsendLastUser?: (msgId: string, content: string, attachments?: ChatBubbleMessage["attachments"]) => void;
-  onOpenFileChanges?: (changes: FileChange[]) => void;
+  onOpenFileChanges?: (changes: FileChange[], summaryId?: string) => void;
   /** Toggle pin state on a bubble (user or agent). */
   onPinToggle?: (msgId: string, pinned: boolean) => void;
   /** Pinned bubbles to render in the sticky section above the transcript. */
@@ -310,7 +310,7 @@ function buildRows(
     onClarifyStuck?: (requestId: string, answer: string) => void;
     onRevertCheckpoint?: (msgId: string) => void;
     onUnsendLastUser?: (msgId: string, content: string, attachments?: ChatBubbleMessage["attachments"]) => void;
-    onOpenFileChanges?: (changes: FileChange[]) => void;
+    onOpenFileChanges?: (changes: FileChange[], summaryId?: string) => void;
     onPinToggle?: (msgId: string, pinned: boolean) => void;
   },
 ): {

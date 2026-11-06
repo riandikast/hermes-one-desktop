@@ -619,7 +619,7 @@ function Chat({
   const [fileChangeHistoryOpen, setFileChangeHistoryOpen] = useState(false);
   const [logsModalOpen, setLogsModalOpen] = useState(false);
   const [logcatOpen, setLogcatOpen] = useState(false);
-  const [fileChangesOpen, setFileChangesOpen] = useState<FileChange[] | null>(
+  const [fileChangesOpen, setFileChangesOpen] = useState<{ changes: FileChange[]; summaryId?: string } | null>(
     null,
   );
 
@@ -2804,7 +2804,7 @@ function Chat({
                 agentAvatar={agentAvatar}
                 onRevertCheckpoint={handleRevertCheckpoint}
                 onUnsendLastUser={handleUnsendLastUser}
-                onOpenFileChanges={(changes) => setFileChangesOpen(changes)}
+                onOpenFileChanges={(changes, summaryId) => setFileChangesOpen({ changes, summaryId })}
                 onPinToggle={handlePinToggle}
                 pinnedMessages={pinnedMessages}
                 containerRef={containerRef}
@@ -3123,7 +3123,9 @@ function Chat({
       )}
       {fileChangesOpen && (
         <FileChangesDialog
-          changes={fileChangesOpen}
+          changes={fileChangesOpen.changes}
+          summaryId={fileChangesOpen.summaryId}
+          messages={messages}
           onClose={() => setFileChangesOpen(null)}
         />
       )}

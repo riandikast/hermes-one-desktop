@@ -5,7 +5,8 @@ import { EditorView } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { diffLines, type DiffLine } from "./fileChanges";
-import type { FileChange } from "./types";
+import type { ChatMessage, FileChange } from "./types";
+import { fileSummaryFooters } from "./fileChangeSummary";
 
 function diffStats(change: FileChange): React.JSX.Element {
   if (change.before === null && change.after !== null && change.beforeKnown) {
@@ -105,20 +106,29 @@ function DiffView({ lines }: { lines: DiffLine[] }): React.JSX.Element {
 }
 
 export function FileChangesDialog({
-  changes,
+  changes: initialChanges,
+  summaryId,
+  messages,
   onClose,
 }: {
   changes: FileChange[];
+  summaryId?: string;
+  messages?: ChatMessage[];
   onClose: () => void;
 }): React.JSX.Element {
+  const changes = useMemo(() => {
+    if (!summaryId || !messages) return initialChanges;
+    const summary = fileSummaryFooters(messages, false).find((row) => row.id === summaryId && row.kind === "file_changes");
+    return summary?.kind === "file_changes" ? summary.changes : initialChanges;
+  }, [initialChanges, summaryId, messages]);
   const [selectedPath, setSelectedPath] = useState<string>(
     changes[0]?.path ?? "",
   );
   const selected = changes.find((c) => c.path === selectedPath) ?? changes[0];
 
   const fileName = useMemo(
-    () => selectedPath.split(/[\\/]/).pop() || selectedPath,
-    [selectedPath],
+    () => selected?.path.split(/[\\/]/).pop() || selected?.path || "",
+    [selected?.path],
   );
 
   const diff = useMemo(() => (selected ? diffFor(selected) : null), [selected]);
