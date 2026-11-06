@@ -907,6 +907,46 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
     view.unmount();
   });
 
+  it("keeps late workspace warnings before the prompt's first Thought and updates one notice", async () => {
+    const capture = vi.fn().mockResolvedValueOnce({ root: "C:/repo", files: [] })
+      .mockResolvedValue({ root: "C:/repo", files: [], warning: "Workspace snapshot excluded 9 over 256 KiB." });
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      return {};
+    });
+    Object.assign(window.hermesAPI, { captureWorkspaceSnapshot: capture, getFolderIndex: vi.fn(async () => "") });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} contextFolder="C:/repo" />);
+    await act(async () => { await api.send?.("inspect page"); });
+    const promptId = api.messages?.findLast((row) => row.role === "user")?.id;
+    await act(async () => {
+      api.setMessages?.((rows) => [...rows, { id: "first-thought", kind: "reasoning", role: "agent", text: "Inspect column counts" }]);
+    });
+    await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text: "checked" } }); });
+    const promptIndex = api.messages!.findIndex((row) => row.id === promptId);
+    expect(api.messages![promptIndex + 1]).toMatchObject({ localOnly: true, content: "Workspace change detection: Workspace snapshot excluded 9 over 256 KiB." });
+    expect(api.messages![promptIndex + 2].id).toBe("first-thought");
+    capture.mockResolvedValue({ root: "C:/repo", files: [], warning: "Workspace snapshot excluded 10 over 256 KiB." });
+    await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text: "checked again" } }); });
+    const notices = api.messages!.filter((row) => row.id.startsWith("workspace-warning-"));
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ content: "Workspace change detection: Workspace snapshot excluded 10 over 256 KiB." });
+    expect(api.messages![promptIndex + 1]).toBe(notices[0]);
+    await act(async () => {
+      api.setMessages?.((rows) => reconcileTailAfterDbRefresh(rows, dbItemsToChatMessages([
+        { id: 41, kind: "user", content: "inspect page" },
+        { id: 42, kind: "reasoning", text: "Inspect column counts" },
+        { id: 43, kind: "assistant", content: "checked again" },
+      ]), { lastSyncedDbId: 0 }));
+    });
+    const reconciledPrompt = api.messages!.findIndex((row) => row.id === promptId);
+    expect(api.messages![reconciledPrompt + 1].id).toBe(notices[0].id);
+    expect(api.messages![reconciledPrompt + 2].kind).toBe("reasoning");
+    view.unmount();
+  });
+
   it("rejects delayed workspace comparisons after a newer prompt and never captures remote workspaces", async () => {
     const state: import("../../../../../shared/workspace-snapshot").WorkspaceSnapshot = { root: "C:/repo", files: [] };
     let release!: (value: typeof state) => void;

@@ -1420,16 +1420,22 @@ export function useDashboardChatTransport({
   // Retain the same baseline through continuations/recovery. Workspace changes
   // prove timing only, never attribution to the agent.
   const gitSnapshotRef = useRef<{ folder: string; promptId: string; snapshot: WorkspaceSnapshot } | null>(null);
-  const workspaceWarningRef = useRef("");
+
   const workspaceEpochRef = useRef(0);
-  const reportWorkspaceWarning = useCallback((warning?: string): void => {
-    if (!warning || workspaceWarningRef.current === warning) return;
-    workspaceWarningRef.current = warning;
-    const notice: ChatMessage = { id: `workspace-warning-${Date.now()}`, role: "agent", localOnly: true,
-      content: `Workspace change detection: ${warning}` };
-    messagesRef.current = [...messagesRef.current, notice];
+  const reportWorkspaceWarning = useCallback((warning: string | undefined, promptId: string): void => {
+    if (!warning) return;
+    const rows = messagesRef.current;
+    const owner = rows.findIndex((row) => row.id === promptId);
+    if (owner < 0) return;
+    const id = `workspace-warning-${rows[owner].id}`;
+    const content = `Workspace change detection: ${warning}`;
+    const existing = rows[owner + 1];
+    if (existing?.id === id && "content" in existing && existing.content === content) return; // Same prompt notice already current.
+    const notice: ChatMessage = { id, role: "agent", localOnly: true, content };
+    messagesRef.current = [...rows.slice(0, owner + 1), notice, ...rows.slice(owner + 1).filter((row) => row.id !== id)];
     setMessages(messagesRef.current);
   }, [setMessages]);
+
   useEffect(() => {
     workspaceEpochRef.current++;
     gitSnapshotRef.current = null;
@@ -1791,7 +1797,7 @@ export function useDashboardChatTransport({
         try {
           const after = await window.hermesAPI.captureWorkspaceSnapshot(workspaceBaseline.folder);
           if (gitSnapshotRef.current !== workspaceBaseline || generation !== sendGenerationRef.current || revision !== fileChangesRevisionRef.current) return;
-          reportWorkspaceWarning(after.warning);
+          reportWorkspaceWarning(after.warning, prompt.id);
           for (const change of workspaceChanges(workspaceBaseline.snapshot, after)) {
             const key = normalizePathKey(change.path);
             const direct = byPath.get(key);
@@ -1803,7 +1809,7 @@ export function useDashboardChatTransport({
           }
         } catch {
           if (gitSnapshotRef.current !== workspaceBaseline || generation !== sendGenerationRef.current) return;
-          reportWorkspaceWarning("comparison unavailable; direct tool edits only.");
+          reportWorkspaceWarning("comparison unavailable; direct tool edits only.", prompt.id);
         }
       }
 
@@ -3629,7 +3635,6 @@ export function useDashboardChatTransport({
         fileChangesRef.current = new Map();
         landedFilePathsRef.current = new Set();
         gitSnapshotRef.current = null;
-        workspaceWarningRef.current = "";
       }
       // Fresh turn, fresh recovery budget.
       quietFinalizeErrorsRef.current = 0;
@@ -3962,12 +3967,12 @@ export function useDashboardChatTransport({
               const snapshot = await capture(workspaceFolder);
               if (cancelled() || epoch !== workspaceEpochRef.current) return true; // stale session/folder capture
               gitSnapshotRef.current = { folder: workspaceFolder, promptId: workspacePrompt.id, snapshot };
-              reportWorkspaceWarning(snapshot.warning);
+              reportWorkspaceWarning(snapshot.warning, workspacePrompt.id);
             } catch {
               if (cancelled()) return true;
-              reportWorkspaceWarning("baseline unavailable; direct tool edits only.");
+              reportWorkspaceWarning("baseline unavailable; direct tool edits only.", workspacePrompt.id);
             }
-          } else reportWorkspaceWarning("desktop rebuild/restart required; direct tool edits only.");
+          } else reportWorkspaceWarning("desktop rebuild/restart required; direct tool edits only.", workspacePrompt.id);
         }
         submitted = true;
         if (sendTimingRef.current) sendTimingRef.current.submitted = true;
