@@ -39,6 +39,23 @@ function historySection(region: HTMLElement, title: string): HTMLDetailsElement 
 }
 afterEach(cleanup);
 describe("file change history dialog", () => {
+  it("gives filenames their own wrapping line when large-file status text is long", () => {
+    const css = readFileSync("src/renderer/src/assets/main.css", "utf8");
+    const rule = (selector: string): string => css.slice(css.indexOf(`${selector} {`)).split("}")[0];
+    expect(rule(".file-changes-item")).toContain("flex-direction: column");
+    expect(rule(".file-changes-item")).toContain("align-items: stretch");
+    expect(rule(".file-changes-item")).toContain("flex-shrink: 0");
+    expect(rule(".file-changes-item-name")).toContain("white-space: normal");
+    expect(rule(".file-changes-item-name")).toContain("overflow-wrap: anywhere");
+    expect(rule(".file-changes-item-name")).not.toContain("overflow: hidden");
+    expect(rule(".file-changes-item-stats")).toContain("overflow-wrap: anywhere");
+    const name = "VeryLongMainControllerWithValidationAndPropertySelection.php";
+    renderWithI18n(<FileChangesDialog changes={[{
+      path: `C:/repo/${name}`, before: Array(1100).fill("before").join("\n"), after: Array(1100).fill("after").join("\n"), source: "workspace",
+    }]} onClose={vi.fn()} />);
+    expect(screen.getByRole("button", { name: new RegExp(name) })).toHaveAttribute("title", `C:/repo/${name}`);
+    expect(screen.getAllByText("Changed — file too large to diff")).toHaveLength(2);
+  });
   it("keeps an already-open chip dialog synced with late workspace and child files", () => {
     const chip: ChatMessage = { id: "chip", kind: "file_changes", role: "agent", changes: [change] };
     const initial = [...messages.slice(0, 1), chip];
