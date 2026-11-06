@@ -10,7 +10,9 @@ vi.mock("../dashboardGatewayClient", () => ({ DashboardGatewayClient: class {
 } }));
 import { expect, it, vi } from "vitest";
 import { useReasoningEffort } from "./useReasoningEffort";
+import { writeDefaultReasoning } from "../../../components/settings/defaultReasoning";
 import { submitDashboardPromptWithRecovery } from "./useDashboardChatTransport";
+import type { ActiveTurn, ChatMessage } from "../types";
 
 // @lat: [[reasoning-effort#Session isolation verification]]
 it("isolates drafts, migrates to real ids, restores remounts, sends session-scoped reasoning before prompts", async () => {
@@ -91,5 +93,41 @@ it("threads the selected effort through the actual send hook, not a prompt param
   expect(submit).toBeGreaterThan(mutation);
   expect(calls[mutation][1]).toEqual({ key: "reasoning", value: "max", scope: "session", session_id: "live" });
   expect(calls[submit][1]).toEqual({ session_id: "live", text: "proof" });
+  view.unmount();
+});
+
+it("applies the Providers default thinking level to a fresh draft before its first submit", async () => {
+  localStorage.clear();
+  writeDefaultReasoning("high");
+  Object.defineProperty(window, "hermesAPI", { configurable: true, value: {
+    startDashboard: async () => ({ connection: { wsUrl: "ws://fixture" }, running: true }),
+    freshDashboardWsUrl: async () => "ws://fixture", getSessionMessages: async () => [],
+  } });
+  wire.request.mockReset().mockImplementation(async (method: string, params: { value?: string }) => {
+    if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
+    if (method === "config.get") return { value: "medium" };
+    if (method === "config.set") return { value: params.value };
+    if (method === "session.active_list") return { sessions: [] };
+    return {};
+  });
+  const view = renderHook(() => {
+    const activeTurnRef = useRef<ActiveTurn | null>(null);
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const effort = useReasoningEffort("default", null, "default-draft");
+    const transport = useDashboardChatTransport({ active: false, enabled: true, fallbackOnUnavailable: false,
+      connectionMode: "local", activeTurnRef, hermesSessionId: null, contextFolder: null,
+      messages, setMessages, setIsLoading: () => {}, setHermesSessionId: () => {},
+      setToolProgress: () => {}, setUsage: () => {}, reasoningEffort: effort.reasoningEffort });
+    return { ...effort, ...transport };
+  });
+  expect(view.result.current.reasoningEffort).toBe("high");
+  await act(async () => { await view.result.current.sendMessage("default proof"); });
+  const calls = wire.request.mock.calls;
+  const mutation = calls.findIndex(([m, p]) => m === "config.set" && p.key === "reasoning");
+  const submit = calls.findIndex(([m]) => m === "prompt.submit");
+  expect(mutation).toBeGreaterThan(-1);
+  expect(submit).toBeGreaterThan(mutation);
+  expect(calls[mutation][1]).toEqual({ key: "reasoning", value: "high", scope: "session", session_id: "live" });
+  localStorage.clear();
   view.unmount();
 });

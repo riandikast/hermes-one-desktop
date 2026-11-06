@@ -21,6 +21,8 @@ import { customProviderEnvKey } from "../../../../shared/url-key-map";
 import type { HermesAccount } from "../../../../shared/account";
 import "./Providers.css";
 import { OFFICIAL_DEFAULT_PROVIDERS } from "../../../../shared/official-providers";
+import { useDefaultReasoning } from "../../components/settings/defaultReasoning";
+import { REASONING_EFFORT_ORDER } from "../Chat/reasoningTiers";
 
 /** Preview a stored key as prefix + dots + last 4, so a set key is recognisable
  * without exposing it. */
@@ -179,6 +181,9 @@ function Providers({
     string | undefined
   >(undefined);
   const [modelSaved, setModelSaved] = useState(false);
+  // Default thinking: applied to chats that have no pick of their own.
+  const [defaultReasoning, setDefaultReasoning] = useDefaultReasoning();
+  const [reasoningSaved, setReasoningSaved] = useState(false);
   const [modelReady, setModelReady] = useState(0);
   // Active-model picker modal: pick a configured provider, then one of its
   // configured models. Sourced from the model library (models.json).
@@ -831,6 +836,56 @@ function Providers({
                     ? t("common.change")
                     : t("providers.model.select")}
                 </button>
+              </div>
+            </div>
+
+            <div className="settings-section">
+              <div className="settings-section-title settings-section-title-row">
+                <span>
+                  {t("providers.defaultThinking.title", {
+                    defaultValue: "Default thinking",
+                  })}
+                  {reasoningSaved && (
+                    <span className="settings-saved" style={{ marginLeft: 8 }}>
+                      {t("common.saved")}
+                    </span>
+                  )}
+                </span>
+              </div>
+              <div className="settings-field">
+                <label
+                  className="settings-field-label"
+                  htmlFor="providers-default-reasoning"
+                >
+                  {t("chat.reasoningEffort.title", {
+                    defaultValue: "Reasoning level",
+                  })}
+                </label>
+                <select
+                  id="providers-default-reasoning"
+                  className="input settings-select"
+                  value={defaultReasoning}
+                  onChange={(event) => {
+                    const next =
+                      REASONING_EFFORT_ORDER.find(
+                        (tier) => tier === event.target.value,
+                      ) ?? "auto";
+                    const saved = setDefaultReasoning(next);
+                    setReasoningSaved(saved);
+                  }}
+                >
+                  {REASONING_EFFORT_ORDER.map((tier) => (
+                    <option key={tier} value={tier}>
+                      {t(`chat.reasoningEffort.${tier}`, { defaultValue: tier })}
+                    </option>
+                  ))}
+                </select>
+                <div className="settings-field-hint" style={{ marginTop: 8 }}>
+                  {t("providers.defaultThinking.hint", {
+                    defaultValue:
+                      "Used by chats that have no level of their own; a pick in the composer always wins. Providers that do not support reasoning effort may ignore or reject a manual level.",
+                  })}
+                </div>
               </div>
             </div>
 

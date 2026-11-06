@@ -48,6 +48,8 @@ Default knowledge (Settings → Utils, `hermes.knowledge.defaults`) seeds every 
 
 Send-prompt confirmation is opt-in and OFF by default (`hermes.sendConfirm`, Settings → Utils): ChatInput sends on the first Enter unless enabled; turning it off clears an armed dialog. See lat.md/chat-commands.md.
 
+Default thinking (Settings → Providers, `hermes.reasoning.default`) seeds reasoning for chats with no pick of their own; the composer always wins and an existing per-chat pick survives later default changes. Renderer-only: tiers live in `screens/Chat/reasoningTiers.ts`, storage in `components/settings/defaultReasoning.ts`, and the value still reaches the gateway as the existing session-scoped `config.set`. No backend or `agent.reasoning_effort` write. See lat.md/reasoning-effort.md.
+
 Source Control header is responsive: below a 760px panel width the title hides, the branch chip truncates and the action row stays one line at tab height (middle buttons scroll; float/close pinned); the tab strip scrolls instead of clipping. Source Control has a header float toggle (persisted `hermes.sourceControl.floating`): floating mode reuses FloatingDialog (drag/resize) with the page title/close hidden; below a 760px panel width the Changes and Graph splits become tabs, and below 760px of window width floating is disabled. See lat.md/source-control.md.
 
 Web preview attaches to the app tab bar: the panel toolbar dispatches `hermes-open-web-preview`, Layout opens/reuses a `targetView: "web"` run (title = host) rendered with WebPreviewPanel and marked by a globe chip; closing the tab uses the normal run close. See lat.md/web-preview.md.

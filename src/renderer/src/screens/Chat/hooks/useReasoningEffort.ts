@@ -1,28 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { readDefaultReasoning } from "../../../components/settings/defaultReasoning";
+import {
+  DEFAULT_REASONING_EFFORT,
+  normalizeReasoningEffort,
+  type ReasoningEffort,
+} from "../reasoningTiers";
 
-export type ReasoningEffort =
-  | "auto"
-  | "none"
-  | "max"
-  | "ultra"
-  | "minimal"
-  | "low"
-  | "medium"
-  | "high"
-  | "xhigh";
-
-export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "auto";
-
-export function normalizeReasoningEffort(value: unknown): ReasoningEffort {
-  return value === "none" || value === "max" || value === "ultra" || value === "auto" ||
-    value === "minimal" ||
-    value === "low" ||
-    value === "medium" ||
-    value === "high" ||
-    value === "xhigh"
-    ? value
-    : DEFAULT_REASONING_EFFORT;
-}
+export {
+  DEFAULT_REASONING_EFFORT,
+  normalizeReasoningEffort,
+  type ReasoningEffort,
+};
 
 interface UseReasoningEffortResult {
   reasoningEffort: ReasoningEffort;
@@ -32,7 +20,11 @@ interface UseReasoningEffortResult {
 export function useReasoningEffort(profile?: string, sessionId?: string | null, draftId = "draft"): UseReasoningEffortResult {
   const key = JSON.stringify(["hermes.chat.reasoning.v1", profile || "default", sessionId || draftId]);
   const read = (k: string): ReasoningEffort => {
-    try { return normalizeReasoningEffort(localStorage.getItem(k)); } catch { return "auto"; }
+    // A chat with no pick of its own starts at Settings → Providers' default.
+    try {
+      const stored = localStorage.getItem(k);
+      return stored === null ? readDefaultReasoning() : normalizeReasoningEffort(stored);
+    } catch { return readDefaultReasoning(); }
   };
   const [selection, setSelection] = useState(() => ({ key, value: read(key) }));
   const previous = useRef({ key, sessionId, profile, draftId });
