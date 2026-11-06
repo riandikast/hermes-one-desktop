@@ -54,6 +54,18 @@ Quiet-finalize needs full user-message counts to prove that persisted history ca
 
 [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts]]'s quiet-finalize recovery (~10 s of gateway silence) compares WHOLE-session user counts against the live transcript to decide whether state.db has caught up — a tail read would break that catch-up guard. It keeps its full read and full reconcile, and only re-baselines `lastSyncedDbIdRef` afterwards so the NEXT completion is fast again. It is a rare recovery path, not the hot one.
 
+## Reopening a session that another app is running
+
+A reopened chat shows live progress immediately when its turn was started by another client, not only after the poll.
+
+[[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts]] used to learn "running" only from the 2 s `session.active_list` poll, whose `working` gate also waits out the 5 s post-local-turn grace — a short turn started by an external app (anything else driving the same gateway) finished before the spinner ever appeared. The mount bootstrap now calls `session.resume` (which already reports `running`), remembers that flag in `runtimeWasRunningRef` — captured inside `ensureRuntimeSession`, because that helper resolves only the id — and paints loading via `beginForeignTurn` before the first poll.
+
+The bootstrap reads its callbacks through refs and keeps `beginForeignTurn`/`reconcileForeignTail` out of its dependency array: with them in deps, any unrelated re-render cancelled the in-flight attach and restarted it forever, so `session.resume` never landed.
+
+The poller also no longer requires a runtime id. It matches `session.active_list` rows by runtime id **or** by the stored session key, so a session owned by an external client — including one where this client's own attach is refused as already-owned — still shows its spinner. Each effect instance only clears loading when it was the one that painted it, so a dependency change (or a stale unmount) cannot stomp a live turn's state.
+
+Pinned by `useDashboardChatTransport.test.tsx`: "paints progress immediately when a reopened session is still running in another client", "detects an external app's running turn by stored key even when our own attach is refused", and "stays idle when the reopened session is not running anywhere".
+
 ## Result (same real session, same code path)
 
 Measured completion timings compare full-history and cursor-scoped paths on the same session.

@@ -1255,6 +1255,10 @@ export function useDashboardChatTransport({
   // immediately. Reset on connection change (see the effect below).
   const dashboardUnavailableRef = useRef(false);
   const runtimeSessionIdRef = useRef<string | null>(null);
+  // Whether the runtime session we attached to reported `running` on attach.
+  // `ensureRuntimeSession` resolves only the id, so the resume response's own
+  // flag is captured here for the reopen bootstrap.
+  const runtimeWasRunningRef = useRef(false);
   const usageBaselineRef = useRef<TokenCounts | null>(null);
   const seenUsageSourcesRef = useRef(new Set<string>());
   const onUsageRef = useRef(onUsage);
@@ -1344,6 +1348,24 @@ export function useDashboardChatTransport({
     }
     setIsLoading(true);
   }, [activeTurnRef, setIsLoading]);
+  /**
+   * Mirror a turn started by another client (official desktop, a dashboard tab,
+   * an external app driving the gateway). Everything the user sees — spinner,
+   * interrupt button, tab orb — flows from `setIsLoading`, so this must run as
+   * soon as we KNOW the session is running, not only when a poll notices.
+   */
+  const beginForeignTurn = useCallback((): void => {
+    if (activeTurnRef.current) return;
+    foreignTurnRef.current = true;
+    activeTurnRef.current = {
+      turnId: `foreign-${Date.now()}`,
+      userId: "",
+      startIndex: messagesRef.current.length,
+      status: "running",
+    };
+    setToolProgress(null);
+    setIsLoading(true);
+  }, [activeTurnRef, setIsLoading, setToolProgress]);
   // Delayed post-complete DB reconcile (intermediate answers) — cleared on
   // transport reset so it can't fire into a different session.
   const completeSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -1576,6 +1598,7 @@ export function useDashboardChatTransport({
     connectingRef.current = null;
     runtimeSessionIdRef.current = null;
     runtimeSessionPromiseRef.current = null;
+    runtimeWasRunningRef.current = false;
     reasoningSegmentClosedRef.current = false;
     appliedModelRef.current = null;
     modelOptionsCacheRef.current = null;
@@ -2964,6 +2987,10 @@ export function useDashboardChatTransport({
           lazy: watchChild === true,
         });
 
+        // Keep the attach-time liveness so the reopen bootstrap can paint the
+        // spinner immediately instead of waiting for the 2s poller (+5s grace).
+        runtimeWasRunningRef.current = response.running === true;
+
         // Lazy children own no run loop: active_list can report idle mid-run.
         // Seed a watch turn; mirrored message.complete is its completion signal.
         if (watchChild && response.running) beginChildTurn();
@@ -3470,6 +3497,40 @@ export function useDashboardChatTransport({
   // polling `active_list` and an in-flight turn stays invisible until the
   // user sends something or reopens again. Re-attach once up front so a
   // reopened, still-processing session paints its live state immediately.
+  // Pull canonical rows for the tail and reconcile them in place. Shared by the
+  // reopen bootstrap and the 2s poller; the sequence guard drops stale replies.
+  const reconcileForeignTail = useCallback(async (abandoned?: () => boolean): Promise<void> => {
+    const stored = storedSessionIdRef.current;
+    if (!stored) return;
+    const seq = ++foreignRefreshSeqRef.current;
+    try {
+      const afterId = lastSyncedDbIdRef.current;
+      const items = (await window.hermesAPI.getSessionMessages(
+        stored,
+        afterId,
+      )) as DbHistoryItem[];
+      if (abandoned?.() || seq !== foreignRefreshSeqRef.current) return;
+      const dbMessages = dbItemsToChatMessages(items);
+      messagesRef.current = reconcileTailAfterDbRefresh(
+        messagesRef.current,
+        dbMessages,
+        { activeTurn: activeTurnRef.current, lastSyncedDbId: afterId },
+      );
+      lastSyncedDbIdRef.current = highestDbId(messagesRef.current);
+      setMessages(messagesRef.current);
+    } catch {
+      /* transient — the next tick retries */
+    }
+  }, [activeTurnRef, setMessages]);
+
+  // Latest callbacks for the polling effects below. Keeping them out of the
+  // dependency arrays stops a re-render from tearing down and restarting the
+  // one-shot reopen bootstrap mid-flight.
+  const beginForeignTurnRef = useRef(beginForeignTurn);
+  beginForeignTurnRef.current = beginForeignTurn;
+  const reconcileForeignTailRef = useRef(reconcileForeignTail);
+  reconcileForeignTailRef.current = reconcileForeignTail;
+
   useEffect(() => {
     if (!enabled || !hermesSessionId) return;
     if (runtimeSessionIdRef.current) return;
@@ -3479,6 +3540,15 @@ export function useDashboardChatTransport({
         const client = await ensureClient();
         if (cancelled) return;
         await ensureRuntimeSession(client);
+        if (cancelled) return;
+        // `session.resume` already reports whether the session was running. Paint
+        // the live state NOW: waiting for the 2s poll also waits out the 5s
+        // post-local-turn grace, so a turn started by another client (or an
+        // external app) finished before this tab ever showed a spinner.
+        if (runtimeWasRunningRef.current) {
+          beginForeignTurnRef.current();
+          await reconcileForeignTailRef.current();
+        }
       } catch {
         /* poller / next send retries */
       }
@@ -3486,6 +3556,8 @@ export function useDashboardChatTransport({
     return () => {
       cancelled = true;
     };
+    // Callbacks are read through refs: an unrelated re-render must not cancel
+    // and restart the one-shot bootstrap before its resume lands.
   }, [enabled, hermesSessionId, ensureClient, ensureRuntimeSession]);
 
   const FOREIGN_TURN_POLL_MS = 2_000;
@@ -3503,34 +3575,21 @@ export function useDashboardChatTransport({
     if (!enabled || !active) return;
     let disposed = false;
     let timer: ReturnType<typeof setInterval> | null = null;
+    // Whether THIS effect run painted the spinner. A dependency change must not
+    // clear a live turn's loading state that another run owns.
+    let beganForeign = false;
 
-    const reconcileFromDb = async (): Promise<void> => {
-      const stored = storedSessionIdRef.current;
-      if (!stored) return;
-      const seq = ++foreignRefreshSeqRef.current;
-      try {
-        const afterId = lastSyncedDbIdRef.current;
-        const items = (await window.hermesAPI.getSessionMessages(
-          stored,
-          afterId,
-        )) as DbHistoryItem[];
-        if (disposed || seq !== foreignRefreshSeqRef.current) return;
-        const dbMessages = dbItemsToChatMessages(items);
-        messagesRef.current = reconcileTailAfterDbRefresh(
-          messagesRef.current,
-          dbMessages,
-          { activeTurn: activeTurnRef.current, lastSyncedDbId: afterId },
-        );
-        lastSyncedDbIdRef.current = highestDbId(messagesRef.current);
-        setMessages(messagesRef.current);
-      } catch {
-        /* transient — the next tick retries */
-      }
-    };
+    const reconcileFromDb = (): Promise<void> =>
+      reconcileForeignTailRef.current(() => disposed);
 
     const tick = async (): Promise<void> => {
       const runtimeId = runtimeSessionIdRef.current;
-      if (!runtimeId) return;
+      // A session started by an external client (another app driving the
+      // gateway) is listed under ITS runtime id. Our own attach can produce a
+      // different id — or be refused — so match the stored session key too and
+      // keep polling even when no runtime id was established here.
+      const storedId = storedSessionIdRef.current;
+      if (!runtimeId && !storedId) return;
       // A local turn owns the UI — never fight it.
       if (activeTurnRef.current) {
         if (foreignTurnRef.current) foreignTurnRef.current = false;
@@ -3542,10 +3601,14 @@ export function useDashboardChatTransport({
       const res = (await client
         .request("session.active_list")
         .catch(() => null)) as
-        | { sessions?: Array<{ id?: string; status?: string }> }
+        | { sessions?: Array<{ id?: string; status?: string; session_key?: string }> }
         | null;
       if (disposed) return;
-      const entry = res?.sessions?.find((s) => s.id === runtimeId);
+      const entry = res?.sessions?.find(
+        (s) =>
+          (!!runtimeId && s.id === runtimeId) ||
+          (!!storedId && (s.session_key === storedId || s.id === storedId)),
+      );
       const busy =
         entry?.status === "working" ||
         entry?.status === "waiting";
@@ -3561,6 +3624,7 @@ export function useDashboardChatTransport({
           // Foreign turn finished: pull the complete answer in (same
           // machinery as quiet-finalize) and drop the loading state.
           foreignTurnRef.current = false;
+          beganForeign = false;
           await reconcileFromDb();
           activeTurnRef.current = null;
           setToolProgress(null);
@@ -3575,15 +3639,8 @@ export function useDashboardChatTransport({
         ) {
           return; // a local turn just ended — let the gateway settle
         }
-        foreignTurnRef.current = true;
-        activeTurnRef.current = {
-          turnId: `foreign-${Date.now()}`,
-          userId: "",
-          startIndex: messagesRef.current.length,
-          status: "running",
-        };
-        setToolProgress(null);
-        setIsLoading(true);
+        beginForeignTurnRef.current();
+        beganForeign = true;
         await reconcileFromDb();
         return;
       }
@@ -3596,13 +3653,14 @@ export function useDashboardChatTransport({
     return () => {
       disposed = true;
       if (timer) clearInterval(timer);
-      if (foreignTurnRef.current) {
+      if (beganForeign && foreignTurnRef.current) {
+        beganForeign = false;
         foreignTurnRef.current = false;
         activeTurnRef.current = null;
         setIsLoading(false);
       }
     };
-  }, [active, enabled, ensureClient, setMessages, setIsLoading, setToolProgress]);
+  }, [active, enabled, ensureClient, setIsLoading]);
 
   const sendMessage = useCallback(
     async (text: string, attachments?: Attachment[], recoveryGeneration?: number, onModelVerified?: () => void): Promise<boolean> => {

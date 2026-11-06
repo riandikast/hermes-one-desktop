@@ -1425,6 +1425,79 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
     } finally { vi.useRealTimers(); }
   });
 
+  // @lat: [[chat-completion-latency#Reopening a session that another app is running]]
+  it("paints progress immediately when a reopened session is still running in another client", async () => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.resume") {
+        return { session_id: "live-external", stored_session_id: "stored", running: true };
+      }
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      return {};
+    });
+    const read = vi.fn(async () => [
+      { kind: "user", id: 1, content: "prompt from the other app" },
+      { kind: "assistant", id: 2, content: "already answering" },
+    ]);
+    Object.assign(window.hermesAPI, { getSessionMessages: read, getSessionMessagesBefore: vi.fn(async () => ({ items: [], hasMore: false })) });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} active={false} storedSessionId="stored" />);
+    // The harness seeds a local turn; an idle reopened chat has none, and a
+    // local turn always owns the UI.
+    await act(async () => { if (api.activeTurnRef) api.activeTurnRef.current = null; });
+    // No timer advance: the reopen bootstrap must use `session.resume`'s own
+    // `running` flag instead of waiting out the 2s poll plus 5s grace, which a
+    // short turn started by another app never outlives.
+    await waitFor(() => expect(api.isLoading).toBe(true));
+    expect(read).toHaveBeenCalledWith("stored", 0);
+    expect(dashboardMock.request.mock.calls.some(([method]) => method === "session.active_list")).toBe(false);
+    view.unmount();
+  });
+
+  it("stays idle when the reopened session is not running anywhere", async () => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.resume") {
+        return { session_id: "live-idle", stored_session_id: "stored", running: false };
+      }
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      return {};
+    });
+    const read = vi.fn(async () => []);
+    Object.assign(window.hermesAPI, { getSessionMessages: read });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} active={false} storedSessionId="stored" />);
+    await waitFor(() => expect(dashboardMock.request).toHaveBeenCalledWith("session.resume", expect.objectContaining({ session_id: "stored" })));
+    await act(async () => { await Promise.resolve(); });
+    expect(api.isLoading).toBe(false);
+    expect(read).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  // @lat: [[chat-completion-latency#Reopening a session that another app is running]]
+  it("detects an external app's running turn by stored key even when our own attach is refused", async () => {
+    vi.useFakeTimers();
+    try {
+      dashboardMock.request.mockImplementation(async (method) => {
+        if (method === "session.resume") throw new Error("Session stored already has a live owner");
+        if (method === "session.active_list") {
+          return { sessions: [{ id: "external-runtime", session_key: "stored", status: "working" }] };
+        }
+        if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+        if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+        return {};
+      });
+      Object.assign(window.hermesAPI, { getSessionMessages: vi.fn(async () => []) });
+      const api: HarnessApi = {};
+      const view = render(<Harness api={api} active storedSessionId="stored" />);
+      await act(async () => { if (api.activeTurnRef) api.activeTurnRef.current = null; });
+      await act(async () => { await vi.advanceTimersByTimeAsync(8_000); });
+      expect(dashboardMock.request.mock.calls.some(([method]) => method === "session.active_list")).toBe(true);
+      expect(api.isLoading).toBe(true);
+      view.unmount();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("does not poll session.active_list while the tab is hidden", async () => {
     // Visibility-gate regression: every open tab keeps a mounted <Chat>
     // (Layout hides inactive ones with display:none), so a hidden long-history
