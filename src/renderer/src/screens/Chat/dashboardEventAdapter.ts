@@ -277,7 +277,7 @@ function toolEventFromGatewayEvent(event: DashboardStreamEvent): PreviewToolEven
 
 function isAssistantBubble(msg: ChatMessage): msg is ChatBubbleMessage {
   const kind = (msg as { kind?: string }).kind;
-  return msg.role === "agent" && (!kind || kind === "assistant");
+  return msg.role === "agent" && (!kind || kind === "assistant") && !(msg as ChatBubbleMessage).localOnly;
 }
 
 /** Tool rows are hard segment boundaries: reasoning/answer after a tool is a

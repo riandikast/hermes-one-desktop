@@ -2,7 +2,7 @@ import type { ChatBubbleMessage, ChatMessage, ReasoningMessage } from "./types";
 
 function isAssistantBubble(msg: ChatMessage): msg is ChatBubbleMessage {
   const kind = (msg as { kind?: string }).kind;
-  return msg.role === "agent" && (!kind || kind === "assistant");
+  return msg.role === "agent" && (!kind || kind === "assistant") && !(msg as ChatBubbleMessage).localOnly;
 }
 
 function latestUserIndex(messages: ReadonlyArray<ChatMessage>): number {

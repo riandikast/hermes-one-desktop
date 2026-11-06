@@ -6,6 +6,38 @@ import {
   type DashboardEventState,
 } from "./dashboardEventAdapter";
 import type { ChatMessage } from "./types";
+import { upsertLiveReasoningChunk } from "./liveReasoningEvents";
+
+it("keeps legacy reasoning below custom notices too", () => {
+  const notice: ChatMessage = { id: "custom", role: "agent", localOnly: true, content: "Notice" };
+  const rows = upsertLiveReasoningChunk([{ id: "prompt", role: "user", content: "go" }, notice], "Thinking");
+  expect(rows[1]).toBe(notice);
+  expect(rows[2]).toMatchObject({ kind: "reasoning", text: "Thinking" });
+});
+
+it.each(["workspace-warning-prompt", "knowledge-notice", "fallback-notice"])("keeps %s before first status/thought and separate from model answers", (id) => {
+  const notice: ChatMessage = { id, role: "agent", localOnly: true, content: "Custom notice" };
+  let state: DashboardEventState = { messages: [{ id: "prompt", role: "user", content: "go" }, notice], reasoningSegmentClosed: false };
+  state = applyDashboardStreamEvent(state, { type: "reasoning.delta", payload: { text: "Offline" } });
+  expect(state.messages[1]).toBe(notice);
+  expect(state.messages[2]).toMatchObject({ kind: "reasoning", text: "Offline" });
+  state = applyDashboardStreamEvent(state, { type: "reasoning.delta", payload: { text: " Actual thinking" } });
+  state = applyDashboardStreamEvent(state, { type: "message.delta", payload: { text: "Answer" } });
+  state = applyDashboardStreamEvent(state, { type: "message.complete", payload: { text: "Answer done" } });
+  expect(state.messages[1]).toBe(notice);
+  expect(state.messages[2]).toMatchObject({ kind: "reasoning", text: "Offline Actual thinking" });
+  expect(state.messages.at(-1)).toMatchObject({ content: "Answer done", pending: false });
+  expect(state.messages.filter((row) => "localOnly" in row && row.localOnly)).toEqual([notice]);
+});
+
+it("does not insert completion-only reasoning above a custom notice or overwrite it with the answer", () => {
+  const notice: ChatMessage = { id: "custom", role: "agent", localOnly: true, content: "Workspace detection" };
+  const state = applyDashboardStreamEvent({ messages: [{ id: "prompt", role: "user", content: "go" }, notice], reasoningSegmentClosed: false },
+    { type: "message.complete", payload: { text: "Final answer", reasoning: "Actual thought" } });
+  expect(state.messages[1]).toBe(notice);
+  expect(state.messages[2]).toMatchObject({ kind: "reasoning", text: "Actual thought" });
+  expect(state.messages[3]).toMatchObject({ content: "Final answer" });
+});
 
 it("preserves canonical reasoning.delta verbatim, including status-like words", () => {
   let state: DashboardEventState = { messages: [], reasoningSegmentClosed: false };

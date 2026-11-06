@@ -908,7 +908,7 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
   });
 
   it("keeps late workspace warnings before the prompt's first Thought and updates one notice", async () => {
-    const capture = vi.fn().mockResolvedValueOnce({ root: "C:/repo", files: [] })
+    const capture = vi.fn().mockResolvedValueOnce({ root: "C:/repo", files: [], warning: "Workspace snapshot excluded 8 over 256 KiB." })
       .mockResolvedValue({ root: "C:/repo", files: [], warning: "Workspace snapshot excluded 9 over 256 KiB." });
     dashboardMock.request.mockImplementation(async (method) => {
       if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
@@ -922,12 +922,20 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
     await act(async () => { await api.send?.("inspect page"); });
     const promptId = api.messages?.findLast((row) => row.role === "user")?.id;
     await act(async () => {
-      api.setMessages?.((rows) => [...rows, { id: "first-thought", kind: "reasoning", role: "agent", text: "Inspect column counts" }]);
+      dashboardMock.onEvent?.({ type: "reasoning.delta", session_id: "live", payload: { text: "Offline" } });
+    });
+    const firstPromptIndex = api.messages!.findIndex((row) => row.id === promptId);
+    expect(api.messages![firstPromptIndex + 1]).toMatchObject({ localOnly: true, content: "Workspace change detection: Workspace snapshot excluded 8 over 256 KiB." });
+    expect(api.messages![firstPromptIndex + 2]).toMatchObject({ kind: "reasoning", text: "Offline" });
+    const thoughtId = api.messages![firstPromptIndex + 2].id;
+    await act(async () => {
+      dashboardMock.onEvent?.({ type: "reasoning.delta", session_id: "live", payload: { text: " Inspect column counts" } });
+      dashboardMock.onEvent?.({ type: "message.delta", session_id: "live", payload: { text: "checked" } });
     });
     await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text: "checked" } }); });
     const promptIndex = api.messages!.findIndex((row) => row.id === promptId);
     expect(api.messages![promptIndex + 1]).toMatchObject({ localOnly: true, content: "Workspace change detection: Workspace snapshot excluded 9 over 256 KiB." });
-    expect(api.messages![promptIndex + 2].id).toBe("first-thought");
+    expect(api.messages![promptIndex + 2].id).toBe(thoughtId);
     capture.mockResolvedValue({ root: "C:/repo", files: [], warning: "Workspace snapshot excluded 10 over 256 KiB." });
     await act(async () => { dashboardMock.onEvent?.({ type: "message.complete", session_id: "live", payload: { text: "checked again" } }); });
     const notices = api.messages!.filter((row) => row.id.startsWith("workspace-warning-"));
@@ -937,7 +945,7 @@ it("uses saved endpoint route with empty inventory, then waits for live identity
     await act(async () => {
       api.setMessages?.((rows) => reconcileTailAfterDbRefresh(rows, dbItemsToChatMessages([
         { id: 41, kind: "user", content: "inspect page" },
-        { id: 42, kind: "reasoning", text: "Inspect column counts" },
+        { id: 42, kind: "reasoning", text: "Offline Inspect column counts" },
         { id: 43, kind: "assistant", content: "checked again" },
       ]), { lastSyncedDbId: 0 }));
     });
