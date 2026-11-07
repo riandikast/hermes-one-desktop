@@ -54,6 +54,7 @@ import {
 } from "./mention";
 import { searchFiles } from "./fileSearch";
 import { MentionModifiedTime } from "./MentionModifiedTime";
+import { scrollMentionItemIntoView } from "./mentionScroll";
 import { ContextGauge, type ContextUsage } from "./ContextGauge";
 import { SendConfirmDialog } from "./SendConfirmDialog";
 import type { Attachment } from "../../../../shared/attachments";
@@ -159,6 +160,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     // must not resurrect it. Resets when a new token starts or the token
     // disappears.
     const mentionDismissedRef = useRef(false);
+    // The menu is a max-height scroll box: keyboard navigation must keep the
+    // highlighted row in view.
+    const mentionMenuRef = useRef<HTMLDivElement | null>(null);
     const [slashMenuOpen, setSlashMenuOpen] = useState(false);
     const [slashFilter, setSlashFilter] = useState("");
     const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
@@ -872,6 +876,15 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       );
     }, [visibleRankedMentions.length]);
 
+    // Arrow-key navigation only moved the highlight; past the fold the selected
+    // row (what Enter inserts) scrolled out of sight. Follow it.
+    useEffect(() => {
+      const menu = mentionMenuRef.current;
+      if (!mentionOpen || !menu) return;
+      const item = menu.querySelector<HTMLElement>(".mention-menu-item-selected");
+      if (item) scrollMentionItemIntoView(menu, item);
+    }, [mentionOpen, mentionSelected, visibleRankedMentions.length]);
+
     function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>): void {
       const { files, hasText } = filesFromClipboard(e);
       if (files.length === 0) return;
@@ -1111,6 +1124,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               }}
             >
               <div
+                ref={mentionMenuRef}
                 className="mention-menu"
                 role="dialog"
                 aria-label="Mention files"

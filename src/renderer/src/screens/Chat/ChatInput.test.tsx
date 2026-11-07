@@ -1,4 +1,4 @@
-import { act, render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { act, render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ChatInput pulls translations through useI18n (which requires the i18next
@@ -369,5 +369,69 @@ describe("ChatInput - mention chip citation badges", () => {
       arm("hello");
       expect(screen.getByText(/no project folder bound/i)).toBeTruthy();
     });
+  });
+});
+
+describe("ChatInput — mention menu keyboard scroll", () => {
+  // @lat: [[mentions#Keyboard navigation follows the selection]]
+  it("keeps the highlighted row inside the scroll box while arrowing", async () => {
+    const files = Array.from({ length: 12 }, (_, i) => ({
+      name: `file-${i}.ts`,
+      isDirectory: false,
+      path: `C:/repo/file-${i}.ts`,
+    }));
+    Object.defineProperty(window, "hermesAPI", {
+      configurable: true,
+      value: {
+        listFilesRecursive: vi.fn(async () => files),
+        getFileModifiedTime: vi.fn(async () => null),
+        everythingSearch: vi.fn(async () => []),
+      },
+    });
+    render(
+      <ChatInput
+        isLoading={false}
+        hasSession={true}
+        onSubmit={vi.fn()}
+        onQuickAsk={vi.fn()}
+        onAbort={vi.fn()}
+        contextFolders={["C:/repo"]}
+      />,
+    );
+    const textarea = screen.getByPlaceholderText("chat.typeMessage");
+    fireEvent.change(textarea, { target: { value: "@" } });
+    const menu = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>(".mention-menu");
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    const items = Array.from(menu.querySelectorAll<HTMLElement>(".mention-menu-item"));
+    expect(items.length).toBe(12);
+
+    // jsdom has no layout: model a 100px-tall scroll box with 20px rows that
+    // move with scrollTop, exactly like the real menu.
+    const ROW = 20;
+    const VIEW = 100;
+    const rect = (top: number, bottom: number): DOMRect =>
+      ({ top, bottom, height: bottom - top, left: 0, right: 0, width: 0, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+    vi.spyOn(menu, "getBoundingClientRect").mockReturnValue(rect(0, VIEW));
+    items.forEach((el, index) => {
+      vi.spyOn(el, "getBoundingClientRect").mockImplementation(() => {
+        const top = index * ROW - menu.scrollTop;
+        return rect(top, top + ROW);
+      });
+    });
+
+    for (let i = 0; i < 8; i += 1) {
+      await act(async () => {
+        fireEvent.keyDown(textarea, { key: "ArrowDown" });
+      });
+      const selected = menu.querySelector<HTMLElement>(".mention-menu-item-selected");
+      expect(selected).not.toBeNull();
+      const box = selected!.getBoundingClientRect();
+      expect(box.top).toBeGreaterThanOrEqual(0);
+      expect(box.bottom).toBeLessThanOrEqual(VIEW);
+    }
+    expect(menu.scrollTop).toBeGreaterThan(0);
   });
 });

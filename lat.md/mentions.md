@@ -20,3 +20,13 @@ The picker and selected file/folder tags show filesystem modification time in lo
 [[src/renderer/src/screens/Chat/MentionModifiedTime.tsx#MentionModifiedTime]] fetches metadata only for displayed paths via `get-path-modified-time` IPC. Remote/SSH connections return no local metadata. Folder dates are the directory’s own modification time, not a recursive newest-child scan.
 
 [[src/renderer/src/screens/Chat/MentionModifiedTime.test.tsx]] verifies formatting, file/folder tags, unavailable metadata, request failure and stale-request cleanup.
+
+## Keyboard navigation follows the selection
+
+Arrow keys move the highlight inside a fixed-height picker, so the selected row must stay visible.
+
+The picker (`.mention-menu`, `max-height: 260px`, `overflow-y: auto`) used to only move the highlight: past roughly five rows the selected item — the row Enter inserts — scrolled out of view with no way to see it. [[src/renderer/src/screens/Chat/ChatInput.tsx]] now follows `mentionSelected` with an effect that scrolls `.mention-menu-item-selected` into view through [[src/renderer/src/screens/Chat/mentionScroll.ts#scrollMentionItemIntoView]].
+
+The helper adjusts `scrollTop` by the minimum overflow instead of calling `scrollIntoView()`, so the chat transcript and composer never scroll as a side effect, and it keeps a 6px padding band at both edges. It is a no-op when the row is already visible, so hovering a row or resetting to the first item does not jump the list.
+
+[[src/renderer/src/screens/Chat/mentionScroll.test.ts]] pins the up/down/no-op/padding math, and `ChatInput.test.tsx` renders a 12-row menu with stubbed rects and arrows past the fold asserting the selected row stays inside the box — the same test fails without the effect.
