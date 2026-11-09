@@ -19,10 +19,14 @@ export const MEMORY_SETTINGS: readonly AgentSettingsField[] = [
   { key: "memory.memory_char_limit", label: "Memory Character Limit", group: "persistent", type: "number", defaultValue: "2200", min: 1 },
   { key: "memory.user_char_limit", label: "User Profile Character Limit", group: "persistent", type: "number", defaultValue: "1375", min: 1 },
   { key: "memory.provider", label: "Memory Provider", group: "persistent", type: "select", defaultValue: "", hint: "One external provider adds recall alongside built-in memory. Saving a provider does not install or authenticate it." },
+  { key: "memory.write_approval", label: "Approve Memory Writes", group: "persistent", type: "boolean", defaultValue: "false", hint: "Ask before a turn writes built-in memory; background writes are staged for review." },
+  { key: "memory.prefetch_spill_enabled", label: "External Recall Spill", group: "persistent", type: "boolean", defaultValue: "false", hint: "Let an external provider spill recalled context to hook output instead of the prompt." },
+  { key: "memory.nudge_interval", label: "Memory Review Interval", group: "persistent", type: "number", defaultValue: "10", min: 0, hint: "Turns between built-in memory reviews. 0 disables the periodic nudge." },
   { key: "context.engine", label: "Context Engine", group: "context", type: "select", defaultValue: "compressor", options: ["compressor", "default", "custom"], hint: "Strategy for managing long conversations near the context limit. Plugin engines must already be installed." },
   { key: "compression.enabled", label: "Auto-Compression", group: "context", type: "boolean", defaultValue: "true" },
   { key: "compression.threshold", label: "Compression Threshold", group: "context", type: "number", defaultValue: "0.5", min: 0.01, max: 1, step: 0.01, hint: "Fraction of the context window. The backend may raise this for small windows or supported Codex models." },
   { key: "compression.codex_gpt55_autoraise", label: "Codex Compression Auto-Raise", group: "context", type: "boolean", defaultValue: "true", hint: "Raise compression to 85% for supported ChatGPT Codex OAuth models." },
+  { key: "compression.tail_mode", label: "Retained Tail Mode", group: "context", type: "select", defaultValue: "lean", options: ["lean", "legacy"], hint: "Lean keeps a small token-bounded tail with digests; legacy keeps 20% of the threshold verbatim." },
   { key: "compression.target_ratio", label: "Compression Target Ratio", group: "context", type: "number", defaultValue: "0.2", min: 0.01, max: 1, step: 0.01, hint: "Fraction of the compression threshold preserved as recent context." },
   { key: "compression.protect_last_n", label: "Protected Recent Messages", group: "context", type: "number", defaultValue: "20", min: 0 },
   { key: "auxiliary.compression.timeout", label: "Compression Model Timeout (s)", group: "context", type: "number", defaultValue: "120", min: 1 },
@@ -47,6 +51,24 @@ export const ADVANCED_SETTINGS: readonly AgentSettingsField[] = [
   { key: "tool_output.max_line_length", label: "Maximum Line Length", group: "output", type: "number", defaultValue: "2000", min: 1 },
   { key: "checkpoints.max_snapshots", label: "Maximum Checkpoint Snapshots", group: "output", type: "number", defaultValue: "20", min: 1 },
 ];
+
+/** Tab order mirrors the official subpages; the pane renders them as segmented tabs. */
+export const SETTINGS_TABS: Record<
+  "memory" | "advanced",
+  ReadonlyArray<{ id: string; label: string }>
+> = {
+  memory: [
+    { id: "persistent", label: "Memory" },
+    { id: "context", label: "Context" },
+  ],
+  advanced: [
+    { id: "desktop", label: "Desktop" },
+    { id: "runtime", label: "Runtime" },
+    { id: "tools", label: "Tools" },
+    { id: "terminal", label: "Terminal" },
+    { id: "output", label: "Output" },
+  ],
+};
 
 /** Only these settings get native YAML scalar types; unrelated config writes retain their contract. */
 export function agentSettingsScalar(key: string, value: string): string | undefined {

@@ -14,6 +14,7 @@ import {
 import { extname, isAbsolute, join } from "path";
 import { GitHubAuth } from "../github-auth";
 import { getKeyboardShortcuts, setKeyboardShortcuts, setShortcutRecording } from "../keyboard-shortcut-settings";
+import { getKeepAwakeState, setKeepAwakeMode, setKeepAwakeWorking } from "../keep-awake";
 import { buildMenu } from "../app/menu";
 import { registerKnowledgePackageHandlers } from "./knowledge-packages";
 import { listAgentUserProviders } from "../agent-config-providers";
@@ -833,6 +834,20 @@ export function registerIpcHandlers(context: IpcContext): void {
     const result = setKeyboardShortcuts(value);
     if (result.ok) buildMenu({ getMainWindow: context.getMainWindow, openExternalUrl: context.openExternalUrl });
     return result;
+  });
+  ipcMain.handle("keep-awake:get", (event) => {
+    if (!trustedShortcuts(event)) throw new Error("Unauthorized keep-awake request");
+    return getKeepAwakeState();
+  });
+  ipcMain.handle("keep-awake:set", (event, value: unknown) => {
+    if (!trustedShortcuts(event)) throw new Error("Unauthorized keep-awake request");
+    return setKeepAwakeMode(value);
+  });
+  // Turn activity comes from the renderer that owns the session, so the count
+  // reflects real work instead of a timer guess.
+  ipcMain.handle("keep-awake:working", (event, value: unknown) => {
+    if (!trustedShortcuts(event)) return getKeepAwakeState();
+    return setKeepAwakeWorking(value);
   });
   ipcMain.handle("keyboard-shortcuts:recording", (event, value: unknown) => {
     if (!trustedShortcuts(event) || typeof value !== "boolean") return;

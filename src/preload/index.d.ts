@@ -302,6 +302,9 @@ interface HermesAPI {
   adoptHermesHome: (dir: string) => Promise<boolean>;
   quitApp: () => Promise<void>;
   getKeyboardShortcuts: () => Promise<import("../shared/keyboard-shortcuts").ShortcutOverrides>;
+  getKeepAwake: () => Promise<import("../shared/keep-awake").KeepAwakeState>;
+  setKeepAwake: (mode: import("../shared/keep-awake").KeepAwakeMode) => Promise<import("../shared/keep-awake").KeepAwakeState>;
+  setKeepAwakeWorking: (working: boolean) => Promise<import("../shared/keep-awake").KeepAwakeState>;
   setKeyboardShortcuts: (value: import("../shared/keyboard-shortcuts").ShortcutOverrides) => Promise<{ ok: boolean; error?: string }>;
   setShortcutRecording: (value: boolean) => Promise<void>;
   getGpuStatus: () => Promise<GpuStatus>;

@@ -21,6 +21,7 @@ import { showChatContextMenu } from "./context-menu";
 import { buildMenu } from "./menu";
 import { setupUpdater } from "./updater";
 import { handleShortcutInput } from "../keyboard-shortcut-input";
+import { initKeepAwake } from "../keep-awake";
 
 const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME?.trim() || "Hermes One";
 const OPEN_DEVTOOLS_ON_START =
@@ -52,6 +53,8 @@ export function startMainProcess(): void {
 
   app.whenReady().then(() => {
     electronApp.setAppUserModelId("com.hermes.desktop");
+    // Restore a persisted "always" blocker before any window exists.
+    initKeepAwake();
 
     // Start the Windows terminal probes early only on demand or quietly with windowsHide.
     // warmTerminalResolver was firing multiple powershell.exe subprocesses at app start,

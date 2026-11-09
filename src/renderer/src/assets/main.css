@@ -15380,6 +15380,48 @@ body:has(.shell-vibrant),
   color: var(--text-primary);
 }
 
+/* Settings → Advanced / Memory: official subpages as tabs, Appearance-style rows. */
+.settings-agent-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.settings-agent-tabs .settings-seg-btn {
+  flex: 1 1 auto;
+  text-align: center;
+}
+.settings-agent-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.settings-agent-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.settings-agent-input {
+  width: 190px;
+  max-width: 40vw;
+}
+.settings-agent-seg {
+  display: flex;
+  flex-shrink: 0;
+  width: auto;
+}
+@media (max-width: 560px) {
+  .settings-agent-control {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .settings-agent-input {
+    width: 100%;
+    max-width: none;
+  }
+}
+
 /* Settings → Utils: default knowledge bundles. */
 .settings-knowledge {
   display: flex;

@@ -442,6 +442,15 @@ function Chat({
     onLoadingChange?.(runId, isLoading);
   }, [runId, isLoading, onLoadingChange]);
 
+  // Desktop → Keep Awake: main holds the power-save blocker only while this
+  // window reports real work, so an idle app never pins the machine awake.
+  useEffect(() => {
+    void window.hermesAPI.setKeepAwakeWorking?.(isLoading);
+    return () => {
+      if (isLoading) void window.hermesAPI.setKeepAwakeWorking?.(false);
+    };
+  }, [isLoading]);
+
   // Play a notification sound when the agent finishes responding
 
   const prevLoadingRef = useRef(isLoading);

@@ -13,6 +13,8 @@ const getConfig = vi.fn(async (key: string) => config[key] ?? null);
 const setConfig = vi.fn(async (key: string, value: string) => { config[key] = value; return true; });
 const discover = vi.fn(async () => [{ name: "user-installed", installed: true, active: false, description: "Plugin", envVars: [] }]);
 const getShortcuts = vi.fn(async () => ({}));
+const getKeepAwake = vi.fn(async () => ({ mode: "while-working" as const, active: false }));
+const setKeepAwake = vi.fn(async (mode: "off" | "while-working" | "always") => ({ mode, active: mode === "always" }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -26,6 +28,7 @@ beforeEach(() => {
   Object.defineProperty(window, "hermesAPI", { configurable: true, value: {
     getConnectionConfig: vi.fn(async () => ({ mode })), getConfig, setConfig,
     discoverMemoryProviders: discover, getKeyboardShortcuts: getShortcuts,
+    getKeepAwake, setKeepAwake,
   } });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -34,7 +37,10 @@ function pane(section: "advanced" | "memory" = "memory", profile = "selected"): 
   return <SettingsDataContext.Provider value={{ profile, connMode: mode } as SettingsData}><AgentConfigPane section={section} /></SettingsDataContext.Provider>;
 }
 async function loaded(): Promise<void> {
-  await waitFor(() => expect((screen.getByLabelText("Auto-Compression") as HTMLInputElement).disabled).toBe(false));
+  await waitFor(() => expect((screen.getByLabelText("Persistent Memory") as HTMLInputElement).disabled).toBe(false));
+}
+function openTab(name: string): void {
+  fireEvent.click(screen.getByRole("tab", { name }));
 }
 
 // @lat: [[advanced-memory-settings#Regression coverage#Profile persistence]]
@@ -44,11 +50,41 @@ it("loads defaults without writing and saves only the edited profile field, veri
   expect(setConfig).not.toHaveBeenCalled();
   expect((screen.getByLabelText("Persistent Memory") as HTMLInputElement).checked).toBe(true);
   expect((screen.getByLabelText("Memory Character Limit") as HTMLInputElement).value).toBe("2200");
+  openTab("Context");
   fireEvent.change(screen.getByLabelText("Compression Threshold"), { target: { value: "0.8" } });
   fireEvent.click(screen.getByRole("button", { name: "Save Compression Threshold" }));
   await screen.findByText(/Saved and verified/);
   expect(setConfig).toHaveBeenCalledExactlyOnceWith("compression.threshold", "0.8", "selected");
   expect(getConfig).toHaveBeenLastCalledWith("compression.threshold", "selected");
+});
+
+// @lat: [[advanced-memory-settings#Controls and persistence#Subpages as tabs]]
+it("renders the official subpages as tabs without a duplicated group heading", async () => {
+  renderWithI18n(pane());
+  await loaded();
+  expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Memory", "Context"]);
+  // The old stacked layout repeated "Persistent memory" above a row with the same label.
+  expect(screen.queryByText("Persistent memory")).toBeNull();
+  openTab("Context");
+  expect(screen.queryByLabelText("Persistent Memory")).toBeNull();
+  expect(screen.getByLabelText("Auto-Compression")).toBeTruthy();
+});
+
+it("renders every Advanced subpage as its own tab", async () => {
+  renderWithI18n(pane("advanced"));
+  await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(5));
+  expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+    "Desktop", "Runtime", "Tools", "Terminal", "Output",
+  ]);
+});
+
+it("changes Keep Awake from the Desktop tab and shows the stored mode", async () => {
+  renderWithI18n(pane("advanced"));
+  await waitFor(() => expect(screen.getByRole("radio", { name: "While working" })).toBeTruthy());
+  expect(screen.getByRole("radio", { name: "While working" }).getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(screen.getByRole("radio", { name: "Always" }));
+  await waitFor(() => expect(screen.getByRole("radio", { name: "Always" }).getAttribute("aria-checked")).toBe("true"));
+  expect(setKeepAwake).toHaveBeenCalledExactlyOnceWith("always");
 });
 
 it("discovers providers dynamically and retains an undiscovered saved provider", async () => {
@@ -75,6 +111,7 @@ it("keeps the built-in controls usable when provider discovery fails", async () 
 it("rejects invalid numeric edits and never reports an unverified write as saved", async () => {
   renderWithI18n(pane());
   await loaded();
+  openTab("Context");
   fireEvent.change(screen.getByLabelText("Compression Threshold"), { target: { value: "2" } });
   fireEvent.click(screen.getByRole("button", { name: "Save Compression Threshold" }));
   await screen.findByRole("alert");
@@ -108,10 +145,12 @@ it.each(["remote", "ssh"] as const)("does not read or write local config for %s"
 it("confirms disabling all toolsets and discarding backend source edits", async () => {
   vi.mocked(appConfirm).mockResolvedValue(false);
   renderWithI18n(pane("advanced"));
+  openTab("Tools");
   await waitFor(() => expect((screen.getByLabelText("Enabled Toolsets") as HTMLInputElement).value).toBe("hermes-cli"));
   fireEvent.change(screen.getByLabelText("Enabled Toolsets"), { target: { value: "" } });
   fireEvent.click(screen.getByRole("button", { name: "Save Enabled Toolsets" }));
   await waitFor(() => expect(appConfirm).toHaveBeenCalledTimes(1));
+  openTab("Desktop");
   await waitFor(() => expect((screen.getByRole("button", { name: "Save Local Changes During Updates" }) as HTMLButtonElement).disabled).toBe(true));
   fireEvent.change(screen.getByLabelText("Local Changes During Updates"), { target: { value: "discard" } });
   fireEvent.click(screen.getByRole("button", { name: "Save Local Changes During Updates" }));
