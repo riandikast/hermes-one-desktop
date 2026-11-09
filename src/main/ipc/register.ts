@@ -15,6 +15,7 @@ import { extname, isAbsolute, join } from "path";
 import { GitHubAuth } from "../github-auth";
 import { getKeyboardShortcuts, setKeyboardShortcuts, setShortcutRecording } from "../keyboard-shortcut-settings";
 import { getKeepAwakeState, setKeepAwakeMode, setKeepAwakeWorking } from "../keep-awake";
+import { listDashboardPlugins, manageDashboardPlugin } from "../dashboard-plugins";
 import { buildMenu } from "../app/menu";
 import { registerKnowledgePackageHandlers } from "./knowledge-packages";
 import { listAgentUserProviders } from "../agent-config-providers";
@@ -4091,6 +4092,20 @@ export function registerIpcHandlers(context: IpcContext): void {
     "install-mcp-catalog-entry",
     (_event, name: string, env?: Record<string, string>, profile?: string) =>
       installMcpCatalogEntry(name, env, profile),
+  );
+
+  // Agent plugins (Capabilities → Plugins)
+  ipcMain.handle("list-plugins", (_event, profile?: string) =>
+    listDashboardPlugins(profile),
+  );
+  ipcMain.handle(
+    "manage-plugin",
+    (
+      _event,
+      action: string,
+      fields: Record<string, unknown> | undefined,
+      profile?: string,
+    ) => manageDashboardPlugin(action, fields ?? {}, profile),
   );
 
   // Discover marketplace (community registry)

@@ -303,6 +303,12 @@ interface HermesAPI {
   quitApp: () => Promise<void>;
   getKeyboardShortcuts: () => Promise<import("../shared/keyboard-shortcuts").ShortcutOverrides>;
   getKeepAwake: () => Promise<import("../shared/keep-awake").KeepAwakeState>;
+  listPlugins: (profile?: string) => Promise<import("../shared/plugins").DashboardPluginList>;
+  managePlugin: (
+    action: import("../shared/plugins").PluginAction,
+    fields?: Record<string, unknown>,
+    profile?: string,
+  ) => Promise<import("../shared/plugins").PluginManageResult>;
   setKeepAwake: (mode: import("../shared/keep-awake").KeepAwakeMode) => Promise<import("../shared/keep-awake").KeepAwakeState>;
   setKeepAwakeWorking: (working: boolean) => Promise<import("../shared/keep-awake").KeepAwakeState>;
   setKeyboardShortcuts: (value: import("../shared/keyboard-shortcuts").ShortcutOverrides) => Promise<{ ok: boolean; error?: string }>;

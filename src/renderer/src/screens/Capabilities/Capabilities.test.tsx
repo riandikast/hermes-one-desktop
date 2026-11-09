@@ -73,6 +73,38 @@ const MOCK_SOURCES = {
   installed: { "official/productivity/pdf": { name: "pdf" } },
 };
 
+const MOCK_PLUGINS = [
+  {
+    name: "acme-tools",
+    key: "acme-tools",
+    version: "1.2.0",
+    description: "Extra agent tools",
+    source: "git",
+    status: "enabled",
+    portable: true,
+    installDir: "/plugins/acme-tools",
+    hasDesktopHalf: false,
+    servers: [{ name: "acme", state: "connected", sentence: "Connected" }],
+    updateAvailable: true,
+    updateTarget: "0123456789abcdef0123456789abcdef01234567",
+    tools: ["acme_search", "acme_fetch"],
+  },
+  {
+    name: "memory-core",
+    key: "memory-core",
+    version: "0.4.1",
+    description: "Built-in memory backend",
+    source: "bundled",
+    status: "disabled",
+    portable: false,
+    installDir: "",
+    hasDesktopHalf: false,
+    servers: [],
+    updateAvailable: false,
+    tools: [],
+  },
+];
+
 function makeApi(overrides: Record<string, unknown> = {}) {
   return {
     getDashboardSkills: vi.fn().mockResolvedValue(MOCK_SKILLS),
@@ -105,6 +137,12 @@ function makeApi(overrides: Record<string, unknown> = {}) {
     uninstallHubSkill: vi.fn().mockResolvedValue({ success: true }),
     updateHubSkills: vi.fn().mockResolvedValue({ success: true }),
     listMcpServers: vi.fn().mockResolvedValue([]),
+    listPlugins: vi.fn().mockResolvedValue({
+      plugins: MOCK_PLUGINS,
+      userCount: 1,
+      bundledCount: 1,
+    }),
+    managePlugin: vi.fn().mockResolvedValue({ ok: true }),
     listInstalledSkills: vi.fn().mockResolvedValue([
       { name: "pdf", category: "productivity", description: "Create PDFs", path: "/skills/productivity/pdf" },
     ]),
@@ -186,9 +224,83 @@ describe("Capabilities — MCP tab", () => {
     await waitFor(() => expect(view.getByText("capabilities.title")).toBeTruthy());
     const tabs = view.container.querySelectorAll(".cap-tab");
     await act(async () => {
-      fireEvent.click(tabs[2] as HTMLButtonElement);
+      fireEvent.click(tabs[3] as HTMLButtonElement);
     });
     await waitFor(() => expect(view.getByText("github")).toBeTruthy());
+  });
+});
+
+describe("Capabilities — Plugins tab", () => {
+  it("lists installed plugins with version, source and update state", async () => {
+    const view = mountWith();
+    const tabs = view.container.querySelectorAll(".cap-tab");
+    await act(async () => {
+      fireEvent.click(tabs[2] as HTMLButtonElement);
+    });
+    await waitFor(() => expect(view.getByText("acme-tools")).toBeTruthy());
+    expect(view.getByText("memory-core")).toBeTruthy();
+    expect(view.getByText("v1.2.0")).toBeTruthy();
+    // Only the user install is removable; the bundled row has no Remove button.
+    const rows = view.container.querySelectorAll(".cap-plugin-row");
+    expect(rows[0].textContent).toContain("git");
+    // The i18n mock echoes keys, so the interpolated copy is not visible here.
+    expect(rows[0].textContent).toContain("capabilities.plugins.servers");
+    expect(rows[0].textContent).toContain("capabilities.plugins.update");
+    expect(rows[1].textContent).not.toContain("capabilities.plugins.remove");
+  });
+
+  it("toggles a plugin through plugins.manage toggle", async () => {
+    const manage = vi.fn().mockResolvedValue({ ok: true });
+    const view = mountWith({ managePlugin: manage });
+    const tabs = view.container.querySelectorAll(".cap-tab");
+    await act(async () => {
+      fireEvent.click(tabs[2] as HTMLButtonElement);
+    });
+    await waitFor(() => expect(view.getByText("acme-tools")).toBeTruthy());
+    const row = view.container.querySelector(".cap-plugin-row") as HTMLElement;
+    const toggle = row.querySelector(".cap-toggle input") as HTMLInputElement;
+    await act(async () => {
+      fireEvent.click(toggle);
+    });
+    await waitFor(() =>
+      expect(manage).toHaveBeenCalledWith("toggle", { key: "acme-tools", enable: false }, "default"),
+    );
+  });
+
+  it("updates a plugin and offers Update all when an update is available", async () => {
+    const manage = vi.fn().mockResolvedValue({ ok: true });
+    const view = mountWith({ managePlugin: manage });
+    const tabs = view.container.querySelectorAll(".cap-tab");
+    await act(async () => {
+      fireEvent.click(tabs[2] as HTMLButtonElement);
+    });
+    await waitFor(() => expect(view.getByText("acme-tools")).toBeTruthy());
+    const update = view.container.querySelector(".cap-plugin-actions .btn") as HTMLButtonElement;
+    await act(async () => {
+      fireEvent.click(update);
+    });
+    await waitFor(() => expect(manage).toHaveBeenCalledWith("update", { name: "acme-tools" }, "default"));
+    const updateAll = view.container.querySelector(".cap-plugins-actions .btn") as HTMLButtonElement;
+    await act(async () => {
+      fireEvent.click(updateAll);
+    });
+    await waitFor(() => expect(manage).toHaveBeenCalledWith("update_all", {}, "default"));
+  });
+
+  it("surfaces a failed plugin request without dropping the list", async () => {
+    const manage = vi.fn().mockRejectedValue(new Error("gateway offline"));
+    const view = mountWith({ managePlugin: manage });
+    const tabs = view.container.querySelectorAll(".cap-tab");
+    await act(async () => {
+      fireEvent.click(tabs[2] as HTMLButtonElement);
+    });
+    await waitFor(() => expect(view.getByText("acme-tools")).toBeTruthy());
+    const row = view.container.querySelector(".cap-plugin-row") as HTMLElement;
+    await act(async () => {
+      fireEvent.click(row.querySelector(".cap-toggle input") as HTMLInputElement);
+    });
+    await waitFor(() => expect(view.getByText("gateway offline")).toBeTruthy());
+    expect(view.getByText("acme-tools")).toBeTruthy();
   });
 });
 
@@ -197,7 +309,7 @@ describe("Capabilities — Hub tab", () => {
     const view = mountWith();
     const tabs = view.container.querySelectorAll(".cap-tab");
     await act(async () => {
-      fireEvent.click(tabs[3] as HTMLButtonElement);
+      fireEvent.click(tabs[4] as HTMLButtonElement);
     });
     await waitFor(() => expect(view.getByText("Official")).toBeTruthy());
     await waitFor(() => expect(view.getByText("pdf")).toBeTruthy());
@@ -220,7 +332,7 @@ describe("Capabilities — Hub tab", () => {
     const view = mountWith({ searchHubSkills: search });
     const tabs = view.container.querySelectorAll(".cap-tab");
     await act(async () => {
-      fireEvent.click(tabs[3] as HTMLButtonElement);
+      fireEvent.click(tabs[4] as HTMLButtonElement);
     });
     const input = view.container.querySelector(".cap-search-input") as HTMLInputElement;
     await act(async () => {
@@ -243,7 +355,7 @@ describe("Capabilities — Hub tab", () => {
     const view = mountWith({ previewHubSkill: preview });
     const tabs = view.container.querySelectorAll(".cap-tab");
     await act(async () => {
-      fireEvent.click(tabs[3] as HTMLButtonElement);
+      fireEvent.click(tabs[4] as HTMLButtonElement);
     });
     await waitFor(() => expect(view.getByText("pdf")).toBeTruthy());
     const previewBtns = view.container.querySelectorAll(".cap-hub-preview-btn");
@@ -269,7 +381,7 @@ describe("Capabilities — Hub tab", () => {
     const view = mountWith({ scanHubSkill: scan });
     const tabs = view.container.querySelectorAll(".cap-tab");
     await act(async () => {
-      fireEvent.click(tabs[3] as HTMLButtonElement);
+      fireEvent.click(tabs[4] as HTMLButtonElement);
     });
     await waitFor(() => expect(view.getByText("pdf")).toBeTruthy());
     const previewBtns = view.container.querySelectorAll(".cap-hub-preview-btn");

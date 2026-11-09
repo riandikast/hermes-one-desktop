@@ -30,10 +30,14 @@ const overlayMotion = {
   transition: { duration: 0.24, ease: "easeOut" },
 } as const;
 
+// No filter animation: the settings modal animates a surface that also carries
+// `backdrop-filter`, and Chromium re-rasterizes that combination mid-animation,
+// which showed up as a one-frame flash ("settings page blinking"). Opacity,
+// scale and offset still give the same entrance without a filtered layer.
 const contentMotion = {
-  initial: { opacity: 0, scale: 0.92, y: 28, filter: "blur(8px)" },
-  animate: { opacity: 1, scale: 1, y: 0, filter: "blur(0px)" },
-  exit: { opacity: 0, scale: 0.94, y: 18, filter: "blur(6px)" },
+  initial: { opacity: 0, scale: 0.92, y: 28 },
+  animate: { opacity: 1, scale: 1, y: 0 },
+  exit: { opacity: 0, scale: 0.94, y: 18 },
   transition: { duration: 0.32, ease: [0.16, 1, 0.3, 1] },
 } as const;
 

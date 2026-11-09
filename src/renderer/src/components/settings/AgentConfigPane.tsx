@@ -206,15 +206,9 @@ function AgentConfigFields({
         ))}
       </div>
 
-      {connectionMode === null ? (
-        <p role="status" className="settings-field-hint">
-          {copy("loading", "Loading settings…")}
-        </p>
-      ) : !local ? (
-        <p role="status" className="settings-field-hint">
-          {copy("localOnly", "These settings are available for local connections only. The existing remote/SSH config bridge cannot safely write native typed values; no local configuration will be changed for a remote agent.")}
-        </p>
-      ) : (
+      {/* Status lines keep their slot above the card: swapping the whole pane
+          for a loading message re-flowed the modal and read as a blink. */}
+      {local && (
         <>
           {error && <div role="alert" className="settings-field-hint">{error}</div>}
           {status && <div role="status" className="settings-pane-flash">{status}</div>}
@@ -231,9 +225,6 @@ function AgentConfigFields({
               {copy("reload", "Reload settings")}
             </button>
           </div>
-          {!loaded && !error && (
-            <p role="status" className="settings-field-hint">{copy("loading", "Loading settings…")}</p>
-          )}
           {providerError && (
             <p role="alert" className="settings-field-hint">
               {copy("providerError", "Provider discovery failed. The saved provider is retained. Reload to retry discovery.")}
@@ -244,13 +235,33 @@ function AgentConfigFields({
               {copy("memoryLayers", "MEMORY.md and USER.md injection is controlled independently below. The external provider selection is saved configuration, not proof of readiness. Provider installation, credentials and advanced setup remain on the Memory page / official desktop.")}
             </p>
           )}
+        </>
+      )}
 
-          <div
-            className="settings-group"
-            role="tabpanel"
-            id={panelId}
-            aria-labelledby={`agent-settings-tab-${section}-${activeTab?.id}`}
-          >
+      <div
+        className="settings-group"
+        role="tabpanel"
+        id={panelId}
+        aria-labelledby={`agent-settings-tab-${section}-${activeTab?.id}`}
+      >
+        {connectionMode === null || (local && !loaded && !error) ? (
+          <div className="settings-row">
+            <div className="settings-row-text">
+              <span role="status" className="settings-row-hint">
+                {copy("loading", "Loading settings…")}
+              </span>
+            </div>
+          </div>
+        ) : !local ? (
+          <div className="settings-row">
+            <div className="settings-row-text">
+              <div role="status" className="settings-row-hint">
+                {copy("localOnly", "These settings are available for local connections only. The existing remote/SSH config bridge cannot safely write native typed values; no local configuration will be changed for a remote agent.")}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
             {section === "advanced" && activeTab?.id === "desktop" && <DesktopRows />}
             {tabFields.map((field) => {
               const id = `agent-setting-${field.key}`;
@@ -327,9 +338,9 @@ function AgentConfigFields({
                 </div>
               );
             })}
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

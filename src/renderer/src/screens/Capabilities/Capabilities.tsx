@@ -12,8 +12,15 @@ import type {
   HubSkill,
   HubSourcesResult,
 } from "../../../../shared/capabilities";
+import {
+  canRemovePlugin,
+  isPluginEnabled,
+  pluginUpdateLabel,
+  type DashboardPlugin,
+  type PluginAction,
+} from "../../../../shared/plugins";
 
-export type CapabilityTab = "skills" | "toolsets" | "mcp" | "hub";
+export type CapabilityTab = "skills" | "toolsets" | "plugins" | "mcp" | "hub";
 
 interface CapabilitiesProps {
   profile?: string;
@@ -277,6 +284,13 @@ export default function Capabilities({
   const [hubScanning, setHubScanning] = useState(false);
   const [hubBusy, setHubBusy] = useState<string | null>(null);
   const [updatingAll, setUpdatingAll] = useState(false);
+  // Plugins tab — the official desktop's Plugins subpage of Capabilities.
+  const [plugins, setPlugins] = useState<DashboardPlugin[]>([]);
+  const [pluginCounts, setPluginCounts] = useState({ user: 0, bundled: 0 });
+  const [pluginsLoading, setPluginsLoading] = useState(false);
+  const [pluginBusy, setPluginBusy] = useState<string | null>(null);
+  const [pluginError, setPluginError] = useState("");
+  const [pluginMessage, setPluginMessage] = useState("");
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -404,6 +418,122 @@ export default function Capabilities({
     },
     [profile],
   );
+
+  const loadPlugins = useCallback(async (clearError = false): Promise<void> => {
+    setPluginsLoading(true);
+    if (clearError) setPluginError("");
+    try {
+      const list = await window.hermesAPI.listPlugins(profile);
+      setPlugins(list.plugins);
+      setPluginCounts({ user: list.userCount, bundled: list.bundledCount });
+    } catch (err) {
+      setPluginError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPluginsLoading(false);
+    }
+  }, [profile]);
+
+  const runPluginAction = useCallback(
+    async (
+      action: PluginAction,
+      fields: Record<string, unknown>,
+      successText: string,
+    ): Promise<void> => {
+      const busyKey =
+        action === "toggle"
+          ? String(fields.key ?? "")
+          : action === "update" || action === "remove"
+            ? String(fields.name ?? "")
+            : action;
+      setPluginBusy(busyKey);
+      setPluginError("");
+      setPluginMessage("");
+      try {
+        const result = await window.hermesAPI.managePlugin(action, fields, profile);
+        setPluginMessage(
+          result.restartRequired
+            ? t("capabilities.plugins.restartRequired", {
+                defaultValue: `${successText} Restart Hermes to load it in every process.`,
+              })
+            : successText,
+        );
+      } catch (err) {
+        setPluginError(err instanceof Error ? err.message : String(err));
+      } finally {
+        // Toggles and updates rewrite the install/registry state, so the
+        // authoritative answer is a fresh list, not an optimistic patch.
+        await loadPlugins();
+        setPluginBusy(null);
+      }
+    },
+    [loadPlugins, profile, t],
+  );
+
+  const handleTogglePlugin = useCallback(
+    (plugin: DashboardPlugin): void => {
+      const next = !isPluginEnabled(plugin);
+      void runPluginAction(
+        "toggle",
+        { key: plugin.key, enable: next },
+        t("capabilities.plugins.toggled", {
+          defaultValue: `${plugin.name} ${next ? "enabled" : "disabled"}.`,
+        }),
+      );
+    },
+    [runPluginAction, t],
+  );
+
+  const handleUpdatePlugin = useCallback(
+    (plugin: DashboardPlugin): void => {
+      void runPluginAction(
+        "update",
+        { name: plugin.name },
+        t("capabilities.plugins.updated", { defaultValue: `${plugin.name} updated.` }),
+      );
+    },
+    [runPluginAction, t],
+  );
+
+  const handleRemovePlugin = useCallback(
+    async (plugin: DashboardPlugin): Promise<void> => {
+      const confirmed = await appConfirm(
+        t("capabilities.plugins.removeConfirm", {
+          defaultValue: `Remove ${plugin.name}? Its files are deleted from this profile; bundled plugins cannot be removed.`,
+        }),
+      );
+      if (!confirmed) return;
+      void runPluginAction(
+        "remove",
+        { name: plugin.name },
+        t("capabilities.plugins.removed", { defaultValue: `${plugin.name} removed.` }),
+      );
+    },
+    [runPluginAction, t],
+  );
+
+  const filteredPlugins = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return plugins;
+    return plugins.filter(
+      (plugin) =>
+        plugin.name.toLowerCase().includes(q) ||
+        plugin.description.toLowerCase().includes(q) ||
+        plugin.key.toLowerCase().includes(q) ||
+        plugin.catalogName?.toLowerCase().includes(q) === true,
+    );
+  }, [plugins, query]);
+
+  const pluginUpdates = useMemo(
+    () => plugins.filter((plugin) => plugin.updateAvailable).length,
+    [plugins],
+  );
+
+  // Listing resolves catalog provenance and update pins, so it loads on demand
+  // instead of during the page's initial skills/toolsets fetch.
+  useEffect(() => {
+    if (tab !== "plugins" || plugins.length > 0 || pluginsLoading || pluginError) return;
+    void loadPlugins(true);
+  }, [tab, plugins.length, pluginsLoading, pluginError, loadPlugins]);
 
   const openSkillDetail = useCallback(
     async (skill: DashboardSkill): Promise<void> => {
@@ -767,6 +897,16 @@ export default function Capabilities({
         </button>
         <button
           type="button"
+          className={`cap-tab ${tab === "plugins" ? "active" : ""}`}
+          onClick={() => setTab("plugins")}
+        >
+          {t("capabilities.tabs.plugins", { defaultValue: "Plugins" })}
+          {plugins.length > 0 && (
+            <span className="cap-tab-count">{plugins.length}</span>
+          )}
+        </button>
+        <button
+          type="button"
           className={`cap-tab ${tab === "mcp" ? "active" : ""}`}
           onClick={() => setTab("mcp")}
         >
@@ -792,7 +932,9 @@ export default function Capabilities({
                 ? t("capabilities.searchSkills")
                 : tab === "toolsets"
                   ? t("capabilities.searchToolsets")
-                  : t("capabilities.searchHub")
+                  : tab === "plugins"
+                    ? t("capabilities.searchPlugins", { defaultValue: "Search plugins" })
+                    : t("capabilities.searchHub")
             }
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -1129,6 +1271,182 @@ export default function Capabilities({
                   {t("tools.mcpActionsHint")}
                 </span>
               </div>
+            </div>
+          )}
+        </div>
+      ) : tab === "plugins" ? (
+        <div className="cap-plugins">
+          <div className="cap-plugins-toolbar">
+            <span className="cap-plugins-summary">
+              {t("capabilities.plugins.summary", {
+                count: plugins.length,
+                user: pluginCounts.user,
+                bundled: pluginCounts.bundled,
+                defaultValue: "{{count}} installed · {{user}} user · {{bundled}} bundled",
+              })}
+            </span>
+            <div className="cap-plugins-actions">
+              {pluginUpdates > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={pluginBusy !== null}
+                  onClick={() =>
+                    void runPluginAction(
+                      "update_all",
+                      {},
+                      t("capabilities.plugins.updateAllDone", {
+                        defaultValue: "Plugins updated.",
+                      }),
+                    )
+                  }
+                >
+                  {t("capabilities.plugins.updateAll", {
+                    count: pluginUpdates,
+                    defaultValue: "Update all ({{count}})",
+                  })}
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={pluginsLoading}
+                onClick={() => void loadPlugins(true)}
+              >
+                <Refresh size={14} />
+                {t("capabilities.refresh")}
+              </button>
+            </div>
+          </div>
+
+          {pluginError && <div className="cap-error">{pluginError}</div>}
+          {pluginMessage && <div className="tools-success">{pluginMessage}</div>}
+
+          {pluginsLoading && plugins.length === 0 ? (
+            <div className="cap-state">
+              <OrbLoader state="searching" size={56} />
+            </div>
+          ) : filteredPlugins.length === 0 ? (
+            <div className="cap-empty">
+              {plugins.length === 0
+                ? t("capabilities.plugins.empty", {
+                    defaultValue:
+                      "No agent plugins are installed for this profile. Install one with the Hermes CLI or the official desktop.",
+                  })
+                : t("capabilities.plugins.noResults", {
+                    defaultValue: "No plugins match this search.",
+                  })}
+            </div>
+          ) : (
+            <div className="cap-plugins-list">
+              {filteredPlugins.map((plugin) => {
+                const enabled = isPluginEnabled(plugin);
+                const busy = pluginBusy === plugin.key || pluginBusy === plugin.name;
+                const connected = plugin.servers.filter(
+                  (server) => server.state === "connected",
+                ).length;
+                return (
+                  <div
+                    key={plugin.key}
+                    className={`cap-plugin-row ${enabled ? "" : "cap-plugin-row--off"}`}
+                  >
+                    <div className="cap-plugin-main">
+                      <div className="cap-plugin-title">
+                        <span className="cap-plugin-name">{plugin.name}</span>
+                        {plugin.version && (
+                          <span className="cap-pill">v{plugin.version}</span>
+                        )}
+                        {plugin.source !== "bundled" && (
+                          <span className="cap-pill cap-pill--muted">
+                            {plugin.source}
+                          </span>
+                        )}
+                        {plugin.hasDesktopHalf && (
+                          <span className="cap-pill cap-pill--muted">
+                            {t("capabilities.plugins.desktopHalf", {
+                              defaultValue: "desktop UI",
+                            })}
+                          </span>
+                        )}
+                        {plugin.updateAvailable && (
+                          <span className="cap-pill cap-pill--warn">
+                            {t("capabilities.plugins.updateBadge", {
+                              target: pluginUpdateLabel(plugin),
+                              defaultValue: "update {{target}}",
+                            })}
+                          </span>
+                        )}
+                      </div>
+                      {plugin.description && (
+                        <p className="cap-plugin-desc">{plugin.description}</p>
+                      )}
+                      <div className="cap-plugin-meta">
+                        {plugin.servers.length > 0 && (
+                          <span
+                            className={
+                              connected === plugin.servers.length
+                                ? "cap-plugin-servers cap-plugin-servers--ok"
+                                : "cap-plugin-servers"
+                            }
+                          >
+                            {t("capabilities.plugins.servers", {
+                              connected,
+                              total: plugin.servers.length,
+                              defaultValue:
+                                "{{connected}}/{{total}} servers connected",
+                            })}
+                          </span>
+                        )}
+                        {plugin.tools.length > 0 && (
+                          <span className="cap-plugin-tools">
+                            {t("capabilities.plugins.tools", {
+                              count: plugin.tools.length,
+                              defaultValue: "{{count}} tools",
+                            })}
+                          </span>
+                        )}
+                        <span className="cap-plugin-status">
+                          {enabled
+                            ? t("capabilities.plugins.enabled", { defaultValue: "Enabled" })
+                            : t("capabilities.plugins.disabled", { defaultValue: "Disabled" })}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="cap-plugin-actions">
+                      {plugin.updateAvailable && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          disabled={busy || pluginBusy !== null}
+                          onClick={() => handleUpdatePlugin(plugin)}
+                        >
+                          {t("capabilities.plugins.update", { defaultValue: "Update" })}
+                        </button>
+                      )}
+                      {canRemovePlugin(plugin) && (
+                        <button
+                          type="button"
+                          className="btn-ghost btn-sm"
+                          disabled={busy || pluginBusy !== null}
+                          onClick={() => void handleRemovePlugin(plugin)}
+                        >
+                          {t("capabilities.plugins.remove", { defaultValue: "Remove" })}
+                        </button>
+                      )}
+                      <label className="cap-toggle">
+                        <input
+                          type="checkbox"
+                          checked={enabled}
+                          disabled={busy || pluginBusy !== null}
+                          aria-label={`${enabled ? "Disable" : "Enable"} ${plugin.name}`}
+                          onChange={() => handleTogglePlugin(plugin)}
+                        />
+                        <span className="cap-toggle-track" />
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

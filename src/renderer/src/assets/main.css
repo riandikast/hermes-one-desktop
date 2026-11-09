@@ -16705,10 +16705,12 @@ body:has(.shell-vibrant),
 .settings-modal {
   display: flex;
   flex-direction: row;
-  width: 80vw;
-  height: 80vh;
-  max-width: 1000px;
-  max-height: 780px;
+  /* Roomy enough for the grouped nav plus the tabbed config panes; the vw/vh
+     caps keep it sane on small displays. */
+  width: min(88vw, 1220px);
+  height: min(86vh, 880px);
+  max-width: 1220px;
+  max-height: 880px;
   /* Frosted glass — same material as the pickers/profile modal.
      NOTE: this is now the LEFT rail's shade (see .settings-modal-sidebar);
      the content side is the lifted one. */
@@ -16734,7 +16736,7 @@ body:has(.shell-vibrant),
    the lifted lighter shade. */
 .settings-modal-sidebar {
   flex-shrink: 0;
-  width: 210px;
+  width: 252px;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -16868,7 +16870,10 @@ body:has(.shell-vibrant),
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding: 26px 30px;
+  /* Reserve the scrollbar lane so a pane that grows while loading cannot
+     shift the layout and repaint the frosted surface (the "settings blink"). */
+  scrollbar-gutter: stable;
+  padding: 26px 32px;
 }
 
 .settings-modal-pane {
@@ -25650,6 +25655,27 @@ body:has(.shell-vibrant),
 .cap-pill { font-size: calc(11px * var(--font-scale)); padding: 2px 8px; border-radius: 999px; background: var(--bg-tertiary, #232834); color: var(--text-secondary, #8b93a7); }
 .cap-pill--muted { opacity: 0.7; }
 .cap-pill--warn { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+
+/* Capabilities → Plugins (the official Plugins subpage). */
+.cap-plugins { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 10px; }
+.cap-plugins-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: calc(11px * var(--font-scale)); color: var(--text-tertiary, #6b7280); }
+.cap-plugins-actions { display: flex; align-items: center; gap: 8px; }
+.cap-plugins-list { flex: 1; min-height: 0; overflow-y: auto; border: 1px solid var(--border, #2a2f3a); border-radius: 12px; }
+.cap-plugin-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 12px 14px; border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.04)); }
+.cap-plugin-row:last-child { border-bottom: none; }
+.cap-plugin-row--off .cap-plugin-main { opacity: 0.62; }
+.cap-plugin-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.cap-plugin-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cap-plugin-name { font-size: calc(13px * var(--font-scale)); font-weight: 600; color: var(--text-primary, #e6e9ef); }
+.cap-plugin-desc { margin: 0; font-size: calc(12px * var(--font-scale)); line-height: 1.45; color: var(--text-secondary, #8b93a7); overflow-wrap: anywhere; }
+.cap-plugin-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: calc(11px * var(--font-scale)); color: var(--text-tertiary, #6b7280); }
+.cap-plugin-servers--ok { color: #34d399; }
+.cap-plugin-status { font-size: calc(10px * var(--font-scale)); text-transform: uppercase; letter-spacing: 0.04em; }
+.cap-plugin-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+@media (max-width: 720px) {
+  .cap-plugin-row { flex-direction: column; align-items: stretch; }
+  .cap-plugin-actions { justify-content: flex-end; }
+}
 .cap-detail-desc { font-size: calc(13px * var(--font-scale)); color: var(--text-secondary, #8b93a7); margin: 0; }
 .cap-detail-content { font-size: calc(13px * var(--font-scale)); max-width: 640px; }
 .cap-tool-chips { display: flex; flex-wrap: wrap; gap: 6px; }

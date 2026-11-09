@@ -156,6 +156,14 @@ const hermesAPI = {
   quitApp: (): Promise<void> => ipcRenderer.invoke("quit-app"),
   getKeyboardShortcuts: (): Promise<import("../shared/keyboard-shortcuts").ShortcutOverrides> => ipcRenderer.invoke("keyboard-shortcuts:get"),
   getKeepAwake: (): Promise<import("../shared/keep-awake").KeepAwakeState> => ipcRenderer.invoke("keep-awake:get"),
+  listPlugins: (profile?: string): Promise<import("../shared/plugins").DashboardPluginList> =>
+    ipcRenderer.invoke("list-plugins", profile),
+  managePlugin: (
+    action: import("../shared/plugins").PluginAction,
+    fields?: Record<string, unknown>,
+    profile?: string,
+  ): Promise<import("../shared/plugins").PluginManageResult> =>
+    ipcRenderer.invoke("manage-plugin", action, fields, profile),
   setKeepAwake: (mode: import("../shared/keep-awake").KeepAwakeMode): Promise<import("../shared/keep-awake").KeepAwakeState> => ipcRenderer.invoke("keep-awake:set", mode),
   setKeepAwakeWorking: (working: boolean): Promise<import("../shared/keep-awake").KeepAwakeState> => ipcRenderer.invoke("keep-awake:working", working),
   setKeyboardShortcuts: (value: import("../shared/keyboard-shortcuts").ShortcutOverrides): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke("keyboard-shortcuts:set", value),

@@ -151,8 +151,9 @@ export function useSettingsData(profile?: string) {
 
   const loadConfig = useCallback(async (): Promise<void> => {
     const requestId = ++loadConfigRequestRef.current;
-    setHermesHome("");
-    setHermesVersion(null);
+    // Keep the previously loaded home/version on screen while the next read is
+    // in flight. Clearing them first blanked the summary rows on every
+    // connection-config event, which read as the settings page blinking.
 
     // Load fast config first (cached in main process)
     const [aVersion, conn, keyStatus, autoUpgrade] = await Promise.all([

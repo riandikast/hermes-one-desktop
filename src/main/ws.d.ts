@@ -39,6 +39,16 @@ declare module "ws" {
 
   export class WebSocketServer {
     constructor(options: { noServer: true });
+    // A bound listener (tests, local relays): the port is chosen by the OS.
+    constructor(options: { host?: string; port?: number }, callback?: () => void);
+
+    on(event: "listening", listener: () => void): this;
+    on(
+      event: "connection",
+      listener: (socket: WebSocket, request: IncomingMessage) => void,
+    ): this;
+    address(): { port: number } | string | null;
+    close(callback?: () => void): void;
 
     handleUpgrade(
       request: IncomingMessage,

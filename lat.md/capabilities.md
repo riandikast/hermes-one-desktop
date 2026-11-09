@@ -1,8 +1,8 @@
 # Capabilities screen
 
-The Capabilities screen is the single master-detail surface for the agent's skills, toolsets, MCP servers, and the skill hub — one screen with four tabs, replacing the former Discover/Tools/Skills views.
+The Capabilities screen is the single master-detail surface for the agent's skills, toolsets, plugins, MCP servers, and the skill hub — one screen with five tabs, replacing the former Discover/Tools/Skills views.
 
-[[src/renderer/src/screens/Capabilities/Capabilities.tsx#Capabilities]] renders a header (title/subtitle/refresh), a four-tab bar (Skills | Toolsets | MCP | Hub) with counts, and a shared debounced search input (hidden on the MCP tab). Data comes from the `hermes dashboard` backend REST API plus the `hermes` CLI for hub mutations; the screen is mounted by [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] as the "Capabilities" sidebar entry (`navigation.tools` label).
+[[src/renderer/src/screens/Capabilities/Capabilities.tsx#Capabilities]] renders a header (title/subtitle/refresh), a five-tab bar (Skills | Toolsets | Plugins | MCP | Hub) with counts, and a shared debounced search input (hidden on the MCP tab). Data comes from the `hermes dashboard` backend REST API plus the `hermes` CLI for hub mutations; the screen is mounted by [[src/renderer/src/screens/Layout/Layout.tsx#Layout]] as the "Capabilities" sidebar entry (`navigation.tools` label).
 
 ## Dashboard REST client
 
@@ -19,6 +19,14 @@ The Hub tab searches and installs from the 90k+ skill hub (skills.sh, official H
 ## Payload parsing
 
 All hub payloads are normalized by pure parsers in [[src/shared/capabilities.ts#parseHubSkill]] / [[src/shared/capabilities.ts#parseHubSources]] / [[src/shared/capabilities.ts#parseHubPreview]] / [[src/shared/capabilities.ts#parseHubScan]] so the renderer only ever sees the typed `HubSkill` / `HubSourcesResult` / `HubPreview` / `HubScan` shapes (snake_case from the backend mapped to camelCase, missing fields defaulted).
+
+## Plugins tab
+
+The Plugins tab mirrors the official desktop's Capabilities → Plugins subpage for the agent half: installed plugins with version, source, server state, tool count and update pins, plus enable/disable, per-row Update, Update all and Remove for user installs.
+
+Plugin state is not on the dashboard HTTP surface, so [[src/main/dashboard-rpc.ts#dashboardRpc]] opens a short-lived authenticated WebSocket (`/api/ws?token=…`) and sends one JSON-RPC 2.0 frame — the same channel the chat transport uses. [[src/main/dashboard-plugins.ts#listDashboardPlugins]] calls `plugins.manage {action:"list"}`; writes go through [[src/main/dashboard-plugins.ts#manageDashboardPlugin]], which allow-lists `toggle`, `update`, `update_all` and `remove` (install/inspect flows stay in the CLI and official desktop). [[src/shared/plugins.ts#parseDashboardPlugins]] maps the snake_case rows, derives user/bundled counts when the gateway omits them and keeps missing arrays empty.
+
+The renderer loads the list lazily on first visit, re-reads it after every write instead of patching optimistically, and keeps the last list on screen when a request fails so the error surfaces without an empty table. Bundled plugins never show Remove; rows whose status is not `enabled` render dimmed with the toggle off.
 
 ## MCP tab
 
