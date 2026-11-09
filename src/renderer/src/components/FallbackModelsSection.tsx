@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { notifyFallbackConfigChanged } from "../screens/Chat/fallbackModels";
 import { useI18n } from "./useI18n";
 
 interface PickerProviderOption {
@@ -136,6 +137,8 @@ export default function FallbackModelsSection({
         throw new Error("mismatch");
       }
       await load();
+      // The chat model picker caches this chain; tell it the file changed.
+      notifyFallbackConfigChanged();
       setStatus(
         copy(
           "saved",

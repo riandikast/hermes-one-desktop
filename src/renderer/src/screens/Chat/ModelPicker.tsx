@@ -31,6 +31,7 @@ import {
   loadFallbackModels,
   saveFallbackModels,
   subscribeFallbackModels,
+  subscribeFallbackConfigChanged,
   refreshFallbackModelsFromConfig,
   addFallbackModel,
   removeFallbackModel,
@@ -207,8 +208,23 @@ export const ModelPicker = memo(function ModelPicker({
     // Adopt a chain configured elsewhere (Providers page / CLI / official
     // desktop) — `fallback_providers` is the authoritative list.
     void refreshFallbackModelsFromConfig();
-    return subscribeFallbackModels(sync);
+    const unsubscribeModels = subscribeFallbackModels(sync);
+    // The Providers editor writes config directly; re-read on its signal so an
+    // already-mounted picker never shows the previous chain.
+    const unsubscribeConfig = subscribeFallbackConfigChanged(() => {
+      void refreshFallbackModelsFromConfig();
+    });
+    return () => {
+      unsubscribeModels();
+      unsubscribeConfig();
+    };
   }, []);
+
+  // Opening the dialog is a read of the live chain: pick up edits made on the
+  // Providers page since it last closed.
+  useEffect(() => {
+    if (isOpen) void refreshFallbackModelsFromConfig();
+  }, [isOpen]);
 
   const searchQuery = searchInput.trim().toLowerCase();
   const filteredGroups = searchQuery

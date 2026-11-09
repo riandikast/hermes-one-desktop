@@ -1,14 +1,17 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addFallbackModel,
   fallbackChainFor,
   fallbackFromRow,
   loadFallbackModels,
   moveFallbackModel,
+  notifyFallbackConfigChanged,
   primaryKeyOf,
+  refreshFallbackModelsFromConfig,
   removeFallbackModel,
   saveFallbackModels,
+  subscribeFallbackConfigChanged,
   type FallbackModel,
 } from "./fallbackModels";
 
@@ -29,6 +32,7 @@ const entry = (model: string, provider = "openai"): FallbackModel =>
 
 beforeEach(() => {
   localStorage.clear();
+  delete (window as unknown as { hermesAPI?: unknown }).hermesAPI;
 });
 
 describe("fallbackFromRow / primaryKeyOf", () => {
@@ -149,6 +153,100 @@ describe("fallbackChainFor", () => {
       "a",
       "b",
     ]);
+  });
+});
+
+describe("config sync (Providers page ↔ picker)", () => {
+  it("adopts the configured chain and keeps routing keys it does not edit", async () => {
+    (window as unknown as { hermesAPI: unknown }).hermesAPI = {
+      getFallbackProviders: vi.fn(async () => [
+        {
+          provider: "custom",
+          model: "local-llama",
+          base_url: "http://127.0.0.1:8080/v1",
+          key_env: "LOCAL_KEY",
+          api_mode: "chat_completions",
+        },
+      ]),
+    };
+
+    const models = await refreshFallbackModelsFromConfig("default");
+
+    expect(models).toHaveLength(1);
+    expect(models[0]).toMatchObject({
+      provider: "custom",
+      model: "local-llama",
+      baseUrl: "http://127.0.0.1:8080/v1",
+      extra: { key_env: "LOCAL_KEY", api_mode: "chat_completions" },
+    });
+    // The picker cache now matches the file, extras included.
+    expect(loadFallbackModels()[0]!.extra).toEqual({
+      key_env: "LOCAL_KEY",
+      api_mode: "chat_completions",
+    });
+  });
+
+  it("lets config win over a stale local chain", async () => {
+    saveFallbackModels([entry("stale")]);
+    (window as unknown as { hermesAPI: unknown }).hermesAPI = {
+      getFallbackProviders: vi.fn(async () => [{ provider: "openai", model: "fresh" }]),
+    };
+
+    await refreshFallbackModelsFromConfig();
+
+    expect(loadFallbackModels().map((m) => m.model)).toEqual(["fresh"]);
+  });
+
+  it("migrates a local-only chain up when config is empty instead of wiping it", async () => {
+    saveFallbackModels([entry("local-only")]);
+    const setConfig = vi.fn(async () => true);
+    (window as unknown as { hermesAPI: unknown }).hermesAPI = {
+      getFallbackProviders: vi.fn(async () => []),
+      setConfig,
+    };
+
+    const models = await refreshFallbackModelsFromConfig("default");
+
+    expect(models.map((m) => m.model)).toEqual(["local-only"]);
+    expect(setConfig).toHaveBeenCalledWith(
+      "fallback_providers",
+      JSON.stringify([{ provider: "openai", model: "local-only" }]),
+      "default",
+    );
+  });
+
+  it("publishes preserved keys back with the edited pair", async () => {
+    const setConfig = vi.fn(
+      async (_key: string, _value: string, _profile?: string) => true,
+    );
+    (window as unknown as { hermesAPI: unknown }).hermesAPI = { setConfig };
+    const model: FallbackModel = {
+      ...fallbackFromRow({ provider: "custom", model: "m", baseUrl: "http://gw/v1", label: "m" }),
+      extra: { key_env: "K", api_mode: "chat_completions" },
+    };
+
+    saveFallbackModels([model]);
+    await Promise.resolve();
+
+    expect(JSON.parse(setConfig.mock.calls[0]![1] as string)).toEqual([
+      {
+        key_env: "K",
+        api_mode: "chat_completions",
+        provider: "custom",
+        model: "m",
+        base_url: "http://gw/v1",
+      },
+    ]);
+  });
+
+  it("broadcasts a config change to subscribers", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeFallbackConfigChanged(listener);
+    notifyFallbackConfigChanged();
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+    notifyFallbackConfigChanged();
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 });
 

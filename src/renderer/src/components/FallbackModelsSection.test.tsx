@@ -52,6 +52,8 @@ it("loads the configured chain and lists it in order", async () => {
 });
 
 it("adds a row, saves the JSON chain and verifies the read-back", async () => {
+  const configChanged = vi.fn();
+  window.addEventListener("fallback-models:config-changed", configChanged);
   const view = renderWithI18n(
     <FallbackModelsSection profile="default" providers={PROVIDERS} />,
   );
@@ -74,6 +76,9 @@ it("adds a row, saves the JSON chain and verifies the read-back", async () => {
   // Initial load, the save's read-back check, then the post-save reload.
   expect(getChain).toHaveBeenCalledTimes(3);
   await waitFor(() => expect(view.getByText(/Saved\./)).toBeTruthy());
+  // The chat model picker caches this chain and refreshes on this signal.
+  expect(configChanged).toHaveBeenCalledTimes(1);
+  window.removeEventListener("fallback-models:config-changed", configChanged);
 });
 
 it("keeps unsupported keys from the stored entry when saving", async () => {

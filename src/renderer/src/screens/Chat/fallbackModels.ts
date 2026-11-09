@@ -23,6 +23,12 @@ export interface FallbackModel {
   baseUrl: string;
   /** Display label captured at add time (a rename elsewhere won't retitle). */
   label: string;
+  /**
+   * Routing keys this UI does not edit (`key_env`, `api_mode`, …) carried over
+   * from config.yaml. They ride along on publish so a picker edit cannot strip
+   * a hand-written local-gateway chain down to bare provider/model pairs.
+   */
+  extra?: Record<string, string>;
 }
 
 const STORAGE_KEY = "hermes.chat.fallbackModels.v1";
@@ -110,13 +116,17 @@ export async function refreshFallbackModelsFromConfig(
     if (!Array.isArray(entries)) return local;
     const configured = entries
       .filter((entry) => entry.provider && entry.model)
-      .map((entry) => ({
-        key: modelKeyOf(entry.provider, entry.base_url ?? "", entry.model),
-        provider: entry.provider,
-        model: entry.model,
-        baseUrl: entry.base_url ?? "",
-        label: `${entry.provider} / ${entry.model}`,
-      }));
+      .map((entry) => {
+        const { provider, model, base_url: baseUrl = "", ...extra } = entry;
+        return {
+          key: modelKeyOf(provider, baseUrl, model),
+          provider,
+          model,
+          baseUrl,
+          label: `${provider} / ${model}`,
+          ...(Object.keys(extra).length > 0 ? { extra } : {}),
+        };
+      });
     if (configured.length === 0) {
       if (local.length > 0) void publishFallbackChainToConfig(local, profile);
       return local;
@@ -136,6 +146,22 @@ export function subscribeFallbackModels(cb: () => void): () => void {
     window.removeEventListener(CHANGE_EVENT, cb);
     window.removeEventListener("storage", cb);
   };
+}
+
+const CONFIG_CHANGED_EVENT = "fallback-models:config-changed";
+
+/**
+ * Announce that `fallback_providers` changed outside the picker (the Providers
+ * page editor, a reset, a profile switch). The picker answers by re-reading
+ * config, so an open dialog never shows a chain the file no longer has.
+ */
+export function notifyFallbackConfigChanged(): void {
+  window.dispatchEvent(new CustomEvent(CONFIG_CHANGED_EVENT));
+}
+
+export function subscribeFallbackConfigChanged(cb: () => void): () => void {
+  window.addEventListener(CONFIG_CHANGED_EVENT, cb);
+  return () => window.removeEventListener(CONFIG_CHANGED_EVENT, cb);
 }
 
 /**
@@ -228,11 +254,13 @@ export async function publishFallbackChainToConfig(
     const entries = models
       .filter((m) => m.provider && m.model)
       .map((m) => {
-        const entry: Record<string, string> = {
-          provider: m.provider,
-          model: m.model,
-        };
+        // Preserved routing keys first, then the edited pair, so an unedited
+        // `key_env` / `api_mode` survives and the edited fields always win.
+        const entry: Record<string, string> = { ...(m.extra ?? {}) };
+        entry.provider = m.provider;
+        entry.model = m.model;
         if (m.baseUrl) entry.base_url = m.baseUrl;
+        else delete entry.base_url;
         return entry;
       });
 

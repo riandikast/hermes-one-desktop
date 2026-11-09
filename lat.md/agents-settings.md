@@ -30,7 +30,11 @@ Save writes JSON through the existing object-list writer (real YAML mappings), t
 
 The chat model picker also keeps an ordered fallback list. It used to be local-only, published to `fallback_providers` only after a failed turn, which let the two lists disagree.
 
-[[src/renderer/src/screens/Chat/fallbackModels.ts#saveFallbackModels]] now publishes to config on every edit, and [[src/renderer/src/screens/Chat/fallbackModels.ts#refreshFallbackModelsFromConfig]] adopts the configured chain (config wins once it has entries; a non-empty local list is migrated up when config is empty). The dashboard transport refreshes before computing the chain for a send, and the picker refreshes when it mounts, so the Providers editor, the picker, the CLI and the agent all read one list.
+[[src/renderer/src/screens/Chat/fallbackModels.ts#saveFallbackModels]] now publishes to config on every edit, and [[src/renderer/src/screens/Chat/fallbackModels.ts#refreshFallbackModelsFromConfig]] adopts the configured chain (config wins once it has entries; a non-empty local list is migrated up when config is empty). The dashboard transport refreshes before computing the chain for a send, so a chain edited on the Providers page wins the next failed turn.
+
+The dialog stays in step while it is open: the picker refreshes whenever it opens, and the Providers editor broadcasts `fallback-models:config-changed` after a verified save so an already-mounted picker re-reads the file instead of showing the previous chain.
+
+Routing keys the picker does not edit (`key_env`, `api_mode`, …) survive the round trip: [[src/renderer/src/screens/Chat/fallbackModels.ts#refreshFallbackModelsFromConfig]] keeps them in the entry's `extra` bag and the publisher re-emits them under the edited provider/model. Without that, one picker edit would strip a hand-written local-gateway chain down to bare provider/model pairs.
 
 ## Notifications
 
