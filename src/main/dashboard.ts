@@ -4,6 +4,7 @@ import { closeSync, existsSync, mkdirSync, openSync } from "fs";
 import http from "http";
 import https from "https";
 import net from "net";
+import { is } from "@electron-toolkit/utils";
 import { homedir } from "os";
 import { join } from "path";
 import { getConnectionConfig, type ConnectionConfig } from "./config";
@@ -14,7 +15,7 @@ import {
   HERMES_PYTHON,
   HERMES_REPO,
 } from "./installer";
-import { buildLocalDashboardCliArgs } from "./dashboard-launch";
+import { buildLocalDashboardCliArgs, localDashboardEnvironment } from "./dashboard-launch";
 import { dashboardWebSocketUrlForRenderer } from "./dashboard-websocket-relay";
 import { ensureLocalDashboardCompatibility } from "./hermes-agent-compat";
 import { HIDDEN_SUBPROCESS_OPTIONS } from "./process-options";
@@ -652,7 +653,7 @@ export async function startDashboard(
     proc = spawn(HERMES_PYTHON, hermesCliArgs(cliArgs), {
       cwd: HERMES_REPO,
       env: {
-        ...process.env,
+        ...localDashboardEnvironment(process.env, is.dev),
         PATH: getEnhancedPath(),
         HOME: process.env.HOME || homedir(),
         HERMES_HOME,

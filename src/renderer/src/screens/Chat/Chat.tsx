@@ -1111,7 +1111,7 @@ function Chat({
 
       setChatTransportPreference(
         conn.mode === "local"
-          ? "auto"
+          ? (conn.localChatTransport ?? "auto")
           : conn.mode === "ssh"
             ? (conn.sshChatTransport ?? "auto")
             : conn.remoteAuthMode === "oauth"
