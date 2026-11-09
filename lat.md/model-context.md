@@ -40,6 +40,8 @@ A failed turn without usage keeps the prior reported occupancy. [[src/renderer/s
 
 The compact settings use 11px text, 24px input/save controls and a native 13px checkbox to match the surrounding popover.
 
+Settings → Memory & Context exposes the same token ceiling alongside the upstream compression policy controls; see [[advanced-memory-settings#Controls and persistence]]. Both editors share the local profile config, without rewriting existing session policies.
+
 The opened context popover exposes native profile compression settings, not a duplicate frontend auto-send loop. A native checkbox enables compression and an optional positive integer sets its token ceiling.
 
 [[src/renderer/src/screens/Chat/ContextCompressionSettings.tsx#ContextCompressionSettings]] lazily reads `compression.enabled` and `compression.threshold_tokens` using the existing profile-aware config IPC. Save writes the ceiling first, then enabled state, reads both back, and only reports success after verification. Empty clears the cap to `null`, keeping the backend ratio policy. Failures replace the editor with an error so partial writes cannot masquerade as success. [[src/renderer/src/screens/Chat/ContextCompressionSettings.test.tsx]] covers persistence, reopen, validation, failed writes and failed verification.

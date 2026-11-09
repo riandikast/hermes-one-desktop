@@ -8,6 +8,7 @@ vi.mock("./SoulPane", () => ({ default: () => <div>Soul pane</div> }));
 vi.mock("./GitHubPane", () => ({ default: () => <div>GitHub pane</div> }));
 vi.mock("./AppearancePane", () => ({ default: () => <div>Appearance pane</div> }));
 vi.mock("./ShortcutsPane", () => ({ default: () => <div>Shortcuts pane</div> }));
+vi.mock("./AgentConfigPane", () => ({ default: ({ section }: { section: string }) => <div>{section} config pane</div> }));
 vi.mock("../modal/AppModal", () => ({
   AppModal: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   AppModalTitle: ({ children }: { children: React.ReactNode }) => <h1>{children}</h1>,
@@ -15,6 +16,14 @@ vi.mock("../modal/AppModal", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+// @lat: [[advanced-memory-settings#Regression coverage#Settings navigation]]
+it.each([["advanced", "Advanced"], ["memory", "Memory & Context"]])("opens /settings %s and the matching nav pane", async (section, label) => {
+  renderWithI18n(<SettingsModal open initialSection={section} onClose={vi.fn()} />);
+  expect(screen.getByText(`${section} config pane`)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: label }));
+  await waitFor(() => expect(screen.getByText(`${section} config pane`)).toBeTruthy());
 });
 
 /** The first four nav entries, in order, as rendered. */

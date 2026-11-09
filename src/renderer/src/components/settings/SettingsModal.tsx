@@ -32,8 +32,11 @@ import GitHubPane from "./GitHubPane";
 import SoulPane from "./SoulPane";
 import ShortcutsPane from "./ShortcutsPane";
 import UtilsPane from "./UtilsPane";
+import AgentConfigPane from "./AgentConfigPane";
 
 export type SettingsSection =
+  | "advanced"
+  | "memory"
   | "soul"
   | "appearance"
   | "shortcuts"
@@ -48,6 +51,7 @@ export type SettingsSection =
   | "about"
   | "community"
   | "logs";
+// Advanced and Memory are profile-backed config panes, not top-level screen doorways.
 
 type NavGroup = "general" | "hermes";
 
@@ -108,6 +112,8 @@ const SETTINGS_NAV: ReadonlyArray<{
     labelKey: "settings.nav.language",
     Icon: Languages,
   },
+  { group: "general", id: "memory", labelKey: "settings.nav.memory", Icon: Database },
+  { group: "general", id: "advanced", labelKey: "settings.nav.advanced", Icon: Wrench },
   {
     group: "general",
     id: "security",
@@ -296,6 +302,8 @@ export default function SettingsModal({
             {section === "appearance" && <AppearancePane />}
             {section === "shortcuts" && <ShortcutsPane />}
             {section === "utils" && <UtilsPane />}
+            {section === "advanced" && <AgentConfigPane section="advanced" />}
+            {section === "memory" && <AgentConfigPane section="memory" />}
             {section === "language" && <LanguagePane />}
             {section === "security" && <SecurityPane />}
             {section === "privacy" && <PrivacyPane />}

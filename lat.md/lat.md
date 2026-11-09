@@ -51,3 +51,4 @@ This directory defines the high-level concepts, business logic, and architecture
 - [[capabilities]] — the single Capabilities screen (Skills | Toolsets | MCP | Hub tabs) backed by the dashboard REST API and the skill hub CLI; replaces the former Discover/Tools/Skills views.
 
 - [[soul-settings]] - profile-specific Settings Soul editor and safe draft handling.
+- [[advanced-memory-settings]] - official desktop config controls, typed profile persistence, scope restrictions and parity gaps.

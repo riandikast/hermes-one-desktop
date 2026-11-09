@@ -24,6 +24,46 @@ afterEach(() => {
 });
 
 describe("native compression settings", () => {
+  // @lat: [[advanced-memory-settings#Controls and persistence]]
+  it("preserves native Advanced and Memory scalar types and siblings", () => {
+    writeFileSync(configFile, "memory:\n  provider: old\ncompression:\n  enabled: true\n");
+    config.setConfigValue("memory.memory_enabled", "false");
+    config.setConfigValue("memory.memory_char_limit", "3200");
+    config.setConfigValue("compression.threshold", "0.8");
+    config.setConfigValue("agent.max_turns", "null");
+    config.setConfigValue("agent.tool_use_enforcement", "false");
+    expect(readFileSync(configFile, "utf8")).toContain("memory_enabled: false");
+    expect(readFileSync(configFile, "utf8")).toContain("memory_char_limit: 3200");
+    expect(readFileSync(configFile, "utf8")).toContain("threshold: 0.8");
+    expect(readFileSync(configFile, "utf8")).toContain("max_turns: null");
+    expect(readFileSync(configFile, "utf8")).toContain("tool_use_enforcement: false");
+    expect(config.getConfigValue("memory.provider")).toBe("old");
+  });
+
+  it.each(["", "auxiliary:\n  vision:\n    timeout: 60\n", "auxiliary:\n  compression:\n    model: small\n"])("creates only the curated auxiliary timeout path safely", (initial) => {
+    writeFileSync(configFile, initial);
+    config.setConfigValue("auxiliary.compression.timeout", "240");
+    expect(config.getConfigValue("auxiliary.compression.timeout")).toBe("240");
+    if (initial.includes("vision")) expect(config.getConfigValue("auxiliary.vision.timeout")).toBe("60");
+    if (initial.includes("model")) expect(config.getConfigValue("auxiliary.compression.model")).toBe("small");
+    config.setConfigValue("auxiliary.compression.timeout", "300");
+    expect(config.getConfigValue("auxiliary.compression.timeout")).toBe("300");
+  });
+
+  it("rejects invalid native scalars without touching configuration", () => {
+    const before = readFileSync(configFile, "utf8");
+    for (const [key, value] of [["memory.memory_enabled", "yes"], ["compression.threshold", "2"], ["agent.api_max_retries", "1.5"]]) {
+      expect(() => config.setConfigValue(key, value)).toThrow();
+    }
+    expect(readFileSync(configFile, "utf8")).toBe(before);
+  });
+
+  it("refuses inline section duplication", () => {
+    writeFileSync(configFile, "memory: {}\n");
+    expect(() => config.setConfigValue("memory.memory_enabled", "false")).toThrow();
+    expect(readFileSync(configFile, "utf8")).toBe("memory: {}\n");
+  });
+
   it("writes a real boolean and integer without changing sibling settings", () => {
     writeFileSync(configFile, "compression:\n  enabled: true\n  protect_last_n: 20\n  threshold_tokens: null\n");
     config.setConfigValue("compression.enabled", "false");

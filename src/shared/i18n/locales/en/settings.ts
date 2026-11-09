@@ -63,6 +63,8 @@ export default {
     appearance: "Appearance",
     shortcuts: "Keyboard Shortcuts",
     utils: "Utils",
+    advanced: "Advanced",
+    memory: "Memory & Context",
     provider: "Providers",
     language: "Language",
     security: "Security",

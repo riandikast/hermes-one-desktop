@@ -10,6 +10,7 @@ import {
   safeWriteFile,
 } from "./utils";
 import { getYamlPath } from "./yaml-path";
+import { agentSettingsScalar } from "../shared/agent-settings";
 // NOTE: ./secrets imports back into this module (getConfigValue / readEnv), so
 // this is a static import that closes a cycle (config -> secrets ->
 // commandProvider -> config). It is safe ONLY because BOTH sides defer all work
@@ -323,16 +324,8 @@ function stripYamlQuotes(raw: string): string {
 }
 
 function quoteYamlScalar(value: string, key?: string): string {
-  if (key === "compression.enabled") {
-    if (value !== "true" && value !== "false") throw new Error("Compression enabled must be true or false");
-    return value;
-  }
-  if (key === "compression.threshold_tokens") {
-    if (value !== "null" && (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)))) {
-      throw new Error("Compression token ceiling must be a positive integer or null");
-    }
-    return value;
-  }
+  const settingsScalar = key ? agentSettingsScalar(key, value) : undefined;
+  if (settingsScalar !== undefined) return settingsScalar;
   return JSON.stringify(value);
 }
 
@@ -341,6 +334,28 @@ function appendDirectNestedYamlValue(
   segments: string[],
   value: string,
 ): string | null {
+  // The only curated three-level setting. Do not widen generic YAML writes.
+  if (segments.join(".") === "auxiliary.compression.timeout") {
+    const cr = String.fromCharCode(13);
+    const newline = content.includes(cr) ? cr + "\n" : "\n";
+    const scalar = agentSettingsScalar(segments.join("."), value);
+    const lines = content.split("\n").map((line) => line.endsWith(cr) ? line.slice(0, -1) : line);
+    const auxiliary = lines.findIndex((line) => /^auxiliary:[ \t]*(?:#.*)?$/.test(line));
+    if (auxiliary < 0) {
+      if (lines.some((line) => /^auxiliary:/.test(line))) throw new Error("Cannot edit inline auxiliary configuration safely.");
+      return `${content}${content && !content.endsWith("\n") ? newline : ""}auxiliary:${newline}  compression:${newline}    timeout: ${scalar}${newline}`;
+    }
+    let end = auxiliary + 1;
+    while (end < lines.length && (!lines[end].trim() || /^[ \t#]/.test(lines[end]))) end++;
+    const compression = lines.findIndex((line, i) => i > auxiliary && i < end && /^ {2}compression:[ \t]*(?:#.*)?$/.test(line));
+    if (compression < 0) {
+      if (lines.slice(auxiliary + 1, end).some((line) => /^\s+compression:/.test(line))) throw new Error("Cannot edit inline compression configuration safely.");
+      lines.splice(auxiliary + 1, 0, "  compression:", `    timeout: ${scalar}`);
+    } else {
+      lines.splice(compression + 1, 0, `    timeout: ${scalar}`);
+    }
+    return lines.join(newline);
+  }
   if (segments.length !== 2) return null;
   const [parent, child] = segments;
   if (!parent || !child) return null;
@@ -348,12 +363,15 @@ function appendDirectNestedYamlValue(
   const newline = content.includes("\r\n") ? "\r\n" : "\n";
   const quotedValue = quoteYamlScalar(value, segments.join("."));
   const parentRe = new RegExp(
-    `^${escapeRegex(parent)}:[ \\t]*(#.*)?(?:\\r?\\n|$)`,
+    `^${escapeRegex(parent)}:[^\\S\\n]*(#.*)?(?:\\n|$)`,
     "m",
   );
   const parentMatch = parentRe.exec(content);
 
   if (!parentMatch || parentMatch.index === undefined) {
+    if (new RegExp(`^${escapeRegex(parent)}:`, "m").test(content)) {
+      throw new Error("Cannot append a setting to an inline YAML section safely.");
+    }
     const sep = content === "" || content.endsWith("\n") ? "" : newline;
     return `${content}${sep}${parent}:${newline}  ${child}: ${quotedValue}${newline}`;
   }
@@ -379,7 +397,8 @@ function appendDirectNestedYamlValue(
   }
 
   const insertion = `  ${child}: ${quotedValue}${newline}`;
-  return `${content.slice(0, blockEnd)}${insertion}${content.slice(blockEnd)}`;
+  const before = content.slice(0, blockEnd);
+  return `${before}${before.endsWith("\n") ? "" : newline}${insertion}${content.slice(blockEnd)}`;
 }
 
 /**
