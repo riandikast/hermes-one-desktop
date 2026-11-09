@@ -1701,7 +1701,7 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
       {sidebarTab === "bots" ? (
         <div className="sidebar-bots-rail">
           <div className="sidebar-bots-rail-header">
-            <span className="sidebar-bots-rail-title">Bots1</span>
+            <span className="sidebar-bots-rail-title">Bots</span>
             <div className="sidebar-bots-header-actions" ref={botNewMenuRef}>
               <button
                 type="button"

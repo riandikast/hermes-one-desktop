@@ -2,6 +2,12 @@
 
 The sidebar starts with New Chat, keeps app destinations pinned, then gives conversations and projects their own scroll area.
 
+## Bots rail rows
+
+Each bot (and group chat) row is two lines: a name with its status pill, then a model id or the last chat message.
+
+Chat previews are arbitrary-length prose, so `.sidebar-bot-model-sub`/`.sidebar-bot-last-msg` clamp them to one line with `text-overflow: ellipsis`, and the row carries `min-width: 0` + `overflow: hidden`. Without that the preview wrapped, grew the row and pushed the rail's other entries out of view. Group chats use the same clamp for their `@member` list, and the rail header reads `Bots` (a stray `Bots1` literal was removed).
+
 ## Sessions and Bots list switcher
 
 The sidebar list can switch between Sessions and Bots without leaving the navigation area; both labels stay primary-text colored, and the selected tab uses the theme accent.

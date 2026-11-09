@@ -415,6 +415,12 @@ describe("ChatInput — mention menu keyboard scroll", () => {
     const rect = (top: number, bottom: number): DOMRect =>
       ({ top, bottom, height: bottom - top, left: 0, right: 0, width: 0, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
     vi.spyOn(menu, "getBoundingClientRect").mockReturnValue(rect(0, VIEW));
+    // The scroll math reads layout metrics, which jsdom reports as 0.
+    Object.defineProperty(menu, "clientHeight", { configurable: true, value: VIEW });
+    Object.defineProperty(menu, "scrollHeight", {
+      configurable: true,
+      value: items.length * ROW,
+    });
     items.forEach((el, index) => {
       vi.spyOn(el, "getBoundingClientRect").mockImplementation(() => {
         const top = index * ROW - menu.scrollTop;

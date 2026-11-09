@@ -1,45 +1,48 @@
 import { describe, expect, it } from "vitest";
-import { scrollMentionItemIntoView, type Measurable, type Scrollable, type ScrollableRect } from "./mentionScroll";
+import { scrollMentionItemIntoView, type MentionScrollBox } from "./mentionScroll";
 
-function box(scrollTop: number, top: number, bottom: number): Scrollable & Measurable {
-  return {
-    scrollTop,
-    getBoundingClientRect: (): ScrollableRect => ({ top, bottom }),
-  };
+function box(scrollTop: number, clientHeight = 100, scrollHeight = 1000): MentionScrollBox {
+  return { scrollTop, clientHeight, scrollHeight };
 }
 
-function row(top: number, height: number): { getBoundingClientRect(): ScrollableRect } {
-  return { getBoundingClientRect: (): ScrollableRect => ({ top, bottom: top + height }) };
+function row(offsetTop: number, offsetHeight: number): { offsetTop: number; offsetHeight: number } {
+  return { offsetTop, offsetHeight };
 }
 
 describe("scrollMentionItemIntoView", () => {
   it("scrolls down just enough to reveal a row below the fold", () => {
-    const menu = box(0, 0, 100);
+    const menu = box(0);
     scrollMentionItemIntoView(menu, row(120, 20));
-    // Row bottom (140) lands on the padded bottom edge (94).
+    // Row bottom (140) plus padding lands on the 100px box bottom.
     expect(menu.scrollTop).toBe(46);
   });
 
   it("scrolls up just enough to reveal a row above the fold", () => {
-    const menu = box(200, 0, 100);
-    scrollMentionItemIntoView(menu, row(-30, 20));
-    // Row top (-30) lands on the padded top edge (6).
-    expect(menu.scrollTop).toBe(164);
+    const menu = box(400);
+    scrollMentionItemIntoView(menu, row(150, 20));
+    // Row top (150) minus padding becomes the new scroll offset.
+    expect(menu.scrollTop).toBe(144);
   });
 
   it("leaves an already-visible row untouched", () => {
-    const menu = box(40, 0, 100);
+    const menu = box(40);
     scrollMentionItemIntoView(menu, row(50, 20));
     expect(menu.scrollTop).toBe(40);
   });
 
   it("honours the padding band at both edges", () => {
-    const down = box(0, 0, 100);
+    const down = box(0);
     scrollMentionItemIntoView(down, row(85, 20), 10);
-    expect(down.scrollTop).toBe(15); // 105 vs padded bottom 90
+    expect(down.scrollTop).toBe(15); // 115 vs padded bottom 90
 
-    const up = box(50, 0, 100);
+    const up = box(50);
     scrollMentionItemIntoView(up, row(2, 20), 10);
-    expect(up.scrollTop).toBe(42); // 2 vs padded top 10
+    expect(up.scrollTop).toBe(0); // never negative
+  });
+
+  it("never scrolls past the end of the list", () => {
+    const menu = box(0, 100, 260);
+    scrollMentionItemIntoView(menu, row(1000, 20));
+    expect(menu.scrollTop).toBe(160); // scrollHeight - clientHeight
   });
 });

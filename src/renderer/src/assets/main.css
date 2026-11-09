@@ -3283,6 +3283,8 @@ body:has(.shell-vibrant),
 }
 
 .sidebar-group-count {
+  flex: 0 0 auto;
+  white-space: nowrap;
   font-size: calc(10px * var(--font-scale));
   padding: 1px 5px;
   border-radius: 4px;
@@ -3553,6 +3555,9 @@ body:has(.shell-vibrant),
   cursor: pointer;
   transition: background 0.12s ease;
   user-select: none;
+  /* A long last-message preview must never widen the rail or wrap the row. */
+  min-width: 0;
+  overflow: hidden;
 }
 
 .sidebar-bot-row:hover {
@@ -3602,6 +3607,7 @@ body:has(.shell-vibrant),
 }
 
 .sidebar-bot-name {
+  min-width: 0;
   font-size: calc(12.5px * var(--font-scale));
   font-weight: 600;
   color: var(--text-primary);
@@ -3610,7 +3616,20 @@ body:has(.shell-vibrant),
   text-overflow: ellipsis;
 }
 
+/* Second line of a bot/group row: model id or the last chat message. */
+.sidebar-bot-model-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: calc(11.5px * var(--font-scale));
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .sidebar-bot-active-pill {
+  flex: 0 0 auto;
   font-size: calc(9.5px * var(--font-scale));
   font-weight: 600;
   padding: 1px 4px;
@@ -3620,9 +3639,16 @@ body:has(.shell-vibrant),
 }
 
 .sidebar-bot-last-msg {
+  flex: 1 1 auto;
+  min-width: 0;
   color: var(--text-muted);
   opacity: 0.9;
   font-size: calc(11.5px * var(--font-scale));
+  /* Chat previews are arbitrary-length prose: clamp to one line with an
+     ellipsis so the Bots list keeps a uniform row height. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sidebar-recent-search {

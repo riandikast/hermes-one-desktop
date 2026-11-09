@@ -54,7 +54,7 @@ import {
 } from "./mention";
 import { searchFiles } from "./fileSearch";
 import { MentionModifiedTime } from "./MentionModifiedTime";
-import { scrollMentionItemIntoView } from "./mentionScroll";
+import { mentionItemOffset, scrollMentionItemIntoView } from "./mentionScroll";
 import { ContextGauge, type ContextUsage } from "./ContextGauge";
 import { SendConfirmDialog } from "./SendConfirmDialog";
 import type { Attachment } from "../../../../shared/attachments";
@@ -163,6 +163,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     // The menu is a max-height scroll box: keyboard navigation must keep the
     // highlighted row in view.
     const mentionMenuRef = useRef<HTMLDivElement | null>(null);
+    /** The query whose results are on screen; a change resets the menu scroll. */
+    const lastMentionQueryRef = useRef<string | null>(null);
     const [slashMenuOpen, setSlashMenuOpen] = useState(false);
     const [slashFilter, setSlashFilter] = useState("");
     const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
@@ -877,13 +879,23 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     }, [visibleRankedMentions.length]);
 
     // Arrow-key navigation only moved the highlight; past the fold the selected
-    // row (what Enter inserts) scrolled out of sight. Follow it.
+    // row (what Enter inserts) scrolled out of sight. Follow it, after paint so
+    // the freshly-highlighted row already has its final layout.
     useEffect(() => {
       const menu = mentionMenuRef.current;
-      if (!mentionOpen || !menu) return;
+      if (!mentionOpen || !menu) {
+        lastMentionQueryRef.current = null;
+        return;
+      }
+      // A new query is a new result set: start from the top instead of keeping
+      // the previous list's scroll offset.
+      if (lastMentionQueryRef.current !== mentionQuery) {
+        lastMentionQueryRef.current = mentionQuery;
+        menu.scrollTop = 0;
+      }
       const item = menu.querySelector<HTMLElement>(".mention-menu-item-selected");
-      if (item) scrollMentionItemIntoView(menu, item);
-    }, [mentionOpen, mentionSelected, visibleRankedMentions.length]);
+      if (item) scrollMentionItemIntoView(menu, mentionItemOffset(menu, item));
+    }, [mentionOpen, mentionQuery, mentionSelected, visibleRankedMentions.length]);
 
     function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>): void {
       const { files, hasText } = filesFromClipboard(e);

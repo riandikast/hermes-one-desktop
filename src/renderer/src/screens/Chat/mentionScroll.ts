@@ -4,35 +4,60 @@
  * The mention menu is a fixed-height scroll container (`max-height: 260px`), and
  * arrow navigation only moved the highlight — past the fold the selected row
  * walked off-screen and there was no way to see (or trust) what Enter would
- * insert. Doing the math here instead of `scrollIntoView()` keeps the chat
- * transcript and the composer from scrolling too.
+ * insert.
+ *
+ * The math uses layout offsets (untransformed CSS pixels) rather than viewport
+ * rects: an ancestor with a transform, zoom or entrance animation rescales
+ * `getBoundingClientRect()`, which made the old rect-based delta land short and
+ * left the row below the fold.
  */
-export interface ScrollableRect {
-  top: number;
-  bottom: number;
-}
-
-export interface Scrollable {
+export interface MentionScrollBox {
   scrollTop: number;
+  clientHeight: number;
+  scrollHeight: number;
 }
 
-export interface Measurable {
-  getBoundingClientRect(): ScrollableRect;
+export interface MentionScrollItem {
+  offsetTop: number;
+  offsetHeight: number;
+}
+
+/** Where `item` sits in `box`'s scroll content, even when the offsetParent differs. */
+export function mentionItemOffset(
+  box: HTMLElement,
+  item: HTMLElement,
+): MentionScrollItem {
+  if (item.offsetParent === box) {
+    return { offsetTop: item.offsetTop, offsetHeight: item.offsetHeight };
+  }
+  const boxRect = box.getBoundingClientRect();
+  const itemRect = item.getBoundingClientRect();
+  return {
+    offsetTop: itemRect.top - boxRect.top + box.scrollTop,
+    offsetHeight: item.offsetHeight || itemRect.height,
+  };
 }
 
 /**
- * Scroll `container` by the minimum amount that reveals `item`, keeping
- * `padding` px of breathing room at both edges. A no-op when already visible.
+ * Scroll `box` by the minimum amount that reveals `item`, keeping `padding` px
+ * of breathing room at both edges and never scrolling past either end. A no-op
+ * when the row is already visible.
  */
 export function scrollMentionItemIntoView(
-  container: Scrollable & Measurable,
-  item: Measurable,
+  box: MentionScrollBox,
+  item: MentionScrollItem,
   padding = 6,
 ): void {
-  const box = container.getBoundingClientRect();
-  const row = item.getBoundingClientRect();
-  const top = box.top + padding;
-  const bottom = box.bottom - padding;
-  if (row.top < top) container.scrollTop -= top - row.top;
-  else if (row.bottom > bottom) container.scrollTop += row.bottom - bottom;
+  const viewTop = box.scrollTop;
+  const viewBottom = viewTop + box.clientHeight;
+  const itemTop = item.offsetTop - padding;
+  const itemBottom = item.offsetTop + item.offsetHeight + padding;
+
+  let next = viewTop;
+  if (itemTop < viewTop) next = itemTop;
+  else if (itemBottom > viewBottom) next = itemBottom - box.clientHeight;
+
+  if (next === viewTop) return;
+  const max = Math.max(0, box.scrollHeight - box.clientHeight);
+  box.scrollTop = Math.max(0, Math.min(next, max));
 }

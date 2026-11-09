@@ -29,4 +29,8 @@ The picker (`.mention-menu`, `max-height: 260px`, `overflow-y: auto`) used to on
 
 The helper adjusts `scrollTop` by the minimum overflow instead of calling `scrollIntoView()`, so the chat transcript and composer never scroll as a side effect, and it keeps a 6px padding band at both edges. It is a no-op when the row is already visible, so hovering a row or resetting to the first item does not jump the list.
 
+The delta comes from layout offsets ([[src/renderer/src/screens/Chat/mentionScroll.ts#mentionItemOffset]]), not viewport rects: an ancestor with a transform, zoom or entrance animation rescales `getBoundingClientRect()`, and the rect-based delta then landed short and left the row below the fold. Rects are only the fallback when a row's `offsetParent` is not the menu, and every write is clamped to `scrollHeight - clientHeight`.
+
+A new query resets the menu to `scrollTop = 0` before the first row is followed, so a fresh result set never opens halfway down the previous one's list.
+
 [[src/renderer/src/screens/Chat/mentionScroll.test.ts]] pins the up/down/no-op/padding math, and `ChatInput.test.tsx` renders a 12-row menu with stubbed rects and arrows past the fold asserting the selected row stays inside the box — the same test fails without the effect.
