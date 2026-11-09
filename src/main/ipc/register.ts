@@ -5,7 +5,6 @@ import {
   BrowserWindow,
   ipcMain,
   Menu,
-  Notification,
   nativeTheme,
   dialog,
   clipboard,
@@ -16,6 +15,17 @@ import { GitHubAuth } from "../github-auth";
 import { getKeyboardShortcuts, setKeyboardShortcuts, setShortcutRecording } from "../keyboard-shortcut-settings";
 import { getKeepAwakeState, setKeepAwakeMode, setKeepAwakeWorking } from "../keep-awake";
 import { listDashboardPlugins, manageDashboardPlugin } from "../dashboard-plugins";
+import {
+  getNotificationPrefs,
+  setNotificationPrefs,
+  showDesktopNotification,
+} from "../desktop-notifications";
+import {
+  getFallbackProviders,
+  getMoaConfig,
+  saveMoaConfig,
+  type MoaConfig,
+} from "../model-extras";
 import { buildMenu } from "../app/menu";
 import { registerKnowledgePackageHandlers } from "./knowledge-packages";
 import { listAgentUserProviders } from "../agent-config-providers";
@@ -835,6 +845,25 @@ export function registerIpcHandlers(context: IpcContext): void {
     const result = setKeyboardShortcuts(value);
     if (result.ok) buildMenu({ getMainWindow: context.getMainWindow, openExternalUrl: context.openExternalUrl });
     return result;
+  });
+  ipcMain.handle("notifications:get", (event) => {
+    if (!trustedShortcuts(event)) throw new Error("Unauthorized notification request");
+    return getNotificationPrefs();
+  });
+  ipcMain.handle("notifications:set", (event, value: unknown) => {
+    if (!trustedShortcuts(event)) throw new Error("Unauthorized notification request");
+    return setNotificationPrefs(value);
+  });
+  ipcMain.handle("notifications:test", (event, title: unknown, body: unknown) => {
+    if (!trustedShortcuts(event)) {
+      return { shown: false, reason: "Unauthorized notification request" };
+    }
+    const shown = showDesktopNotification({
+      kind: "test",
+      title: typeof title === "string" && title.trim() ? title : "Hermes One",
+      body: typeof body === "string" && body.trim() ? body : "Notifications are working.",
+    });
+    return { shown, reason: shown ? undefined : "Off in Notification settings" };
   });
   ipcMain.handle("keep-awake:get", (event) => {
     if (!trustedShortcuts(event)) throw new Error("Unauthorized keep-awake request");
@@ -1840,10 +1869,11 @@ export function registerIpcHandlers(context: IpcContext): void {
                 .replace(/[#*_`~\n]+/g, " ")
                 .trim()
                 .slice(0, 80);
-              new Notification({
+              showDesktopNotification({
+                kind: "turn-complete",
                 title: APP_NAME,
                 body: preview || "Response ready",
-              }).show();
+              });
             }
           },
           onSessionStarted: (sessionId) => {
@@ -1855,10 +1885,11 @@ export function registerIpcHandlers(context: IpcContext): void {
             rejectChat(new Error(error));
             // Notify on error too if window not focused
             if (mainWindow && !mainWindow.isFocused()) {
-              new Notification({
+              showDesktopNotification({
+                kind: "turn-error",
                 title: `${APP_NAME} — Error`,
                 body: error.slice(0, 100),
-              }).show();
+              });
             }
           },
           onToolProgress: (tool) => {
@@ -4092,6 +4123,19 @@ export function registerIpcHandlers(context: IpcContext): void {
     "install-mcp-catalog-entry",
     (_event, name: string, env?: Record<string, string>, profile?: string) =>
       installMcpCatalogEntry(name, env, profile),
+  );
+
+  // Model extras: Mixture-of-Agents presets + the fallback chain editor.
+  ipcMain.handle("get-moa-config", (_event, profile?: string) =>
+    getMoaConfig(profile),
+  );
+  ipcMain.handle(
+    "save-moa-config",
+    (_event, config: MoaConfig, profile?: string) =>
+      saveMoaConfig(config, profile),
+  );
+  ipcMain.handle("get-fallback-providers", (_event, profile?: string) =>
+    getFallbackProviders(profile),
   );
 
   // Agent plugins (Capabilities → Plugins)

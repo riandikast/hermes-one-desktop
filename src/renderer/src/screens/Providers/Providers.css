@@ -311,3 +311,70 @@
     background-image: none;
   }
 }
+
+/* Fallback Models (official Model › Fallbacks): ordered chain under the
+   default model. Each row is provider + model + its position/remove actions. */
+.providers-page .fallback-models {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.providers-page .fallback-model-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.providers-page .fallback-model-index {
+  flex: 0 0 auto;
+  width: 18px;
+  text-align: center;
+  font-size: calc(11px * var(--font-scale));
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.providers-page .fallback-model-provider {
+  flex: 0 1 200px;
+  min-width: 0;
+}
+
+.providers-page .fallback-model-id {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.providers-page .fallback-model-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.providers-page .fallback-model-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+@media (max-width: 640px) {
+  .providers-page .fallback-model-row {
+    align-items: stretch;
+  }
+
+  .providers-page .fallback-model-provider,
+  .providers-page .fallback-model-id {
+    flex-basis: 100%;
+  }
+
+  .providers-page .fallback-model-actions {
+    justify-content: flex-end;
+    width: 100%;
+  }
+}

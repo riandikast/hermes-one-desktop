@@ -14,6 +14,7 @@ import OAuthLoginModal from "../../components/OAuthLoginModal";
 import ProviderKeysSection from "../../components/ProviderKeysSection";
 import RegistryBrowserModal from "../../components/RegistryBrowserModal";
 import AuxiliaryTasksSection from "../../components/AuxiliaryTasksSection";
+import FallbackModelsSection from "../../components/FallbackModelsSection";
 import { useDiscoveredModels } from "../../hooks/useDiscoveredModels";
 import { KeyRound } from "../../assets/icons";
 import { ChevronDown, Search, X, Eye, EyeOff } from "lucide-react";
@@ -838,6 +839,8 @@ function Providers({
                 </button>
               </div>
             </div>
+
+            <FallbackModelsSection profile={profile} providers={pickerProviders} />
 
             <div className="settings-section">
               <div className="settings-section-title settings-section-title-row">

@@ -23,6 +23,34 @@ afterEach(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
+describe("object-list round trip (fallback_providers)", () => {
+  it("reads back exactly what the writer emitted", () => {
+    writeFileSync(configFile, "approvals:\n  mode: manual\n");
+    const chain = [
+      { provider: "custom", model: "local-model", base_url: "http://127.0.0.1:1234/v1" },
+      { provider: "openrouter", model: "a/two" },
+    ];
+    expect(config.setConfigValue("fallback_providers", JSON.stringify(chain))).toBeUndefined();
+    expect(config.getConfigObjectList("fallback_providers")).toEqual(chain);
+  });
+
+  it("reads an empty inline list and a missing key as empty", () => {
+    writeFileSync(configFile, "fallback_providers: []\n");
+    expect(config.getConfigObjectList("fallback_providers")).toEqual([]);
+    expect(config.getConfigObjectList("not_there")).toEqual([]);
+  });
+
+  it("stops at the next top-level key and skips comments", () => {
+    writeFileSync(
+      configFile,
+      "fallback_providers:\n  # ordered\n  - provider: \"a\"\n    model: \"b\"\n\nmodel:\n  provider: main\n",
+    );
+    expect(config.getConfigObjectList("fallback_providers")).toEqual([
+      { provider: "a", model: "b" },
+    ]);
+  });
+});
+
 describe("native compression settings", () => {
   // @lat: [[advanced-memory-settings#Controls and persistence]]
   it("preserves native Advanced and Memory scalar types and siblings", () => {

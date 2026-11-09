@@ -65,6 +65,8 @@ export default {
     utils: "Utils",
     advanced: "Advanced",
     memory: "Memory & Context",
+    agents: "Agents",
+    notifications: "Notifications",
     provider: "Providers",
     language: "Language",
     security: "Security",

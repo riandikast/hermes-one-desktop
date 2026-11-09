@@ -9,6 +9,8 @@ vi.mock("./GitHubPane", () => ({ default: () => <div>GitHub pane</div> }));
 vi.mock("./AppearancePane", () => ({ default: () => <div>Appearance pane</div> }));
 vi.mock("./ShortcutsPane", () => ({ default: () => <div>Shortcuts pane</div> }));
 vi.mock("./AgentConfigPane", () => ({ default: ({ section }: { section: string }) => <div>{section} config pane</div> }));
+vi.mock("./AgentsPane", () => ({ default: () => <div>Agents pane</div> }));
+vi.mock("./NotificationsPane", () => ({ default: () => <div>Notifications pane</div> }));
 vi.mock("../modal/AppModal", () => ({
   AppModal: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   AppModalTitle: ({ children }: { children: React.ReactNode }) => <h1>{children}</h1>,
@@ -43,6 +45,17 @@ it("places utilities and keyboard shortcuts directly after appearance", () => {
     "Providers",
     "GitHub",
   ]);
+});
+
+it("opens the Agents and Notifications panes from the nav and the slash argument", async () => {
+  const view = renderWithI18n(<SettingsModal open initialSection="agents" onClose={vi.fn()} />);
+  expect(view.getByText("Agents pane")).toBeTruthy();
+  fireEvent.click(view.getByRole("button", { name: "Notifications" }));
+  await waitFor(() => expect(view.getByText("Notifications pane")).toBeTruthy());
+  view.unmount();
+
+  renderWithI18n(<SettingsModal open initialSection="notifications" onClose={vi.fn()} />);
+  expect(screen.getByText("Notifications pane")).toBeTruthy();
 });
 
 it("Providers opens the real Providers page and closes settings", async () => {

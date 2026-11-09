@@ -434,6 +434,33 @@ function Chat({
 
   const isLoadingRef = useRef(false);
 
+  // Settings → Notifications owns these switches (device-local, main-process
+  // persisted). Read once, then follow live changes broadcast by the pane.
+  const chimeEnabledRef = useRef(true);
+  useEffect(() => {
+    let cancelled = false;
+    const apply = (prefs: { enabled: boolean; soundEnabled: boolean }): void => {
+      chimeEnabledRef.current = prefs.enabled && prefs.soundEnabled;
+    };
+    void window.hermesAPI
+      .getNotificationPrefs?.()
+      .then((prefs) => {
+        if (!cancelled) apply(prefs);
+      })
+      .catch(() => {
+        /* Keep the shipped default when the bridge is unavailable. */
+      });
+    const onChange = (event: Event): void => {
+      const detail = (event as CustomEvent<{ enabled: boolean; soundEnabled: boolean }>).detail;
+      if (detail) apply(detail);
+    };
+    window.addEventListener("notification-prefs:changed", onChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("notification-prefs:changed", onChange);
+    };
+  }, []);
+
   useEffect(() => {
     isLoadingRef.current = isLoading;
   }, [isLoading]);
@@ -476,9 +503,9 @@ function Chat({
     // thinking/tool timers mid-turn).
     if (hasPendingToolInTail(messagesForChimeRef.current)) return;
 
-    // Agent just finished — play a short notification chime (shared context).
-
-    playFinishChime();
+    // Agent just finished — play a short notification chime (shared context),
+    // unless Settings → Notifications switched sounds off.
+    if (chimeEnabledRef.current) playFinishChime();
 
     // Final safety net: the turn is PROVABLY over (isLoading flipped false),
 

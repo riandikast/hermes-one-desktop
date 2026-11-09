@@ -27,7 +27,7 @@ import { remoteDashboardRequestJson } from "./remote-api";
  * `startDashboard` spawns `hermes dashboard` and waits for readiness, so a
  * cold start is covered here.
  */
-async function ensureDashboardConnection(
+export async function ensureDashboardConnection(
   profile?: string,
 ): Promise<{ baseUrl: string; token: string }> {
   const existing = getDashboardConnection(profile);

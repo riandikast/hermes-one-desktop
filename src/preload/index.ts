@@ -156,6 +156,23 @@ const hermesAPI = {
   quitApp: (): Promise<void> => ipcRenderer.invoke("quit-app"),
   getKeyboardShortcuts: (): Promise<import("../shared/keyboard-shortcuts").ShortcutOverrides> => ipcRenderer.invoke("keyboard-shortcuts:get"),
   getKeepAwake: (): Promise<import("../shared/keep-awake").KeepAwakeState> => ipcRenderer.invoke("keep-awake:get"),
+  getNotificationPrefs: (): Promise<import("../shared/notifications").NotificationPrefs> =>
+    ipcRenderer.invoke("notifications:get"),
+  setNotificationPrefs: (
+    prefs: import("../shared/notifications").NotificationPrefs,
+  ): Promise<import("../shared/notifications").NotificationPrefs> =>
+    ipcRenderer.invoke("notifications:set", prefs),
+  showTestNotification: (title?: string, body?: string): Promise<{ shown: boolean; reason?: string }> =>
+    ipcRenderer.invoke("notifications:test", title, body),
+  getMoaConfig: (profile?: string): Promise<import("../main/model-extras").MoaConfig> =>
+    ipcRenderer.invoke("get-moa-config", profile),
+  saveMoaConfig: (
+    config: import("../main/model-extras").MoaConfig,
+    profile?: string,
+  ): Promise<import("../main/model-extras").MoaConfig> =>
+    ipcRenderer.invoke("save-moa-config", config, profile),
+  getFallbackProviders: (profile?: string): Promise<import("../main/model-extras").FallbackEntry[]> =>
+    ipcRenderer.invoke("get-fallback-providers", profile),
   listPlugins: (profile?: string): Promise<import("../shared/plugins").DashboardPluginList> =>
     ipcRenderer.invoke("list-plugins", profile),
   managePlugin: (

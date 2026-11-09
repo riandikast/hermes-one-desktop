@@ -31,6 +31,7 @@ import {
   loadFallbackModels,
   saveFallbackModels,
   subscribeFallbackModels,
+  refreshFallbackModelsFromConfig,
   addFallbackModel,
   removeFallbackModel,
   moveFallbackModel,
@@ -203,6 +204,9 @@ export const ModelPicker = memo(function ModelPicker({
   useEffect(() => {
     const sync = (): void => setFallbackModels(loadFallbackModels());
     sync();
+    // Adopt a chain configured elsewhere (Providers page / CLI / official
+    // desktop) — `fallback_providers` is the authoritative list.
+    void refreshFallbackModelsFromConfig();
     return subscribeFallbackModels(sync);
   }, []);
 

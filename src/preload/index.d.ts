@@ -303,6 +303,17 @@ interface HermesAPI {
   quitApp: () => Promise<void>;
   getKeyboardShortcuts: () => Promise<import("../shared/keyboard-shortcuts").ShortcutOverrides>;
   getKeepAwake: () => Promise<import("../shared/keep-awake").KeepAwakeState>;
+  getNotificationPrefs: () => Promise<import("../shared/notifications").NotificationPrefs>;
+  setNotificationPrefs: (
+    prefs: import("../shared/notifications").NotificationPrefs,
+  ) => Promise<import("../shared/notifications").NotificationPrefs>;
+  showTestNotification: (title?: string, body?: string) => Promise<{ shown: boolean; reason?: string }>;
+  getMoaConfig: (profile?: string) => Promise<import("../main/model-extras").MoaConfig>;
+  saveMoaConfig: (
+    config: import("../main/model-extras").MoaConfig,
+    profile?: string,
+  ) => Promise<import("../main/model-extras").MoaConfig>;
+  getFallbackProviders: (profile?: string) => Promise<import("../main/model-extras").FallbackEntry[]>;
   listPlugins: (profile?: string) => Promise<import("../shared/plugins").DashboardPluginList>;
   managePlugin: (
     action: import("../shared/plugins").PluginAction,

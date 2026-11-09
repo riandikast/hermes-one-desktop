@@ -56,8 +56,11 @@ type MockWebview = HTMLElement & GuestMethods;
 function installWebviewStub(): MockWebview[] {
   const made: MockWebview[] = [];
   const original = document.createElement.bind(document);
-  vi.spyOn(document, "createElement").mockImplementation(
-    (tag: string, options?: ElementCreationOptions): HTMLElement => {
+  // The overload's return type is the `webview` tag's WebviewTag, so the stub is
+  // cast once here instead of widening every caller (the DOM lib types the tag
+  // by its literal name only).
+  const createElement = vi.spyOn(document, "createElement");
+  createElement.mockImplementation(((tag: string, options?: ElementCreationOptions): HTMLElement => {
       const el = original(tag, options) as HTMLElement;
       if (tag.toLowerCase() !== "webview") return el;
       const wv = el as MockWebview;
@@ -72,8 +75,7 @@ function installWebviewStub(): MockWebview[] {
       wv.getTitle = () => "";
       made.push(wv);
       return wv;
-    },
-  );
+  }) as unknown as typeof document.createElement);
   return made;
 }
 

@@ -58,6 +58,7 @@ import {
   loadFallbackModels,
   primaryKeyOf,
   publishFallbackChainToConfig,
+  refreshFallbackModelsFromConfig,
   type FallbackModel,
 } from "../fallbackModels";
 
@@ -3718,6 +3719,10 @@ export function useDashboardChatTransport({
         recoveryAttemptsRef.current = 0;
         recoveryChainIndexRef.current = 0;
         originalPromptRef.current = text;
+        // `config.yaml` `fallback_providers` is the official chain, and the
+        // Providers page editor writes there. Adopt it before reading the
+        // cache so a chain configured there (or by the CLI) wins a failed turn.
+        await refreshFallbackModelsFromConfig(profile);
         fallbackChainRef.current = fallbackChainFor(loadFallbackModels(), primaryKeyOf(providerRef.current ?? "", modelBaseUrlRef.current ?? "", modelRef.current ?? ""));
       }
       if (!isRecovery) recoveryFiredForEpisodeRef.current = false;

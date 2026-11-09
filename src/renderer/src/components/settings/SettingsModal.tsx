@@ -1,6 +1,8 @@
 import { appConfirm } from "../modal/appConfirm";
 import { useEffect, useState } from "react";
 import {
+  Bell,
+  Bot,
   Database,
   FileText,
   Info,
@@ -33,10 +35,14 @@ import SoulPane from "./SoulPane";
 import ShortcutsPane from "./ShortcutsPane";
 import UtilsPane from "./UtilsPane";
 import AgentConfigPane from "./AgentConfigPane";
+import AgentsPane from "./AgentsPane";
+import NotificationsPane from "./NotificationsPane";
 
 export type SettingsSection =
   | "advanced"
+  | "agents"
   | "memory"
+  | "notifications"
   | "soul"
   | "appearance"
   | "shortcuts"
@@ -113,7 +119,14 @@ const SETTINGS_NAV: ReadonlyArray<{
     Icon: Languages,
   },
   { group: "general", id: "memory", labelKey: "settings.nav.memory", Icon: Database },
+  { group: "general", id: "agents", labelKey: "settings.nav.agents", Icon: Bot },
   { group: "general", id: "advanced", labelKey: "settings.nav.advanced", Icon: Wrench },
+  {
+    group: "general",
+    id: "notifications",
+    labelKey: "settings.nav.notifications",
+    Icon: Bell,
+  },
   {
     group: "general",
     id: "security",
@@ -304,6 +317,8 @@ export default function SettingsModal({
             {section === "utils" && <UtilsPane />}
             {section === "advanced" && <AgentConfigPane section="advanced" />}
             {section === "memory" && <AgentConfigPane section="memory" />}
+            {section === "agents" && <AgentsPane />}
+            {section === "notifications" && <NotificationsPane />}
             {section === "language" && <LanguagePane />}
             {section === "security" && <SecurityPane />}
             {section === "privacy" && <PrivacyPane />}

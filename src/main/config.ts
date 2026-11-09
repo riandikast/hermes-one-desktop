@@ -719,6 +719,75 @@ export function setConfigObjectListValue(
   return true;
 }
 
+/**
+ * Read a top-level YAML block list of mappings (the shape
+ * [[setConfigObjectListValue]] writes, e.g. `fallback_providers`).
+ *
+ * The tiny `getYamlPath` reader is scalar-only, so object chains are parsed
+ * here: `- provider: "x"` starts an entry, its indented `key: value` lines
+ * complete it, and the walk stops at the next top-level key. Inline `key: []`
+ * means an empty chain; anything unrecognised is skipped rather than throwing
+ * so a hand-edited file still renders the entries it does contain.
+ */
+export function parseYamlObjectList(
+  content: string,
+  key: string,
+): Array<Record<string, string>> {
+  const lines = content.split(/\r?\n/);
+  const keyIndex = lines.findIndex(
+    (line) => !/^\s/.test(line) && new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:`).test(line),
+  );
+  if (keyIndex < 0) return [];
+  const head = lines[keyIndex].slice(key.length + 1).trim();
+  if (head === "[]") return [];
+
+  const entries: Array<Record<string, string>> = [];
+  let current: Record<string, string> | null = null;
+  for (let i = keyIndex + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!line.trim() || line.trim().startsWith("#")) continue;
+    if (!/^\s/.test(line)) break; // next top-level key
+    const trimmed = line.trim();
+    const item = trimmed.match(/^-(?:\s+(.*))?$/);
+    if (item) {
+      current = {};
+      entries.push(current);
+      const inline = (item[1] ?? "").trim();
+      if (inline) {
+        const colon = inline.indexOf(":");
+        if (colon > 0) {
+          current[stripYamlQuotes(inline.slice(0, colon).trim())] = stripYamlQuotes(
+            inline.slice(colon + 1).trim(),
+          );
+        }
+      }
+      continue;
+    }
+    if (!current) continue;
+    const colon = trimmed.indexOf(":");
+    if (colon <= 0) continue;
+    const name = stripYamlQuotes(trimmed.slice(0, colon).trim());
+    const value = stripYamlQuotes(trimmed.slice(colon + 1).trim());
+    if (!name || !value) continue;
+    current[name] = value;
+  }
+  return entries.filter((entry) => Object.keys(entry).length > 0);
+}
+
+/** Read a top-level object list from the profile's config.yaml. */
+export function getConfigObjectList(
+  key: string,
+  profile?: string,
+): Array<Record<string, string>> {
+  const { configFile } = profilePaths(profile);
+  if (!existsSync(configFile)) return [];
+  try {
+    return parseYamlObjectList(readFileSync(configFile, "utf-8"), key);
+  } catch {
+    return [];
+  }
+}
+
 export function setConfigValue(
   key: string,
   value: string,

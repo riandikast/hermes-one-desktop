@@ -64,7 +64,7 @@ export function loadFallbackModels(): FallbackModel[] {
   }
 }
 
-export function saveFallbackModels(models: FallbackModel[]): void {
+function writeLocal(models: FallbackModel[]): void {
   try {
     if (models.length === 0) {
       localStorage.removeItem(STORAGE_KEY);
@@ -75,6 +75,57 @@ export function saveFallbackModels(models: FallbackModel[]): void {
     // Storage full / disabled — the chain is a convenience, never fatal.
   }
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+}
+
+/**
+ * Persist the chain.
+ *
+ * `config.yaml` `fallback_providers` is the authoritative chain the agent
+ * reads (the official desktop edits that same list), so every edit publishes
+ * there immediately instead of waiting for the next failed turn. localStorage
+ * stays a synchronous cache for the picker UI.
+ */
+export function saveFallbackModels(models: FallbackModel[]): void {
+  writeLocal(models);
+  void publishFallbackChainToConfig(models);
+}
+
+/**
+ * Adopt the chain stored in `config.yaml`.
+ *
+ * The picker used to be the only writer, so a chain configured elsewhere (the
+ * Providers page editor, the CLI, the official desktop) was invisible here and
+ * a stale local list could still win a failed turn. Config wins once it has
+ * entries; an empty config with a non-empty local list is migrated up instead
+ * of being wiped.
+ */
+export async function refreshFallbackModelsFromConfig(
+  profile?: string | null,
+): Promise<FallbackModel[]> {
+  const local = loadFallbackModels();
+  try {
+    const getChain = window.hermesAPI?.getFallbackProviders;
+    if (typeof getChain !== "function") return local;
+    const entries = await getChain(profile ?? undefined);
+    if (!Array.isArray(entries)) return local;
+    const configured = entries
+      .filter((entry) => entry.provider && entry.model)
+      .map((entry) => ({
+        key: modelKeyOf(entry.provider, entry.base_url ?? "", entry.model),
+        provider: entry.provider,
+        model: entry.model,
+        baseUrl: entry.base_url ?? "",
+        label: `${entry.provider} / ${entry.model}`,
+      }));
+    if (configured.length === 0) {
+      if (local.length > 0) void publishFallbackChainToConfig(local, profile);
+      return local;
+    }
+    if (JSON.stringify(configured) !== JSON.stringify(local)) writeLocal(configured);
+    return configured;
+  } catch {
+    return local;
+  }
 }
 
 /** Sync other picker instances and other windows of the same app. */
