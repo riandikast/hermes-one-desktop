@@ -1,0 +1,277 @@
+/* Visual reference: vastsa/PI-Desktop @ 4ad0094e87b3c9ab75653a770f67f0d09abd63a4
+   settings.css:262–303 (quiet nav), 314–326 (content), 1198–1235 (rows).
+   Keep Hermes colors, modal navigation and persistence; port the hierarchy only. */
+.settings-modal {
+  background: var(--bg-secondary);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.settings-modal .settings-modal-sidebar {
+  background: var(--bg-secondary);
+}
+
+.settings-modal .settings-modal-main {
+  background: var(--bg-primary);
+}
+
+.settings-modal .settings-modal-sidebar-head {
+  padding: 24px 22px 18px;
+}
+
+.settings-modal .settings-modal-nav-group-label {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.settings-modal .settings-modal-nav-item {
+  padding: 7px 10px;
+  min-height: 34px;
+  font-weight: 400;
+}
+
+.settings-modal .settings-modal-nav-item.active {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated));
+  color: var(--text-primary);
+}
+
+.settings-modal .settings-modal-nav-item.active svg {
+  color: var(--accent);
+}
+
+.settings-modal .settings-modal-nav-item svg {
+  flex-shrink: 0;
+}
+
+.settings-modal .settings-modal-topbar {
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px 32px 16px;
+}
+
+.settings-modal-page-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: calc(20px * var(--font-scale));
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.settings-modal .settings-modal-content {
+  padding: 8px 32px 32px;
+}
+
+.settings-modal .settings-modal-pane {
+  gap: 20px;
+}
+
+.settings-modal .settings-group {
+  background: transparent;
+  overflow: visible;
+}
+
+/* PI's 14px/16px row padding and 24px gap, adapted to existing controls. */
+.settings-modal .settings-row {
+  box-sizing: border-box;
+  min-height: 52px;
+  gap: 24px;
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border: 0;
+  border-radius: var(--radius-md);
+}
+
+.settings-modal .settings-row + .settings-row {
+  margin-top: 4px;
+}
+
+.settings-modal .settings-theme-more {
+  color: var(--text-secondary);
+}
+
+.settings-modal .settings-row-label {
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.settings-modal .settings-row-text {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+
+.settings-modal .settings-row-text > .settings-row-hint,
+.settings-modal .settings-row-text > .settings-hint[open] {
+  flex-basis: 100%;
+}
+
+.settings-modal .settings-shortcut-group-title {
+  padding: 16px 0 8px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-secondary);
+}
+
+.settings-modal .settings-section {
+  padding: 0;
+  background: transparent;
+}
+
+.settings-modal .settings-section-title {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-secondary);
+}
+
+.settings-modal .settings-agent-tabs {
+  width: fit-content;
+  max-width: 100%;
+  background: var(--bg-secondary);
+}
+
+.settings-modal .settings-agent-tabs .settings-seg-btn {
+  flex: 0 1 auto;
+}
+
+/* Native disclosure stays in flow: no tooltip clipped by the modal, no
+   hover-only text. Expanded help remains selectable and keyboard reachable. */
+.settings-hint {
+  display: inline-block;
+  margin-inline-start: 6px;
+  vertical-align: middle;
+  color: var(--text-secondary);
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+.settings-hint-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.settings-hint-trigger::-webkit-details-marker {
+  display: none;
+}
+
+.settings-hint-trigger:hover,
+.settings-hint[open] > .settings-hint-trigger {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.settings-hint-trigger:focus-visible,
+.settings-modal .settings-modal-nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.settings-hint[open] {
+  display: block;
+  margin-inline-start: 0;
+}
+
+.settings-hint-content {
+  padding: 6px 0 2px;
+  max-width: 64ch;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.providers-page .settings-section-title:has(> .settings-hint) {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.providers-page .settings-section-title > .settings-hint[open] {
+  flex-basis: 100%;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+@media (max-width: 760px) {
+  .settings-modal-overlay {
+    padding: 12px;
+  }
+
+  .settings-modal {
+    width: calc(100vw - 24px);
+    height: calc(100dvh - 48px);
+    max-height: calc(100dvh - 48px);
+  }
+
+  .settings-modal .settings-modal-sidebar {
+    width: 180px;
+  }
+
+  .settings-modal .settings-modal-topbar {
+    padding: 20px 16px 12px;
+  }
+
+  .settings-modal .settings-modal-content {
+    padding: 8px 16px 24px;
+  }
+
+  .settings-modal .settings-row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .settings-modal .settings-row-text {
+    flex-basis: 100%;
+  }
+
+  .settings-modal .settings-agent-control {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .settings-modal {
+    flex-direction: column;
+  }
+
+  .settings-modal .settings-modal-sidebar {
+    width: 100%;
+    max-height: none;
+  }
+
+  .settings-modal .settings-modal-sidebar-head {
+    padding: 12px 16px 6px;
+  }
+
+  .settings-modal .settings-modal-nav {
+    flex-direction: row;
+    flex: 0 0 auto;
+    overflow-x: auto;
+    padding: 0 10px 8px;
+  }
+
+  .settings-modal .settings-modal-nav-group {
+    display: contents;
+  }
+
+  .settings-modal .settings-modal-nav-group-label {
+    display: none;
+  }
+
+  .settings-modal .settings-modal-nav-item {
+    width: auto;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+}

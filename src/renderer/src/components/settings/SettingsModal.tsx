@@ -37,6 +37,7 @@ import UtilsPane from "./UtilsPane";
 import AgentConfigPane from "./AgentConfigPane";
 import AgentsPane from "./AgentsPane";
 import NotificationsPane from "./NotificationsPane";
+import "./SettingsModal.css";
 
 export type SettingsSection =
   | "advanced"
@@ -266,6 +267,7 @@ export default function SettingsModal({
                   className={`settings-modal-nav-item ${
                     section === s.id ? "active" : ""
                   }`}
+                  aria-current={section === s.id ? "page" : undefined}
                   onClick={async () => {
                     if (!await canLeave()) return;
                     setSoulDirty(false);
@@ -293,6 +295,9 @@ export default function SettingsModal({
 
       <div className="settings-modal-main">
         <div className="settings-modal-topbar">
+          <h2 className="settings-modal-page-title">
+            {t(SETTINGS_NAV.find((item) => item.id === section)!.labelKey)}
+          </h2>
           <button
             type="button"
             className="settings-modal-close"

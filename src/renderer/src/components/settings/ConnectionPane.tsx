@@ -1,6 +1,7 @@
 import { Laptop, Server, Terminal, Wifi } from "lucide-react";
 import { useI18n } from "../useI18n";
 import { useSettings } from "./SettingsDataContext";
+import SettingsHint from "./SettingsHint";
 import { CHAT_TRANSPORT_OPTIONS } from "./settingsHelpers";
 import SshDockerTargetSection from "./SshDockerTargetSection";
 
@@ -107,13 +108,13 @@ export default function ConnectionPane(): React.JSX.Element {
             </span>
           </button>
         </div>
-        <div className="settings-field-hint">
+        <SettingsHint>
           {connMode === "local"
             ? t("settings.modeLocalHint")
             : connMode === "ssh"
               ? t("settings.modeSshHint")
               : t("settings.modeRemoteHint")}
-        </div>
+        </SettingsHint>
       </div>
 
       {!apiServerKeyMissing ? null : connMode === "local" ? (
@@ -173,9 +174,9 @@ export default function ConnectionPane(): React.JSX.Element {
               </button>
             ))}
           </div>
-          <div className="settings-field-hint">
+          <SettingsHint>
             Auto uses WebSocket dashboard. Legacy uses direct HTTP /v1 API (bypasses dashboard WS stalls for custom providers like 9router).
-          </div>
+          </SettingsHint>
         </div>
       )}
 
@@ -197,9 +198,9 @@ export default function ConnectionPane(): React.JSX.Element {
               placeholder="http://192.168.1.100:8642"
               onBlur={handleSaveConnection}
             />
-            <div className="settings-field-hint">
+            <SettingsHint>
               {t("settings.remoteUrlHint")}
-            </div>
+            </SettingsHint>
           </div>
           {remoteAuthMode === "oauth" ? (
             <div className="settings-field">
@@ -407,11 +408,11 @@ export default function ConnectionPane(): React.JSX.Element {
                 </button>
               ))}
             </div>
-            <div className="settings-field-hint">
+            <SettingsHint>
               Auto tries the Hermes dashboard WebSocket through the SSH tunnel
               first, then falls back to legacy SSH chat. Dashboard forces the
               upstream dashboard path; Legacy keeps the older SSH transport.
-            </div>
+            </SettingsHint>
             {transportProbe && (
               <div
                 className={`settings-transport-status settings-transport-status--${transportProbe.kind}`}
@@ -442,10 +443,12 @@ export default function ConnectionPane(): React.JSX.Element {
           <label className="settings-field-label">
             {t("settings.serverConfigTitle")}
           </label>
-          <div
-            className="settings-field-hint"
-            dangerouslySetInnerHTML={{ __html: t("settings.serverConfigHint") }}
-          />
+          <SettingsHint>
+            {/* Static bundled translation; no user-provided HTML. */}
+            <div
+              dangerouslySetInnerHTML={{ __html: t("settings.serverConfigHint") }}
+            />
+          </SettingsHint>
         </div>
       )}
 
@@ -483,9 +486,9 @@ export default function ConnectionPane(): React.JSX.Element {
               <span className="tools-toggle-track" />
             </label>
           </label>
-          <div className="settings-field-hint">
+          <SettingsHint>
             {t("settings.forceIpv4Hint")}
-          </div>
+          </SettingsHint>
         </div>
         <div className="settings-field">
           <label className="settings-field-label">
@@ -511,9 +514,9 @@ export default function ConnectionPane(): React.JSX.Element {
             }}
             placeholder={t("settings.proxyPlaceholder")}
           />
-          <div className="settings-field-hint">
+          <SettingsHint>
             {t("settings.httpProxyHint")}
-          </div>
+          </SettingsHint>
         </div>
       </div>
     </div>

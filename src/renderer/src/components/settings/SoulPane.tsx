@@ -1,6 +1,7 @@
 import { appConfirm } from "../modal/appConfirm";
 import { useEffect, useState } from "react";
 import { useI18n } from "../useI18n";
+import SettingsHint from "./SettingsHint";
 import "./SoulPane.css";
 
 export default function SoulPane({
@@ -98,10 +99,9 @@ export default function SoulPane({
 
   return (
     <div className="settings-modal-pane settings-soul-pane" aria-busy={busy}>
-      <h2>{t("soul.settingsTitle")}</h2>
-      <p className="settings-field-hint" id="settings-soul-hint">
+      <SettingsHint id="settings-soul-hint">
         {t("soul.subtitle")}
-      </p>
+      </SettingsHint>
       {path && <p className="settings-field-hint settings-soul-path">{path}</p>}
       <label htmlFor="settings-soul-editor">SOUL.md</label>
       <textarea

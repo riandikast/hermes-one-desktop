@@ -50,8 +50,12 @@ it("places utilities and keyboard shortcuts directly after appearance", () => {
 it("opens the Agents and Notifications panes from the nav and the slash argument", async () => {
   const view = renderWithI18n(<SettingsModal open initialSection="agents" onClose={vi.fn()} />);
   expect(view.getByText("Agents pane")).toBeTruthy();
+  expect(view.getByRole("heading", { name: "Agents" })).toBeTruthy();
+  expect(view.getByRole("button", { name: "Agents" }).getAttribute("aria-current")).toBe("page");
   fireEvent.click(view.getByRole("button", { name: "Notifications" }));
   await waitFor(() => expect(view.getByText("Notifications pane")).toBeTruthy());
+  expect(view.getByRole("heading", { name: "Notifications" })).toBeTruthy();
+  expect(view.getByRole("button", { name: "Agents" }).hasAttribute("aria-current")).toBe(false);
   view.unmount();
 
   renderWithI18n(<SettingsModal open initialSection="notifications" onClose={vi.fn()} />);

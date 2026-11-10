@@ -1,6 +1,7 @@
 import { Coffee, ExternalLink, Globe } from "lucide-react";
 import { useI18n } from "../useI18n";
 import BrandLogo from "../common/BrandLogo";
+import SettingsHint from "./SettingsHint";
 import xLogo from "../../assets/logos/twitter.svg";
 import {
   DISCORD_COMMUNITY_URL,
@@ -18,9 +19,9 @@ export default function CommunityPane(): React.JSX.Element {
 
   return (
     <div className="settings-modal-pane">
-      <p className="settings-section-intro">
+      <SettingsHint>
         {t("settings.communityLinksHint")}
-      </p>
+      </SettingsHint>
 
       <div className="settings-link-grid">
         <button
@@ -97,7 +98,7 @@ export default function CommunityPane(): React.JSX.Element {
             <div className="settings-card-title">
               {t("settings.supportTitle")}
             </div>
-            <div className="settings-card-sub">{t("settings.supportHint")}</div>
+            <SettingsHint>{t("settings.supportHint")}</SettingsHint>
           </div>
         </header>
         <div className="settings-card-body">

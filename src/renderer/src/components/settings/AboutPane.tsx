@@ -21,6 +21,7 @@ import openaiLogo from "../../assets/logos/openai.svg";
 import { ConfigHealth } from "../../screens/Settings/ConfigHealth";
 import { useSettings } from "./SettingsDataContext";
 import DesktopReleasePicker from "./DesktopReleasePicker";
+import SettingsHint from "./SettingsHint";
 
 /**
  * About & Updates. Two clearly-separated cards for the two distinct update
@@ -343,13 +344,14 @@ export default function AboutPane(): React.JSX.Element {
                   <span className="settings-saved">{t("settings.saved")}</span>
                 )}
               </div>
-              <div className="settings-field-hint">
+              <SettingsHint>
                 {t("settings.autoUpgradeDesktopHint")}
-              </div>
+              </SettingsHint>
             </div>
             <label className="tools-toggle">
               <input
                 type="checkbox"
+                aria-label={t("settings.autoUpgradeDesktop")}
                 checked={autoUpgradeEnabled}
                 onChange={(e) => void handleAutoUpgradeChange(e.target.checked)}
               />

@@ -3,6 +3,7 @@ import { Check, ChevronDown } from "lucide-react";
 import { useI18n } from "../useI18n";
 import { APP_LOCALES, type AppLocale } from "../../../../shared/i18n";
 import { LANGUAGE_NATIVE_NAMES } from "./settingsHelpers";
+import SettingsHint from "./SettingsHint";
 
 /** Interface language selector. */
 export default function LanguagePane(): React.JSX.Element {
@@ -14,7 +15,7 @@ export default function LanguagePane(): React.JSX.Element {
           {t("settings.language.label")}
         </label>
         <LanguageSelect locale={locale} onSelect={setLocale} />
-        <div className="settings-field-hint">{t("settings.language.hint")}</div>
+        <SettingsHint>{t("settings.language.hint")}</SettingsHint>
       </div>
     </div>
   );

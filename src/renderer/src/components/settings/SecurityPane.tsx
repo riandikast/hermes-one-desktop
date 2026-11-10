@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "../useI18n";
 import { useSettings } from "./SettingsDataContext";
+import SettingsHint from "./SettingsHint";
 
 /**
  * Security pane — command approval, deny/allowlist rules, write-approval
@@ -402,9 +403,9 @@ export default function SecurityPane(): React.JSX.Element {
               : t("settings.security.save")}
           </button>
         </div>
-        <div className="settings-field-hint">
+        <SettingsHint>
           {t("settings.security.workingFolderHint")}
-        </div>
+        </SettingsHint>
       </div>
     </div>
   );

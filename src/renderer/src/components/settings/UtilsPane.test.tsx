@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
+import { renderWithI18n as render } from "../../test/renderWithI18n";
 import { beforeEach, expect, it, vi } from "vitest";
 import UtilsPane from "./UtilsPane";
 import { readFileAutosaveDefault } from "./fileAutosave";

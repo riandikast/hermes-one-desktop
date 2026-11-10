@@ -9,6 +9,7 @@ import {
 import { useI18n } from "../useI18n";
 import { appConfirm } from "../modal/appConfirm";
 import { useSettings } from "./SettingsDataContext";
+import SettingsHint from "./SettingsHint";
 import { bindingsFor } from "../../../../shared/keyboard-shortcuts";
 import { KEEP_AWAKE_MODES, type KeepAwakeState } from "../../../../shared/keep-awake";
 import {
@@ -274,10 +275,17 @@ function AgentConfigFields({
                 <div className="settings-row" key={field.key}>
                   <div className="settings-row-text">
                     <label className="settings-row-label" htmlFor={id}>{label}</label>
-                    <div id={`${id}-hint`} className="settings-row-hint">
-                      <code>{field.key}</code>
-                      {field.hint && <> — {copy(`hints.${field.key.replaceAll(".", "_")}`, field.hint)}</>}
-                    </div>
+                    {field.key === "updates.non_interactive_local_changes" || field.key === "toolsets" ? (
+                      <div id={`${id}-hint`} className="settings-row-hint">
+                        <code>{field.key}</code>
+                        {field.hint && <> — {copy(`hints.${field.key.replaceAll(".", "_")}`, field.hint)}</>}
+                      </div>
+                    ) : (
+                      <SettingsHint id={`${id}-hint`} label={t("settings.helpFor", { defaultValue: "Help for {{label}}", label })}>
+                        <code>{field.key}</code>
+                        {field.hint && <> — {copy(`hints.${field.key.replaceAll(".", "_")}`, field.hint)}</>}
+                      </SettingsHint>
+                    )}
                   </div>
                   <div className="settings-agent-control">
                     {field.type === "boolean" ? (
@@ -382,9 +390,9 @@ function DesktopRows(): React.JSX.Element {
           <span className="settings-row-label" id="advanced-keep-awake">
             {t("settings.agentConfig.keepAwake", { defaultValue: "Keep Awake" })}
           </span>
-          <div className="settings-row-hint">
+          <SettingsHint>
             {t("settings.agentConfig.keepAwakeHint", { defaultValue: "Stops the system from sleeping so an unattended turn can finish; the display can still dim. This computer only." })}
-          </div>
+          </SettingsHint>
         </div>
         <div className="settings-seg settings-agent-seg" role="radiogroup" aria-labelledby="advanced-keep-awake">
           {KEEP_AWAKE_MODES.map((mode) => (
@@ -420,9 +428,9 @@ function DesktopRows(): React.JSX.Element {
           <label className="settings-row-label" htmlFor="advanced-disable-f12">
             {t("settings.agentConfig.disableF12", { defaultValue: "Disable F12 Developer Tools" })}
           </label>
-          <div className="settings-row-hint">
+          <SettingsHint>
             {t("settings.agentConfig.disableF12Hint", { defaultValue: "This computer only. Other Developer Tools shortcuts remain unchanged. Links already open in the system browser in Hermes One." })}
-          </div>
+          </SettingsHint>
         </div>
         <label className="tools-toggle">
           <input

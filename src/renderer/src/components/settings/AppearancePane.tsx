@@ -15,6 +15,7 @@ import ThemeEditor from "./ThemeEditor";
 import { useWindowTerminalStyle } from "./windowTerminalStyle";
 import { FONT_SIZE_STEPS, useFontSize } from "./fontSize";
 import { useToolCallsAnimation } from "./toolCallsAnimation";
+import SettingsHint from "./SettingsHint";
 
 const GPU_MODES: GpuPreferenceMode[] = ["auto", "on", "off"];
 
@@ -315,11 +316,11 @@ export default function AppearancePane(): React.JSX.Element {
               <div className="settings-row-label">
                 {t("settings.terminalShell.label")}
               </div>
-              <div className="settings-row-hint">
-                {terminalSaveError
-                  ? t("settings.terminalShell.error")
-                  : t("settings.terminalShell.hint")}
-              </div>
+              {terminalSaveError ? (
+                <div className="settings-row-hint">{t("settings.terminalShell.error")}</div>
+              ) : (
+                <SettingsHint>{t("settings.terminalShell.hint")}</SettingsHint>
+              )}
             </div>
             <div className="settings-seg">
               {TERMINAL_SHELLS.map((opt) => (
@@ -356,11 +357,11 @@ export default function AppearancePane(): React.JSX.Element {
             <div className="settings-row-label">
               {t("settings.terminalStyle.label")}
             </div>
-            <div className="settings-row-hint">
-              {windowTerminalStyleSaveError
-                ? t("settings.terminalStyle.error")
-                : t("settings.terminalStyle.hint")}
-            </div>
+            {windowTerminalStyleSaveError ? (
+              <div className="settings-row-hint">{t("settings.terminalStyle.error")}</div>
+            ) : (
+              <SettingsHint>{t("settings.terminalStyle.hint")}</SettingsHint>
+            )}
           </div>
           <div className="settings-seg">
             {(["dialog", "sidebar"] as const).map((style) => (
@@ -387,9 +388,9 @@ export default function AppearancePane(): React.JSX.Element {
             <div className="settings-row-label">
               {t("settings.roundedCorners.label")}
             </div>
-            <div className="settings-row-hint">
+            <SettingsHint>
               {t("settings.roundedCorners.hint")}
-            </div>
+            </SettingsHint>
           </div>
           <label className="tools-toggle" onClick={(e) => e.stopPropagation()}>
             <input
@@ -404,10 +405,10 @@ export default function AppearancePane(): React.JSX.Element {
         <div className="settings-row">
           <div className="settings-row-text">
             <div className="settings-row-label">Auto-expand reasoning</div>
-            <div className="settings-row-hint">
+            <SettingsHint>
               Show thinking blocks expanded and type out live reasoning during
               response
-            </div>
+            </SettingsHint>
           </div>
           <label className="tools-toggle" onClick={(e) => e.stopPropagation()}>
             <input
@@ -437,10 +438,10 @@ export default function AppearancePane(): React.JSX.Element {
         <div className="settings-row">
           <div className="settings-row-text">
             <div className="settings-row-label">Auto-expand tool calls</div>
-            <div className="settings-row-hint">
+            <SettingsHint>
               Show tool call blocks expanded, revealing their arguments and
               results without clicking
-            </div>
+            </SettingsHint>
           </div>
           <label className="tools-toggle" onClick={(e) => e.stopPropagation()}>
             <input
@@ -470,11 +471,11 @@ export default function AppearancePane(): React.JSX.Element {
         <div className="settings-row">
           <div className="settings-row-text">
             <div className="settings-row-label">Tool calls animation</div>
-            <div className="settings-row-hint">
-              {toolCallsAnimationSaveError
-                ? "Could not save tool calls animation preference."
-                : "Show a read-only animated file tool preview during generation"}
-            </div>
+            {toolCallsAnimationSaveError ? (
+              <div className="settings-row-hint">Could not save tool calls animation preference.</div>
+            ) : (
+              <SettingsHint>Show a read-only animated file tool preview during generation</SettingsHint>
+            )}
           </div>
           <label className="tools-toggle" onClick={(e) => e.stopPropagation()}>
             <input
@@ -496,9 +497,9 @@ export default function AppearancePane(): React.JSX.Element {
             <div className="settings-row-label">
               {t("settings.fontSize.label")}
             </div>
-            <div className="settings-row-hint">
+            <SettingsHint>
               {t("settings.fontSize.hint")}
-            </div>
+            </SettingsHint>
           </div>
           <div className="settings-seg">
             {FONT_SIZE_STEPS.map((option) => (
@@ -518,7 +519,7 @@ export default function AppearancePane(): React.JSX.Element {
         <div className="settings-row">
           <div className="settings-row-text">
             <div className="settings-row-label">{t("settings.font.label")}</div>
-            <div className="settings-row-hint">{t("settings.font.hint")}</div>
+            <SettingsHint>{t("settings.font.hint")}</SettingsHint>
           </div>
           <div className="settings-seg">
             {FONT_OPTIONS.map((opt) => (
@@ -541,9 +542,9 @@ export default function AppearancePane(): React.JSX.Element {
               <div className="settings-row-label">
                 {t("settings.font.systemLabel")}
               </div>
-              <div className="settings-row-hint">
+              <SettingsHint>
                 {t("settings.font.systemHint")}
-              </div>
+              </SettingsHint>
             </div>
             <div className="settings-font-picker">
               <input
@@ -594,11 +595,11 @@ export default function AppearancePane(): React.JSX.Element {
               <div className="settings-row-label">
                 {t("settings.hardwareAcceleration.label")}
               </div>
-              <div className="settings-row-hint">
-                {gpuEnvForced
-                  ? t("settings.hardwareAcceleration.envOverride")
-                  : t("settings.hardwareAcceleration.hint")}
-              </div>
+              {gpuEnvForced ? (
+                <div className="settings-row-hint">{t("settings.hardwareAcceleration.envOverride")}</div>
+              ) : (
+                <SettingsHint>{t("settings.hardwareAcceleration.hint")}</SettingsHint>
+              )}
             </div>
             <div className="settings-seg">
               {GPU_MODES.map((mode) => (

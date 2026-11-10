@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { notifyFallbackConfigChanged } from "../screens/Chat/fallbackModels";
+import SettingsHint from "./settings/SettingsHint";
 import { useI18n } from "./useI18n";
 
 interface PickerProviderOption {
@@ -166,18 +167,15 @@ export default function FallbackModelsSection({
     <div className="settings-section">
       <div className="settings-section-title settings-section-title-row">
         <span>{copy("title", "Fallback Models")}</span>
+        <SettingsHint>
+          {copy("intro", "Tried in order when the default model fails (provider outage, missing model, auth rejection). Leave the list empty to fail the turn instead of switching models.")}
+        </SettingsHint>
         {status && (
           <span className="settings-saved" role="status">
             {status}
           </span>
         )}
       </div>
-      <p className="settings-section-hint">
-        {copy(
-          "intro",
-          "Tried in order when the default model fails (provider outage, missing model, auth rejection). Leave the list empty to fail the turn instead of switching models.",
-        )}
-      </p>
 
       {error && (
         <div role="alert" className="settings-field-hint" style={{ marginTop: 8 }}>

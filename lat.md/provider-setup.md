@@ -240,6 +240,10 @@ Each card's logo is resolved by [[src/renderer/src/components/common/BrandLogo.t
 The Local/Remote preset chips are also branded: each renders the same `BrandLogo` (by preset id) to the left of its name in a row. `llama.cpp` is mapped off the Meta logo to the generic API mark (the `/llama/` substring would otherwise tag it, and Ollama, as Meta); any preset without a bundled logo falls back to the generic mark.
 
 
+## Inset native and custom carets
+
+Providers selects keep their dropdown indicators inside padded controls. Forced-colors mode restores native indicators for system contrast and accessibility.
+
 ## Viewport-bounded provider dialogs
 
 Every dialog on the Providers page uses a viewport-bounded flex column. Only the shrinking body scrolls; the header and footer stay reachable when custom-provider fields or saved models exceed the window height.

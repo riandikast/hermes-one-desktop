@@ -4,6 +4,7 @@ import {
   type NotificationPrefs,
 } from "../../../../shared/notifications";
 import { useI18n } from "../useI18n";
+import SettingsHint from "./SettingsHint";
 
 /**
  * Settings → Notifications (device-local, adopted from the official desktop).
@@ -100,9 +101,9 @@ export default function NotificationsPane(): React.JSX.Element {
             <label className="settings-row-label" htmlFor="notifications-enabled">
               {copy("enableAll", "Desktop notifications")}
             </label>
-            <div className="settings-row-hint">
+            <SettingsHint>
               {copy("enableAllHint", "Master switch for every alert on this computer.")}
-            </div>
+            </SettingsHint>
           </div>
           <label className="tools-toggle">
             <input
@@ -121,9 +122,9 @@ export default function NotificationsPane(): React.JSX.Element {
             <label className="settings-row-label" htmlFor="notifications-complete">
               {copy("turnComplete", "Turn finished")}
             </label>
-            <div className="settings-row-hint">
+            <SettingsHint>
               {copy("turnCompleteHint", "A reply is ready and the window is not focused.")}
-            </div>
+            </SettingsHint>
           </div>
           <label className="tools-toggle">
             <input
@@ -142,9 +143,9 @@ export default function NotificationsPane(): React.JSX.Element {
             <label className="settings-row-label" htmlFor="notifications-error">
               {copy("turnError", "Turn failed")}
             </label>
-            <div className="settings-row-hint">
+            <SettingsHint>
               {copy("turnErrorHint", "A turn stopped with an error while you were elsewhere.")}
-            </div>
+            </SettingsHint>
           </div>
           <label className="tools-toggle">
             <input
@@ -161,9 +162,13 @@ export default function NotificationsPane(): React.JSX.Element {
         <div className="settings-row">
           <div className="settings-row-text">
             <span className="settings-row-label">{copy("test", "Send a test notification")}</span>
-            <div className="settings-row-hint">
-              {testResult || copy("testHint", "Confirms this computer accepts Hermes One notifications.")}
-            </div>
+            {testResult ? (
+              <div className="settings-row-hint">{testResult}</div>
+            ) : (
+              <SettingsHint>
+                {copy("testHint", "Confirms this computer accepts Hermes One notifications.")}
+              </SettingsHint>
+            )}
           </div>
           <div className="settings-agent-control">
             <button
@@ -184,9 +189,9 @@ export default function NotificationsPane(): React.JSX.Element {
             <label className="settings-row-label" htmlFor="notifications-sound">
               {copy("soundEnabled", "Finish chime")}
             </label>
-            <div className="settings-row-hint">
+            <SettingsHint>
               {copy("soundEnabledHint", "Plays a short tone when a turn ends in an open chat.")}
-            </div>
+            </SettingsHint>
           </div>
           <label className="tools-toggle">
             <input

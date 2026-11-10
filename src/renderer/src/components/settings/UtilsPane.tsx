@@ -3,6 +3,7 @@ import { Search, Wrench } from "lucide-react";
 import { useFileAutosaveDefault } from "./fileAutosave";
 import { useSendConfirm } from "./sendConfirm";
 import { useDefaultKnowledge } from "./defaultKnowledge";
+import SettingsHint from "./SettingsHint";
 
 /**
  * Utilities that shape how the app's built-in tools behave. Starts with the
@@ -89,11 +90,13 @@ export default function UtilsPane(): React.JSX.Element {
         <div className="settings-row">
           <div className="settings-row-text">
             <div className="settings-row-label">File editor auto-save</div>
-            <div className="settings-row-hint">
-              {saveError
-                ? "Could not save the editor preference."
-                : "Newly opened files save 500 ms after the last keystroke. Turn it off to save manually with the toolbar button or Ctrl+S."}
-            </div>
+            {saveError ? (
+              <div className="settings-row-hint">Could not save the editor preference.</div>
+            ) : (
+              <SettingsHint>
+                Newly opened files save 500 ms after the last keystroke. Turn it off to save manually with the toolbar button or Ctrl+S.
+              </SettingsHint>
+            )}
           </div>
           <div
             className="settings-seg"
@@ -117,11 +120,13 @@ export default function UtilsPane(): React.JSX.Element {
         <div className="settings-row">
           <div className="settings-row-text">
             <div className="settings-row-label">Send prompt confirmation</div>
-            <div className="settings-row-hint">
-              {confirmError
-                ? "Could not save the send preference."
-                : "Off (default): Enter sends immediately. On: the first Enter asks again — naming the target project — before the prompt is sent."}
-            </div>
+            {confirmError ? (
+              <div className="settings-row-hint">Could not save the send preference.</div>
+            ) : (
+              <SettingsHint>
+                Off (default): Enter sends immediately. On: the first Enter asks again — naming the target project — before the prompt is sent.
+              </SettingsHint>
+            )}
           </div>
           <div
             className="settings-seg"
@@ -147,11 +152,13 @@ export default function UtilsPane(): React.JSX.Element {
         <div className="settings-row settings-row--stacked">
           <div className="settings-row-text">
             <div className="settings-row-label">Default knowledge</div>
-            <div className="settings-row-hint">
-              {knowledgeError
-                ? "Could not save the knowledge defaults."
-                : "Attached automatically to every new session. Existing sessions keep their own selection — toggle bundles per chat from the Knowledge chip."}
-            </div>
+            {knowledgeError ? (
+              <div className="settings-row-hint">Could not save the knowledge defaults.</div>
+            ) : (
+              <SettingsHint>
+                Attached automatically to every new session. Existing sessions keep their own selection — toggle bundles per chat from the Knowledge chip.
+              </SettingsHint>
+            )}
           </div>
           <div className="settings-knowledge">
             {!bundlesLoading && !bundlesFailed && bundles.length > 0 && (

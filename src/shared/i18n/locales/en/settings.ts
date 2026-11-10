@@ -1,4 +1,6 @@
 export default {
+  moreInformation: "More information",
+  helpFor: "Help for {{label}}",
   github: {
     scope: "Current OS user only. The selected account is the default for GitHub HTTPS. Repository config or usernames in remote URLs can override it. SSH and remote agents are separate.",
     account: "Default GitHub account",

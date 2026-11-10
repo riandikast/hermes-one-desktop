@@ -5,6 +5,7 @@ import {
 } from "../../screens/Chat/reasoningTiers";
 import { useI18n } from "../useI18n";
 import { useSettings } from "./SettingsDataContext";
+import SettingsHint from "./SettingsHint";
 
 type AgentsTab = "subagents" | "moa";
 
@@ -269,12 +270,12 @@ function SubagentsPanel({
               <label className="settings-row-label" htmlFor="agents-subagent-effort">
                 {copy("effort", "Subagent thinking level")}
               </label>
-              <div className="settings-row-hint">
+              <SettingsHint>
                 {copy(
                   "effortHint",
                   "Overrides the main model's reasoning effort for delegated work. Blank inherits it.",
                 )}
-              </div>
+              </SettingsHint>
             </div>
             <div className="settings-agent-control">
               <select
@@ -540,12 +541,12 @@ function MoaPanel({ profile }: { profile?: string }): React.JSX.Element {
               <label className="settings-row-label" htmlFor="agents-moa-preset">
                 {copy("moaPreset", "Preset")}
               </label>
-              <div className="settings-row-hint">
+              <SettingsHint>
                 {copy(
                   "moaPresetHint",
                   "The active preset is what /moa uses in a chat; the default applies to new sessions.",
                 )}
-              </div>
+              </SettingsHint>
             </div>
             <div className="settings-agent-control">
               <select
@@ -570,9 +571,9 @@ function MoaPanel({ profile }: { profile?: string }): React.JSX.Element {
               <label className="settings-row-label" htmlFor="agents-moa-enabled">
                 {copy("moaEnabled", "Enable this preset")}
               </label>
-              <div className="settings-row-hint">
+              <SettingsHint>
                 {copy("moaEnabledHint", "Off keeps the models configured but skips the reference round.")}
-              </div>
+              </SettingsHint>
             </div>
             <label className="tools-toggle">
               <input
@@ -589,9 +590,9 @@ function MoaPanel({ profile }: { profile?: string }): React.JSX.Element {
           <div className="settings-row settings-row-stack">
             <div className="settings-row-text">
               <span className="settings-row-label">{copy("moaReference", "Reference models")}</span>
-              <div className="settings-row-hint">
+              <SettingsHint>
                 {copy("moaReferenceHint", "Tried in order; every slot needs a provider and a model.")}
-              </div>
+              </SettingsHint>
             </div>
             <div className="settings-agent-stack">
               {current.referenceModels.map((slot, index) => (
@@ -657,9 +658,9 @@ function MoaPanel({ profile }: { profile?: string }): React.JSX.Element {
           <div className="settings-row settings-row-stack">
             <div className="settings-row-text">
               <span className="settings-row-label">{copy("moaAggregator", "Aggregator")}</span>
-              <div className="settings-row-hint">
+              <SettingsHint>
                 {copy("moaAggregatorHint", "Synthesizes the reference answers into one guidance block.")}
-              </div>
+              </SettingsHint>
             </div>
             <div className="settings-agent-stack">
               <div className="settings-agent-slot">
@@ -734,9 +735,9 @@ function MoaPanel({ profile }: { profile?: string }): React.JSX.Element {
               <label className="settings-row-label" htmlFor="agents-moa-degraded">
                 {copy("moaDegraded", "When a reference fails")}
               </label>
-              <div className="settings-row-hint">
+              <SettingsHint>
                 {copy("moaDegradedHint", "Loud surfaces the failure; silent continues with the rest.")}
-              </div>
+              </SettingsHint>
             </div>
             <div className="settings-agent-control">
               <select
@@ -850,7 +851,7 @@ function ConfigRow({
     <div className="settings-row">
       <div className="settings-row-text">
         <label className="settings-row-label" htmlFor={id}>{label}</label>
-        {hint && <div className="settings-row-hint">{hint}</div>}
+        {hint && <SettingsHint>{hint}</SettingsHint>}
       </div>
       <div className="settings-agent-control">
         <input

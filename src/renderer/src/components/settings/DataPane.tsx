@@ -1,6 +1,7 @@
 import { Download, Upload } from "lucide-react";
 import { useI18n } from "../useI18n";
 import { useSettings } from "./SettingsDataContext";
+import SettingsHint from "./SettingsHint";
 
 /**
  * Export / import a full Hermes backup archive, plus the OpenClaw → Hermes
@@ -31,9 +32,9 @@ export default function DataPane(): React.JSX.Element {
   return (
     <div className="settings-modal-pane">
       <div className="settings-field">
-        <div className="settings-field-hint" style={{ marginBottom: 10 }}>
+        <SettingsHint>
           {t("settings.dataHint")}
-        </div>
+        </SettingsHint>
         <div className="settings-hermes-actions">
           <button
             className="btn btn-secondary"

@@ -9,28 +9,27 @@ export default function PrivacyPane(): React.JSX.Element {
 
   return (
     <div className="settings-modal-pane">
-      <div className="settings-field">
-        <label className="settings-field-label">
-          {t("settings.analytics.label")}
-          <label
-            className="tools-toggle"
-            style={{ marginLeft: 12, verticalAlign: "middle" }}
-          >
-            <input
-              type="checkbox"
-              checked={analyticsEnabled}
-              onChange={(e) => {
-                const enabled = e.target.checked;
-                setAnalyticsEnabled(enabled);
-                setAnalyticsConsent(enabled);
-              }}
-            />
-            <span className="tools-toggle-track" />
+      <div className="settings-row">
+        <div className="settings-row-text">
+          <label className="settings-row-label" htmlFor="analytics-enabled">
+            {t("settings.analytics.label")}
           </label>
-        </label>
-        <div className="settings-field-hint">
-          {t("settings.analytics.hint")}
+          <div className="settings-field-hint" id="analytics-disclosure">
+            {t("settings.analytics.hint")}
+          </div>
         </div>
+        <input
+          id="analytics-enabled"
+          type="checkbox"
+          aria-label={t("settings.analytics.label")}
+          aria-describedby="analytics-disclosure"
+          checked={analyticsEnabled}
+          onChange={(e) => {
+            const enabled = e.target.checked;
+            setAnalyticsEnabled(enabled);
+            setAnalyticsConsent(enabled);
+          }}
+        />
       </div>
     </div>
   );
