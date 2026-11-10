@@ -1,14 +1,29 @@
 /* Visual reference: vastsa/PI-Desktop @ 4ad0094e87b3c9ab75653a770f67f0d09abd63a4
    settings.css:262–303 (quiet nav), 314–326 (content), 1198–1235 (rows).
-   Keep Hermes colors, modal navigation and persistence; port the hierarchy only. */
+   Settings colors are independent of chat/workspace colors and theme-editable. */
+.settings-modal,
+.providers-page {
+  --bg-primary: var(--settings-bg);
+  --bg-secondary: var(--settings-card-bg);
+  --bg-tertiary: var(--settings-field-bg);
+  --bg-elevated: var(--settings-field-bg);
+  --bg-hover: var(--settings-hover-bg);
+  --text-primary: var(--settings-text);
+  --text-secondary: var(--settings-text-secondary);
+  --text-muted: var(--settings-text-secondary);
+  --border: var(--settings-border);
+  --border-bright: var(--settings-border);
+  color: var(--settings-text);
+}
+
 .settings-modal {
-  background: var(--bg-secondary);
+  background: var(--settings-sidebar-bg);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
 .settings-modal .settings-modal-sidebar {
-  background: var(--bg-secondary);
+  background: var(--settings-sidebar-bg);
 }
 
 .settings-modal .settings-modal-main {
@@ -95,6 +110,10 @@
 .settings-modal .settings-row-label {
   font-weight: 500;
   line-height: 1.5;
+}
+
+.settings-modal :is(.input, .settings-security-textarea, .settings-seg) {
+  background-color: var(--settings-field-bg);
 }
 
 .settings-modal .settings-row-text {

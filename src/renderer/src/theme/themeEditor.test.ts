@@ -17,6 +17,25 @@ import {
   type CustomThemeStore,
 } from "./themeEditor";
 
+const SETTINGS_VARS = [
+  "--settings-bg",
+  "--settings-sidebar-bg",
+  "--settings-card-bg",
+  "--settings-field-bg",
+  "--settings-hover-bg",
+  "--settings-text",
+  "--settings-text-secondary",
+  "--settings-border",
+];
+
+function luminance(hex: string): number {
+  const channels = hex.slice(1).match(/../g)!.map((value) => {
+    const channel = parseInt(value, 16) / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+}
+
 describe("themeEditor — built-in parsing", () => {
   it("parses all 13 built-in themes from main.css", () => {
     const store: CustomThemeStore = {};
@@ -55,6 +74,99 @@ describe("themeEditor — built-in parsing", () => {
   it("isBuiltinTheme distinguishes registry ids", () => {
     expect(isBuiltinTheme("nord")).toBe(true);
     expect(isBuiltinTheme("my-theme")).toBe(false);
+  });
+});
+
+describe("themeEditor — Settings palette", () => {
+  it("defines cycle-free defaults and brighter cards in every built-in", () => {
+    for (const theme of listThemes({})) {
+      for (const variable of SETTINGS_VARS) {
+        expect(THEME_VAR_ORDER).toContain(variable);
+        expect(theme.vars[variable], `${theme.id}: ${variable}`).toBeTruthy();
+        expect(theme.vars[variable]).not.toContain("var(");
+      }
+      expect(luminance(theme.vars["--settings-card-bg"]), theme.id).toBeGreaterThan(
+        luminance(theme.vars["--settings-bg"]),
+      );
+      if (theme.id !== "dark" && theme.id !== "light") {
+        expect(theme.vars["--settings-bg"]).toBe(
+          theme.vars[theme.appearance === "light" ? "--bg-secondary" : "--bg-primary"],
+        );
+        expect(theme.vars["--settings-card-bg"]).toBe(
+          theme.vars[theme.appearance === "light" ? "--bg-primary" : "--bg-elevated"],
+        );
+        expect(theme.vars["--settings-text"]).toBe(theme.vars["--text-primary"]);
+      }
+    }
+  });
+
+  it("uses flattened PI dark and custom light palettes with readable text", () => {
+    const palettes = {
+      dark: ["#181818", "#000000", "#202020", "#212121", "#262626", "#ffffff", "#bababa", "#2a2a2a"],
+      light: ["#f8fafc", "#eef2f6", "#ffffff", "#f1f5f9", "#e2e8f0", "#182230", "#526174", "#d7dfe8"],
+    };
+    for (const [id, palette] of Object.entries(palettes)) {
+      const vars = themeVars(id, {})!;
+      expect(SETTINGS_VARS.map((variable) => vars[variable])).toEqual(palette);
+      for (const text of ["--settings-text", "--settings-text-secondary"]) {
+        for (const bg of SETTINGS_VARS.slice(0, 5)) {
+          const a = luminance(vars[text]);
+          const b = luminance(vars[bg]);
+          expect((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
+  });
+
+  it("backfills old custom palettes consistently without mutating storage", () => {
+    const store: CustomThemeStore = {
+      old: {
+        name: "Old Light",
+        appearance: "light",
+        vars: {
+          "--bg-primary": "#ffffff",
+          "--bg-secondary": "#eeeeee",
+          "--bg-tertiary": "#dddddd",
+          "--text-primary": "#222222",
+          "--settings-border": "#123456",
+        },
+      },
+      darkOld: { name: "Old Dark", appearance: "dark", vars: {} },
+    };
+    saveCustomThemes(store);
+    const loaded = loadCustomThemes();
+    const vars = themeVars("old", loaded)!;
+    expect(vars["--settings-bg"]).toBe("#eeeeee");
+    expect(vars["--settings-card-bg"]).toBe("#ffffff");
+    expect(vars["--settings-field-bg"]).toBe("#dddddd");
+    expect(vars["--settings-text"]).toBe("#222222");
+    expect(vars["--settings-hover-bg"]).toBe("#e2e8f0");
+    expect(vars["--settings-border"]).toBe("#123456");
+    for (const id of ["old", "darkOld"]) {
+      const resolved = themeVars(id, loaded)!;
+      expect(listThemes(loaded).find((theme) => theme.id === id)!.vars).toEqual(resolved);
+      expect(seedCustomFrom(id, "copy", "Copy", loaded).vars).toEqual(resolved);
+      for (const variable of SETTINGS_VARS) {
+        expect(resolved[variable]).toBeTruthy();
+        expect(customThemesCss(loaded)).toContain(`${variable}: ${resolved[variable]};`);
+      }
+    }
+    expect(themeVars("darkOld", loaded)!["--settings-bg"]).toBe("#181818");
+    expect(loadCustomThemes()).toEqual(store);
+    localStorage.clear();
+  });
+
+  it("does not turn legacy palette aliases into cyclic Settings aliases", () => {
+    const store: CustomThemeStore = {
+      old: {
+        name: "Aliases",
+        appearance: "light",
+        vars: { "--bg-primary": "var(--bg-secondary)", "--bg-secondary": "var(--settings-bg)" },
+      },
+    };
+    const vars = themeVars("old", store)!;
+    expect(vars["--settings-bg"]).toBe("#f8fafc");
+    expect(vars["--settings-card-bg"]).toBe("#ffffff");
   });
 });
 
@@ -160,11 +272,11 @@ describe("themeEditor — CSS injection", () => {
   it("generates override blocks for non-empty vars only", () => {
     const css = customThemesCss({
       dracula: { name: "D", appearance: "dark", vars: { "--accent": "#f00" } },
-      empty: { name: "E", appearance: "dark", vars: {} },
+      nord: { name: "N", appearance: "dark", vars: {} },
     });
     expect(css).toContain('[data-theme="dracula"]');
     expect(css).toContain("--accent: #f00;");
-    expect(css).not.toContain('[data-theme="empty"]');
+    expect(css).not.toContain('[data-theme="nord"]');
   });
 
   it("applyCustomThemeStyles mounts one style tag and refreshes it", () => {

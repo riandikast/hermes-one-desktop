@@ -1,4 +1,77 @@
-/* Auxiliary's bordered rows carry across credential surfaces without changing routing. */
+/* PI-Desktop settings hierarchy; settings-only colors, not chat colors. */
+.providers-page {
+  background: var(--settings-bg);
+  color: var(--settings-text);
+}
+
+.providers-page-title {
+  margin: 0 0 20px;
+}
+
+.providers-page .settings-section {
+  background: transparent;
+  padding: 0;
+}
+
+.providers-page .settings-section-title {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.providers-page .providers-tabs {
+  gap: 4px;
+  border-bottom: 0;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.providers-page .models-tab {
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--settings-text-secondary);
+  padding: 7px 12px;
+}
+
+.providers-page .models-tab.active,
+.providers-page .models-tab:hover {
+  background: var(--settings-card-bg);
+  color: var(--settings-text);
+}
+
+.providers-page .provider-thinking-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: var(--settings-card-bg);
+}
+
+.providers-page .provider-thinking-row > label {
+  margin: 0 auto 0 0;
+}
+
+.providers-page .provider-thinking-row > select {
+  width: auto;
+  min-width: 160px;
+}
+
+.providers-page .provider-thinking-row > .settings-hint[open] {
+  flex-basis: 100%;
+}
+
+.providers-page :is(.auxiliary-task-row, .fallback-model-row) {
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: var(--settings-card-bg);
+}
+
+.providers-page :is(.input, .provider-key-group, .provider-key-field) {
+  background-color: var(--settings-field-bg);
+}
+
 .providers-page .provider-settings-panel {
   display: grid;
   gap: 24px;
@@ -49,7 +122,7 @@
 .providers-page
   .provider-settings-panel
   :is(.settings-key-list, .provider-summary, .settings-pool-group) {
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 8px;
   background: var(--bg-secondary);
 }
@@ -97,7 +170,7 @@
 .providers-page
   .provider-settings-panel
   :is(.provider-config-card, .provider-key-card, .provider-add-card) {
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 8px;
   padding: 16px;
   background: var(--bg-secondary);
@@ -162,7 +235,7 @@
     auto;
   align-items: start;
   padding: 16px;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 8px;
   background: var(--bg-secondary);
 }

@@ -4,6 +4,14 @@ Theme customizations are stored separately from bundled CSS so updates can refre
 
 [[src/renderer/src/theme/themeEditor.ts#loadCustomThemes]] reads `hermes-custom-themes` from localStorage. [[src/renderer/src/components/ThemeProvider.tsx#ThemeProvider]] persists changes and injects theme-scoped overrides after the main stylesheet. No `main.css` mutation or storage migration is needed.
 
+## Settings-only colors
+
+Eight settings colors are editable independently of the workspace palette, using the same save, copy, reload and reset behavior as existing theme colors.
+
+See [[settings-modal#Settings modal shell#Settings palette]] for defaults. All built-ins define literal values to prevent cycles when settings locally remaps the generic surface variables. Legacy custom palettes derive missing values without modifying stored overrides.
+
+The theme tests verify brighter cards, dark/light text contrast, legacy palette defaults and independent persistence after sequential edits and remounting.
+
 ## Repeated built-in saves
 
 Built-in saves compare the complete effective palette against pristine bundled defaults, never against the already-customized editor baseline.

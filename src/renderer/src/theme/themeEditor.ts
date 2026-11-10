@@ -35,6 +35,14 @@ export const THEME_VAR_ORDER: string[] = parseVarOrder(mainCss);
 
 /** Human-readable labels for the known variables; unknown vars fall back. */
 export const THEME_VAR_LABELS: Record<string, string> = {
+  "--settings-bg": "Settings background",
+  "--settings-sidebar-bg": "Settings sidebar",
+  "--settings-card-bg": "Settings card",
+  "--settings-field-bg": "Settings field",
+  "--settings-hover-bg": "Settings hover",
+  "--settings-text": "Settings text",
+  "--settings-text-secondary": "Settings secondary text",
+  "--settings-border": "Settings border",
   "--bg-primary": "Background primary",
   "--bg-secondary": "Background secondary",
   "--bg-tertiary": "Background tertiary",
@@ -149,7 +157,7 @@ export function listThemes(custom: CustomThemeStore): EditableTheme[] {
         id,
         name: entry.name || id,
         appearance: entry.appearance ?? "dark",
-        vars: { ...emptyVars(), ...entry.vars },
+        vars: customVars(entry),
         builtin: false,
       });
     }
@@ -165,7 +173,33 @@ export function themeVars(
   const builtin = BUILTINS.find((b) => b.id === id);
   const entry = custom[id];
   if (!builtin && !entry) return null;
-  return { ...(builtin?.vars ?? emptyVars()), ...(entry?.vars ?? {}) };
+  return builtin
+    ? { ...builtin.vars, ...(entry?.vars ?? {}) }
+    : customVars(entry!);
+}
+
+/** Backfill old custom palettes without aliases that can cycle in Settings. */
+function customVars(entry: CustomThemeEntry): Record<string, string> {
+  const light = entry.appearance === "light";
+  const defaults = BUILTINS.find((b) => b.id === (light ? "light" : "dark"))!.vars;
+  const vars = { ...emptyVars(), ...entry.vars };
+  const sources: Record<string, string> = {
+    "--settings-bg": light ? "--bg-secondary" : "--bg-primary",
+    "--settings-sidebar-bg": "--bg-secondary",
+    "--settings-card-bg": light ? "--bg-primary" : "--bg-elevated",
+    "--settings-field-bg": "--bg-tertiary",
+    "--settings-hover-bg": "--bg-hover",
+    "--settings-text": "--text-primary",
+    "--settings-text-secondary": "--text-secondary",
+    "--settings-border": "--border",
+  };
+  for (const [name, source] of Object.entries(sources)) {
+    if (!vars[name]?.trim()) {
+      const value = entry.vars[source]?.trim();
+      vars[name] = value && !value.includes("var(") ? value : defaults[name];
+    }
+  }
+  return vars;
 }
 
 export function emptyVars(): Record<string, string> {
@@ -239,7 +273,7 @@ export function saveCustomThemes(store: CustomThemeStore): void {
 export function customThemesCss(store: CustomThemeStore): string {
   const blocks: string[] = [];
   for (const [id, entry] of Object.entries(store)) {
-    const vars = Object.entries(entry.vars)
+    const vars = Object.entries(isBuiltinTheme(id) ? entry.vars : customVars(entry))
       .filter(([, v]) => v && v.trim() !== "")
       .map(([name, v]) => `  ${name}: ${v};`)
       .join("\n");

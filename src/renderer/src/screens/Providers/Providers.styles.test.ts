@@ -2,7 +2,17 @@ import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 
-const expect = (value: string) => ({
+it("shares the isolated settings palette without recoloring the rest of the app", () => {
+  const css = readFileSync("src/renderer/src/components/settings/SettingsModal.css", "utf8");
+  assert.match(css, /\.settings-modal,\s*\.providers-page\s*\{[^}]*--bg-primary:\s*var\(--settings-bg\)/);
+  assert.match(css, /--bg-secondary:\s*var\(--settings-card-bg\)/);
+  assert.match(css, /--text-primary:\s*var\(--settings-text\)/);
+  const providers = readFileSync("src/renderer/src/screens/Providers/Providers.css", "utf8");
+  assert.match(providers, /\.providers-page\s*\{[^}]*background:\s*var\(--settings-bg\)/);
+  assert.match(providers, /\.providers-page \.provider-thinking-row\s*\{[^}]*background:\s*var\(--settings-card-bg\)/);
+});
+
+const expect = (value: string): { toContain: (part: string) => void; toMatch: (pattern: RegExp) => void } => ({
   toContain: (part: string) => assert.ok(value.includes(part), part),
   toMatch: (pattern: RegExp) => assert.match(value, pattern),
 });

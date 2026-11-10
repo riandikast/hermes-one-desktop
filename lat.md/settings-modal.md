@@ -14,6 +14,16 @@ PI-Desktop inspires the visual hierarchy: quiet navigation, a clear page title, 
 
 The reference is `vastsa/PI-Desktop` at `4ad0094e87b3c9ab75653a770f67f0d09abd63a4`, specifically its settings stylesheet and row primitives. Hermes keeps its own theme colors, existing settings destinations, tabs, storage and confirmations.
 
+## Settings palette
+
+Settings and Providers share independent, theme-editable colors. Changing these surfaces never recolors the chat, explorer or Source Control.
+
+The dark defaults match PI-Desktop's pinned `styles/tokens.css`: page `#181818`, sidebar `#000000`, white ink and a 3.5% white tile over the page. Rows are lighter than their page, not the darker generic app card.
+
+Light uses a custom slate-white palette: page `#f8fafc`, sidebar `#eef2f6`, white cards and `#f1f5f9` fields. The theme editor exposes page, sidebar, card, field, hover, text, secondary text and border in a Settings group; other themes retain their own palette.
+
+Providers uses the same palette, compact title/tabs, quiet cards and on-demand explanations. Credential editing, ordered fallbacks, discovery, OAuth and dialog scrolling retain their existing behavior.
+
 [[src/renderer/src/components/settings/SettingsModal.tsx]] adds the active page heading and `aria-current` navigation. Its local `SettingsModal.css` gives every pane the same solid surfaces and row spacing without changing unrelated app screens or imposing a theme.
 
 Static explanations use native expandable help, operable by pointer and keyboard. Help expands in normal flow so the modal cannot clip a floating tooltip. Live status, errors, privacy disclosures, destructive-action warnings and actual setting values stay visible.

@@ -56,6 +56,31 @@ describe("ThemeEditor", () => {
     expect(style!.textContent).toContain("--accent: #123456");
   });
 
+  it("persists Settings edits across saves and remount, then resets overrides", () => {
+    const original = themeVars("dark", {})!;
+    const view = render(<Harness id="dark" />);
+    expect(screen.getByText("Settings")).toBeTruthy();
+    changeColor("--settings-card-bg", "#323232");
+    save();
+    changeColor("--settings-text", "#eeeeee");
+    save();
+    expect(loadCustomThemes().dark.vars).toEqual({
+      "--settings-card-bg": "#323232",
+      "--settings-text": "#eeeeee",
+    });
+    expect(themeVars("dark", loadCustomThemes())!["--bg-primary"]).toBe(original["--bg-primary"]);
+    expect(themeVars("light", loadCustomThemes())).toEqual(themeVars("light", {}));
+    view.unmount();
+    render(<Harness id="dark" />);
+    expect(document.getElementById("hermes-custom-themes-style")!.textContent).toContain(
+      "--settings-card-bg: #323232;",
+    );
+    fireEvent.click(screen.getByText("Reset"));
+    expect(loadCustomThemes().dark).toBeUndefined();
+    expect(themeVars("dark", loadCustomThemes())).toEqual(original);
+    expect(document.getElementById("hermes-custom-themes-style")!.textContent).toBe("");
+  });
+
   // @lat: [[appearance-themes#Theme persistence#Repeated built-in saves]]
   it("preserves earlier overrides on subsequent saves and reloads", () => {
     const view = render(<Harness />);

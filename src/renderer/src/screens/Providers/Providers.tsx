@@ -15,6 +15,8 @@ import ProviderKeysSection from "../../components/ProviderKeysSection";
 import RegistryBrowserModal from "../../components/RegistryBrowserModal";
 import AuxiliaryTasksSection from "../../components/AuxiliaryTasksSection";
 import FallbackModelsSection from "../../components/FallbackModelsSection";
+import SettingsHint from "../../components/settings/SettingsHint";
+import "../../components/settings/SettingsModal.css";
 import { useDiscoveredModels } from "../../hooks/useDiscoveredModels";
 import { KeyRound } from "../../assets/icons";
 import { ChevronDown, Search, X, Eye, EyeOff } from "lucide-react";
@@ -744,6 +746,9 @@ function Providers({
 
   return (
     <div className="settings-container providers-page">
+      <h1 className="settings-modal-page-title providers-page-title">
+        {t("navigation.providers")}
+      </h1>
       <div
         className="models-tabs providers-tabs"
         role="tablist"
@@ -855,7 +860,7 @@ function Providers({
                   )}
                 </span>
               </div>
-              <div className="settings-field">
+              <div className="settings-field provider-thinking-row">
                 <label
                   className="settings-field-label"
                   htmlFor="providers-default-reasoning"
@@ -883,12 +888,12 @@ function Providers({
                     </option>
                   ))}
                 </select>
-                <div className="settings-field-hint" style={{ marginTop: 8 }}>
+                <SettingsHint>
                   {t("providers.defaultThinking.hint", {
                     defaultValue:
                       "Used by chats that have no level of their own; a pick in the composer always wins. Providers that do not support reasoning effort may ignore or reject a manual level.",
                   })}
-                </div>
+                </SettingsHint>
               </div>
             </div>
 

@@ -14,6 +14,19 @@ import {
 
 const GROUPS: Array<{ title: string; vars: string[] }> = [
   {
+    title: "Settings",
+    vars: [
+      "--settings-bg",
+      "--settings-sidebar-bg",
+      "--settings-card-bg",
+      "--settings-field-bg",
+      "--settings-hover-bg",
+      "--settings-text",
+      "--settings-text-secondary",
+      "--settings-border",
+    ],
+  },
+  {
     title: "Backgrounds",
     vars: [
       "--bg-primary",

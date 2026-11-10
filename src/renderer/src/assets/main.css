@@ -33,6 +33,17 @@
 /* ----- Dark Theme (default) ----- */
 [data-theme="dark"] {
   --bg-primary: #212121;
+  /* PI-Desktop 4ad0094e87b3c9ab75653a770f67f0d09abd63a4, styles/tokens.css:
+     page/sidebar/ink lines 18-51; white alpha tiles 98-99 over page 38.
+     Flattened in sRGB: 3.5% card, 6% hover, 70% secondary, 8% border. */
+  --settings-bg: #181818;
+  --settings-sidebar-bg: #000000;
+  --settings-card-bg: #202020;
+  --settings-field-bg: #212121;
+  --settings-hover-bg: #262626;
+  --settings-text: #ffffff;
+  --settings-text-secondary: #bababa;
+  --settings-border: #2a2a2a;
   --bg-secondary: #171717;
   --bg-tertiary: #2f2f2f;
   --bg-elevated: #303030;
@@ -69,6 +80,14 @@
 
 /* ----- Light Theme ----- */
 [data-theme="light"] {
+  --settings-bg: #f8fafc;
+  --settings-sidebar-bg: #eef2f6;
+  --settings-card-bg: #ffffff;
+  --settings-field-bg: #f1f5f9;
+  --settings-hover-bg: #e2e8f0;
+  --settings-text: #182230;
+  --settings-text-secondary: #526174;
+  --settings-border: #d7dfe8;
   --bg-primary: #ffffff;
   --bg-secondary: #f8f8f8;
   --bg-tertiary: #f0f0f0;
@@ -106,6 +125,14 @@
 
 /* ----- Dracula ----- */
 [data-theme="dracula"] {
+  --settings-bg: #282a36;
+  --settings-sidebar-bg: #21222c;
+  --settings-card-bg: #343746;
+  --settings-field-bg: #343746;
+  --settings-hover-bg: #44475a;
+  --settings-text: #f8f8f2;
+  --settings-text-secondary: #c3c3d0;
+  --settings-border: rgba(255, 255, 255, 0.07);
   --bg-primary: #282a36;
   --bg-secondary: #21222c;
   --bg-tertiary: #343746;
@@ -143,6 +170,14 @@
 
 /* ----- Nord ----- */
 [data-theme="nord"] {
+  --settings-bg: #2e3440;
+  --settings-sidebar-bg: #272c36;
+  --settings-card-bg: #3b4252;
+  --settings-field-bg: #3b4252;
+  --settings-hover-bg: #434c5e;
+  --settings-text: #eceff4;
+  --settings-text-secondary: #d8dee9;
+  --settings-border: rgba(255, 255, 255, 0.06);
   --bg-primary: #2e3440;
   --bg-secondary: #272c36;
   --bg-tertiary: #3b4252;
@@ -180,6 +215,14 @@
 
 /* ----- One Dark ----- */
 [data-theme="one-dark"] {
+  --settings-bg: #282c34;
+  --settings-sidebar-bg: #21252b;
+  --settings-card-bg: #2c313a;
+  --settings-field-bg: #2c313a;
+  --settings-hover-bg: #2f3540;
+  --settings-text: #d7dae0;
+  --settings-text-secondary: #abb2bf;
+  --settings-border: rgba(255, 255, 255, 0.06);
   --bg-primary: #282c34;
   --bg-secondary: #21252b;
   --bg-tertiary: #2c313a;
@@ -217,6 +260,14 @@
 
 /* ----- VS Code Dark+ ----- */
 [data-theme="vs-code"] {
+  --settings-bg: #181818;
+  --settings-sidebar-bg: #0e0e0e;
+  --settings-card-bg: #333333;
+  --settings-field-bg: #3c3c3c;
+  --settings-hover-bg: #2a2d2e;
+  --settings-text: #f8f8f7;
+  --settings-text-secondary: #9d9d9d;
+  --settings-border: rgba(255, 255, 255, 0.07);
   /* User-requested inversion vs stock Dark+: the CHAT canvas takes the
      sidebar gray and the sidebar takes the editor gray. */
   --bg-primary: #181818;
@@ -256,6 +307,14 @@
 
 /* ----- GitHub Dark ----- */
 [data-theme="github-dark"] {
+  --settings-bg: #0d1117;
+  --settings-sidebar-bg: #010409;
+  --settings-card-bg: #161b22;
+  --settings-field-bg: #161b22;
+  --settings-hover-bg: #1f242c;
+  --settings-text: #c9d1d9;
+  --settings-text-secondary: #8b949e;
+  --settings-border: #30363d;
   --bg-primary: #0d1117;
   --bg-secondary: #010409;
   --bg-tertiary: #161b22;
@@ -293,6 +352,14 @@
 
 /* ----- Monokai ----- */
 [data-theme="monokai"] {
+  --settings-bg: #272822;
+  --settings-sidebar-bg: #1e1f1c;
+  --settings-card-bg: #34352f;
+  --settings-field-bg: #2d2e28;
+  --settings-hover-bg: #3e3d32;
+  --settings-text: #f8f8f2;
+  --settings-text-secondary: #c5c8c6;
+  --settings-border: rgba(255, 255, 255, 0.06);
   --bg-primary: #272822;
   --bg-secondary: #1e1f1c;
   --bg-tertiary: #2d2e28;
@@ -330,6 +397,14 @@
 
 /* ----- Solarized Dark ----- */
 [data-theme="solarized-dark"] {
+  --settings-bg: #002b36;
+  --settings-sidebar-bg: #00252e;
+  --settings-card-bg: #073642;
+  --settings-field-bg: #073642;
+  --settings-hover-bg: #0a4250;
+  --settings-text: #93a1a1;
+  --settings-text-secondary: #839496;
+  --settings-border: rgba(255, 255, 255, 0.06);
   --bg-primary: #002b36;
   --bg-secondary: #00252e;
   --bg-tertiary: #073642;
@@ -367,6 +442,14 @@
 
 /* ----- Gruvbox Dark ----- */
 [data-theme="gruvbox-dark"] {
+  --settings-bg: #282828;
+  --settings-sidebar-bg: #1d2021;
+  --settings-card-bg: #3c3836;
+  --settings-field-bg: #3c3836;
+  --settings-hover-bg: #504945;
+  --settings-text: #ebdbb2;
+  --settings-text-secondary: #d5c4a1;
+  --settings-border: rgba(255, 255, 255, 0.06);
   --bg-primary: #282828;
   --bg-secondary: #1d2021;
   --bg-tertiary: #3c3836;
@@ -404,6 +487,14 @@
 
 /* ----- Tokyo Night ----- */
 [data-theme="tokyo-night"] {
+  --settings-bg: #1a1b26;
+  --settings-sidebar-bg: #16161e;
+  --settings-card-bg: #1f2335;
+  --settings-field-bg: #1f2335;
+  --settings-hover-bg: #292e42;
+  --settings-text: #c0caf5;
+  --settings-text-secondary: #a9b1d6;
+  --settings-border: rgba(255, 255, 255, 0.06);
   --bg-primary: #1a1b26;
   --bg-secondary: #16161e;
   --bg-tertiary: #1f2335;
@@ -441,6 +532,14 @@
 
 /* ----- GitHub Light ----- */
 [data-theme="github-light"] {
+  --settings-bg: #f6f8fa;
+  --settings-sidebar-bg: #eaeef2;
+  --settings-card-bg: #ffffff;
+  --settings-field-bg: #eaeef2;
+  --settings-hover-bg: #eef1f4;
+  --settings-text: #1f2328;
+  --settings-text-secondary: #57606a;
+  --settings-border: #d0d7de;
   --bg-primary: #ffffff;
   --bg-secondary: #f6f8fa;
   --bg-tertiary: #eaeef2;
@@ -478,6 +577,14 @@
 
 /* ----- Solarized Light ----- */
 [data-theme="solarized-light"] {
+  --settings-bg: #f4eeda;
+  --settings-sidebar-bg: #eee8d5;
+  --settings-card-bg: #fdf6e3;
+  --settings-field-bg: #eee8d5;
+  --settings-hover-bg: #e7e0c9;
+  --settings-text: #586e75;
+  --settings-text-secondary: #657b83;
+  --settings-border: #e0d9c3;
   --bg-primary: #fdf6e3;
   --bg-secondary: #f4eeda;
   --bg-tertiary: #eee8d5;
