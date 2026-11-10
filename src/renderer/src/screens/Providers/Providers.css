@@ -242,6 +242,14 @@
   overscroll-behavior: contain;
 }
 
+/* `.models-modal { width: 440px }` lives late in main.css, so the 560px
+   `.provider-modal` width declared earlier loses the cascade and every provider
+   dialog renders cramped. Restore the designed width with a selector that wins
+   on specificity; `max-width` still keeps it inside a narrow window. */
+.providers-page .models-modal.provider-modal {
+  width: 560px;
+}
+
 .providers-page .models-modal {
   max-width: 100%;
   max-height: calc(100dvh - 100px);

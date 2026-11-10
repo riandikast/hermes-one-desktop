@@ -248,6 +248,8 @@ The bounding rules are scoped to the **page** (`.providers-page`), not the `.pro
 
 The "Select default model" picker opts out (`overflow: visible` on the modal and its body, declared after the generic body rule). Its provider dropdown is absolutely positioned and meant to extend past the modal edge (see `.models-modal.model-select-modal` in `main.css`); the bounding rules would otherwise clip it to a cut-off list. Its own content is short and the model list is a native `<select>` that scrolls itself.
 
+Provider dialogs are 560 px wide, declared as `.providers-page .models-modal.provider-modal`. The base `.models-modal { width: 440px }` sits later in `main.css`, so without that rule every provider dialog rendered at 440 px and squeezed the key row to ~290 px.
+
 The overlay is the second line of defence: it scrolls (`overflow-y: auto`, `align-items: flex-start`) and the dialog carries `margin-block: auto`, so a dialog that still exceeds the window is centred while it fits and scrollable when it does not — its header and API-key field can never be clipped off both edges.
 
 The key row is sized so the input cannot vanish: `.provider-key-field` keeps the field and the Show/Replace actions on one line, and the input carries a real `flex-basis` (`1 1 14ch`) so it wraps onto its own line under 560 px instead of collapsing to a few pixels beside the actions. The masked value is itself a button that opens the editor — the small Replace link was the only way in before, and nothing about a plain span suggested the key was editable.

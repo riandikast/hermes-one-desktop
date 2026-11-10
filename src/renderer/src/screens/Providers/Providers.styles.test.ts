@@ -140,6 +140,14 @@ it("scrolls the overlay and never lets the key field collapse", () => {
   assert.ok(modal, "modal rule");
   assert.match(modal, /margin-block:\s*auto/);
 
+  // `.models-modal { width: 440px }` is declared later in main.css and beat the
+  // 560px `.provider-modal` width, so every provider dialog rendered cramped.
+  const width = css.match(
+    /\.providers-page \.models-modal\.provider-modal \{([^}]+)\}/,
+  )?.[1];
+  assert.ok(width, "provider dialog width rule");
+  assert.match(width, /width:\s*560px/);
+
   // `flex: 1` on a zero basis let the input shrink to nothing while the
   // Show/Replace links kept their width — a dialog you could not type into.
   const field = css.match(
