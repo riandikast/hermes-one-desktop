@@ -20,6 +20,18 @@ Continue trims input, writes the key through `setEnv(customProviderEnvKey(name))
 
 It is not a canonical agent provider, so it routes through `custom` + `base_url` exactly like the `openai` card, with its key stored/host-derived as `HERMESONE_API_KEY` (`inference.hermesone.org` → `HERMESONE_API_KEY` in [[src/shared/url-key-map.ts]], and `hermesone` in `OPENAI_COMPAT_PROVIDERS`). It appears in `OPENAI_COMPATIBLE_BASE_URLS` so `displayProviderFromConfig` reverse-maps it back to the Hermes One card on reload, and its logo (`detectBrand` → `hermesone`, the `hermes-icon.svg` mark) shows in the grids. Users get a key from the console's Credits → API keys.
 
+## Official connection defaults
+
+The fork includes every visible official registry/plugin profile from pinned upstream source, while keeping legacy/custom routes and explicit endpoint overrides intact.
+
+[[src/shared/official-providers.ts]] pins `ed1afb082eb3e46cf2edae9d8f68fb67b09ee4df`: 51 registered identities, 50 visible defaults; hidden Solstice stays excluded. Regional siblings and CommandCode's Anthropic variant are counted separately. Setup, provider options, credential fields and native key routes derive additively from this inventory. Shared secondary credentials never replace a primary provider's identity.
+
+[[src/main/provider-support.ts#providerSetupError]] inspects installed source only, without importing Python or reading user state. Missing provider/OAuth capability rejects setup explicitly. Cloud SDK/deployment setup (Bedrock, Vertex, Azure Foundry) directs users to `hermes model`; the desktop does not fabricate credentials or update the installed backend. Remote OAuth and remote HTTP key writes refuse local fallback.
+
+OAuth setup opens the existing sign-in modal; failure/cancellation cannot complete onboarding. Anthropic and OpenRouter browser sign-in are offered separately from API keys. Legacy Gemini CLI OAuth is retained but fails explicitly when unsupported. Saved keys and returned model catalogs are not labelled verified inference. Manual models remain usable without discovery.
+
+[[tests/official-provider-parity.test.ts]] covers complete inventory, canonical key routes, shared-key precedence, aliases, missing-capability errors and installed backend source formats. [[src/renderer/src/screens/Setup/Setup.test.tsx]] covers OAuth refusal and cloud setup guidance without real authentication. Native Fireworks no longer becomes a custom route through an old preset; all explicit native endpoints survive re-picking a model.
+
 ## Top grid mirrors the agent's native providers
 
 The top provider grid shows only providers the upstream agent supports natively; generic OpenAI-compatible endpoints live in the Local presets instead.
@@ -48,13 +60,13 @@ Non-Auxiliary tabs reuse Auxiliary's bordered surfaces, readable theme tokens, 1
 
 [[src/renderer/src/screens/Providers/Providers.css]] is scoped to Providers. Neutral borders group saved credentials; existing typography and accent focus preserve the settings identity. ENERGY 1 / RHYTHM 1 / MOTION 1. Native selects retain native interaction with a drawn caret inset 14px and 40px trailing text space; forced colors restore the system arrow. Logo triggers use a 14px trailing inset. Auxiliary receives only the shared native-select fix. Provider-owned dialogs clear the tab strip and scroll internally.
 
-[[src/renderer/src/screens/Providers/Providers.test.tsx]] exercises editing in all four credential categories, exact profile-scoped writes, pool add/remove payloads and existing tab/model/Auxiliary interactions. [[src/renderer/src/screens/Providers/Providers.styles.test.js]] checks scoped caret spacing and responsive rules. Visual/theme/breakpoint inspection still requires an approved running renderer; DOM tests do not prove pixel geometry or contrast.
+[[src/renderer/src/screens/Providers/Providers.test.tsx]] exercises editing in all four credential categories, exact profile-scoped writes, pool add/remove payloads and existing tab/model/Auxiliary interactions. [[src/renderer/src/screens/Providers/Providers.styles.test.ts]] checks scoped caret spacing and responsive rules. Visual/theme/breakpoint inspection still requires an approved running renderer; DOM tests do not prove pixel geometry or contrast.
 
 ## Flat theme-aware surfaces
 
 Non-Auxiliary section wrappers are transparent, matching Auxiliary's canvas and bordered `--bg-secondary` lists/cards without another translucent gray layer. Existing foreground tokens preserve light-theme readability.
 
-[[src/renderer/src/screens/Providers/Providers.styles.test.js]] pins transparent wrappers and secondary surface tokens for all non-Auxiliary tabs. Default Model wraps its content and action on narrow screens rather than clipping them.
+[[src/renderer/src/screens/Providers/Providers.styles.test.ts]] pins transparent wrappers and secondary surface tokens for all non-Auxiliary tabs. Default Model wraps its content and action on narrow screens rather than clipping them.
 
 ## Default model surface action
 
@@ -230,6 +242,14 @@ The Local/Remote preset chips are also branded: each renders the same `BrandLogo
 
 ## Viewport-bounded provider dialogs
 
-Provider configuration dialogs use a viewport-bounded flex column. Only the shrinking body scrolls; the header and footer remain reachable when custom-provider fields or saved models exceed the window height.
+Every dialog on the Providers page uses a viewport-bounded flex column. Only the shrinking body scrolls; the header and footer stay reachable when custom-provider fields or saved models exceed the window height.
 
-[[src/renderer/src/screens/Providers/Providers.styles.test.js]] checks the viewport cap, flex sizing, nonshrinking controls, body overflow and custom-provider header/body/footer structure.
+The bounding rules are scoped to the **page** (`.providers-page`), not the `.provider-settings-panel` tabpanel. The Auxiliary tab deliberately renders its panel without that class ([[src/renderer/src/screens/Providers/Providers.tsx#Providers]] sets the class only for non-Auxiliary tabs, because AuxiliaryTasksSection owns its own surfaces), so tabpanel scoping left the Auxiliary task dialog unbounded: taller than the window, clipped by `overflow: hidden`, with a body that could not scroll — the lower inputs were unreachable.
+
+The "Select default model" picker opts out (`overflow: visible` on the modal and its body, declared after the generic body rule). Its provider dropdown is absolutely positioned and meant to extend past the modal edge (see `.models-modal.model-select-modal` in `main.css`); the bounding rules would otherwise clip it to a cut-off list. Its own content is short and the model list is a native `<select>` that scrolls itself.
+
+The overlay is the second line of defence: it scrolls (`overflow-y: auto`, `align-items: flex-start`) and the dialog carries `margin-block: auto`, so a dialog that still exceeds the window is centred while it fits and scrollable when it does not — its header and API-key field can never be clipped off both edges.
+
+The key row is sized so the input cannot vanish: `.provider-key-field` keeps the field and the Show/Replace actions on one line, and the input carries a real `flex-basis` (`1 1 14ch`) so it wraps onto its own line under 560 px instead of collapsing to a few pixels beside the actions. The masked value is itself a button that opens the editor — the small Replace link was the only way in before, and nothing about a plain span suggested the key was editable.
+
+[[src/renderer/src/screens/Providers/Providers.styles.test.ts]] pins the viewport cap, flex sizing, nonshrinking controls, body overflow, page-level scoping, the scrolling overlay, the non-collapsing key field, and the model-picker opt-out (including that its rule stays after the generic body rule). It lives in a `.ts` file because Vitest's include globs only match `.ts`/`.tsx` — the previous `.js` file used `node:test` and was never collected. [[src/renderer/src/screens/Providers/Providers.test.tsx]] separately asserts the Auxiliary tabpanel drops `.provider-settings-panel` and that its dialog still renders inside `.providers-page`.

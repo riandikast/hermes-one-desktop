@@ -223,15 +223,29 @@
   outline-offset: 2px;
 }
 
-/* Provider-owned dialogs clear the desktop tab strip; their bodies scroll, not controls. */
-.providers-page .provider-settings-panel .models-modal-overlay {
+/* Provider-owned dialogs clear the desktop tab strip; their bodies scroll, not
+   controls. Scoped to the PAGE, not the tabpanel: the Auxiliary tab renders its
+   panel without `.provider-settings-panel`, and its dialog was left unbounded —
+   taller than the window with `overflow: hidden` and a body that could not
+   scroll, so the lower inputs were unreachable. */
+.providers-page .models-modal-overlay {
   z-index: 1100;
   padding: 76px 16px 24px;
+  /* The overlay itself scrolls. `max-height` on the dialog normally keeps it
+     inside the window, but a provider with a long model list on a short window
+     pushed the dialog past both edges while the overlay stayed fixed-and-
+     centred — the header and the API-key field were clipped off the top with
+     no way to scroll them back. Flex-start plus `margin-block: auto` on the
+     dialog keeps it centred when it fits and reachable when it does not. */
+  align-items: flex-start;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
-.providers-page .provider-settings-panel .models-modal {
+.providers-page .models-modal {
   max-width: 100%;
   max-height: calc(100dvh - 100px);
+  margin-block: auto;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -240,15 +254,13 @@
   border: 1px solid var(--border);
 }
 
-.providers-page
-  .provider-settings-panel
-  :is(.models-modal-title, .provider-modal-name) {
+.providers-page :is(.models-modal-title, .provider-modal-name) {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
 .providers-page
-  .provider-settings-panel
+  .models-modal
   :is(
     .models-modal-header,
     .models-modal-footer,
@@ -259,15 +271,66 @@
 }
 
 .providers-page
-  .provider-settings-panel
+  .models-modal
   :is(.models-modal-header, .models-modal-footer) {
   flex-shrink: 0;
 }
 
-.providers-page .provider-settings-panel .models-modal-body {
+.providers-page .models-modal .models-modal-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* The key input is the one control that must keep working at any width. It used
+   to be `flex: 1` with `min-width: 0` inside a wrapping row, so when the row ran
+   out of space it could shrink to a few pixels (or nothing) while the Show /
+   Replace links kept theirs — visible as a "cropped" dialog where no key could
+   be typed. A real basis makes it wrap onto its own line instead. */
+.providers-page .models-modal .provider-key-field {
+  flex-wrap: nowrap;
+}
+.providers-page .models-modal .provider-key-input,
+.providers-page .models-modal .provider-key-masked {
+  flex: 1 1 14ch;
+  min-width: 0;
+}
+.providers-page .models-modal .provider-key-actions {
+  flex: 0 0 auto;
+}
+/* The masked value is a button now (it opens the editor); strip the button
+   chrome so it still reads as the key itself. */
+.providers-page .models-modal .provider-key-masked-button {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-primary);
+  cursor: text;
+}
+.providers-page .models-modal .provider-key-masked-button:hover {
+  color: var(--text-primary);
+  background: transparent;
+}
+@media (max-width: 560px) {
+  .providers-page .models-modal .provider-key-field {
+    flex-wrap: wrap;
+  }
+  .providers-page .models-modal .provider-key-input {
+    flex-basis: 100%;
+  }
+}
+
+/* The model picker's provider dropdown is absolutely positioned and is meant to
+   extend past the modal (see main.css `.models-modal.model-select-modal`). The
+   bounding rules above would clip it back to a cut-off list, so this dialog opts
+   out: its own content is short and the model list is a native <select> that
+   scrolls itself. Declared after the generic body rule so it wins. */
+.providers-page .models-modal.model-select-modal,
+.providers-page .models-modal.model-select-modal .models-modal-body {
+  overflow: visible;
 }
 
 @media (max-width: 720px) {

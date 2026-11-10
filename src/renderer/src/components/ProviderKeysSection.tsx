@@ -896,9 +896,18 @@ export function ProviderKeysSection({
                           placeholder={t(editing.label)}
                         />
                       ) : (
-                        <span className="provider-key-masked">
+                        // Clicking the masked value is the primary way in:
+                        // the only other affordance is the small Replace link,
+                        // and a plain span gave no hint that the key is
+                        // editable at all.
+                        <button
+                          type="button"
+                          className="provider-key-masked provider-key-masked-button"
+                          title={t("providers.keys.replace")}
+                          onClick={() => setReplacingKey(true)}
+                        >
                           {keyVisible ? key : maskKeyPreview(key)}
-                        </span>
+                        </button>
                       )}
                       <div className="provider-key-actions">
                         {editing.type === "password" && (
