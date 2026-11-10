@@ -22,7 +22,9 @@ All hub payloads are normalized by pure parsers in [[src/shared/capabilities.ts#
 
 ## Plugins tab
 
-The Plugins tab mirrors the official desktop's Capabilities → Plugins subpage for the agent half: installed plugins with version, source, server state, tool count and update pins, plus enable/disable, per-row Update, Update all and Remove for user installs.
+The Plugins tab mirrors the official desktop's Capabilities → Plugins subpage for the agent half: installed plugins with version, source, server state, tool count and update pins, plus enable/disable, per-row Update, Update all and Remove.
+
+Rows for user installs can be removed; bundled ones cannot.
 
 Plugin state is not on the dashboard HTTP surface, so [[src/main/dashboard-rpc.ts#dashboardRpc]] opens a short-lived authenticated WebSocket (`/api/ws?token=…`) and sends one JSON-RPC 2.0 frame — the same channel the chat transport uses. [[src/main/dashboard-plugins.ts#listDashboardPlugins]] calls `plugins.manage {action:"list"}`; writes go through [[src/main/dashboard-plugins.ts#manageDashboardPlugin]], which allow-lists `toggle`, `update`, `update_all` and `remove` (install/inspect flows stay in the CLI and official desktop). [[src/shared/plugins.ts#parseDashboardPlugins]] maps the snake_case rows, derives user/bundled counts when the gateway omits them and keeps missing arrays empty.
 

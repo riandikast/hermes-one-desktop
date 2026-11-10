@@ -4,7 +4,9 @@ The global settings modal is a frosted-glass surface with a full-height nav rail
 
 ## Size and rail
 
-`.settings-modal` fills `min(88vw, 1220px)` × `min(86vh, 880px)` and the nav rail is `252px` wide, so grouped nav labels and the tabbed Advanced/Memory panes fit without truncation on a normal desktop window. `min()` keeps the modal inside small windows where fixed pixel sizes used to overflow.
+`.settings-modal` fills `min(88vw, 1220px)` × `min(86vh, 880px)` with a `252px` nav rail, so grouped nav labels and the tabbed Advanced/Memory panes fit without truncation.
+
+`min()` keeps the modal inside small windows where fixed pixel sizes used to overflow.
 
 ## Repaint stability
 

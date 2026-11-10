@@ -48,7 +48,9 @@ This directory defines the high-level concepts, business logic, and architecture
 - [[file-viewer]] - the chat-side file preview is a CodeMirror editor with per-extension syntax highlighting and debounced autosave to disk.
 - [[mentions]] - journal-style citation numbers on @-mention tags: \[n] inline in the composer and on the chip badges, derived from tag position and renumbering on removal.
 - [[file-changes]] - per-turn file-change summary: badge on assistant bubbles, side-by-side before/after dialog, captured live from the dashboard tool stream.
-- [[capabilities]] — the single Capabilities screen (Skills | Toolsets | MCP | Hub tabs) backed by the dashboard REST API and the skill hub CLI; replaces the former Discover/Tools/Skills views.
+- [[capabilities]] — the single Capabilities screen (Skills | Toolsets | Plugins | MCP | Hub tabs) backed by the dashboard REST API, the gateway `plugins.manage` RPC and the skill hub CLI; replaces the former Discover/Tools/Skills views.
 
 - [[soul-settings]] - profile-specific Settings Soul editor and safe draft handling.
 - [[advanced-memory-settings]] - official desktop config controls, typed profile persistence, scope restrictions and parity gaps.
+- [[agents-settings]] - the Agents (subagents, MoA) and Notifications panes, and the config-authoritative fallback model chain.
+- [[settings-modal]] - modal size, nav rail and the repaint fixes behind the settings blink.

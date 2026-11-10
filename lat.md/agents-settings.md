@@ -4,7 +4,9 @@ Settings gains two official-desktop sections: **Agents** (the Model › Subagent
 
 ## Agents › Subagents
 
-[[src/renderer/src/components/settings/AgentsPane.tsx]] renders the delegation knobs the backend exposes — `delegation.provider`, `delegation.model`, `delegation.reasoning_effort`, `max_iterations`, `max_concurrent_children`, `child_timeout_seconds`, `max_spawn_depth`, `oneshot_max_children` — as one row per key with its own Save.
+[[src/renderer/src/components/settings/AgentsPane.tsx]] renders the delegation knobs the backend exposes — provider, model, thinking level, iterations, concurrency, timeout, spawn depth and one-shot limit — one row per key with its own Save.
+
+The keys are `delegation.provider`, `delegation.model`, `delegation.reasoning_effort`, `max_iterations`, `max_concurrent_children`, `child_timeout_seconds`, `max_spawn_depth` and `oneshot_max_children`.
 
 Each Save writes exactly one key through the config IPC and verifies the read-back before reporting success, matching the Advanced/Memory panes. Provider and model are blank-by-default because an empty value means "inherit the main agent's model and credentials". Numbers are validated against the backend's floors (iterations ≥ 1, concurrency ≥ 1, timeout ≥ 0, depth ≥ 1) before any write.
 
