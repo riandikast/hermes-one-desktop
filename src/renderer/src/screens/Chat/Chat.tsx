@@ -50,8 +50,11 @@ import type { MessageListModel } from "./MessageList";
 
 import { FileChangesDialog } from "./FileChangesDialog";
 import { ToolFilePreview } from "./ToolFilePreview";
+import { VisualizationPreview } from "./ChatVisualizationPreview";
+import { extractInlineVisualization, chooseSidePreview } from "./visualizationPreview";
 import { useFilePreviewAgents } from "./useFilePreviewAgents";
 import { useToolCallsAnimation } from "../../components/settings/toolCallsAnimation";
+import { useInlineVisualizations } from "../../components/settings/inlineVisualizations";
 import { FileChangeHistoryDialog } from "./FileChangeHistoryDialog";
 import { SourceControlShortcut } from "./SourceControlShortcut";
 import { ChatLogsDialog } from "./ChatLogsDialog";
@@ -600,6 +603,15 @@ function Chat({
   const [showAllThoughts, setShowAllThoughts] = useState(false);
   const [showAllTools, setShowAllTools] = useState(false);
   const [toolCallsAnimation] = useToolCallsAnimation();
+  const [inlineVisualizations] = useInlineVisualizations();
+  // Which surface owns the right rail when both are available. `null` keeps
+  // the automatic choice: files while a turn runs, the visualization after.
+  const [sidePreviewChoice, setSidePreviewChoice] = useState<
+    "files" | "visualization" | null
+  >(null);
+  const [dismissedVisualization, setDismissedVisualization] = useState<
+    string | null
+  >(null);
   // In-chat search (floating find bar next to the display controls).
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   // Message the search wants brought into the rendered window.
@@ -1955,6 +1967,38 @@ function Chat({
   const previewAgents = useFilePreviewAgents(dashboardTransport.activeSubagents,
     toolCallsAnimation && active && (isLoading || dashboardTransport.activeSubagents.length > 0), hermesSessionId ?? runId);
 
+  /**
+   * Latest complete HTML visualization in the transcript. Incomplete fences
+   * keep the panel closed until the turn closes the block, so a half-written
+   * document never executes.
+   */
+  const visualization = useMemo(() => {
+    if (!inlineVisualizations) return null;
+    const floor = Math.max(0, messages.length - 40);
+    for (let index = messages.length - 1; index >= floor; index--) {
+      const message = messages[index];
+      if (message.role !== "agent" || !("content" in message)) continue;
+      const found = extractInlineVisualization(message.content);
+      if (found?.complete) return found;
+    }
+    return null;
+  }, [inlineVisualizations, messages]);
+
+  const visualizationKey = visualization
+    ? `${visualization.title}\u0000${visualization.html.length}\u0000${visualization.html.slice(0, 120)}`
+    : null;
+  const visualizationVisible =
+    visualization !== null && visualizationKey !== dismissedVisualization;
+  const filesPreviewVisible =
+    toolCallsAnimation &&
+    active &&
+    (isLoading || dashboardTransport.activeSubagents.length > 0);
+  const sidePreview = chooseSidePreview(
+    sidePreviewChoice,
+    filesPreviewVisible,
+    visualizationVisible,
+  );
+
   const actions = useChatActions({
 
     runId,
@@ -2882,15 +2926,32 @@ function Chat({
         />
         </div>
 
-        <ToolFilePreview
-          messages={messages}
-          agents={previewAgents}
-          enabled={toolCallsAnimation}
-          running={isLoading || dashboardTransport.activeSubagents.length > 0}
-          active={active}
-          local={connectionMode === "local"}
-          baseDir={contextFolders[0]}
-        />
+        {sidePreview === "files" ? (
+          <ToolFilePreview
+            messages={messages}
+            agents={previewAgents}
+            enabled={toolCallsAnimation}
+            running={isLoading || dashboardTransport.activeSubagents.length > 0}
+            active={active}
+            local={connectionMode === "local"}
+            baseDir={contextFolders[0]}
+            onShowVisualization={
+              visualizationVisible
+                ? () => setSidePreviewChoice("visualization")
+                : undefined
+            }
+          />
+        ) : sidePreview === "visualization" && visualization ? (
+          <VisualizationPreview
+            visualization={visualization}
+            onSwitchToFiles={
+              filesPreviewVisible
+                ? () => setSidePreviewChoice("files")
+                : undefined
+            }
+            onClose={() => setDismissedVisualization(visualizationKey)}
+          />
+        ) : null}
 
         {/* The pinned reader is mounted HERE, at the same level as the pinned
             bar's container rather than inside it. `.chat-pinned-float` is

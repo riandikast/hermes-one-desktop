@@ -16,6 +16,10 @@ import { workspaceChanges } from "../workspaceChanges";
 import type { WorkspaceSnapshot } from "../../../../../shared/workspace-snapshot"; // desktop-only snapshot contract
 import { appConfirm } from "../../../components/modal/appConfirm";
 import {
+  INLINE_VISUALIZATION_PROMPT,
+  readInlineVisualizations,
+} from "../../../components/settings/inlineVisualizations";
+import {
   applyDashboardStreamEvent,
   type DashboardStreamEvent,
 } from "../dashboardEventAdapter";
@@ -2984,6 +2988,11 @@ export function useDashboardChatTransport({
           } catch {
             /* index optional */
           }
+        }
+        // New sessions only: the prompt is seeded once at creation. A session
+        // that already exists keeps its original instructions.
+        if (readInlineVisualizations()) {
+          systemParts.push(INLINE_VISUALIZATION_PROMPT);
         }
         const liveOverride = sessionModelOverrideRef?.current;
         const selectedModel = liveOverride?.model ?? modelRef.current;

@@ -54,3 +54,4 @@ This directory defines the high-level concepts, business logic, and architecture
 - [[advanced-memory-settings]] - official desktop config controls, typed profile persistence, scope restrictions and parity gaps.
 - [[agents-settings]] - the Agents (subagents, MoA) and Notifications panes, and the config-authoritative fallback model chain.
 - [[settings-modal]] - modal size, nav rail and the repaint fixes behind the settings blink.
+- [[inline-visualizations]] - opt-in agent HTML visualized in a sandboxed right rail beside the transcript.

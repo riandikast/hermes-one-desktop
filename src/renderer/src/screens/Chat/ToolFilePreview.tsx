@@ -375,11 +375,13 @@ function PreviewTabs({
   agents,
   baseDir,
   local,
+  onShowVisualization,
 }: {
   messages: readonly ChatMessage[];
   agents: readonly PreviewAgent[];
   baseDir?: string;
   local: boolean;
+  onShowVisualization?: () => void;
 }): React.JSX.Element | null {
   const candidates = useMemo(
     () =>
@@ -459,6 +461,15 @@ function PreviewTabs({
               {agent.label} · {agent.status ?? "Waiting for file…"}
             </span>
           ))}
+        {onShowVisualization ? (
+          <button
+            type="button"
+            className="tool-file-preview-switch"
+            onClick={onShowVisualization}
+          >
+            Visualization
+          </button>
+        ) : null}
       </div>
       <div
         role="tabpanel"
@@ -495,6 +506,7 @@ export function ToolFilePreview({
   local,
   baseDir,
   agents = EMPTY_AGENTS,
+  onShowVisualization,
 }: {
   messages: readonly ChatMessage[];
   agents?: readonly PreviewAgent[];
@@ -503,6 +515,7 @@ export function ToolFilePreview({
   active: boolean;
   local: boolean;
   baseDir?: string;
+  onShowVisualization?: () => void;
 }): React.JSX.Element | null {
   return enabled && running && active ? (
     <PreviewTabs
@@ -510,6 +523,7 @@ export function ToolFilePreview({
       agents={agents}
       baseDir={baseDir}
       local={local}
+      onShowVisualization={onShowVisualization}
     />
   ) : null;
 }

@@ -25762,6 +25762,67 @@ body:has(.shell-vibrant),
 .tool-file-preview-operation { color: var(--accent-text); font-size: calc(11px * var(--font-scale)); }
 .tool-file-preview-path { padding: 0 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: calc(11px * var(--font-scale)); }
 .tool-file-preview-status, .tool-file-preview-note { padding: 8px 12px; color: var(--text-secondary); font-size: calc(11px * var(--font-scale)); }
+
+/* ---- Right rail: agent HTML visualization ---- */
+.visualization-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 8px 8px 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.visualization-preview-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 600;
+}
+.visualization-preview-switch,
+.tool-file-preview-switch {
+  flex-shrink: 0;
+  margin-left: auto;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: calc(11px * var(--font-scale));
+  cursor: pointer;
+}
+.visualization-preview-switch:hover,
+.tool-file-preview-switch:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.visualization-preview-switch:focus-visible,
+.tool-file-preview-switch:focus-visible {
+  outline: 2px solid var(--accent);
+}
+.visualization-preview-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.visualization-preview-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.visualization-preview-close:focus-visible { outline: 2px solid var(--accent); }
+.visualization-preview-body { flex: 1; min-height: 0; background: var(--bg-secondary); }
+.visualization-preview-frame { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
+
 .tool-file-preview-code { flex: 1; min-height: 0; overflow: hidden; }
 /* Preview follows the active chat palette instead of a separate dark editor theme. */
 .tool-file-preview-code.file-viewer-cm-host { background: transparent; }

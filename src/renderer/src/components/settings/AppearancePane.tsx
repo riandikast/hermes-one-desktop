@@ -15,6 +15,7 @@ import ThemeEditor from "./ThemeEditor";
 import { useWindowTerminalStyle } from "./windowTerminalStyle";
 import { FONT_SIZE_STEPS, useFontSize } from "./fontSize";
 import { useToolCallsAnimation } from "./toolCallsAnimation";
+import { useInlineVisualizations } from "./inlineVisualizations";
 import SettingsHint from "./SettingsHint";
 
 const GPU_MODES: GpuPreferenceMode[] = ["auto", "on", "off"];
@@ -87,6 +88,10 @@ export default function AppearancePane(): React.JSX.Element {
   });
   const [toolCallsAnimation, setToolCallsAnimation] = useToolCallsAnimation();
   const [toolCallsAnimationSaveError, setToolCallsAnimationSaveError] =
+    useState(false);
+  const [inlineVisualizations, setInlineVisualizations] =
+    useInlineVisualizations();
+  const [inlineVisualizationsSaveError, setInlineVisualizationsSaveError] =
     useState(false);
   // Installed font families, listed from the main process (the renderer cannot
   // enumerate system fonts). Empty until loaded; also empty on a platform we
@@ -485,6 +490,30 @@ export default function AppearancePane(): React.JSX.Element {
               onChange={(e) => {
                 setToolCallsAnimationSaveError(
                   !setToolCallsAnimation(e.target.checked),
+                );
+              }}
+            />
+            <span className="tools-toggle-track" />
+          </label>
+        </div>
+
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <div className="settings-row-label">Inline visualizations</div>
+            {inlineVisualizationsSaveError ? (
+              <div className="settings-row-hint">Could not save inline visualization preference.</div>
+            ) : (
+              <SettingsHint>Preview an HTML visualization the assistant emits in a sandboxed right-side panel</SettingsHint>
+            )}
+          </div>
+          <label className="tools-toggle" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              aria-label="Inline visualizations"
+              checked={inlineVisualizations}
+              onChange={(e) => {
+                setInlineVisualizationsSaveError(
+                  !setInlineVisualizations(e.target.checked),
                 );
               }}
             />

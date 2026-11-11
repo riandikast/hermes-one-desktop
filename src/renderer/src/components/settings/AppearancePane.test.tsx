@@ -182,6 +182,25 @@ describe("Appearance pane — tool calls animation", () => {
     expect(toggleFor("Tool calls animation").checked).toBe(true);
   });
 
+  it("persists inline visualizations independently of the animation row", () => {
+    renderPane();
+    expect(
+      screen.getByText(
+        "Preview an HTML visualization the assistant emits in a sandboxed right-side panel",
+      ),
+    ).toBeDefined();
+    const toggle = screen.getByRole("checkbox", {
+      name: "Inline visualizations",
+    }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(true);
+    expect(localStorage.getItem("hermes.inlineVisualizations")).toBe("true");
+    expect(localStorage.getItem("hermes.toolCallsAnimation")).toBeNull();
+    fireEvent.click(toggle);
+    expect(localStorage.getItem("hermes.inlineVisualizations")).toBe("false");
+  });
+
   it("shows storage failures without changing the checkbox and allows retry", () => {
     renderPane();
     const toggle = screen.getByRole("checkbox", {
