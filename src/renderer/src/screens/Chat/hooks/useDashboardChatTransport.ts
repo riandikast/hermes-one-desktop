@@ -3786,7 +3786,15 @@ export function useDashboardChatTransport({
       // proceeds when the gateway answers. The DB reconcile dedupes by
       // role+content, so the echoed row replaces this one without a
       // duplicate bubble.
-      const optimisticUser: ChatMessage | null = isRecovery
+      // useChatActions already owns an optimistic bubble for manual sends.
+      // Keep its identity (also used for file-change ownership and seed
+      // exclusion); standalone transport callers still need their own bubble.
+      const callerTurn = activeTurnRef.current;
+      const callerOwnsPrompt = !isRecovery && callerTurn?.status === "running" && messagesRef.current.some(
+        (message) => message.id === callerTurn.userId && isBubbleMessage(message) &&
+          message.role === "user" && message.content === text && message.canonicalDbId === undefined,
+      );
+      const optimisticUser: ChatMessage | null = isRecovery || callerOwnsPrompt
         ? null
         : {
             id: `local-send-${Date.now()}-${sendGeneration}`,
@@ -3802,7 +3810,7 @@ export function useDashboardChatTransport({
         ];
         setMessages(messagesRef.current);
       }
-      activeTurnRef.current = {
+      activeTurnRef.current = callerOwnsPrompt ? callerTurn : {
         turnId: `send-${Date.now()}`,
         userId: optimisticUser?.id ?? "",
         startIndex: optimisticUser

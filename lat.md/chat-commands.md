@@ -56,6 +56,10 @@ History reconciliation uses `isBubbleMessage` for both legacy bubbles and explic
 
 ## Streaming source-of-truth ref
 
+Manual sends reuse the optimistic prompt already created by chat actions. Dashboard transport creates a bubble only for standalone sends, keeping one visible prompt and its original turn identity per submission.
+
+[[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.test.tsx]] reproduces the caller/transport boundary: one existing optimistic bubble, one `prompt.submit`, unchanged prompt ownership. History reconciliation must not be used to repair duplicate appends after the fact.
+
 `handleGatewayEvent` in [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#useDashboardChatTransport]] applies stream events against a synchronous `messagesRef`, not React state, because state lags a render behind and each successive delta must build on the previous one.
 
 The handler reads the ref, applies a delta, writes the ref back, then calls `setMessages`. An effect mirrors `messages` back into `messagesRef`, and its guard is a correctness invariant. Every `setMessages` in the hook stores the exact same array in the ref, so when React commits the hook's own push, `messages === messagesRef.current` and the effect must skip: re-adopting that snapshot let a second `message.delta` land on a pre-delta array and silently drop a chunk (#757). The effect therefore syncs only when the identity differs (`messages !== messagesRef.current`), which happens only when Chat state changes underneath the hook — a new user turn, `handleClear` emptying the list, or a clarify card resolving in place. A length comparison is wrong here: it misses the shrink and the same-length replacement.

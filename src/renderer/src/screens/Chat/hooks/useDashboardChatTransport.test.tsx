@@ -227,6 +227,30 @@ function Harness({
 const payloadRejection = 'Provider said: HTTP 422: [422]: {"error":{"code":"VALIDATION_ERROR","message":"Input exceeds proxy payload limit.","request_id":"req_test"}}';
 
 describe("useDashboardChatTransport recovery", () => {
+  it("reuses the caller's optimistic prompt instead of appending it twice", async () => {
+    dashboardMock.request.mockImplementation(async (method) => {
+      if (method === "session.create" || method === "session.resume") return { session_id: "live", stored_session_id: "stored" };
+      if (method === "model.options") return { model: "bad-model", provider: "bad-provider" };
+      if (method === "session.status") return { output: "Model: bad-model (bad-provider)" };
+      if (method === "session.active_list") return { sessions: [] };
+      return {};
+    });
+    const api: HarnessApi = {};
+    const view = render(<Harness api={api} />);
+    try {
+      // useChatActions pushes this bubble and registers its turn before it
+      // calls sendViaDashboard. Exercise that exact boundary, not send alone.
+      await act(async () => {
+        api.setMessages!([{ id: "caller-user", role: "user", content: "one manual prompt", turnId: "caller-turn" }]);
+      });
+      api.activeTurnRef!.current = { userId: "caller-user", turnId: "caller-turn", startIndex: 0, status: "running" };
+      await act(async () => { await api.send!("one manual prompt"); });
+      expect(api.messages!.filter((row) => "role" in row && row.role === "user" && row.content === "one manual prompt")).toHaveLength(1);
+      expect(dashboardMock.request.mock.calls.filter(([method]) => method === "prompt.submit")).toHaveLength(1);
+      expect(api.activeTurnRef!.current?.userId).toBe("caller-user");
+    } finally { view.unmount(); }
+  });
+
   it("skips retired-model retries without treating every HTTP410 as model deprecation", () => {
     expect(explicitModelLimit('HTTP410 ModelDeprecated: use recommended-model')).toBe(true);
     expect(explicitModelLimit('HTTP 410 model has been deprecated')).toBe(true);
