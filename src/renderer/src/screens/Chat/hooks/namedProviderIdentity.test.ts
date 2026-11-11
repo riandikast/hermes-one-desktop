@@ -9,6 +9,9 @@ describe("named provider runtime identity safety", () => {
       provider: "custom", model,
     })).toBe("9r");
     expect(dashboardModelMatches("9r", model, { provider: "9r", model })).toBe(true);
+    // model.options returns the canonical identity for the same configured
+    // route; session.status only prints the billing class.
+    expect(dashboardModelMatches("9r", model, { provider: "custom:9r", model })).toBe(true);
   });
 
   it("cannot prove named endpoint ownership from a bare custom status", () => {

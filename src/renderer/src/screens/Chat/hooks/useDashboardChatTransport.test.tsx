@@ -503,11 +503,16 @@ it("waits for fresh custom inventory before a NAMED custom provider's first send
   // ready" and the recovery never resubmitted the prompt.
   let optionsReads = 0;
   const writes: string[] = [];
+  let liveModel = "primary";
   dashboardMock.request.mockImplementation(async (method, params) => {
     if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
     if (method === "model.options") return ++optionsReads === 1 ? { providers: [] } : { providers: [{ slug: "custom:cbai", base_url: "https://fixture.invalid/v1", models: ["cbai/deepseek-v4.1-flash"] }] };
-    if (method === "session.status") return { output: "Model: cbai/deepseek-v4.1-flash (custom:cbai)" };
-    if (method === "config.set") { writes.push(params.value); return { key: "model", scope: "session" }; }
+    if (method === "session.status") return { output: `Model: ${liveModel} (${liveModel === "primary" ? "9r" : "custom:cbai"})` };
+    if (method === "config.set") {
+      writes.push(params.value);
+      liveModel = "cbai/deepseek-v4.1-flash";
+      return { key: "model", scope: "session" };
+    }
     return {};
   });
   const api: HarnessApi = {};

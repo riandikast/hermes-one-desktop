@@ -794,6 +794,13 @@ export function dashboardModelMatches(
   if (liveModel !== model) return false;
   if (liveProvider === provider) return true;
 
+  // A named `providers:` entry reports `custom:<slug>` from the catalog's
+  // canonical identity (session.status only carries the billing class
+  // `custom`). The slug is the same configured route, not a bare custom pick.
+  const stripCustomPrefix = (value: string): string =>
+    value.startsWith("custom:") ? value.slice("custom:".length) : value;
+  if (stripCustomPrefix(liveProvider) === stripCustomPrefix(provider)) return true;
+
   // Named custom providers can be reported by Hermes Agent as custom:<slug>
   // while Hermes One's older model config still treats them as custom rows.
   return provider === "custom" && liveProvider.startsWith("custom:");
@@ -1285,6 +1292,13 @@ export function useDashboardChatTransport({
   providerRef.current = provider;
   const reasoningSegmentClosedRef = useRef(false);
   const appliedModelRef = useRef<string | null>(null);
+  /**
+   * A named `providers:` route verified through the catalog after
+   * `session.status` reported only the billing class (`custom`). Keeps the
+   * next send from re-applying the same switch just because status stays
+   * ambiguous.
+   */
+  const verifiedCustomRouteRef = useRef<{ key: string; model: string } | null>(null);
   const modelOptionsCacheRef = useRef<{
     key: string;
     client: DashboardGatewayClient;
@@ -3252,6 +3266,29 @@ export function useDashboardChatTransport({
         return match ? { model: match[1], provider: match[2] } : null;
       };
 
+      /**
+       * Canonical route identity for a live session. `session.status` prints
+       * the billing class only (`custom`) for a named `providers:` entry, so a
+       * bare-custom status cannot name `9r`; `model.options` resolves the
+       * endpoint through `canonical_custom_identity` and returns `custom:9r`.
+       * This runs only when the status is ambiguous, not on every send.
+       */
+      const readCatalogIdentity = async (
+        id: string,
+      ): Promise<{ provider: string; model: string } | null> => {
+        const options = await client
+          .request<ModelOptionsResponse>("model.options", { session_id: id })
+          .catch((err: unknown) => {
+            if (/unknown method|method not found|unsupported/i.test(String(err))) {
+              return null;
+            }
+            throw err;
+          });
+        return options?.provider && options?.model
+          ? { provider: options.provider, model: options.model }
+          : null;
+      };
+
       const switchAndValidate = async (
         targetSessionId: string,
       ): Promise<string> => {
@@ -3280,9 +3317,22 @@ export function useDashboardChatTransport({
         // `model.options` RPC (2.7-4.6 s measured; the backend probes the custom
         // provider's /v1/models on every uncached call) for every message.
         const appliedKey = selectionKey(targetSessionId);
+        // A named route already proved through the catalog stays applied:
+        // status keeps printing `custom`, but re-sending config.set would
+        // repeat a multi-second probe on every message for nothing.
+        if (
+          appliedModelRef.current === appliedKey &&
+          verifiedCustomRouteRef.current?.key === appliedKey &&
+          verifiedCustomRouteRef.current.model === selectedModel &&
+          identity?.provider.trim().toLowerCase() === "custom" &&
+          identity?.model === selectedModel
+        ) {
+          return targetSessionId;
+        }
         if (identity && appliedModelRef.current !== appliedKey) {
           // Nothing applied for this selection yet — do not trust a stale entry.
           appliedModelRef.current = null;
+          verifiedCustomRouteRef.current = null;
           modelOptionsCacheRef.current = null;
         } else if (
           identity &&
@@ -3290,11 +3340,20 @@ export function useDashboardChatTransport({
             provider: identity.provider,
             model: identity.model,
           } as ModelOptionsResponse)
+          // A named route already proved through the catalog keeps status's
+          // bare `custom` label from forcing the same switch again.
+          && !(
+            verifiedCustomRouteRef.current?.key === appliedKey &&
+            verifiedCustomRouteRef.current.model === selectedModel &&
+            identity.provider.trim().toLowerCase() === "custom" &&
+            identity.model === selectedModel
+          )
         ) {
           // The backend is live on a DIFFERENT model than the one we applied
           // (someone switched it out from under us) — the cached inventory is
           // no longer authoritative.
           appliedModelRef.current = null;
+          verifiedCustomRouteRef.current = null;
           modelOptionsCacheRef.current = null;
         }
         const before = await readOptions(targetSessionId);
@@ -3393,6 +3452,16 @@ export function useDashboardChatTransport({
           // A valid setter acknowledgement is not endpoint proof. Distinguish
           // accepted intent from a failed mutation, without permitting a send.
           if (dashboardProvider !== "custom" && liveIdentity?.provider === "custom" && liveIdentity.model === selectedModel) {
+            // `session.status` reports the billing class, not the configured
+            // entry. Ask the catalog (which resolves the live endpoint through
+            // canonical_custom_identity) before refusing a named route.
+            const catalogIdentity = await readCatalogIdentity(targetSessionId);
+            checkCancelled();
+            if (catalogIdentity && dashboardModelMatches(dashboardProvider, selectedModel, catalogIdentity)) {
+              appliedModelRef.current = key;
+              verifiedCustomRouteRef.current = { key, model: selectedModel };
+              return targetSessionId;
+            }
             throw new ModelRouteUnverifiedError(
               `Selection accepted for ${dashboardProvider}/${selectedModel}; route not verified: live status reports custom without an endpoint. Sending remains blocked until runtime identity can be verified.`,
             );

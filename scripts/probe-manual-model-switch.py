@@ -45,6 +45,12 @@ def replay(tokens):
     import unittest.mock
     switch_module = types.ModuleType('hermes_cli.model_switch')
     switch_module.switch_model = lambda **kw: result
+    # Current installed _apply_model_switch parses the raw input itself before
+    # the stubbed _switch_request runs; keep the flag shape it reads.
+    switch_module.parse_model_switch_args = lambda raw: SimpleNamespace(
+        explicit_provider='9r', model_input='cx/gpt-6.1-sol',
+        is_global=False, is_session=True, is_once=False, errors=(),
+        reasoning_effort='', is_reset=False)
     metrics = types.ModuleType('hermes_cli.observability.shared_metrics_events')
     metrics.record_model_switch = lambda **kw: None
     modules = {'hermes_cli': types.ModuleType('hermes_cli'),

@@ -83,6 +83,8 @@ Named custom providers resolve to runtime provider `custom`; status lacks endpoi
 
 `scripts/probe-named-provider-identity.py` replays installed resolver, setter and status definitions with fixture-only endpoints. Exact `9r` / `oc/mimo-v2.6-flash-free` pins `9r` but displays `custom` after construction. The same model on a different custom endpoint produces identical status. `config.set` acknowledges model and scope, not the live endpoint. Inventory canonical identity may fall back to model ownership or profile config, so it is not independent endpoint proof. Send validation remains fail-closed pending a live session-owned endpoint/route identity contract; no named-to-custom blanket equivalence is accepted. A successful session setter followed by same-model bare-custom status is an accepted but unverified selection warning, not a failed-mutation claim. Safety controls: [[src/renderer/src/screens/Chat/hooks/namedProviderIdentity.test.ts]].
 
+When `session.status` prints bare `custom` for a named selection, the transport asks `model.options` for the canonical route and accepts only `custom:<slug>` / `<slug>` that matches the pick. The catalog resolves the live agent's own `base_url` through `canonical_custom_identity`, so a different endpoint serving the same model still fails closed. A verified named route is cached per selection key to avoid re-running the setter and the multi-second custom probe on every message; a changed live model clears it. Status-only matching (`dashboardModelMatches`) remains strict.
+
 ## Fresh runtime readiness
 
 Fresh sessions return before agent construction; model selection waits for live identity rather than trusting a pre-build acknowledgement.
@@ -118,6 +120,8 @@ The visible tab polls `session.status` every two seconds, including local active
 A session setter acknowledgement records accepted intent; generic custom status cannot prove which named endpoint is live, even when its model matches.
 
 Manual picks report this bounded case through `onModelApplyWarning` as accepted but not verified, with a transcript message and toast. Unsupported, malformed, deferred, repeated-confirmation and contradictory-model responses remain hard failures. Every subsequent send retains exact runtime verification and refuses ambiguous routing.
+
+Before warning, the transport resolves the ambiguous status through the catalog as described in [[model-selection#Session model override#Named provider versus runtime billing class]]. A matching `custom:<slug>` accepts the pick and allows sending; a bare `custom` or another route keeps the warning and the send block.
 
 The actual Chat automatic callback updates both session override state and its immediate ref, so it overrides any previous manual pick in the picker and send path. Recovery announces a switch through the transcript and toast only after runtime model validation, never before a failed or cancelled route application. The integration harness executes the real Chat callbacks and display expression, covering Switch now, quota-triggered recovery, empty inventories, refusal controls, and later manual selection/Stop supersession.
 

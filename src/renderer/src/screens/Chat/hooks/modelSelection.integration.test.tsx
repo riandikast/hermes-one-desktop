@@ -342,7 +342,7 @@ it.each([false, true])("retry, Switch now, interrupt, manual pick preserves rout
 });
 
 // @lat: [[model-selection#Acknowledged selection versus verified runtime]]
-it.each(["9r", "cbai"])("manual %s acknowledgement warns without proving bare-custom routing", async (provider) => {
+it.each(["9r", "cbai"])("manual %s pick uses the catalog when status only names the billing class", async (provider) => {
   Object.defineProperty(window, "hermesAPI", { configurable: true, value: {
     getModelConfig: async () => ({ model: "primary", provider: "9r", baseUrl: "" }),
     listModels: async () => [], getEnv: async () => ({}),
@@ -355,7 +355,14 @@ it.each(["9r", "cbai"])("manual %s acknowledgement warns without proving bare-cu
   wire.request.mockReset().mockImplementation(async (method: string) => {
     if (method === "session.create") return { session_id: "live", stored_session_id: "stored" };
     if (method === "session.status") return { output: accepted ? "Model: deepseek-v4.1-flash (custom)" : "Model: primary (9r)" };
-    if (method === "model.options") return { providers: [] };
+    if (method === "model.options") {
+      if (!accepted) return { providers: [] };
+      // The catalog resolves the live endpoint; `custom:9r` is the named
+      // `providers:` entry, while a bare `custom` cannot prove that route.
+      return provider === "9r"
+        ? { provider: "custom:9r", model: "deepseek-v4.1-flash" }
+        : { provider: "custom", model: "deepseek-v4.1-flash" };
+    }
     if (method === "config.set") { accepted = true; return { key: "model", scope: "session" }; }
     return {};
   });
@@ -365,12 +372,21 @@ it.each(["9r", "cbai"])("manual %s acknowledgement warns without proving bare-cu
     await act(async () => { api.select(provider, "deepseek-v4.1-flash", ""); });
     expect(api.shown.model).toBe("deepseek-v4.1-flash");
     expect(modelErrors).toEqual([]);
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("accepted");
-    expect(warnings[0]).toContain("not verified");
-    expect(notifications).toHaveBeenCalledWith(warnings[0]);
-    expect(notices).toEqual(warnings);
-    await act(async () => { await api.sendMessage("must not submit"); });
-    expect(wire.request.mock.calls.some(([method]) => method === "prompt.submit")).toBe(false);
+    if (provider === "9r") {
+      expect(warnings).toEqual([]);
+      await act(async () => { await api.sendMessage("verified named route"); });
+      expect(wire.request.mock.calls.filter(([method]) => method === "prompt.submit")).toHaveLength(1);
+      // The pick applies once and the first send revalidates it once; a
+      // verified named route is not re-applied per message.
+      expect(wire.request.mock.calls.filter(([method]) => method === "config.set")).toHaveLength(2);
+    } else {
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain("accepted");
+      expect(warnings[0]).toContain("not verified");
+      expect(notifications).toHaveBeenCalledWith(warnings[0]);
+      expect(notices).toEqual(warnings);
+      await act(async () => { await api.sendMessage("must not submit"); });
+      expect(wire.request.mock.calls.some(([method]) => method === "prompt.submit")).toBe(false);
+    }
   } finally { view.unmount(); }
 });
