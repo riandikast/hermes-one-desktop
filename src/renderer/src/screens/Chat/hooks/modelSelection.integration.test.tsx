@@ -84,6 +84,34 @@ function Harness(): null {
 }
 afterEach(() => { localStorage.clear(); modelErrors.length = 0; notices.length = 0; warnings.length = 0; notifications.mockClear(); });
 
+it.each(["custom", "9r"])("sends a new conversation on the backend default without manufacturing a model override (%s)", async (provider) => {
+  Object.defineProperty(window, "hermesAPI", { configurable: true, value: {
+    getModelConfig: async () => ({ model: "default-model", provider, baseUrl: "https://default.example/v1" }),
+    listModels: async () => [], getEnv: async () => ({}),
+    listAgentProviderRoutes: async () => [],
+    onConnectionConfigChanged: () => () => {}, onModelLibraryChanged: () => () => {},
+    discoverProviderModels: async () => ({ models: [], status: "ok", cached: false }),
+    startDashboard: async () => ({ connection: { wsUrl: "ws://fixture" }, running: true }),
+    freshDashboardWsUrl: async () => "ws://fixture", getSessionMessages: async () => [],
+  } });
+  wire.request.mockReset().mockImplementation(async (method: string) => {
+    if (method === "session.create") return { session_id: "fresh-default", stored_session_id: "stored-default" };
+    if (method === "session.status") return { output: "Model: default-model (custom)" };
+    return {};
+  });
+  const view = renderWithI18n(<Harness />);
+  try {
+    await act(async () => {});
+    await act(async () => { await api.sendMessage("first prompt"); });
+    const created = wire.request.mock.calls.find(([method]) => method === "session.create")![1];
+    expect(created).not.toHaveProperty("provider");
+    expect(created).not.toHaveProperty("model");
+    expect(wire.request.mock.calls.filter(([method]) => method === "config.set")).toHaveLength(0);
+    expect(wire.request.mock.calls.filter(([method]) => method === "prompt.submit")).toHaveLength(1);
+    expect(api.sessionModelOverrideRef.current).toBeUndefined();
+  } finally { view.unmount(); }
+});
+
 // @lat: [[model-selection#Endpoint-bound fallback without inventory]]
 it.each(["correct", "quota", "wrong-route", "bare-custom", "missing-route", "wrong-endpoint", "path-case", "ambiguous", "cancelled"])("stored custom fallback with permanently empty inventory: %s", async (scenario) => {
   const baseUrl = "https://cbai.example/v1";

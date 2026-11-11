@@ -4,6 +4,14 @@ The in-chat (bottom) model picker selects a model for the **current conversation
 
 The override is held in renderer state on each `<Chat>` run ([[src/renderer/src/screens/Chat/Chat.tsx]]), persisted by session id, and sent with every message; it is cleared when the conversation is cleared/reset and is absent on a fresh chat, so new conversations start on the global default. This is distinct from the persisted [[model-context]] default that non-chat surfaces read.
 
+## Inherited default model
+
+A conversation with no session model override lets the backend resolve its complete default route, including endpoint and authentication. The displayed default is not an explicit picker selection.
+
+[[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#useDashboardChatTransport]] omits model/provider overrides during session creation and skips the switch verifier for inherited defaults. Explicit picks, restored overrides and fallback switches retain route verification.
+
+[[src/renderer/src/screens/Chat/hooks/modelSelection.integration.test.tsx]] covers the first send for bare custom and named defaults with empty discovery inventory, without requiring the user to reselect the same model.
+
 ## Two-pane picker grouped by display brand
 
 The bottom [[src/renderer/src/screens/Chat/ModelPicker.tsx]] dropdown is a two-pane layout: a left **provider rail** filters a right **flat model list**, with a top search box (leading magnifier icon) narrowing both.

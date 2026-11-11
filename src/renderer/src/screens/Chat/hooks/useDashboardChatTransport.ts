@@ -2983,8 +2983,9 @@ export function useDashboardChatTransport({
           profile,
           storedSessionId: stored,
           folderContext: systemParts.join("\n\n"),
-          model: selectedModel,
-          provider: selectedProvider,
+          // No session pick: let the backend resolve its complete default route.
+          model: sessionModelOverrideRef && !liveOverride ? undefined : selectedModel,
+          provider: sessionModelOverrideRef && !liveOverride ? undefined : selectedProvider,
           // Subagent watch window: attach LAZILY so the gateway mirrors the
           // child's live events here. An eager resume builds a real agent, and
           // the child-mirror refuses to feed a session that owns one -- the
@@ -3201,6 +3202,9 @@ export function useDashboardChatTransport({
       const selectedModel = liveOverride?.model ?? modelRef.current;
       const selectedProvider = liveOverride?.provider ?? providerRef.current;
       const selectedBaseUrl = liveOverride?.baseUrl ?? modelBaseUrlRef.current;
+      // An inherited default is not a model-switch request. Preserve backend
+      // endpoint/auth resolution; explicit picks still undergo route checks.
+      if (sessionModelOverrideRef && !liveOverride) return sessionId;
       const observed = observedRuntimeRef.current;
       if (observed?.sessionId === sessionId && !dashboardModelMatches(selectedProvider, selectedModel, observed) &&
           observed.selection === JSON.stringify([selectedProvider, selectedModel, selectedBaseUrl])) return sessionId;
