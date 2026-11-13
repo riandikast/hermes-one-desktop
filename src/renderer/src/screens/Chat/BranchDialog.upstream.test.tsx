@@ -39,9 +39,9 @@ it("separates local tracking from publishing, confirms destination and refreshes
   render(<BranchDialog dir="/repo" onClose={vi.fn()} onChanged={vi.fn()} />);
   fireEvent.click(await screen.findByRole("tab", { name: "Upstream" }));
   expect(await screen.findByText("No upstream branch configured.")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Publish and set upstream" })).toBeDisabled();
-  fireEvent.change(screen.getByLabelText("Upstream remote"), { target: { value: "master" } });
-  expect(screen.getByLabelText("Remote branch")).toHaveValue("main");
+  // Opening the tab preselects the only remote and the current branch name.
+  expect(screen.getByLabelText("Remote")).toHaveValue("master");
+  expect(screen.getByLabelText("Branch")).toHaveValue("main");
   fireEvent.click(screen.getByRole("button", { name: "Set upstream" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Set upstream" })).toBeEnabled());
   expect(upstream).not.toHaveBeenCalled();
@@ -53,9 +53,11 @@ it("separates local tracking from publishing, confirms destination and refreshes
   await waitFor(() => expect(screen.getByRole("button", { name: "Unset upstream" })).toBeEnabled());
   fireEvent.click(screen.getByRole("button", { name: "Unset upstream" }));
   await waitFor(() => expect(upstream).toHaveBeenLastCalledWith("/repo", "unset", "main", "master", "main", "fixture-fingerprint"));
-  await waitFor(() => expect(screen.getByLabelText("Remote branch")).toBeEnabled());
-  fireEvent.change(screen.getByLabelText("Remote branch"), { target: { value: "feature/new" } });
-  expect(screen.getByRole("button", { name: "Set upstream" })).toBeDisabled();
+  await waitFor(() => expect(screen.getByLabelText("Branch")).toBeEnabled());
+  fireEvent.change(screen.getByLabelText("Branch"), { target: { value: "feature/new" } });
+  // A branch that was never fetched can still be tracked: Set fetches that one ref.
+  expect(screen.getByRole("button", { name: "Set upstream" })).toBeEnabled();
+  expect(screen.getByText("Will fetch master/feature/new once. No push.")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Publish and set upstream" }));
   await waitFor(() => expect(upstream).toHaveBeenLastCalledWith("/repo", "publish", "main", "master", "feature/new", "fixture-fingerprint"));
   expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining("master/feature/new” at https://example.invalid/push.git"));
@@ -70,7 +72,7 @@ it("preserves failures, prevents duplicate submissions and disables detached HEA
   const view = render(<BranchDialog dir="/repo" onClose={vi.fn()} onChanged={vi.fn()} />);
   fireEvent.click(await screen.findByRole("tab", { name: "Upstream" }));
   await screen.findByText("No upstream branch configured.");
-  fireEvent.change(screen.getByLabelText("Upstream remote"), { target: { value: "master" } });
+  fireEvent.change(screen.getByLabelText("Remote"), { target: { value: "master" } });
   const button = screen.getByRole("button", { name: "Publish and set upstream" });
   fireEvent.click(button); fireEvent.click(button);
   await waitFor(() => expect(upstream).toHaveBeenCalledTimes(1));
@@ -80,6 +82,6 @@ it("preserves failures, prevents duplicate submissions and disables detached HEA
   list.mockResolvedValue({ ...initial, current: null, branches: [] });
   render(<BranchDialog dir="/repo" onClose={vi.fn()} onChanged={vi.fn()} />);
   fireEvent.click(await screen.findByRole("tab", { name: "Upstream" }));
-  expect(await screen.findByLabelText("Upstream remote")).toBeDisabled();
+  expect(await screen.findByLabelText("Remote")).toBeDisabled();
   expect(screen.getByRole("button", { name: "Publish and set upstream" })).toBeDisabled();
 });

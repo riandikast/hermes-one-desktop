@@ -201,9 +201,17 @@ export async function gitBranchUpstream(dir: string, action: "set" | "unset" | "
     if (action !== "unset") {
       if (!list.remotes?.some((item) => item.name === remote)) return { ok: false, error: "Remote no longer exists. Refresh before retrying." };
       if ((await runGit(dir, ["check-ref-format", `refs/heads/${target}`], 10_000)).code !== 0) return { ok: false, error: "Invalid upstream branch name" };
-      if (action === "set" && !list.remoteBranches?.some((item) => item.remote === remote && item.name === target)) {
-        return { ok: false, error: "Remote-tracking branch not found. Fetch first, or use Publish and set upstream." };
+    }
+    let fetched = false;
+    if (action === "set" && !list.remoteBranches?.some((item) => item.remote === remote && item.name === target)) {
+      // Tracking may be set before the branch has ever been fetched. Fetch this
+      // one ref (read-only, no push) so `git branch --set-upstream-to` accepts it.
+      const fetchAuth = await gitNetworkAuthArgs(dir, remote);
+      const fetchedRef = await runGit(dir, [...fetchAuth, "fetch", "--no-tags", "--", remote, `refs/heads/${target}`], 300_000);
+      if (fetchedRef.code !== 0) {
+        return { ok: false, error: [fetchedRef.stderr, fetchedRef.stdout].filter(Boolean).join("\n").trim() || "Could not fetch the upstream branch" };
       }
+      fetched = true;
     }
     const auth = action === "publish" ? await gitNetworkAuthArgs(dir, remote) : [];
     if (action === "publish") {
@@ -227,7 +235,7 @@ export async function gitBranchUpstream(dir: string, action: "set" | "unset" | "
       : upstream !== `${remote}/${target}` || configuredRemote.stdout.trim() !== remote || configuredMerge.stdout.trim() !== `refs/heads/${target}`)) {
       return { ok: false, error: "Tracking configuration could not be verified. Refresh repository state." };
     }
-    return { ok: true, output: action === "unset" ? `Upstream removed from "${branch}". No push.` : `"${branch}" now tracks "${remote}/${target}".${action === "publish" ? " Branch pushed." : " No push."}` };
+    return { ok: true, output: action === "unset" ? `Upstream removed from "${branch}". No push.` : `"${branch}" now tracks "${remote}/${target}".${action === "publish" ? " Branch pushed." : fetched ? " Branch fetched; no push." : " No push."}` };
   } catch (err) { return { ok: false, error: String(err) }; }
   finally { changing = false; }
 }

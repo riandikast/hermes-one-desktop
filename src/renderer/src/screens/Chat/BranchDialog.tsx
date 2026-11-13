@@ -131,6 +131,9 @@ export function BranchDialog({ dir, onClose, onChanged }: {
     finally { lock.current = false; setBusy(false); }
   };
 
+  const currentUpstream = data?.branches.find((branch) => branch.current)?.upstream;
+  const knownTarget = data?.remoteBranches?.some((branch) => branch.remote === upstreamRemote && branch.name === upstreamBranch.trim());
+
   const updateUpstream = async (action: "set" | "unset" | "publish"): Promise<void> => {
     if (lock.current || !data?.current) return;
     const branch = data.current;
@@ -138,8 +141,9 @@ export function BranchDialog({ dir, onClose, onChanged }: {
     const remote = data.remotes?.find((item) => item.name === upstreamRemote);
     if (action !== "unset" && (!remote || !target)) return;
     const message = action === "publish"
-      ? `Push local branch “${branch}” to “${upstreamRemote}/${target}” at ${remote!.pushUrls.join(", ")} and set it as upstream? This publishes commits to the remote. No force push; other branches are not pushed.`
-      : action === "set" ? `Set “${branch}” to track “${upstreamRemote}/${target}”? Local configuration only. No fetch or push.`
+      ? `Push local branch “${branch}” to “${upstreamRemote}/${target}” at ${remote!.pushUrls.join(", ")} and track it? This uploads your commits to that remote. No force push; other branches are not pushed.`
+      : action === "set" ? `Track “${upstreamRemote}/${target}” from “${branch}”?` +
+        (knownTarget ? " Local configuration only. No fetch or push." : ` “${upstreamRemote}/${target}” is not fetched yet, so it will be fetched once first. No push.`)
       : `Remove upstream tracking from “${branch}”? No local or remote branch is deleted. No push.`;
     lock.current = true; setBusy(true); setError("");
     try {
@@ -152,8 +156,20 @@ export function BranchDialog({ dir, onClose, onChanged }: {
     finally { lock.current = false; setBusy(false); }
   };
 
-  const currentUpstream = data?.branches.find((branch) => branch.current)?.upstream;
-  const knownTarget = data?.remoteBranches?.some((branch) => branch.remote === upstreamRemote && branch.name === upstreamBranch.trim());
+  const openUpstream = (): void => {
+    if (data && !upstreamRemote) {
+      const tracked = currentUpstream?.split("/") ?? [];
+      const trackedRemote = tracked.length > 1 ? tracked[0] : "";
+      const pick = data.remotes?.some((item) => item.name === trackedRemote)
+        ? trackedRemote
+        : data.remotes?.length === 1 ? data.remotes[0].name : "";
+      if (pick) {
+        setUpstreamRemote(pick);
+        setUpstreamBranch(trackedRemote === pick && tracked.length > 1 ? tracked.slice(1).join("/") : data.current ?? "");
+      }
+    }
+    setTab("upstream");
+  };
 
   const startRemoteEdit = (remote: NonNullable<GitBranchListResult["remotes"]>[number]): void => {
     const separatePush = remote.pushUrls.find((url) => !remote.fetchUrls.includes(url)) ?? "";
@@ -185,7 +201,7 @@ export function BranchDialog({ dir, onClose, onChanged }: {
       {TABS.map((entry) => (
         <button key={entry.id} type="button" role="tab" id={`branch-tab-${entry.id}`}
           className="source-control-branch-tab" aria-selected={tab === entry.id} aria-controls={`branch-panel-${entry.id}`}
-          disabled={busy} onClick={() => setTab(entry.id)}>
+          disabled={busy} onClick={() => entry.id === "upstream" ? openUpstream() : setTab(entry.id)}>
           {entry.label}
         </button>
       ))}
@@ -305,22 +321,37 @@ export function BranchDialog({ dir, onClose, onChanged }: {
         <p className="source-control-branch-status">
           {currentUpstream ? `Tracking: ${currentUpstream}` : "No upstream branch configured."}
         </p>
+        <div className="source-control-upstream-fields">
+          <label className="source-control-field">
+            <span className="source-control-field-label">Remote</span>
+            <select id="upstream-remote" value={upstreamRemote} disabled={busy || !data.current}
+              onChange={(event) => { setUpstreamRemote(event.target.value); setUpstreamBranch(data.current ?? ""); }}>
+              <option value="">Select remote…</option>
+              {data.remotes?.map((remote) => <option key={remote.name} value={remote.name}>{remote.name}</option>)}
+            </select>
+          </label>
+          <label className="source-control-field">
+            <span className="source-control-field-label">Branch</span>
+            <input id="upstream-branch" list="upstream-branches" value={upstreamBranch} maxLength={1024}
+              disabled={busy || !data.current || !upstreamRemote} onChange={(event) => setUpstreamBranch(event.target.value)} placeholder={data.current ?? "main"} />
+          </label>
+        </div>
         <div className="source-control-remote-form">
-          <label className="source-control-visually-hidden" htmlFor="upstream-remote">Upstream remote</label>
-          <select id="upstream-remote" aria-label="Upstream remote" value={upstreamRemote} disabled={busy || !data.current}
-            onChange={(event) => { setUpstreamRemote(event.target.value); setUpstreamBranch(data.current ?? ""); }}>
-            <option value="">Select remote…</option>
-            {data.remotes?.map((remote) => <option key={remote.name} value={remote.name}>{remote.name}</option>)}
-          </select>
-          <label className="source-control-visually-hidden" htmlFor="upstream-branch">Remote branch</label>
-          <input id="upstream-branch" aria-label="Remote branch" list="upstream-branches" value={upstreamBranch} maxLength={1024}
-            disabled={busy || !data.current || !upstreamRemote} onChange={(event) => setUpstreamBranch(event.target.value)} placeholder={data.current ?? "main"} />
           <datalist id="upstream-branches">{data.remoteBranches?.filter((branch) => branch.remote === upstreamRemote).map((branch) => <option key={branch.name} value={branch.name} />)}</datalist>
           <div className="source-control-remote-form-actions">
-            <button type="button" className="btn btn-secondary btn-sm" aria-label="Set upstream" disabled={busy || !data.current || !knownTarget} onClick={() => void updateUpstream("set")}>Set</button>
-            <button type="button" className="btn btn-primary btn-sm" aria-label="Publish and set upstream" disabled={busy || !data.current || !upstreamRemote || !upstreamBranch.trim()} onClick={() => void updateUpstream("publish")}>Publish</button>
-            <button type="button" className="btn-ghost btn-sm source-control-danger" aria-label="Unset upstream" disabled={busy || !data.current || !currentUpstream} onClick={() => void updateUpstream("unset")}>Unset</button>
+            <button type="button" className="btn btn-primary btn-sm" aria-label="Set upstream"
+              title="Track this remote branch. Only fetches that ref if it is missing; never uploads."
+              disabled={busy || !data.current || !upstreamRemote || !upstreamBranch.trim()} onClick={() => void updateUpstream("set")}>Track</button>
+            <button type="button" className="btn btn-secondary btn-sm" aria-label="Publish and set upstream"
+              title="Uploads this branch to the remote, then tracks it."
+              disabled={busy || !data.current || !upstreamRemote || !upstreamBranch.trim()} onClick={() => void updateUpstream("publish")}>Push &amp; track</button>
+            <button type="button" className="btn-ghost btn-sm source-control-danger" aria-label="Unset upstream"
+              title="Stop tracking. Keeps the branch and its commits."
+              disabled={busy || !data.current || !currentUpstream} onClick={() => void updateUpstream("unset")}>Unset</button>
           </div>
+          {upstreamRemote && upstreamBranch.trim() && !knownTarget && (
+            <p className="source-control-branch-status">Will fetch {upstreamRemote}/{upstreamBranch.trim()} once. No push.</p>
+          )}
         </div>
       </div>
     )}

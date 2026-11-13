@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile, readFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { gitBranches, gitBranchChange, gitRemoteAdd, gitRemoteSetUrl } from "./git-branches";
+import { gitBranches, gitBranchChange, gitBranchUpstream, gitRemoteAdd, gitRemoteSetUrl } from "./git-branches";
 import type { GitBranchAction } from "../shared/git-branches";
 
 let repo: string;
@@ -152,4 +152,27 @@ it("changes an existing remote URL in place, keeps tracking, and verifies by rea
     expect((await gitRemoteSetUrl(repo, "upstream", bad)).ok).toBe(false);
   }
   expect(git("remote", "get-url", "upstream").trim()).toBe("https://example.invalid/new.git");
-});
+}, 30_000);
+
+it("sets upstream for a branch that was never fetched, fetching only that ref and never pushing", async () => {
+  const bare = join(repo, "origin.git");
+  git("init", "--bare", "-q", bare);
+  git("remote", "add", "origin", bare);
+  // Publish the current tip, then commit locally so a push would be visible.
+  git("push", "-q", "origin", "main:main");
+  const published = git("rev-parse", "HEAD").trim();
+  await writeFile(join(repo, "local-only.txt"), "local\n");
+  git("add", "."); git("commit", "-qm", "local only");
+  git("update-ref", "-d", "refs/remotes/origin/main");
+  expect(git("for-each-ref", "refs/remotes/origin")).toBe("");
+
+  const result = await gitBranchUpstream(repo, "set", "main", "origin", "main");
+  expect(result.ok, result.error).toBe(true);
+  expect(result.output).toContain("Branch fetched; no push.");
+  expect(git("config", "branch.main.remote").trim()).toBe("origin");
+  expect(git("config", "branch.main.merge").trim()).toBe("refs/heads/main");
+  expect(git("for-each-ref", "refs/remotes/origin/main")).not.toBe("");
+  // The remote branch is untouched: the local-only commit was not uploaded.
+  expect(git("rev-parse", "refs/remotes/origin/main").trim()).toBe(published);
+  expect(git("rev-parse", "HEAD").trim()).not.toBe(published);
+}, 30_000);

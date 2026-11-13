@@ -24477,6 +24477,9 @@ body:has(.shell-vibrant),
 .source-control-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .source-control-field-label { color: var(--text-secondary); font-size: calc(11.5px * var(--font-scale)); }
 .source-control-remote-form .source-control-inline-check { align-self: flex-start; }
+.source-control-upstream-fields { display: grid; grid-template-columns: minmax(110px, 0.8fr) minmax(150px, 1.2fr); gap: 8px; }
+@media (max-width: 560px) { .source-control-upstream-fields { grid-template-columns: 1fr; } }
+.source-control-upstream-fields :is(input, select),
 .source-control-remote-form :is(input:not([type="checkbox"]), select) {
   width: 100%;
   box-sizing: border-box;
@@ -24489,6 +24492,7 @@ body:has(.shell-vibrant),
   font-size: calc(12.5px * var(--font-scale));
 }
 .source-control-remote-form-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.source-control-remote-form-actions .source-control-danger { margin-right: auto; }
 .source-control-add-remote { align-self: flex-start; }
 .source-control-branch-status { color: var(--text-secondary); font-size: calc(12.5px * var(--font-scale)); }
 .source-control-branch-error { margin: 0 0 8px; color: var(--danger, #f87171); font-size: calc(12.5px * var(--font-scale)); }
