@@ -5,12 +5,22 @@ vi.mock("node:child_process", () => ({ execFile }));
 import { GitHubAuth } from "./github-auth";
 const secret = "test-secret-never-returned";
 let calls: string[][];
+// GCM's account list is the authority the pane renders; logout removes from it.
+let listed: string[];
 beforeEach(() => {
   calls = [];
+  listed = ["octocat"];
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ login: "octocat" }) }));
   execFile.mockImplementation((_file, args, options, callback) => {
     calls.push(args);
-    const out = args.includes("fill") ? `username=octocat\npassword=${secret}\n` : args.includes("list") ? "octocat\n" : args.includes("credential.username") ? "octocat\n" : args.includes("--get-urlmatch") ? "manager\n" : "version";
+    let out: string;
+    if (args.includes("logout")) {
+      const account = args[args.indexOf("logout") + 1];
+      listed = listed.filter((candidate) => candidate !== account);
+      out = "";
+    } else {
+      out = args.includes("fill") ? `username=octocat\npassword=${secret}\n` : args.includes("list") ? listed.map((account) => `${account}\n`).join("") : args.includes("credential.username") ? "octocat\n" : args.includes("--get-urlmatch") ? "manager\n" : "version";
+    }
     queueMicrotask(() => callback(null, out));
     expect(options.env.GIT_TERMINAL_PROMPT).toBe("0");
     return { stdin: { end: vi.fn() } };
@@ -99,6 +109,26 @@ describe("native GitHub auth", () => {
     // The pin must survive a failed removal, or Git loses its account for nothing.
     expect(calls.some((a) => a.includes("--unset-all"))).toBe(false);
     expect(JSON.stringify(result)).not.toContain(secret);
+  });
+  it("does not resurrect a pinned account the credential manager no longer lists", async () => {
+    listed.length = 0;
+    const status = await new GitHubAuth().status();
+    expect(status.accounts).toEqual([]);
+    expect(status.selectedAccount).toBeUndefined();
+    // No credential lookup for an account GCM does not list.
+    expect(calls.some((a) => a.includes("fill"))).toBe(false);
+  });
+  it("reports a failed disconnect when the account survives logout", async () => {
+    const original = execFile.getMockImplementation()!;
+    execFile.mockImplementation((file, args, opts, cb) => {
+      if (!args.includes("logout")) return original(file, args, opts, cb);
+      calls.push(args);
+      queueMicrotask(() => cb(null, ""));
+      return { stdin: { end: vi.fn() } };
+    });
+    const result = await new GitHubAuth().disconnect("octocat");
+    expect(result.error).toBe("failed");
+    expect(result.accounts).toEqual(["octocat"]);
   });
   it("stores a token in the native store and reads the account from it", async () => {
     const token = "ghp_" + "a".repeat(36);

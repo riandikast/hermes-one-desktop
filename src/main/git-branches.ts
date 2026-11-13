@@ -89,6 +89,74 @@ export async function gitRemoteAdd(dir: string, name: string, url: string): Prom
 // A single lock prevents overlapping branch mutations from separate renderer clicks.
 let changing = false;
 
+/**
+ * Replace a remote's URL without removing/re-adding it (so tracking config,
+ * remote-tracking refs and the remote's identity survive). `pushUrl` is set
+ * only when the caller wants a distinct push endpoint.
+ */
+export async function gitRemoteSetUrl(
+  dir: string,
+  name: string,
+  url: string,
+  pushUrl?: string,
+): Promise<GitActionResult> {
+  if (changing) return { ok: false, error: "Remote operation already in progress" };
+  if (typeof dir !== "string" || !dir) return { ok: false, error: "Invalid repository" };
+  if (typeof name !== "string" || typeof url !== "string" || (pushUrl !== undefined && typeof pushUrl !== "string")) {
+    return { ok: false, error: "Invalid remote name or URL" };
+  }
+  const cleanName = name.trim();
+  const cleanUrl = url.trim();
+  const cleanPush = pushUrl === undefined ? undefined : pushUrl.trim();
+  // eslint-disable-next-line no-control-regex
+  if (!cleanName || /[\s\x00-\x1f\x7f]/.test(cleanName) || cleanName.startsWith("-")) {
+    return { ok: false, error: "Invalid remote name" };
+  }
+  const validUrl = (value: string): boolean =>
+    // eslint-disable-next-line no-control-regex
+    !!value && value.length <= 2048 && !/[\s\x00-\x1f\x7f]/.test(value) && !value.startsWith("-");
+  if (!validUrl(cleanUrl) || (cleanPush !== undefined && !validUrl(cleanPush))) {
+    return { ok: false, error: "Invalid remote URL" };
+  }
+  changing = true;
+  try {
+    const root = await runGit(dir, ["rev-parse", "--show-toplevel"], 10_000);
+    if (root.code !== 0) return { ok: false, error: "Not a working repository" };
+    dir = root.stdout.trim();
+
+    const list = await gitBranches(dir);
+    if (!list.ok) return { ok: false, error: list.error || "Could not read remotes" };
+    const remote = list.remotes?.find((item) => item.name === cleanName);
+    if (!remote) return { ok: false, error: "Remote no longer exists. Refresh before retrying." };
+    if (remote.fetchUrls.length === 1 && remote.fetchUrls[0] === cleanUrl &&
+        (cleanPush === undefined || remote.pushUrls.length === 1 && remote.pushUrls[0] === cleanPush)) {
+      return { ok: false, error: "Remote URL is unchanged" };
+    }
+
+    const result = await runGit(dir, ["remote", "set-url", cleanName, cleanUrl], 15_000);
+    const text = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+    if (result.code !== 0) return { ok: false, error: text || "Failed to change remote URL" };
+    if (cleanPush !== undefined) {
+      const push = await runGit(dir, ["remote", "set-url", "--push", cleanName, cleanPush], 15_000);
+      const pushText = [push.stdout, push.stderr].filter(Boolean).join("\n").trim();
+      if (push.code !== 0) return { ok: false, error: pushText || "Failed to change push URL" };
+    }
+
+    // A zero exit is not proof: read the stored URLs back.
+    const updated = await gitBranches(dir);
+    const current = updated.ok ? updated.remotes?.find((item) => item.name === cleanName) : undefined;
+    if (!current || !current.fetchUrls.includes(cleanUrl) ||
+        (cleanPush !== undefined && !current.pushUrls.includes(cleanPush))) {
+      return { ok: false, error: "Remote URL did not update. Refresh before retrying." };
+    }
+    return { ok: true, output: text || `Remote "${cleanName}" URL updated` };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  } finally {
+    changing = false;
+  }
+}
+
 /** Rename only the local remote alias; Git also updates tracking configuration. */
 export async function gitRemoteRename(dir: string, oldName: string, newName: string): Promise<GitActionResult> {
   if (changing) return { ok: false, error: "Remote operation already in progress" };

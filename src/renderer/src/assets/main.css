@@ -24380,6 +24380,8 @@ body:has(.shell-vibrant),
 .source-control-branches-header h2 { margin: 0; font-size: calc(17px * var(--font-scale)); }
 .source-control-branches p { color: var(--text-secondary); font-size: calc(13px * var(--font-scale)); }
 .source-control-branch-create { flex-wrap: wrap; padding: 12px 0; }
+.source-control-inline-check { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: calc(12px * var(--font-scale)); white-space: nowrap; }
+.source-control-inline-check input { flex: 0 0 auto; margin: 0; }
 .source-control-branch-create :is(input, select) { flex: 1; min-width: 120px; max-width: 100%; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 5px; padding: 6px 8px; }
 .source-control-branch-list { max-height: 45vh; overflow: auto; }
 .source-control-branch-row { padding: 6px 0; flex-wrap: wrap; border-top: 1px solid var(--border); }

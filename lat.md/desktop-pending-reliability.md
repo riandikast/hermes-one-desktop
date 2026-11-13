@@ -16,4 +16,6 @@ GCM 2.7.3 supports `github list` (one account per line) and `github login --brow
 
 See [GCM multiple-user documentation](https://github.com/git-ecosystem/git-credential-manager/blob/v2.7.3/docs/multiple-users.md). Account-filtering and sticky defaults have mocked coverage in [[src/main/github-auth-accounts.test.ts]].
 
+Disconnect removes the named account from GCM and clears the pin only when it names that account. A pin can outlive the credential (another config scope or a manual edit), so `status()` must never resurrect a pinned name the manager no longer lists: that union in the renderer's account picker made a removed account reappear. A `github logout` exit of 0 is also not proof of removal; the returned status is re-read and the action reports `failed` if the account is still listed.
+
 Implementation: [[src/main/github-auth.ts]], [[src/renderer/src/components/settings/GitHubPane.tsx]]. Mocked regressions: [[src/main/github-auth.test.ts]], [[src/renderer/src/components/settings/GitHubPane.test.tsx]]. No app restart or live authentication is implied by unit-test success.

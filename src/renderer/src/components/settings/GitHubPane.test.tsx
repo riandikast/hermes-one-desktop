@@ -47,6 +47,19 @@ it("selects a saved account only after user input, then displays the persisted p
   // The chosen account must be readable, not merely present in the control.
   expect(screen.getAllByText("second").length).toBeGreaterThan(0);
 });
+it("removes the account from the pane after a confirmed disconnect", async () => {
+  vi.mocked(window.hermesAPI.githubAuthStatus).mockResolvedValue({ ...status, manager: true, accounts: ["octocat"], selectedAccount: "octocat", account: "octocat", auth: "authenticated" });
+  Object.assign(window.hermesAPI, { githubAuthDisconnect: vi.fn().mockResolvedValue({ ...status, manager: true, accounts: [] }) });
+  render(<GitHubPane />);
+  await screen.findByRole("combobox");
+  fireEvent.click(screen.getAllByText("settings.github.disconnect")[0]);
+  // The confirmation block repeats the action; the second click is the real one.
+  fireEvent.click(screen.getAllByText("settings.github.disconnect").at(-1)!);
+  await waitFor(() => expect(window.hermesAPI.githubAuthDisconnect).toHaveBeenCalledWith("octocat"));
+  await waitFor(() => expect(screen.queryByRole("option", { name: "octocat" })).toBeNull());
+  expect(screen.queryByText("settings.github.disconnect")).toBeNull();
+});
+
 it("shows errors and disables sign-in without native manager", async () => {
   vi.mocked(window.hermesAPI.githubAuthStatus).mockRejectedValueOnce(new Error("IPC unavailable"));
   render(<GitHubPane />);

@@ -15,6 +15,10 @@ export function BranchDialog({ dir, onClose, onChanged }: {
   const [remoteUrl, setRemoteUrl] = useState("");
   const [renamingRemote, setRenamingRemote] = useState<string | null>(null);
   const [newRemoteName, setNewRemoteName] = useState("");
+  const [editingRemote, setEditingRemote] = useState<string | null>(null);
+  const [editFetchUrl, setEditFetchUrl] = useState("");
+  const [editPushUrl, setEditPushUrl] = useState("");
+  const [editSeparatePush, setEditSeparatePush] = useState(false);
   const [upstreamRemote, setUpstreamRemote] = useState("");
   const [upstreamBranch, setUpstreamBranch] = useState("");
   const [busy, setBusy] = useState(false);
@@ -92,6 +96,31 @@ export function BranchDialog({ dir, onClose, onChanged }: {
     finally { lock.current = false; setBusy(false); }
   };
 
+  const changeRemoteUrl = async (event: React.FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (lock.current || !data || !editingRemote) return;
+    const remote = data.remotes?.find((item) => item.name === editingRemote);
+    if (!remote) return;
+    const nextFetch = editFetchUrl.trim();
+    const nextPush = editSeparatePush ? editPushUrl.trim() : undefined;
+    if (!nextFetch || (editSeparatePush && !nextPush)) return;
+    const oldFetch = remote.fetchUrls.join(", ");
+    const oldPush = remote.pushUrls.filter((url) => !remote.fetchUrls.includes(url)).join(", ");
+    const message = `Change remote “${remote.name}” URL from “${oldFetch}” to “${nextFetch}”?` +
+      (nextPush ? ` Push URL becomes “${nextPush}”${oldPush ? ` (was “${oldPush}”)` : ""}.` : "") +
+      " Tracking configuration and remote-tracking branches are kept. No fetch or push.";
+    lock.current = true; setBusy(true); setError("");
+    try {
+      if (!await appConfirm(message)) return;
+      const result = await window.hermesAPI.gitRemoteSetUrl(dir, remote.name, nextFetch, nextPush);
+      if (!result.ok) setError(result.error || "Failed to change remote URL");
+      else setEditingRemote(null);
+      await load();
+      await onChanged(result);
+    } catch (err) { setError(String(err)); }
+    finally { lock.current = false; setBusy(false); }
+  };
+
   const updateUpstream = async (action: "set" | "unset" | "publish"): Promise<void> => {
     if (lock.current || !data?.current) return;
     const branch = data.current;
@@ -131,6 +160,13 @@ export function BranchDialog({ dir, onClose, onChanged }: {
       {data.remotes?.map((remote) => <div key={remote.name}>
         <strong>{remote.name}</strong>
         <button type="button" className="btn-ghost btn-sm" aria-label={`Rename remote ${remote.name}`} disabled={busy} onClick={() => { setRenamingRemote(remote.name); setNewRemoteName(remote.name); }}>Rename</button>
+        <button type="button" className="btn-ghost btn-sm" aria-label={`Change URL for remote ${remote.name}`} disabled={busy} onClick={() => {
+          const separatePush = remote.pushUrls.find((url) => !remote.fetchUrls.includes(url)) ?? "";
+          setEditingRemote(remote.name);
+          setEditFetchUrl(remote.fetchUrls[0] ?? "");
+          setEditSeparatePush(!!separatePush);
+          setEditPushUrl(separatePush || remote.fetchUrls[0] || "");
+        }}>Change URL</button>
         {renamingRemote === remote.name && <form className="source-control-branch-create" onSubmit={renameRemote}>
           <label htmlFor="rename-remote">New remote name</label>
           <input id="rename-remote" value={newRemoteName} maxLength={256} disabled={busy} onChange={(event) => setNewRemoteName(event.target.value)} />
@@ -139,6 +175,20 @@ export function BranchDialog({ dir, onClose, onChanged }: {
         </form>}
         {remote.fetchUrls.map((url, index) => <p key={`fetch:${index}`} style={{ overflowWrap: "anywhere", userSelect: "text" }}>Fetch: <code>{url}</code></p>)}
         {remote.pushUrls.filter((url) => !remote.fetchUrls.includes(url)).map((url, index) => <p key={`push:${index}`} style={{ overflowWrap: "anywhere", userSelect: "text" }}>Push: <code>{url}</code></p>)}
+        {editingRemote === remote.name && <form className="source-control-branch-create" onSubmit={changeRemoteUrl}>
+          <label htmlFor={`edit-remote-url-${remote.name}`}>Remote URL</label>
+          <input id={`edit-remote-url-${remote.name}`} value={editFetchUrl} maxLength={2048} disabled={busy} onChange={(event) => setEditFetchUrl(event.target.value)} placeholder="https://github.com/user/repo.git" style={{ flex: 2 }} />
+          <label className="source-control-inline-check">
+            <input type="checkbox" checked={editSeparatePush} disabled={busy} onChange={(event) => { setEditSeparatePush(event.target.checked); if (event.target.checked && !editPushUrl) setEditPushUrl(editFetchUrl); }} />
+            Separate push URL
+          </label>
+          {editSeparatePush && <>
+            <label htmlFor={`edit-remote-push-url-${remote.name}`}>Push URL</label>
+            <input id={`edit-remote-push-url-${remote.name}`} value={editPushUrl} maxLength={2048} disabled={busy} onChange={(event) => setEditPushUrl(event.target.value)} placeholder="https://github.com/user/repo.git" style={{ flex: 2 }} />
+          </>}
+          <button type="submit" className="btn-ghost btn-sm" disabled={busy || !editFetchUrl.trim() || (editSeparatePush && !editPushUrl.trim())}>Save URL</button>
+          <button type="button" className="btn-ghost btn-sm" disabled={busy} onClick={() => setEditingRemote(null)}>Cancel</button>
+        </form>}
       </div>)}
       <form className="source-control-branch-create" onSubmit={addRemote} style={{ marginTop: 8 }}>
         <label htmlFor="new-remote-name">Remote name</label>

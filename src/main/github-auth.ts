@@ -39,6 +39,12 @@ export class GitHubAuth {
     const pinned = await run(["config", "--get-urlmatch", "credential.username", "https://github.com"], signal);
     const username = pinned.out.trim();
     if (!pinned.ok || !validAccount(username)) return result;
+    // A pin can outlive the stored credential (another Git scope, a manual
+    // config edit, or GCM's logout not touching it). Never let a stale pin
+    // manufacture an account the credential manager no longer lists: the
+    // renderer unions `selectedAccount` back into its picker, so that phantom
+    // entry was exactly the "disconnect leaves the account behind" bug.
+    if (!result.accounts?.some((account) => sameAccount(account, username))) return result;
     result.selectedAccount = username;
     return this.verify(result, username, signal);
   }
@@ -175,6 +181,12 @@ export class GitHubAuth {
       }
       const after = await this.status(controller.signal);
       if (controller.signal.aborted) return { ...before, error: timedOut ? "timeout" : "cancelled" };
+      // A LOGOUT that exits 0 is not proof the credential is gone: GCM keeps
+      // the account when the store rejects the removal. Report that instead of
+      // returning a "successful" status that still lists the account.
+      if (after.accounts?.some((account) => sameAccount(account, username))) {
+        return { ...after, error: "failed" };
+      }
       return after;
     } finally { clearTimeout(timeout); this.active = undefined; }
   }

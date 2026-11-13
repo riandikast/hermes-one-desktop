@@ -1440,6 +1440,7 @@ interface HermesAPI {
   gitStashDeleteFiles: (dir: string, selections: import("../shared/git-stash").GitStashFileSelection[]) => Promise<GitActionResult>;
   gitBranchChange: (dir: string, action: import("../shared/git-branches").GitBranchAction, name: string, current: string | null) => Promise<GitActionResult>;
   gitRemoteAdd: (dir: string, name: string, url: string) => Promise<GitActionResult>;
+  gitRemoteSetUrl: (dir: string, name: string, url: string, pushUrl?: string) => Promise<GitActionResult>;
   gitRemoteRename: (dir: string, oldName: string, newName: string) => Promise<GitActionResult>;
   gitBranchUpstream: (dir: string, action: "set" | "unset" | "publish", branch: string, remote: string, target: string, fingerprint?: string) => Promise<GitActionResult>;
   gitInit: (dir: string) => Promise<GitActionResult>;

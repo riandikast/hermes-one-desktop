@@ -44,6 +44,24 @@ it("shows remote URLs, names distinct push targets, and keeps the branch input e
   expect(input).toHaveFocus(); expect(input).toHaveValue("feature/test");
 });
 
+it("changes an existing remote URL in place with confirmation", async () => {
+  const setUrl = vi.fn().mockResolvedValue({ ok: true, output: "updated" });
+  const branches = vi.fn().mockResolvedValue({ ok: true, current: "main", branches: [], remotes: [
+    { name: "origin", fetchUrls: ["https://example.invalid/old.git"], pushUrls: ["https://example.invalid/old.git"] },
+  ] });
+  Object.assign(window, { hermesAPI: { gitBranches: branches, gitBranchChange: vi.fn(), gitRemoteSetUrl: setUrl } });
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  render(<BranchDialog dir="/repo" onClose={vi.fn()} onChanged={vi.fn()} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Change URL for remote origin" }));
+  const input = screen.getByLabelText("Remote URL", { selector: "#edit-remote-url-origin" });
+  expect(input).toHaveValue("https://example.invalid/old.git");
+  fireEvent.change(input, { target: { value: "https://example.invalid/new.git" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save URL" }));
+  await waitFor(() => expect(setUrl).toHaveBeenCalledWith("/repo", "origin", "https://example.invalid/new.git", undefined));
+  expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining("https://example.invalid/new.git"));
+  confirm.mockRestore();
+});
+
 it("allows adding a new remote and validates inputs", async () => {
   const remoteAdd = vi.fn().mockResolvedValue({ ok: true, output: "Added" });
   const branches = vi.fn().mockResolvedValue({ ok: true, current: "main", branches: [], remotes: [] });

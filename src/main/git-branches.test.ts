@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile, readFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { gitBranches, gitBranchChange, gitRemoteAdd } from "./git-branches";
+import { gitBranches, gitBranchChange, gitRemoteAdd, gitRemoteSetUrl } from "./git-branches";
 import type { GitBranchAction } from "../shared/git-branches";
 
 let repo: string;
@@ -121,4 +121,35 @@ it("adds new remotes with validation and rejects existing names or invalid argum
   expect((await gitRemoteAdd(repo, "-bad", "https://example.invalid")).ok).toBe(false);
   expect((await gitRemoteAdd(repo, "upstream", "bad url with spaces")).ok).toBe(false);
   expect((await gitRemoteAdd(repo, "", "https://example.invalid")).ok).toBe(false);
+});
+
+it("changes an existing remote URL in place, keeps tracking, and verifies by read-back", async () => {
+  const bare = join(repo, "second-remote.git");
+  git("init", "--bare", "-q", bare);
+  expect((await gitRemoteAdd(repo, "upstream", "https://example.invalid/old.git")).ok).toBe(true);
+  git("update-ref", "refs/remotes/upstream/main", "HEAD");
+  git("config", "branch.main.remote", "upstream");
+  git("config", "branch.main.merge", "refs/heads/main");
+
+  const changed = await gitRemoteSetUrl(repo, "upstream", "https://example.invalid/new.git");
+  expect(changed.ok, changed.error).toBe(true);
+  const remote = (await gitBranches(repo)).remotes?.find((item) => item.name === "upstream");
+  expect(remote?.fetchUrls).toEqual(["https://example.invalid/new.git"]);
+  // Same remote name and tracking survive: no remove/re-add.
+  expect(git("config", "branch.main.remote").trim()).toBe("upstream");
+  expect(git("rev-parse", "refs/remotes/upstream/main").trim()).toBe(git("rev-parse", "HEAD").trim());
+
+  // A distinct push URL is set only when asked for.
+  const pushed = await gitRemoteSetUrl(repo, "upstream", "https://example.invalid/new.git", bare);
+  expect(pushed.ok, pushed.error).toBe(true);
+  const withPush = (await gitBranches(repo)).remotes?.find((item) => item.name === "upstream");
+  expect(withPush?.pushUrls).toEqual([bare]);
+
+  // No-op and unknown remote fail with a readable reason instead of a silent success.
+  expect((await gitRemoteSetUrl(repo, "upstream", "https://example.invalid/new.git", bare)).ok).toBe(false);
+  expect((await gitRemoteSetUrl(repo, "missing", "https://example.invalid/x.git")).error).toContain("no longer exists");
+  for (const bad of ["", "has spaces", "-dash", "x".repeat(2050)]) {
+    expect((await gitRemoteSetUrl(repo, "upstream", bad)).ok).toBe(false);
+  }
+  expect(git("remote", "get-url", "upstream").trim()).toBe("https://example.invalid/new.git");
 });
