@@ -17,8 +17,9 @@ it("renames a remote only after confirmation, then reloads the exact repository"
   Object.assign(window, { hermesAPI: { gitBranches: list, gitRemoteRename: rename } });
   const changed = vi.fn().mockResolvedValue(undefined);
   render(<BranchDialog dir="/repo" onClose={vi.fn()} onChanged={changed} />);
+  fireEvent.click(await screen.findByRole("tab", { name: "Remotes" }));
   fireEvent.click(await screen.findByRole("button", { name: "Rename remote master" }));
-  fireEvent.change(screen.getByLabelText("New remote name"), { target: { value: "origin" } });
+  fireEvent.change(screen.getByLabelText("Remote name"), { target: { value: "origin" } });
   fireEvent.click(screen.getByRole("button", { name: "Save remote name" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Save remote name" })).toBeEnabled());
   expect(rename).not.toHaveBeenCalled();
@@ -36,6 +37,7 @@ it("separates local tracking from publishing, confirms destination and refreshes
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
   Object.assign(window, { hermesAPI: { gitBranches: list, gitBranchUpstream: upstream } });
   render(<BranchDialog dir="/repo" onClose={vi.fn()} onChanged={vi.fn()} />);
+  fireEvent.click(await screen.findByRole("tab", { name: "Upstream" }));
   expect(await screen.findByText("No upstream branch configured.")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Publish and set upstream" })).toBeDisabled();
   fireEvent.change(screen.getByLabelText("Upstream remote"), { target: { value: "master" } });
@@ -66,6 +68,7 @@ it("preserves failures, prevents duplicate submissions and disables detached HEA
   Object.assign(window, { hermesAPI: { gitBranches: list, gitBranchUpstream: upstream } });
   vi.spyOn(window, "confirm").mockReturnValue(true);
   const view = render(<BranchDialog dir="/repo" onClose={vi.fn()} onChanged={vi.fn()} />);
+  fireEvent.click(await screen.findByRole("tab", { name: "Upstream" }));
   await screen.findByText("No upstream branch configured.");
   fireEvent.change(screen.getByLabelText("Upstream remote"), { target: { value: "master" } });
   const button = screen.getByRole("button", { name: "Publish and set upstream" });
@@ -76,6 +79,7 @@ it("preserves failures, prevents duplicate submissions and disables detached HEA
   view.unmount();
   list.mockResolvedValue({ ...initial, current: null, branches: [] });
   render(<BranchDialog dir="/repo" onClose={vi.fn()} onChanged={vi.fn()} />);
+  fireEvent.click(await screen.findByRole("tab", { name: "Upstream" }));
   expect(await screen.findByLabelText("Upstream remote")).toBeDisabled();
   expect(screen.getByRole("button", { name: "Publish and set upstream" })).toBeDisabled();
 });

@@ -78,11 +78,11 @@ Rename appears only after HEAD passes eligibility checks. Older commits omit it.
 
 ## Local branch manager
 
-The branch badge opens local branch management and displays configured remote URLs. Each mutation confirms its direction and scope before running Git.
+The branch badge opens a compact tabbed manager — **Branches**, **Remotes**, **Upstream** — with no standing prose. Each mutation confirms its direction and scope before running Git. The current branch is a header pill.
 
-Checkout, create, merge into the current branch, and safe deletion stay local. Remote fetch URLs and distinct push URLs are displayed, and new remotes can be added via gitRemoteAdd with confirmation.
+Checkout, create, merge into the current branch, and safe deletion stay local. Each remote shows its URL as a bordered field with a pencil; clicking it opens the inline editor (Fetch URL, optional Separate push URL, Push URL) with Save/Cancel beside Rename on the same row. New remotes are added on demand.
 
-Existing remotes can be retargeted in place: "Change URL" edits the fetch URL and, optionally, a distinct push URL. [[src/main/git-branches.ts#gitRemoteSetUrl]] uses `git remote set-url` (never remove/re-add), so tracking configuration, remote-tracking refs and the remote alias survive; it refuses an unchanged URL, an unknown remote and invalid arguments, then reads the stored URLs back before reporting success. Confirmation names both the old and new URL; no fetch or push runs.
+Existing remotes can be retargeted in place: [[src/main/git-branches.ts#gitRemoteSetUrl]] uses `git remote set-url` (never remove/re-add), so tracking configuration, remote-tracking refs and the remote alias survive; it refuses an unchanged URL, an unknown remote and invalid arguments, then reads the stored URLs back before reporting success. Confirmation names both the old and new URL; no fetch or push runs. If the preload predates the IPC handler, the editor says to restart Hermes instead of failing silently.
 
 [[src/renderer/src/screens/Chat/BranchDialog.tsx#BranchDialog]] uses the shared focus-trapped modal above Source Control. [[src/main/git-branches.ts#gitBranches]] lists local refs and linked-worktree ownership. [[src/main/git-branches.ts#gitBranchChange]] validates ref names and expected current branch, blocks unfinished Git operations, requires a clean worktree for checkout/merge, protects ignored files from overwrite, and refuses deletion unless merged into current HEAD and not checked out anywhere. Creation starts at HEAD without switching. No force flags, remote deletion or push. Conflicts remain visible for existing resolution tools; branch/status/history refresh follows every result. Real Git regressions: [[src/main/git-branches.test.ts]]; UI confirmations and locking: [[src/renderer/src/screens/Chat/BranchDialog.test.tsx]].
 
