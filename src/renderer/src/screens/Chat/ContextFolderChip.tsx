@@ -2,6 +2,7 @@ import { memo, useState, useEffect, useRef } from "react";
 import { FolderOpen, X, Check, BookOpen, Terminal } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import { projectDisplayName, useProjectAliases } from "../Layout/projectAliases";
+import { KNOWLEDGE_RENAMED } from "../Knowledge/knowledgeSelection";
 
 interface ContextFolderChipProps {
   /** Working folders bound to this conversation (issue #27). */
@@ -43,16 +44,19 @@ export const ContextFolderChip = memo(function ContextFolderChip({
   useEffect(() => {
     if (!isKnowledgeOpen) return;
     let cancelled = false;
-    void window.hermesAPI
+    const load = (): void => { void window.hermesAPI
       .listKnowledgeBundles()
       .then((list) => {
         if (!cancelled && Array.isArray(list)) setAvailableBundles(list);
       })
       .catch(() => {
         /* ignore */
-      });
+      }); };
+    load();
+    window.addEventListener(KNOWLEDGE_RENAMED, load);
     return () => {
       cancelled = true;
+      window.removeEventListener(KNOWLEDGE_RENAMED, load);
     };
   }, [isKnowledgeOpen]);
 
@@ -120,6 +124,12 @@ export const ContextFolderChip = memo(function ContextFolderChip({
     <div className="chat-ctxfolder-dropdown">
       <div className="chat-ctxfolder-dropdown-header">Global Knowledge Bundles</div>
       <div className="chat-ctxfolder-dropdown-list">
+        {attachedKnowledgeBundles.filter((name) => !availableBundles.some((bundle) => bundle.name === name)).map((name) => (
+          <button key={`missing:${name}`} type="button" className="chat-ctxfolder-dropdown-item"
+            aria-label={`Remove missing knowledge ${name}`} onClick={() => onToggleKnowledgeBundle?.(name)}>
+            <span className="chat-ctxfolder-dropdown-item-name">{name} (missing)</span><X size={14} />
+          </button>
+        ))}
         {availableBundles.length === 0 ? (
           <div className="chat-ctxfolder-dropdown-empty">No knowledge bundles</div>
         ) : (

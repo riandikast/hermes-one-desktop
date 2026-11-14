@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import toast from "react-hot-toast";
+import { KNOWLEDGE_RENAMED, renameSelectedKnowledge, type KnowledgeRename } from "../Knowledge/knowledgeSelection";
 
 import {
   Globe,
@@ -936,6 +937,15 @@ function Chat({
       /* ignore */
     }
   }, [hermesSessionId]);
+
+  useEffect(() => {
+    const renamed = (event: Event): void => {
+      const change = (event as CustomEvent<KnowledgeRename>).detail;
+      setAttachedKnowledgeBundles((names) => renameSelectedKnowledge(names, change));
+    };
+    window.addEventListener(KNOWLEDGE_RENAMED, renamed);
+    return () => window.removeEventListener(KNOWLEDGE_RENAMED, renamed);
+  }, []);
 
   const handleToggleKnowledgeBundle = useCallback(
     (bundleName: string) => {

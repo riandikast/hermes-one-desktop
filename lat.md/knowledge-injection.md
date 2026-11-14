@@ -14,6 +14,12 @@ Settings → Utils can mark bundles as defaults; every newly created session sta
 
 [[src/renderer/src/components/settings/defaultKnowledge.ts]] stores the ordered names in `hermes.knowledge.defaults` (deduplicated, malformed storage ignored) and exposes `sessionStartKnowledge`: an explicit handoff list wins even when empty, a session with an id starts empty and restores its stored selection, and only a chat with no session id inherits the defaults. [[src/renderer/src/screens/Chat/Chat.tsx]] seeds `attachedKnowledgeBundles` that way and persists the list under `hermes.session.knowledge.<sessionId>` once the id exists — including an empty list for a new chat, so clearing the defaults never re-applies them later. The Utils picker reads the same `listKnowledgeBundles` source as the chat's Knowledge chip. It filters by name or path and keeps its list height-capped, so well over a hundred bundles stay usable: filtering only narrows the view, hidden selections stay stored and are counted ("N selected"). Regressions: [[src/renderer/src/components/settings/defaultKnowledge.test.ts]], [[src/renderer/src/components/settings/UtilsPane.test.tsx]], [[src/renderer/src/screens/Chat/chatWiring.test.ts]].
 
+## Renamed bundle selections
+
+Renaming a bundle migrates saved session selections and defaults to its canonical folder name, preserving selection order. Mounted chats and open pickers receive the rename event; older missing selections remain visible with a Remove action.
+
+[[src/renderer/src/screens/Knowledge/knowledgeSelection.ts]] owns migration and notification. [[src/renderer/src/screens/Knowledge/KnowledgeScreen.tsx]] emits only after a successful rename. Regression coverage includes stored sessions, defaults, sanitized names and removable ghosts in [[src/renderer/src/screens/Knowledge/knowledgeSelection.test.ts]] and [[src/renderer/src/screens/Chat/ContextFolderChip.test.tsx]].
+
 ## Text envelope and history
 
 [[src/shared/knowledge-envelope.ts#encodeKnowledgePrompt]] stores exact original text and references in a canonical v2 envelope. Attachment-expanded text is included only when different, avoiding a second copy of ordinary prompts.

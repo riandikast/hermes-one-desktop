@@ -2,11 +2,28 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest";
 import { ContextFolderChip } from "./ContextFolderChip";
 import { setProjectAlias } from "../Layout/projectAliases";
+import { renameKnowledgeSelections } from "../Knowledge/knowledgeSelection";
 
 vi.mock("../../components/useI18n", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 afterEach(() => { cleanup(); localStorage.clear(); });
+
+it("exposes old ghost selections for removal and refreshes an open picker after rename", async () => {
+  const list = vi.fn().mockResolvedValue([{ name: "new", path: "/new" }]);
+  window.hermesAPI = { listKnowledgeBundles: list } as unknown as typeof window.hermesAPI;
+  const toggle = vi.fn();
+  render(<ContextFolderChip contextFolders={[]} attachedKnowledgeBundles={["old"]} show
+    onPickFolder={vi.fn()} onRemoveFolder={vi.fn()} onToggleKnowledgeBundle={toggle} />);
+  fireEvent.click(screen.getByTitle("Manage Attached Knowledge Bundles"));
+  await screen.findByText("new");
+  fireEvent.click(screen.getByRole("button", { name: "Remove missing knowledge old" }));
+  expect(toggle).toHaveBeenCalledWith("old");
+  list.mockResolvedValue([{ name: "renamed", path: "/renamed" }]);
+  act(() => renameKnowledgeSelections("new", "renamed"));
+  expect(await screen.findByText("renamed")).toBeTruthy();
+  expect(screen.queryByText("new")).toBeNull();
+});
 
 it("counts every selected folder and makes a right-clicked folder the terminal base", async () => {
   const first = "C:/work/first";

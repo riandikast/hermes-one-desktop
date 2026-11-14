@@ -83,6 +83,7 @@ describe("Knowledge list rows", () => {
     "submits and cancels %s rename without navigation",
     async (kind) => {
       setup();
+      localStorage.setItem("hermes.session.knowledge.rename-test", JSON.stringify(["guide", "other"]));
       render(<KnowledgeScreen />);
       const bundle = await screen.findByRole("button", {
         name: "guide 1 file",
@@ -106,7 +107,7 @@ describe("Knowledge list rows", () => {
       if (kind === "Bundle")
         expect(api.renameKnowledgeBundle).toHaveBeenCalledWith(
           "guide",
-          "Team notes",
+          "Team-notes",
         );
       else
         expect(api.renameKnowledgeFile).toHaveBeenCalledWith(
@@ -115,6 +116,7 @@ describe("Knowledge list rows", () => {
           "Team notes.md",
         );
       await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+      if (kind === "Bundle") expect(JSON.parse(localStorage.getItem("hermes.session.knowledge.rename-test")!)).toEqual(["Team-notes", "other"]);
       fireEvent.click(screen.getByTitle(`Rename ${kind}`));
       input = screen.getByRole("textbox", { name: `${kind} name` });
       fireEvent.change(input, { target: { value: "Cancelled" } });

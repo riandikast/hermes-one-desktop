@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { findMention } from "../Chat/mention";
 import { KnowledgePackages } from "./KnowledgePackages";
+import { renameKnowledgeSelections } from "./knowledgeSelection";
 import type { KnowledgeSourceSettings } from "../../../../shared/knowledge-package";
 import { searchHighlights } from "../Chat/editorSearch";
 import { basicSetup } from "codemirror";
@@ -804,7 +805,7 @@ export function KnowledgeScreen(): React.JSX.Element {
   const submitRenameBundle = async () => {
     if (!renamingBundle) return;
     const oldName = renamingBundle;
-    const trimmed = renamingBundleValue.trim();
+    const trimmed = renamingBundleValue.trim().replace(/[^a-zA-Z0-9_.-]/g, "-");
     if (!trimmed) {
       setRenamingBundle(null);
       return;
@@ -816,6 +817,7 @@ export function KnowledgeScreen(): React.JSX.Element {
     try {
       const ok = await window.hermesAPI.renameKnowledgeBundle(oldName, trimmed);
       if (ok) {
+        renameKnowledgeSelections(oldName, trimmed);
         // Re-key the drill-down pointer so a rename cannot strand the view on
         // a bundle name that no longer exists.
         setOpenBundle((prev) => (prev === oldName ? trimmed : prev));
