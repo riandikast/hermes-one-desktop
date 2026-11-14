@@ -1,10 +1,11 @@
-import { fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { renderWithI18n as render } from "../../test/renderWithI18n";
 import { beforeEach, expect, it, vi } from "vitest";
 import UtilsPane from "./UtilsPane";
 import { readFileAutosaveDefault } from "./fileAutosave";
 import { readSendConfirm } from "./sendConfirm";
 import { readDefaultKnowledge } from "./defaultKnowledge";
+import { renameKnowledgeSelections } from "../../screens/Knowledge/knowledgeSelection";
 
 beforeEach(() => {
   localStorage.clear();
@@ -18,6 +19,22 @@ beforeEach(() => {
 
 const autosaveGroup = (): ReturnType<typeof within> =>
   within(screen.getByRole("group", { name: "Default file editor auto-save" }));
+
+it("removes existing ghost defaults and reloads renamed bundles while mounted", async () => {
+  localStorage.setItem("hermes.knowledge.defaults", JSON.stringify(["old", "alpha"]));
+  render(<UtilsPane />);
+  const missing = await screen.findByRole("checkbox", { name: "old (missing)" });
+  expect(missing).toBeChecked();
+  fireEvent.click(missing);
+  expect(readDefaultKnowledge()).toEqual(["alpha"]);
+  vi.mocked(window.hermesAPI.listKnowledgeBundles).mockResolvedValue([
+    { name: "renamed", path: "/knowledge/renamed", files: [] },
+  ]);
+  act(() => renameKnowledgeSelections("alpha", "renamed"));
+  expect(await screen.findByRole("checkbox", { name: "renamed" })).toBeChecked();
+  expect(screen.queryByRole("checkbox", { name: "alpha" })).toBeNull();
+  expect(readDefaultKnowledge()).toEqual(["renamed"]);
+});
 const confirmGroup = (): ReturnType<typeof within> =>
   within(screen.getByRole("group", { name: "Send prompt confirmation" }));
 

@@ -18,6 +18,8 @@ Settings → Utils can mark bundles as defaults; every newly created session sta
 
 Renaming a bundle migrates saved session selections and defaults to its canonical folder name, preserving selection order. Mounted chats and open pickers receive the rename event; older missing selections remain visible with a Remove action.
 
+Settings → Utils also reloads its catalog on rename and exposes missing defaults as checked rows that can be unchecked. It preserves valid selections when catalog loading fails; a missing name is never guessed to be a different bundle.
+
 [[src/renderer/src/screens/Knowledge/knowledgeSelection.ts]] owns migration and notification. [[src/renderer/src/screens/Knowledge/KnowledgeScreen.tsx]] emits only after a successful rename. Regression coverage includes stored sessions, defaults, sanitized names and removable ghosts in [[src/renderer/src/screens/Knowledge/knowledgeSelection.test.ts]] and [[src/renderer/src/screens/Chat/ContextFolderChip.test.tsx]].
 
 ## Text envelope and history

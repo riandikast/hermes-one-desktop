@@ -4,6 +4,7 @@ import { useFileAutosaveDefault } from "./fileAutosave";
 import { useSendConfirm } from "./sendConfirm";
 import { useDefaultKnowledge } from "./defaultKnowledge";
 import SettingsHint from "./SettingsHint";
+import { KNOWLEDGE_RENAMED } from "../../screens/Knowledge/knowledgeSelection";
 
 /**
  * Utilities that shape how the app's built-in tools behave. Starts with the
@@ -41,7 +42,7 @@ export default function UtilsPane(): React.JSX.Element {
       setBundlesLoading(false);
       return;
     }
-    void load
+    const refresh = (): void => { void load
       .call(window.hermesAPI)
       .then((list) => {
         if (!cancelled && Array.isArray(list)) setBundles(list);
@@ -51,9 +52,12 @@ export default function UtilsPane(): React.JSX.Element {
       })
       .finally(() => {
         if (!cancelled) setBundlesLoading(false);
-      });
+      }); };
+    refresh();
+    window.addEventListener(KNOWLEDGE_RENAMED, refresh);
     return () => {
       cancelled = true;
+      window.removeEventListener(KNOWLEDGE_RENAMED, refresh);
     };
   }, []);
 
@@ -183,6 +187,12 @@ export default function UtilsPane(): React.JSX.Element {
               role="group"
               aria-label="Default knowledge bundles"
             >
+              {!bundlesLoading && !bundlesFailed && defaultKnowledge.filter((name) => !bundles.some((bundle) => bundle.name === name)).map((name) => (
+                <label key={`missing:${name}`} className="settings-check">
+                  <input type="checkbox" checked onChange={() => toggleBundle(name)} />
+                  <span className="settings-check-text">{name} (missing)</span>
+                </label>
+              ))}
               {bundlesLoading ? (
                 <span className="settings-knowledge-empty">Loading…</span>
               ) : bundlesFailed ? (
