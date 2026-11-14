@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useRef } from "react";
-import { FolderOpen, X, Check, BookOpen, Terminal } from "lucide-react";
+import { FolderOpen, X, Check, BookOpen, Terminal, RefreshCw } from "lucide-react";
 import { useI18n } from "../../components/useI18n";
 import { projectDisplayName, useProjectAliases } from "../Layout/projectAliases";
 import { KNOWLEDGE_RENAMED } from "../Knowledge/knowledgeSelection";
@@ -140,10 +140,14 @@ export const ContextFolderChip = memo(function ContextFolderChip({
 
   const renderKnowledgeDropdown = (): React.JSX.Element => (
     <div className="chat-ctxfolder-dropdown">
-      <div className="chat-ctxfolder-dropdown-header">Global Knowledge Bundles</div>
-      <button type="button" className="chat-ctxfolder-dropdown-item" disabled={knowledgeLoading}
-        title="Reload bundles and remove missing selections"
-        onClick={() => { pruneKnowledgeRef.current = true; setKnowledgeRefresh((value) => value + 1); }}>Refresh selection</button>
+      <div className="chat-ctxfolder-dropdown-header" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        Global Knowledge Bundles
+        <button type="button" className="btn-ghost" style={{ display: "inline-flex", padding: 4 }}
+          disabled={knowledgeLoading} aria-label="Refresh selection" title="Reload bundles and remove missing selections"
+          onClick={() => { pruneKnowledgeRef.current = true; setKnowledgeRefresh((value) => value + 1); }}>
+          <RefreshCw size={13} aria-hidden="true" />
+        </button>
+      </div>
       {knowledgeError && <div role="alert" className="chat-ctxfolder-dropdown-empty">Could not refresh knowledge.</div>}
       <div className="chat-ctxfolder-dropdown-list">
         {attachedKnowledgeBundles.filter((name) => !availableBundles.some((bundle) => bundle.name === name)).map((name) => (
