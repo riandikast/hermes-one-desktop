@@ -8,6 +8,7 @@ import {
 import { EditorView } from "@codemirror/view";
 import { expect, it, vi } from "vitest";
 import { KnowledgeScreen } from "./KnowledgeScreen";
+import { MENTION_START, MENTION_SEP, MENTION_END } from "../Chat/mention";
 
 it("registers only a confirmed selected path, maps its span while editing, saves it without changing prose", async () => {
   const path = "C:/project/code.ts",
@@ -66,6 +67,7 @@ it("registers only a confirmed selected path, maps its span while editing, saves
   expect(window.confirm).toHaveBeenCalledWith(
     `Register this exact path for portable export?\n${path}`,
   );
+  expect(screen.getByRole("alert")).toHaveTextContent("Path registered. Save to keep it.");
   act(() => view.dispatch({ changes: { from: 0, insert: "Prefix " } }));
   const reads = vi.mocked(window.hermesAPI.readKnowledgeFile).mock.calls.length;
   await act(async () => {
@@ -86,4 +88,12 @@ it("registers only a confirmed selected path, maps its span while editing, saves
   window.dispatchEvent(new Event("focus"));
   await act(async () => {});
   expect(view.state.doc.toString()).toBe("Prefix " + content);
+  const tag = `${MENTION_START}code.ts${MENTION_SEP}${path}${MENTION_END}`;
+  act(() => view.dispatch({ changes: { from: view.state.doc.length, insert: ` ${tag}` } }));
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(window.hermesAPI.saveKnowledgeDocument).toHaveBeenCalledTimes(2));
+  const latest = vi.mocked(window.hermesAPI.saveKnowledgeDocument).mock.calls[1];
+  expect(latest[1]).toBe(`Prefix ${content} ${path}`);
+  expect(latest[2]).toHaveLength(2);
+  expect(view.state.doc.toString()).toBe(`Prefix ${content} ${path}`);
 });

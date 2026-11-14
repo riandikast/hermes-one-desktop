@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { findMention } from "../Chat/mention";
 import { KnowledgePackages } from "./KnowledgePackages";
+import { registerKnowledgeTags } from "./knowledgeTaggedPaths";
 import { renameKnowledgeSelections } from "./knowledgeSelection";
 import type { KnowledgeSourceSettings } from "../../../../shared/knowledge-package";
 import { searchHighlights } from "../Chat/editorSearch";
@@ -655,11 +656,13 @@ export function KnowledgeScreen(): React.JSX.Element {
     setDocumentError("");
     try {
       const key = `${selectedFile.bundleName}/${selectedFile.fileName}`;
+      const generation = documentGeneration.current;
+      const document = registerKnowledgeTags(fileContent, referencesRef.current);
       const ok = window.hermesAPI.saveKnowledgeDocument
         ? await window.hermesAPI.saveKnowledgeDocument(
             key,
-            fileContent,
-            referencesRef.current,
+            document.content,
+            document.references,
             [...mentionCustomFolders, ...(fileCustomFolders[key] ?? [])],
           )
         : await window.hermesAPI.writeKnowledgeFile(
@@ -668,7 +671,12 @@ export function KnowledgeScreen(): React.JSX.Element {
             fileContent,
           );
       if (!ok) throw new Error("Knowledge file could not be saved");
-      savedContentRef.current = fileContent;
+      if (generation !== documentGeneration.current || fileContentRef.current !== fileContent) return;
+      const view = editorViewRef.current;
+      if (view && document.content !== fileContent) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: document.content } });
+      referencesRef.current = document.references;
+      savedContentRef.current = document.content;
+      setFileContent(document.content);
       await reloadBundles();
     } catch (error) {
       setDocumentError(
@@ -1413,6 +1421,7 @@ export function KnowledgeScreen(): React.JSX.Element {
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
+                    onMouseDown={(event) => event.preventDefault()}
                     onClick={() => {
                       const view = editorViewRef.current;
                       const selection = view?.state.selection.main;
@@ -1447,7 +1456,7 @@ export function KnowledgeScreen(): React.JSX.Element {
                         text: path,
                         path,
                       });
-                      setDocumentError("");
+                      setDocumentError("Path registered. Save to keep it.");
                     }}
                   >
                     Register selected path
