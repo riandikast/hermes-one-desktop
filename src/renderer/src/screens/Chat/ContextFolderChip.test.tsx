@@ -1,4 +1,5 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ContextFolderChip } from "./ContextFolderChip";
 import { setProjectAlias } from "../Layout/projectAliases";
@@ -8,6 +9,28 @@ vi.mock("../../components/useI18n", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 afterEach(() => { cleanup(); localStorage.clear(); });
+
+it("refreshes stale selections and updates the count without dropping valid bundles", async () => {
+  const list = vi.fn().mockResolvedValue([{ name: "valid", path: "/valid" }]);
+  window.hermesAPI = { listKnowledgeBundles: list } as unknown as typeof window.hermesAPI;
+  function Harness(): React.JSX.Element {
+    const [names, setNames] = useState(["old", "valid", "deleted"]);
+    return <ContextFolderChip contextFolders={[]} attachedKnowledgeBundles={names} show
+      onPickFolder={vi.fn()} onRemoveFolder={vi.fn()}
+      onToggleKnowledgeBundle={(name) => setNames((prev) => prev.filter((item) => item !== name))} />;
+  }
+  render(<Harness />);
+  fireEvent.click(screen.getByTitle("Manage Attached Knowledge Bundles"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Refresh selection" })).toBeEnabled());
+  list.mockRejectedValueOnce(new Error("offline"));
+  fireEvent.click(screen.getByRole("button", { name: "Refresh selection" }));
+  await screen.findByRole("alert");
+  expect(screen.getByText("Knowledge (3)")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Refresh selection" }));
+  expect(await screen.findByText("Knowledge (1)")).toBeTruthy();
+  expect(screen.queryByText("old (missing)")).toBeNull();
+  expect(screen.getByText("valid")).toBeTruthy();
+});
 
 it("exposes old ghost selections for removal and refreshes an open picker after rename", async () => {
   const list = vi.fn().mockResolvedValue([{ name: "new", path: "/new" }]);

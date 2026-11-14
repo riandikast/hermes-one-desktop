@@ -20,6 +20,8 @@ Renaming a bundle migrates saved session selections and defaults to its canonica
 
 Settings → Utils also reloads its catalog on rename and exposes missing defaults as checked rows that can be unchecked. It preserves valid selections when catalog loading fails; a missing name is never guessed to be a different bundle.
 
+The chat Knowledge picker offers Refresh selection: reload the catalog and remove missing attachments through the normal session-persisting toggle, updating the chip count. Failed or superseded reads never prune selections.
+
 [[src/renderer/src/screens/Knowledge/knowledgeSelection.ts]] owns migration and notification. [[src/renderer/src/screens/Knowledge/KnowledgeScreen.tsx]] emits only after a successful rename. Regression coverage includes stored sessions, defaults, sanitized names and removable ghosts in [[src/renderer/src/screens/Knowledge/knowledgeSelection.test.ts]] and [[src/renderer/src/screens/Chat/ContextFolderChip.test.tsx]].
 
 ## Text envelope and history

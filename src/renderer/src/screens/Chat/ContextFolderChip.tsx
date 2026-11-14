@@ -40,25 +40,43 @@ export const ContextFolderChip = memo(function ContextFolderChip({
   const [recentFolders, setRecentFolders] = useState<string[]>([]);
   const [availableBundles, setAvailableBundles] = useState<Array<{ name: string; path: string }>>([]);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [knowledgeRefresh, setKnowledgeRefresh] = useState(0);
+  const pruneKnowledgeRef = useRef(false);
+  const [knowledgeLoading, setKnowledgeLoading] = useState(false);
+  const [knowledgeError, setKnowledgeError] = useState(false);
+  const knowledgeSelectionRef = useRef({ names: attachedKnowledgeBundles, toggle: onToggleKnowledgeBundle });
+  knowledgeSelectionRef.current = { names: attachedKnowledgeBundles, toggle: onToggleKnowledgeBundle };
 
   useEffect(() => {
     if (!isKnowledgeOpen) return;
     let cancelled = false;
-    const load = (): void => { void window.hermesAPI
+    let request = 0;
+    setKnowledgeLoading(true);
+    setKnowledgeError(false);
+    const load = (): void => {
+      const current = ++request;
+      void window.hermesAPI
       .listKnowledgeBundles()
       .then((list) => {
-        if (!cancelled && Array.isArray(list)) setAvailableBundles(list);
+        if (cancelled || current !== request) return;
+        if (!Array.isArray(list)) throw new Error("Invalid knowledge list");
+        setAvailableBundles(list);
+        if (pruneKnowledgeRef.current) {
+          pruneKnowledgeRef.current = false;
+          const { names, toggle } = knowledgeSelectionRef.current;
+          names.filter((name) => !list.some((bundle) => bundle.name === name)).forEach((name) => toggle?.(name));
+        }
       })
       .catch(() => {
-        /* ignore */
-      }); };
+        if (!cancelled && current === request) setKnowledgeError(true);
+      }).finally(() => { if (!cancelled && current === request) setKnowledgeLoading(false); }); };
     load();
     window.addEventListener(KNOWLEDGE_RENAMED, load);
     return () => {
       cancelled = true;
       window.removeEventListener(KNOWLEDGE_RENAMED, load);
     };
-  }, [isKnowledgeOpen]);
+  }, [isKnowledgeOpen, knowledgeRefresh]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -123,6 +141,10 @@ export const ContextFolderChip = memo(function ContextFolderChip({
   const renderKnowledgeDropdown = (): React.JSX.Element => (
     <div className="chat-ctxfolder-dropdown">
       <div className="chat-ctxfolder-dropdown-header">Global Knowledge Bundles</div>
+      <button type="button" className="chat-ctxfolder-dropdown-item" disabled={knowledgeLoading}
+        title="Reload bundles and remove missing selections"
+        onClick={() => { pruneKnowledgeRef.current = true; setKnowledgeRefresh((value) => value + 1); }}>Refresh selection</button>
+      {knowledgeError && <div role="alert" className="chat-ctxfolder-dropdown-empty">Could not refresh knowledge.</div>}
       <div className="chat-ctxfolder-dropdown-list">
         {attachedKnowledgeBundles.filter((name) => !availableBundles.some((bundle) => bundle.name === name)).map((name) => (
           <button key={`missing:${name}`} type="button" className="chat-ctxfolder-dropdown-item"
