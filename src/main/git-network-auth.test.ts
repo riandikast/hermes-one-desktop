@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { execFileSync } from "child_process";
-import { mkdtemp, readFile, rm } from "fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { createServer, type Server } from "http";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -64,5 +64,24 @@ describe("git network authentication", () => {
     setGitTokenProvider((host) => { lookups.push(host); return "fixture-token"; });
     expect(await gitNetworkAuthArgs(repo, "master")).toEqual(expect.arrayContaining([expect.stringContaining("selected.example")]));
     expect(lookups).toEqual(["selected.example"]);
+  });
+
+  it("uses Settings' selected GitHub account despite a repository override without exposing a token", async () => {
+    const previous = process.env.GIT_CONFIG_GLOBAL;
+    const global = join(repo, "fixture-global.config");
+    await writeFile(global, "[credential \"https://github.com\"]\nusername = selected-account\nhelper = manager\n");
+    process.env.GIT_CONFIG_GLOBAL = global;
+    try {
+      execFileSync("git", ["-C", repo, "config", "credential.https://github.com.username", "wrong-account"]);
+      execFileSync("git", ["-C", repo, "config", "credential.https://github.com.helper", "wrong-helper"]);
+      const args = await gitNetworkAuthArgs(repo, "upstream");
+      const config = (key: string): string => execFileSync("git", [...args, "config", "--get-urlmatch", key, "https://github.com"], { cwd: repo, encoding: "utf8" }).trim();
+      expect(config("credential.username")).toBe("selected-account");
+      expect(config("credential.helper").split(/\r?\n/).at(-1)).toBe("manager");
+      expect(args).not.toContain("extraHeader");
+    } finally {
+      if (previous === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+      else process.env.GIT_CONFIG_GLOBAL = previous;
+    }
   });
 });

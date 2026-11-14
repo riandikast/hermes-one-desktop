@@ -65,6 +65,7 @@ export function runGit(
       env: {
         ...process.env,
         GIT_TERMINAL_PROMPT: "0",
+        GCM_CREDENTIAL_STORE: process.platform === "win32" ? "wincredman" : process.platform === "darwin" ? "keychain" : "secretservice",
         GIT_PAGER: "cat",
         LC_ALL: "C.UTF-8",
       },
@@ -534,10 +535,17 @@ export async function gitCommitDiff(
 
 /** Auth args for the repo's remote host when a token is stored for it. */
 export async function gitNetworkAuthArgs(dir: string, remote?: string): Promise<string[]> {
-  if (!tokenProvider) return [];
+  // Match Settings' explicitly selected GitHub account, not a repository-local
+  // username/helper override. URL-scoped options leave SSH/other hosts alone.
+  const selected = await runGit(dir, ["config", "--global", "--get-urlmatch", "credential.username", "https://github.com"], 10_000);
+  const username = selected.stdout.trim();
+  const github = selected.code === 0 && /^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(username)
+    ? ["-c", "credential.https://github.com.helper=", "-c", "credential.https://github.com.helper=manager", "-c", `credential.https://github.com.username=${username}`]
+    : [];
+  if (!tokenProvider) return github;
   const host = await gitRemoteHost(dir, remote);
-  if (!host || host.toLowerCase() === "github.com") return [];
-  return gitTokenAuthArgs(host, tokenProvider(host));
+  if (!host || host.toLowerCase() === "github.com") return github;
+  return [...github, ...gitTokenAuthArgs(host, tokenProvider(host))];
 }
 
 export function gitStage(
