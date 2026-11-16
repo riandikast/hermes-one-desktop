@@ -18,6 +18,7 @@ import { execFile } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { readEnv, getModelContextLengthOverride } from "./config";
+import { providerAuthStatuses } from "./provider-auth";
 import { profileHome } from "./utils";
 import {
   expectedEnvKeyForModel,
@@ -578,6 +579,18 @@ export async function discoverProviderModels(
     LOCAL_NO_KEY_PROVIDERS.has(lowerProvider) ||
     (lowerProvider === "custom" && isLoopbackBaseUrl(baseUrl));
   if (!apiKey && !canDiscoverWithoutKey) {
+    // A provider signed in outside .env (auth.json OAuth or the Claude Code
+    // CLI) has no key to send, but hermes-agent still knows its catalog. This
+    // is what keeps the picker showing every Claude model rather than the few
+    // rows already saved in models.json.
+    const external = providerAuthStatuses(profile)[lowerProvider];
+    if (external?.configured) {
+      const models = await discoverOAuthModels(lowerProvider);
+      if (models.length > 0) {
+        setCache(lowerProvider, baseUrl, models);
+        return { models, status: "ok", cached: false };
+      }
+    }
     return { models: [], status: "no-key", cached: false };
   }
 

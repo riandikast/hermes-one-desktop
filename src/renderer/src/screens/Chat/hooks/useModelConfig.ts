@@ -206,14 +206,31 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
     enabled: true,
   });
 
+  // Provider catalogs for those externally authenticated providers. The picker
+  // otherwise lists only models already saved in the library, so a fresh
+  // sign-in showed just the handful of previously-saved ids instead of the
+  // provider's full catalog (the official picker shows the catalog).
+  const [catalogModels, setCatalogModels] = useState<Record<string, string[]>>({});
+
   const modelsForPicker = useMemo(
-    () =>
-      mergeLiveOllamaCloudModels(
+    () => {
+      const merged = mergeLiveOllamaCloudModels(
         savedModels,
         ollamaCloudDiscovery.models,
         ollamaCloudDiscovery.status,
-      ),
-    [savedModels, ollamaCloudDiscovery.models, ollamaCloudDiscovery.status],
+      );
+      const present = new Set(merged.map((m) => `${m.provider}::${m.model}`));
+      const extra: SavedModelForPicker[] = [];
+      for (const [provider, models] of Object.entries(catalogModels)) {
+        for (const model of models) {
+          if (present.has(`${provider}::${model}`)) continue;
+          present.add(`${provider}::${model}`);
+          extra.push({ provider, model, name: model, baseUrl: "" });
+        }
+      }
+      return extra.length ? [...merged, ...extra] : merged;
+    },
+    [savedModels, ollamaCloudDiscovery.models, ollamaCloudDiscovery.status, catalogModels],
   );
 
   const isSessionScopedRef = useRef(false);
@@ -273,6 +290,22 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
                 Object.entries(statuses).map(([id, s]) => [id, !!s.configured]),
               ),
             );
+            const discoverable = Object.entries(statuses)
+              .filter(([id, s]) => s.configured && id !== "claude-code")
+              .map(([id]) => id);
+            const catalogs = await Promise.all(
+              discoverable.map(async (id) => {
+                try {
+                  const result = await window.hermesAPI.discoverProviderModels(id, "", undefined, profile);
+                  return [id, result.models] as const;
+                } catch {
+                  return [id, []] as const;
+                }
+              }),
+            );
+            if (!cancelled) {
+              setCatalogModels(Object.fromEntries(catalogs));
+            }
           }
         }
       } catch {
