@@ -108,7 +108,7 @@ The debounced auto-save keeps a guard from the grid era that still applies: `sav
 
 Terminal sign-ins (`hermes auth add anthropic`, `claude setup-token`) write auth.json or the Claude Code credential file, so cards that only track their own modal report "not connected" for a provider the runtime already resolves.
 
-[[src/main/provider-auth.ts#providerAuthStatuses]] reads both stores; the OAuth cards show a **Connected** / **Claude CLI** badge, and such a provider stays selectable even without a `.env` key. **Claude Code (CLI)** is command-only (`claude setup-token`, copied to the clipboard) because Anthropic forbids minting those tokens from an app-initiated flow — the same `flow: external` the official catalog uses.
+[[src/main/provider-auth.ts#providerAuthStatuses]] reads both stores. The LLM grid lists such a provider as an "OAuth connected" card even with no key row, and [[src/renderer/src/screens/Chat/hooks/useModelConfig.ts#useModelConfig]] lets it past the chat picker's "key must be set" filter and past the Providers Change-model filter. The OAuth cards show a **Connected** / **Claude CLI** badge. **Claude Code (CLI)** is command-only (`claude setup-token`, copied to the clipboard) because Anthropic forbids minting those tokens from an app-initiated flow — the same `flow: external` the official catalog uses.
 
 ## LLM-provider keys are configured-only, via modals
 

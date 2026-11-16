@@ -246,6 +246,9 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
   // localhost) are not filtered.
   const [pickerEnv, setPickerEnv] = useState<Record<string, string>>({});
   const [pickerEnvReady, setPickerEnvReady] = useState(false);
+  // Providers authenticated outside .env (`hermes auth add`, Claude Code CLI).
+  // Their group has no key to test, so the filter below must consult this too.
+  const [pickerAuth, setPickerAuth] = useState<Record<string, boolean>>({});
   const pickerEnvRef = useRef<Record<string, string>>({});
   useEffect(() => {
     pickerEnvRef.current = pickerEnv;
@@ -261,6 +264,16 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
         if (!cancelled) {
           setPickerEnv({ ...defaultEnv, ...profileEnv });
           setPickerEnvReady(true);
+        }
+        if (!cancelled && typeof window.hermesAPI.providerAuthStatuses === "function") {
+          const statuses = await window.hermesAPI.providerAuthStatuses(profile);
+          if (!cancelled) {
+            setPickerAuth(
+              Object.fromEntries(
+                Object.entries(statuses).map(([id, s]) => [id, !!s.configured]),
+              ),
+            );
+          }
         }
       } catch {
         if (!cancelled) {
@@ -321,12 +334,14 @@ export function useModelConfig(profile?: string): UseModelConfigResult {
       // Always keep the group that contains the currently active model
       const isCurrentGroup = g.models.some((m) => m.model === currentModel && m.provider === currentProvider && (m.baseUrl || "") === (currentBaseUrl || ""));
       if (isCurrentGroup) return true;
+      // A credential stored outside .env already authorizes this provider.
+      if (pickerAuth[g.provider]) return true;
       const key = groupKeyForFilter(g);
       if (!key) return true;
       return isPickerEnvSet(key);
     });
     setModelGroups(filtered);
-  }, [modelsForPicker, pickerEnv, pickerEnvReady, currentModel, currentProvider, currentBaseUrl]);
+  }, [modelsForPicker, pickerEnv, pickerEnvReady, pickerAuth, currentModel, currentProvider, currentBaseUrl]);
 
   useEffect(() => {
     return window.hermesAPI.onConnectionConfigChanged(() => {

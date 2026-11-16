@@ -936,6 +936,7 @@ function Providers({
                   <ProviderKeysSection
                     items={llm.items}
                     env={env}
+                    externalAuth={authStatus}
                     savedKey={savedKey}
                     visibleKeys={visibleKeys}
                     onChange={handleChange}

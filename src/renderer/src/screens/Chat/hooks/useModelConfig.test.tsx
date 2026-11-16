@@ -153,3 +153,47 @@ describe("useModelConfig", () => {
     });
   });
 });
+
+// @lat: [[provider-setup#Provider setup#Credentials added outside the app]]
+describe("credentials added outside .env", () => {
+  const anthropicRow = {
+    id: "claude-sonnet",
+    name: "Claude Sonnet",
+    provider: "anthropic",
+    model: "claude-sonnet-4",
+    baseUrl: "",
+    createdAt: 1,
+  };
+
+  function stub(auth: { configured: boolean; source: string }): void {
+    Object.defineProperty(window, "hermesAPI", {
+      configurable: true,
+      value: {
+        getModelConfig: vi.fn(async () => ({ provider: "anthropic", model: "claude-sonnet-4", baseUrl: "" })),
+        getEnv: vi.fn(async () => ({})),
+        listModels: vi.fn(async () => [anthropicRow]),
+        providerAuthStatuses: vi.fn(async () => ({ anthropic: auth })),
+        onConnectionConfigChanged: vi.fn(() => vi.fn()),
+        onModelLibraryChanged: vi.fn(() => vi.fn()),
+        setModelConfig: vi.fn(async () => true),
+      },
+    });
+  }
+
+  afterEach(() => {
+    cleanup();
+    Reflect.deleteProperty(window, "hermesAPI");
+  });
+
+  it("keeps an OAuth-authenticated provider in the chat picker without an API key", async () => {
+    stub({ configured: true, source: "oauth" });
+    render(<Harness />);
+    await waitFor(() => expect(screen.getByTestId("models")).toHaveTextContent("Claude Sonnet"));
+  });
+
+  it("still hides a provider that has neither a key nor a credential", async () => {
+    stub({ configured: false, source: "" });
+    render(<Harness />);
+    await waitFor(() => expect(screen.getByTestId("models")).toHaveTextContent("[]"));
+  });
+});

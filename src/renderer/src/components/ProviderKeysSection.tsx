@@ -62,6 +62,8 @@ const normUrl = (u: string): string =>
 interface Props {
   items: FieldDef[];
   env: Record<string, string>;
+  /** Providers authenticated outside .env (OAuth login, Claude Code CLI). */
+  externalAuth?: Record<string, { configured: boolean; source: string }>;
   savedKey: string | null;
   visibleKeys: Set<string>;
   onChange: (key: string, value: string) => void;
@@ -483,6 +485,7 @@ function ProviderModelsManager({
 export function ProviderKeysSection({
   items,
   env,
+  externalAuth,
   savedKey,
   visibleKeys,
   onChange,
@@ -541,6 +544,15 @@ export function ProviderKeysSection({
     () => keyItems.filter((f) => isSet(f.key)),
     [keyItems, isSet],
   );
+  // Providers signed in outside .env (an OAuth login or the Claude Code CLI)
+  // have no key row, so the grid lists them from the auth probe instead of
+  // leaving the provider invisible until a key is typed.
+  const externalCards = useMemo(() => {
+    const auth = externalAuth ?? {};
+    return keyItems.filter(
+      (f) => !isSet(f.key) && !!auth[providerRouteForEnvKey(f.key).provider]?.configured,
+    );
+  }, [keyItems, isSet, externalAuth]);
   const available = useMemo(() => {
     const q = search.trim().toLowerCase();
     // Match both the displayed provider name and the full FieldDef label, so
@@ -726,6 +738,25 @@ export function ProviderKeysSection({
           </button>
         ))}
 
+        {externalCards.map((field) => {
+          const route = providerRouteForEnvKey(field.key);
+          return (
+            <div key={`auth:${field.key}`} className="provider-config-card">
+              <BrandLogo provider={field.key} size={22} />
+              <span className="provider-config-card-body">
+                <span className="provider-config-card-title">
+                  {t(providerNameForEnvKey(field.key) ?? field.label)}
+                </span>
+                <span className="provider-config-card-sub">
+                  {externalAuth?.[route.provider]?.source === "claude-cli"
+                    ? "Claude Code CLI"
+                    : "OAuth connected"}
+                </span>
+              </span>
+            </div>
+          );
+        })}
+
         <button
           type="button"
           className="provider-add-card"
@@ -736,7 +767,7 @@ export function ProviderKeysSection({
         </button>
       </div>
 
-      {configured.length === 0 && customProviders.length === 0 && (
+      {configured.length === 0 && customProviders.length === 0 && externalCards.length === 0 && (
         <p className="settings-section-hint">{t("providers.keys.emptyHint")}</p>
       )}
 
