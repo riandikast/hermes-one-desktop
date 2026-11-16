@@ -27,6 +27,11 @@ import { OFFICIAL_DEFAULT_PROVIDERS } from "../../../../shared/official-provider
 import { useDefaultReasoning } from "../../components/settings/defaultReasoning";
 import { REASONING_EFFORT_ORDER } from "../Chat/reasoningTiers";
 
+/** Provider CLI sign-ins the official desktop also surfaces as a command. */
+const CLI_AUTH_COMMANDS: Record<string, string> = {
+  "claude-code": "claude setup-token",
+};
+
 /** Preview a stored key as prefix + dots + last 4, so a set key is recognisable
  * without exposing it. */
 function maskKey(value: string): string {
@@ -218,6 +223,11 @@ function Providers({
   const [oauthModal, setOauthModal] = useState<
     (typeof OAUTH_PROVIDERS)[number] | null
   >(null);
+  // Credentials can be added outside this window (`hermes auth add`, Claude
+  // Code CLI). Show that state on the OAuth cards instead of "Sign in".
+  const [authStatus, setAuthStatus] = useState<
+    Record<string, { configured: boolean; source: string }>
+  >({});
 
   // Hermes account (device login). `account` is the signed-in profile or null.
   const [account, setAccount] = useState<HermesAccount | null>(null);
@@ -292,6 +302,13 @@ function Providers({
     setModelProvider(displayProviderFromConfig(mc.provider, mc.baseUrl));
     setModelName(mc.model);
     setModelBaseUrl(mc.baseUrl);
+    // Optional: older preloads (and test stubs) do not expose this probe.
+    if (typeof window.hermesAPI.providerAuthStatuses === "function") {
+      void window.hermesAPI
+        .providerAuthStatuses(profile)
+        .then(setAuthStatus)
+        .catch(() => setAuthStatus({}));
+    }
     const lib = (await window.hermesAPI.listModels()) as LibModel[];
     const activeLib = lib.find(
       (m) =>
@@ -590,6 +607,14 @@ function Providers({
       out.push({ key: `brand:${brand}`, brand, label: t(PROVIDERS.labels[brand] ?? brand),
         provider: models[0].provider, baseUrl: models[0].baseUrl, keyEnv: "", models });
     }
+    // Credentials added outside this window (CLI login, `hermes auth add`)
+    // have no `.env` key, but the runtime resolves them — keep them pickable.
+    for (const [brand, status] of Object.entries(authStatus)) {
+      if (!status.configured || seen.has(brand) || brand === "claude-code") continue;
+      seen.add(brand);
+      out.push({ key: `brand:${brand}`, brand, label: t(PROVIDERS.labels[brand] ?? brand),
+        provider: brand, baseUrl: "", keyEnv: "", models: byBrand.get(brand) ?? [] });
+    }
     if (modelProvider !== "auto" && modelProvider !== "custom" && !seen.has(modelProvider)) {
       out.push({ key: `brand:${modelProvider}`, brand: modelProvider, label: t(PROVIDERS.labels[modelProvider] ?? modelProvider),
         provider: modelProvider, baseUrl: modelBaseUrl, keyEnv: "", models: [] });
@@ -623,7 +648,7 @@ function Providers({
       });
     }
     return out;
-  }, [env, libModels, customProviders, t, modelProvider, modelBaseUrl]);
+  }, [env, libModels, customProviders, t, modelProvider, modelBaseUrl, authStatus]);
 
   const activeProvider =
     pickerProviders.find((p) => p.key === pickGroupKey) ?? null;
@@ -1149,16 +1174,35 @@ function Providers({
                   <div className="provider-key-card-head">
                     <BrandLogo provider={p.id} size={22} />
                     <span className="provider-key-card-title">{p.name}</span>
+                    {authStatus[p.id]?.configured && (
+                      <span className="provider-auth-badge">
+                        {authStatus[p.id].source === "claude-cli" ? "Claude CLI" : "Connected"}
+                      </span>
+                    )}
                   </div>
                   <div className="settings-field-hint">{t(p.desc)}</div>
-                  <button
-                    className="btn btn-secondary btn-sm oauth-signin-btn"
-                    aria-label={`${t("providers.oauth.signIn")} — ${p.name}`}
-                    onClick={() => setOauthModal(p)}
-                  >
-                    <KeyRound size={14} />
-                    {t("providers.oauth.signIn")}
-                  </button>
+                  <div className="provider-key-card-actions">
+                    {/* Command-only providers have no app-initiated flow. */}
+                    {!CLI_AUTH_COMMANDS[p.id] && (
+                      <button
+                        className="btn btn-secondary btn-sm oauth-signin-btn"
+                        aria-label={`${t("providers.oauth.signIn")} — ${p.name}`}
+                        onClick={() => setOauthModal(p)}
+                      >
+                        <KeyRound size={14} />
+                        {authStatus[p.id]?.configured ? "Reconnect" : t("providers.oauth.signIn")}
+                      </button>
+                    )}
+                    {CLI_AUTH_COMMANDS[p.id] && (
+                      <button
+                        className="btn-ghost btn-sm"
+                        title="Copy the sign-in command"
+                        onClick={() => void window.hermesAPI.copyToClipboard(CLI_AUTH_COMMANDS[p.id])}
+                      >
+                        {CLI_AUTH_COMMANDS[p.id]}
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

@@ -1412,6 +1412,10 @@ const hermesAPI = {
     profile?: string,
   ): Promise<Record<string, Array<CredentialPoolEntry>>> =>
     ipcRenderer.invoke("get-credential-pool", profile),
+  providerAuthStatuses: (
+    profile?: string,
+  ): Promise<Record<string, { configured: boolean; source: string }>> =>
+    ipcRenderer.invoke("provider-auth-statuses", profile),
   setCredentialPool: (
     provider: string,
     entries: Array<CredentialPoolEntry>,

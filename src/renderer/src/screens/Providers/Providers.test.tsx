@@ -44,6 +44,8 @@ beforeEach(() => {
         .fn()
         .mockResolvedValue({ provider: "openai", model: "gpt-a", baseUrl: "" }),
       getCredentialPool: vi.fn().mockResolvedValue({}),
+      providerAuthStatuses: vi.fn().mockResolvedValue({}),
+      copyToClipboard: vi.fn().mockResolvedValue(undefined),
       getAccount: vi.fn().mockResolvedValue(null),
       onAccountChanged: vi.fn(() => () => {}),
       onModelLibraryChanged: vi.fn(() => () => {}),
@@ -319,4 +321,47 @@ it("filters by name, model ID and provider, excludes credentials, restores the s
   fireEvent.click(screen.getByText("common.cancel"));
   fireEvent.click(screen.getByText("common.change"));
   expect(await screen.findByRole("searchbox")).toHaveValue("");
+});
+
+// @lat: [[provider-setup#Provider setup#Viewport-bounded provider dialogs]]
+it("keeps every provider dialog inside the page scope, even on the Auxiliary tab", async () => {
+  const { container } = render(React.createElement(Providers));
+  const page = container.querySelector(".providers-page");
+  expect(page).not.toBeNull();
+
+  // The Auxiliary tabpanel deliberately drops `.provider-settings-panel`
+  // (it hosts AuxiliaryTasksSection, which owns its own surfaces), so the
+  // dialog-bounding CSS must key off the PAGE — otherwise its dialog renders
+  // taller than the window with no way to scroll to the lower fields.
+  fireEvent.click(screen.getByRole("tab", { name: "constants.auxiliaryTitle" }));
+  const panel = await waitFor(() => {
+    const el = container.querySelector('[role="tabpanel"]');
+    expect(el).not.toBeNull();
+    return el as HTMLElement;
+  });
+  expect(panel.classList.contains("provider-settings-panel")).toBe(false);
+
+  // Open the auxiliary task editor dialog.
+  fireEvent.click((await screen.findAllByText("common.edit"))[0]);
+  const dialog = await screen.findByRole("dialog");
+  const overlay = dialog.closest(".models-modal-overlay");
+  expect(overlay).not.toBeNull();
+  expect(page!.contains(overlay)).toBe(true);
+});
+
+// @lat: [[provider-setup#Provider setup#Credentials added outside the app]]
+it("shows external sign-ins on the OAuth cards and hides the app flow for CLI-only providers", async () => {
+  vi.mocked(window.hermesAPI.providerAuthStatuses).mockResolvedValue({
+    anthropic: { configured: true, source: "oauth" },
+    "claude-code": { configured: true, source: "claude-cli" },
+  });
+  render(<Providers visible />);
+  fireEvent.click(screen.getByRole("tab", { name: "providers.oauth.sectionTitle" }));
+  const panel = within(screen.getByRole("tabpanel"));
+  expect(await panel.findByText("Connected")).toBeInTheDocument();
+  expect(panel.getByText("Claude CLI")).toBeInTheDocument();
+  expect(panel.getByRole("button", { name: "providers.oauth.signIn — Anthropic (OAuth)" })).toBeInTheDocument();
+  expect(panel.queryByRole("button", { name: /Claude Code \(CLI\)/ })).toBeNull();
+  fireEvent.click(panel.getByText("claude setup-token"));
+  await waitFor(() => expect(window.hermesAPI.copyToClipboard).toHaveBeenCalledWith("claude setup-token"));
 });

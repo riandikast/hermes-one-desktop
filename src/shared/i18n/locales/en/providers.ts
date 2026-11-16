@@ -65,6 +65,7 @@ export default {
     geminiDesc: "Use your Google AI Pro / Gemini plan",
     minimaxDesc: "Use your MiniMax subscription",
     nousDesc: "Sign in with your Nous Portal subscription",
+    claudeCliDesc: "Run the command once in a terminal; Hermes picks up the Claude Code login.",
   },
   hermesAccount: {
     sectionTitle: "Hermes One account",

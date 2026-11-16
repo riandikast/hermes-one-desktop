@@ -1091,7 +1091,10 @@ interface HermesAPI {
   // engine schema (issue #367). See `CredentialPoolEntry` below.
   getCredentialPool: (
     profile?: string,
-  ) => Promise<Record<string, Array<CredentialPoolEntry>>>;
+  ) => Promise<Record<string, CredentialPoolEntry[]>>;
+  providerAuthStatuses: (
+    profile?: string,
+  ) => Promise<Record<string, { configured: boolean; source: string }>>;
   setCredentialPool: (
     provider: string,
     entries: Array<CredentialPoolEntry>,

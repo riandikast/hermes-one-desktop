@@ -192,6 +192,36 @@
   overflow-wrap: anywhere;
 }
 
+.providers-page .provider-key-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.providers-page .provider-auth-badge {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: calc(11px * var(--font-scale));
+  white-space: nowrap;
+}
+
+.providers-page .provider-key-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.providers-page .provider-key-card-actions code,
+.providers-page .provider-key-card-actions .btn-ghost {
+  font-family: var(--font-mono, monospace);
+  font-size: calc(11.5px * var(--font-scale));
+}
+
 .providers-page
   .provider-settings-panel
   :is(

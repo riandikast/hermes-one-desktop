@@ -104,6 +104,12 @@ The **model** dropdown merges that provider's saved models with live discovery (
 
 The debounced auto-save keeps a guard from the grid era that still applies: `saveModelConfig` skips persisting a `custom` selection whose `base_url` is empty (writing it would clobber config.yaml with a dead endpoint) — **unless** config.yaml already holds a custom endpoint, tracked by the `persistedCustomUrl` ref (refreshed on load and after each save). In that case the empty value IS persisted, so deliberately clearing a configured custom endpoint doesn't leave the UI (empty) and config.yaml (old URL) disagreeing after navigation/relaunch.
 
+## Credentials added outside the app
+
+Terminal sign-ins (`hermes auth add anthropic`, `claude setup-token`) write auth.json or the Claude Code credential file, so cards that only track their own modal report "not connected" for a provider the runtime already resolves.
+
+[[src/main/provider-auth.ts#providerAuthStatuses]] reads both stores; the OAuth cards show a **Connected** / **Claude CLI** badge, and such a provider stays selectable even without a `.env` key. **Claude Code (CLI)** is command-only (`claude setup-token`, copied to the clipboard) because Anthropic forbids minting those tokens from an app-initiated flow — the same `flow: external` the official catalog uses.
+
 ## LLM-provider keys are configured-only, via modals
 
 The `SETTINGS_SECTIONS` "LLM Providers" section no longer renders a static key card for every known provider (an overwhelming wall of empty inputs). It shows only providers with a key set, plus an **Add provider** action.

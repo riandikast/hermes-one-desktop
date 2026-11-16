@@ -338,6 +338,15 @@ export const OAUTH_PROVIDERS: OAuthProviderDef[] = [
     name: "Nous Portal (OAuth)",
     desc: "providers.oauth.nousDesc",
   },
+  // Claude Code's own login (`claude setup-token`). The official desktop lists
+  // it as a command-only card: Anthropic's policy forbids minting these
+  // subscription tokens from an app-initiated flow, so there is no Sign in
+  // button — only the command and the detected CLI credential.
+  {
+    id: "claude-code",
+    name: "Claude Code (CLI)",
+    desc: "providers.oauth.claudeCliDesc",
+  },
 ];
 
 export interface LocalPreset {

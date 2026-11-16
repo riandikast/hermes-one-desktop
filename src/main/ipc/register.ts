@@ -313,6 +313,7 @@ import {
   invalidateSecretsCache,
   type ConnectionConfig,
 } from "../config";
+import { providerAuthStatuses } from "../provider-auth";
 import {
   getAuxiliaryConfig,
   setAuxiliaryTask,
@@ -2937,6 +2938,9 @@ export function registerIpcHandlers(context: IpcContext): void {
   // explicit profile or rely on the active-profile fallback.
   ipcMain.handle("get-credential-pool", (_event, profile?: string) =>
     getCredentialPool(profile),
+  );
+  ipcMain.handle("provider-auth-statuses", (_event, profile?: string) =>
+    providerAuthStatuses(profile),
   );
   ipcMain.handle(
     "set-credential-pool",
