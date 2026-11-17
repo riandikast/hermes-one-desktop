@@ -1488,6 +1488,27 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
     });
   }, []);
 
+  // Add one row to the selection, entering selection mode first. Used by the
+  // row menu's "Select" item and by Ctrl/Cmd-click.
+  const addToSelection = useCallback((id: string): void => {
+    setSelectMode(true);
+    setSelectedIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
+
+  const exitSelection = useCallback((): void => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  useEffect(() => {
+    if (!selectMode) return;
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === "Escape" && !pendingBulkDelete) exitSelection();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectMode, pendingBulkDelete, exitSelection]);
+
   const enterSelectionForProject = useCallback((groupIds: string[]): void => {
     setSelectedIds(new Set());
     setSelectMode(true);
@@ -1617,7 +1638,11 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
         } ${menuOpen ? "menu-open" : ""} ${
           q !== "" && matchesQuery(s) ? "search-match" : ""
         }`}
-        onClick={() => (selectMode ? handleToggleSelect(s.id) : onSelect(s.id))}
+        onClick={(e) => {
+          if (selectMode) handleToggleSelect(s.id);
+          else if (e.ctrlKey || e.metaKey) addToSelection(s.id);
+          else onSelect(s.id);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
@@ -1870,10 +1895,7 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
             <button
               type="button"
               className="btn-ghost btn-sm"
-              onClick={() => {
-                setSelectMode(false);
-                setSelectedIds(new Set());
-              }}
+              onClick={exitSelection}
             >
               Cancel
             </button>
@@ -2283,6 +2305,7 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
           }
           onPickNewFolder={() => void handlePickNewFolder(menuTarget.id)}
           onDelete={() => setPendingDeleteId(menuTarget.id)}
+          onSelect={() => addToSelection(menuTarget.id)}
         />
       )}
       {pendingDeleteId &&

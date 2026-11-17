@@ -40,6 +40,7 @@ export default {
     pin: "Pin",
     unpin: "Unpin",
     rename: "Rename",
+    select: "Select",
     moveToProject: "Move to project",
     newProjectFolder: "New folder…",
     removeFromProject: "Remove from project",

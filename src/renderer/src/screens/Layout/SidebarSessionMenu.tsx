@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useI18n } from "../../components/useI18n";
 import {
   Check,
+  CheckSquare,
   ChevronRight,
   Folder,
   FolderInput,
@@ -73,6 +74,7 @@ function SidebarSessionMenu({
   onMoveToProject,
   onPickNewFolder,
   onDelete,
+  onSelect,
 }: {
   target: SidebarMenuTarget;
   isPinned: boolean;
@@ -90,6 +92,8 @@ function SidebarSessionMenu({
   onMoveToProject: (path: string | null) => void;
   onPickNewFolder: () => void;
   onDelete: () => void;
+  /** Enter multi-select with this session checked. */
+  onSelect: () => void;
 }): React.JSX.Element {
   const { t } = useI18n();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -233,6 +237,18 @@ function SidebarSessionMenu({
                         size={14}
                         className="sidebar-session-menu-chevron"
                       />
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="sidebar-session-menu-item"
+                      onClick={() => {
+                        onSelect();
+                        requestClose();
+                      }}
+                    >
+                      <CheckSquare size={15} />
+                      <span>{t("navigation.sessionMenu.select")}</span>
                     </button>
                     <div className="sidebar-session-menu-divider" />
                     <button
