@@ -16,6 +16,7 @@ import {
 } from "./sessions";
 import type { Attachment } from "../shared/attachments";
 import { isImageMime, MAX_IMAGE_BYTES } from "../shared/attachments";
+import { deleteSessionThroughAgent } from "./agent-session-delete";
 
 export interface RemoteSessionConfig {
   remoteUrl: string;
@@ -587,28 +588,34 @@ export async function remoteDeleteSession(
   config: RemoteSessionConfig,
   sessionId: string,
 ): Promise<void> {
-  await remoteRequestJson(
-    config,
-    `/api/sessions/${encodeURIComponent(sessionId)}`,
-    {
-      method: "DELETE",
-    },
+  await deleteSessionThroughAgent(
+    (path, method) => remoteRequestJson(config, path, { method }),
+    sessionId,
   );
 }
 
 export interface RemoteDeleteSessionsResult {
   requested: number;
   deleted: number;
+  failed?: string[];
 }
 
 export async function remoteDeleteSessions(
   config: RemoteSessionConfig,
   sessionIds: string[],
 ): Promise<RemoteDeleteSessionsResult> {
-  let deleted = 0;
+  const failed: string[] = [];
   for (const id of sessionIds) {
-    await remoteDeleteSession(config, id);
-    deleted += 1;
+    try {
+      await remoteDeleteSession(config, id);
+    } catch (err) {
+      console.error("[sessions] remote delete refused", id, err);
+      failed.push(id);
+    }
   }
-  return { requested: sessionIds.length, deleted };
+  return {
+    requested: sessionIds.length,
+    deleted: sessionIds.length - failed.length,
+    ...(failed.length ? { failed } : {}),
+  };
 }
