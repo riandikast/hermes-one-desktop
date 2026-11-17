@@ -49,7 +49,7 @@ import type {
 } from "../types";
 import type { DesktopSessionContinuationItem } from "../../../../../shared/session-continuation";
 import type { SessionModelOverride } from "../../../../../shared/model-override";
-import { knowledgeChange, knowledgeKey } from "./knowledgeChange";
+import { knowledgeChange, knowledgeKey, knowledgeNeedsDelivery, type KnowledgeDelivery } from "./knowledgeChange";
 import { encodeKnowledgePrompt } from "../../../../../shared/knowledge-envelope";
 import {
   buildRecoveryPrompt,
@@ -1495,6 +1495,10 @@ export function useDashboardChatTransport({
   selectedKnowledgeRef.current = knowledgeBundles ?? [];
   // Notices never change backend session identity or historical context.
   const notifiedKnowledgeKeyRef = useRef<string | null>(null);
+  /** Index the current session's history already holds; see knowledgeNeedsDelivery. */
+  const deliveredKnowledgeRef = useRef<KnowledgeDelivery | null>(null);
+  /** Latest backend context-compression count reported in turn usage. */
+  const compressionCountRef = useRef<number | null>(null);
   /** A knowledge change observed mid-turn, applied when the turn ends. */
   const pendingKnowledgeKeyRef = useRef<string | null>(null);
   const pendingKnowledgeSummaryRef = useRef<string | null>(null);
@@ -2685,6 +2689,9 @@ export function useDashboardChatTransport({
         const usage = usageFromPayload(event.payload);
         const ledgerUsage = usageFromPayload(event.payload, true);
         const rawUsage = asRecord(payloadRecord.usage);
+        // A compression may have summarized away the turn that carried the
+        // Knowledge index; a changed count makes the next send include it.
+        if (typeof rawUsage.compressions === "number") compressionCountRef.current = rawUsage.compressions;
         const receipt = asRecord(payloadRecord.persisted_turn);
         const turnId = receipt.submission_id ?? receipt.user_row_id;
         const sourceId = turnId == null ? undefined : `${profile ?? "default"}:${storedSessionIdRef.current ?? event.session_id}:${turnId}`;
@@ -4133,6 +4140,7 @@ export function useDashboardChatTransport({
         resetStallTimer();
 
         let wireText = submitText;
+        let delivery: KnowledgeDelivery | null = null;
         // Snapshot immediately before submit; selection changes discard in-flight reads.
         for (;;) {
           const selected = [...selectedKnowledgeRef.current];
@@ -4150,7 +4158,16 @@ export function useDashboardChatTransport({
           if (selected.length && (typeof index !== "string" || !index.trim())) {
             return failActiveTurn("Knowledge index could not be loaded: selected bundles returned an empty index.");
           }
-          if (index) wireText = encodeKnowledgePrompt(text, index, submitText);
+          if (index) {
+            delivery = {
+              session: storedSessionIdRef.current || selectedSessionId,
+              index,
+              compressions: compressionCountRef.current,
+            };
+            if (knowledgeNeedsDelivery(deliveredKnowledgeRef.current, delivery)) {
+              wireText = encodeKnowledgePrompt(text, index, submitText);
+            }
+          }
           break;
         }
         const workspaceFolder = contextFolder?.trim();
@@ -4187,6 +4204,9 @@ export function useDashboardChatTransport({
           },
         });
         if (cancelled()) return true;
+        // Accepted, so the session's history now holds this index (or the
+        // selection is empty and a later selection must be sent fresh).
+        deliveredKnowledgeRef.current = delivery;
         markSendStage("submit-ack");
         // The turn was accepted, so any recorded failure for THIS prompt is
         // resolved. Without this the stored error row (written when the prompt
@@ -4254,6 +4274,8 @@ export function useDashboardChatTransport({
         const sessionId = await ensureSelectedModel(client, runtimeSessionId);
         appliedModelRef.current = null;
         modelOptionsCacheRef.current = null;
+        // Slash commands can compress, undo, retry or reset the history.
+        deliveredKnowledgeRef.current = null;
         return await executeSlash({
           command,
           sessionId,
@@ -4385,6 +4407,7 @@ export function useDashboardChatTransport({
       // bug). Rejects when a turn is running; unsend only fires while idle.
       const client = await ensureClient();
       await client.request("session.undo", { session_id: sessionId });
+      deliveredKnowledgeRef.current = null;
       return true;
     } catch {
       return false;
@@ -4526,6 +4549,7 @@ export function useDashboardChatTransport({
           );
           if (cancelled()) return;
           if (result?.status !== "compressed" || result.summary?.aborted) return;
+          deliveredKnowledgeRef.current = null;
           recreateRuntimeSessionRef.current = false;
           await sendMessage(buildRecoveryPrompt(original), undefined, generation);
         } catch {

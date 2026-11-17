@@ -3,6 +3,7 @@ import {
   knowledgeChange,
   knowledgeChangeNotice,
   knowledgeKey,
+  knowledgeNeedsDelivery,
 } from "./knowledgeChange";
 
 describe("knowledgeKey", () => {
@@ -64,5 +65,23 @@ describe("knowledgeChangeNotice", () => {
     const notice = knowledgeChangeNotice("enabled “SS2”");
     expect(notice).toContain("enabled “SS2”");
     expect(notice).toContain("applies from your next message");
+  });
+});
+
+describe("knowledgeNeedsDelivery", () => {
+  const sent = { session: "s", index: "INDEX", compressions: null };
+  it("delivers on the first turn, a new session or a changed index", () => {
+    expect(knowledgeNeedsDelivery(null, sent)).toBe(true);
+    expect(knowledgeNeedsDelivery(sent, { ...sent, session: "other" })).toBe(true);
+    expect(knowledgeNeedsDelivery(sent, { ...sent, index: "EDITED" })).toBe(true);
+  });
+  it("skips an identical index already in the history", () => {
+    expect(knowledgeNeedsDelivery(sent, sent)).toBe(false);
+    expect(knowledgeNeedsDelivery(sent, { ...sent, compressions: 0 })).toBe(false);
+  });
+  it("redelivers after the history was compressed", () => {
+    expect(knowledgeNeedsDelivery(sent, { ...sent, compressions: 1 })).toBe(true);
+    expect(knowledgeNeedsDelivery({ ...sent, compressions: 2 }, { ...sent, compressions: 3 })).toBe(true);
+    expect(knowledgeNeedsDelivery({ ...sent, compressions: 2 }, { ...sent, compressions: null })).toBe(false);
   });
 });

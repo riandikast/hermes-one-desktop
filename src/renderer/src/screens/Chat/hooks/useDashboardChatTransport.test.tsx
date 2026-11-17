@@ -75,6 +75,7 @@ interface HarnessApi {
   isLoading?: boolean;
   switchProviderNow?: () => Promise<void>;
   abort?: () => void;
+  undoLastUser?: () => Promise<boolean>;
   applyModelOverride?: (provider: string, model: string) => Promise<void>;
   setConnectionMode?: Dispatch<SetStateAction<"local" | "remote" | "ssh">>;
   setMessages?: Dispatch<SetStateAction<ChatMessage[]>>;
@@ -197,6 +198,7 @@ function Harness({
       isLoading,
       send: transport.sendMessage,
       abort: transport.abort,
+      undoLastUser: transport.undoLastUser,
       providerWait: transport.providerWait,
       switchProviderNow: transport.switchProviderNow,
       applyModelOverride: transport.applyModelOverride,
@@ -3224,6 +3226,41 @@ describe("mid-session knowledge toggle", () => {
     window.hermesAPI.getKnowledgeIndex = vi.fn(async () => "EDITED");
     await act(async () => { await api.send?.("second"); });
     expect(dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit").map(([, p]) => decodeKnowledgePrompt(p.text)?.context)).toEqual(["INDEX:alpha", "EDITED"]);
+  });
+
+  // @lat: [[knowledge-injection#Delivery once per session history]]
+  it("sends an unchanged index once, then again only after compression, undo or re-selection", async () => {
+    const api: HarnessApi = {};
+    render(<Harness api={api} storedSessionId="stored-1" initialKnowledgeBundles={["alpha"]} />);
+    const turn = async (prompt: string, usage?: Record<string, number>): Promise<void> => {
+      await act(async () => { await api.send?.(prompt); });
+      await act(async () => {
+        dashboardMock.onEvent?.({ type: "message.complete", session_id: "live-1", payload: { content: "ok", ...(usage ? { usage } : {}) } });
+      });
+    };
+    await turn("one", { compressions: 0 });
+    await turn("two", { compressions: 0 });
+    await turn("three", { compressions: 1 });
+    await turn("four");
+    await act(async () => { await api.undoLastUser?.(); });
+    await turn("five");
+    await act(async () => { api.setKnowledgeBundles?.([]); });
+    await turn("six");
+    await act(async () => { api.setKnowledgeBundles?.(["alpha"]); });
+    await turn("seven");
+    const submits = dashboardMock.request.mock.calls.filter(([m]) => m === "prompt.submit");
+    // Every turn still re-reads the bundles, so edits are never missed.
+    expect(window.hermesAPI.getKnowledgeIndex).toHaveBeenCalledTimes(6);
+    expect(submits.map(([, p]) => decodeKnowledgePrompt(p.text)?.context ?? null)).toEqual([
+      "INDEX:alpha", // first delivery
+      null, // identical, already in history
+      null, // compression reported with this turn's usage...
+      "INDEX:alpha", // ...so the next turn carries it again
+      "INDEX:alpha", // undo may have removed the carrying turn
+      null, // nothing selected
+      "INDEX:alpha", // re-selected
+    ]);
+    expect(submits.map(([, p]) => originalKnowledgePrompt(p.text))).toEqual(["one", "two", "three", "four", "five", "six", "seven"]);
   });
 
   it("discards stale in-flight fetch after removal", async () => {

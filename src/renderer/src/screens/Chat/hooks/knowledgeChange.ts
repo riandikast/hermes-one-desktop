@@ -1,4 +1,4 @@
-/** Selection notices only; Knowledge is sent as user data on each outgoing turn. */
+/** Selection notices and the per-session Knowledge delivery rule. */
 
 /** Stable, order-independent key for a bundle set. */
 export function knowledgeKey(bundles: readonly string[] | undefined): string {
@@ -58,4 +58,33 @@ export function knowledgeChangeNotice(summary: string): string {
     `Knowledge updated — ${summary}. ` +
     "The change applies from your next message. Earlier reference context remains in conversation history."
   );
+}
+
+/** The Knowledge index a backend session has already received in its history. */
+export interface KnowledgeDelivery {
+  /** Stored session the history belongs to. */
+  session: string;
+  /** Exact index text that was delivered. */
+  index: string;
+  /** Backend context-compression count when it was delivered (null = unknown). */
+  compressions: number | null;
+}
+
+/**
+ * Whether the next turn must carry the index again.
+ *
+ * The index already sits in the session's history, which the model re-reads
+ * every turn, so resending an identical copy only grows the history (most
+ * stored envelopes were byte-identical repeats). Resend only when the history
+ * may no longer hold it or it changed: a different session, edited or
+ * re-selected bundles (the text differs), or a compression since delivery.
+ */
+export function knowledgeNeedsDelivery(
+  last: KnowledgeDelivery | null,
+  next: KnowledgeDelivery,
+): boolean {
+  if (!last || last.session !== next.session || last.index !== next.index) return true;
+  // The count is only reported with turn usage: "unknown" at delivery means no
+  // compression had happened yet, so only a known, different count matters.
+  return next.compressions !== null && next.compressions !== (last.compressions ?? 0);
 }

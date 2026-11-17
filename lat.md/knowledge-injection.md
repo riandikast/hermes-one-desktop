@@ -6,6 +6,12 @@ The dashboard includes fresh selected Knowledge indexes in user-message text, wi
 
 Every dashboard submit fetches the selected index immediately before dispatch, including unchanged selections so edits appear next turn.
 
+## Delivery once per session history
+
+The index is attached only when the session's history may not already hold that exact text, so an unchanged selection costs nothing after its first turn.
+
+Each submit still re-reads the bundles, so edits are detected immediately; the envelope is sent when [[src/renderer/src/screens/Chat/hooks/knowledgeChange.ts#knowledgeNeedsDelivery]] finds a different stored session, a different index text (edit, re-selection) or a changed backend compression count from turn usage. Undo, the compression action and any slash command clear the record, because they can rewrite history. Background prompts always carry the index. Stored history showed 354 of 399 envelopes repeating the previous index byte-for-byte, about 82% of envelope text. [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.test.tsx]] covers the sequence.
+
 [[src/renderer/src/screens/Chat/hooks/useDashboardChatTransport.ts#useDashboardChatTransport]] discards stale selection reads and checks cancellation. Fetch errors and empty enabled indexes visibly fail without submission or silent omission. Removal excludes the index from future prompts. Background prompts use the same user-data format.
 
 ## Default bundles for new sessions
@@ -54,7 +60,7 @@ Desktop deployment is separate; changes are not claimed to be loaded in the runn
 
 [[src/main/knowledge.ts#buildKnowledgeIndex]] remains unchanged: selected paths and short relevance hints, not full contents.
 
-Full contents require file tools and permissions. The model may ignore references. Delivery is not obedience; prior context persists and fresh indexes consume tokens under existing provider limits.
+Full contents require file tools and permissions. The model may ignore references. Delivery is not obedience; prior context persists and each delivered index consumes tokens under existing provider limits.
 
 ## Prompt size and submission audit
 
