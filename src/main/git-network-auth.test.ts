@@ -84,4 +84,22 @@ describe("git network authentication", () => {
       else process.env.GIT_CONFIG_GLOBAL = previous;
     }
   });
+
+  it("replaces a different username embedded in the GitHub remote URL with Settings' account", async () => {
+    const previous = process.env.GIT_CONFIG_GLOBAL;
+    const global = join(repo, "fixture-global-embedded.config");
+    await writeFile(global, "[credential \"https://github.com\"]\nusername = selected-account\nhelper = manager\n");
+    process.env.GIT_CONFIG_GLOBAL = global;
+    try {
+      execFileSync("git", ["-C", repo, "remote", "add", "embedded", "https://old-account@github.com/owner/repo.git"]);
+      const args = await gitNetworkAuthArgs(repo, "embedded");
+      const resolved = execFileSync("git", [...args, "remote", "get-url", "--push", "embedded"], { cwd: repo, encoding: "utf8" }).trim();
+      expect(resolved).toBe("https://github.com/owner/repo.git");
+      // Only this invocation is rewritten; the stored remote keeps its URL.
+      expect(execFileSync("git", ["-C", repo, "remote", "get-url", "embedded"], { encoding: "utf8" })).toContain("old-account@");
+    } finally {
+      if (previous === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+      else process.env.GIT_CONFIG_GLOBAL = previous;
+    }
+  });
 });

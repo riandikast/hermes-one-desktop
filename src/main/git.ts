@@ -311,20 +311,25 @@ async function runGitAction(
   };
 }
 
-/** Resolve the remote host of the repo's first push remote (https or ssh). */
-export async function gitRemoteHost(dir: string, remote?: string): Promise<string | null> {
+/** Push URL of the named remote, or of the first push remote when omitted. */
+async function gitRemoteUrl(dir: string, remote?: string): Promise<string | null> {
   if (remote !== undefined) {
     const result = await runGit(dir, ["remote", "get-url", "--push", "--", remote]);
-    return result.code === 0 ? extractHostFromRemoteUrl(result.stdout.trim()) : null;
+    return result.code === 0 ? result.stdout.trim() : null;
   }
   const res = await runGit(dir, ["remote", "-v"]);
   for (const line of res.stdout.split("\n")) {
     if (!line.includes("(push)")) continue;
     const url = line.split(/\s+/)[1];
-    const host = extractHostFromRemoteUrl(url ?? "");
-    if (host) return host;
+    if (url && extractHostFromRemoteUrl(url)) return url;
   }
   return null;
+}
+
+/** Resolve the remote host of the repo's first push remote (https or ssh). */
+export async function gitRemoteHost(dir: string, remote?: string): Promise<string | null> {
+  const url = await gitRemoteUrl(dir, remote);
+  return url ? extractHostFromRemoteUrl(url) : null;
 }
 
 /** One file the working tree changed during a turn, with before/after content
@@ -542,8 +547,17 @@ export async function gitNetworkAuthArgs(dir: string, remote?: string): Promise<
   const github = selected.code === 0 && /^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(username)
     ? ["-c", "credential.https://github.com.helper=", "-c", "credential.https://github.com.helper=manager", "-c", `credential.https://github.com.username=${username}`]
     : [];
+  const url = await gitRemoteUrl(dir, remote);
+  // A username embedded in the remote URL (https://other@github.com/...)
+  // outranks credential.username, so the account chosen in Settings would be
+  // ignored and GitHub answers "no access" for the embedded one. Rewrite only
+  // that prefix for this invocation; the stored remote is left untouched.
+  const embedded = url?.match(/^https:\/\/([^/:@]+)@github\.com\//i);
+  if (github.length && embedded && embedded[1].toLowerCase() !== username.toLowerCase()) {
+    github.push("-c", `url.https://github.com/.insteadOf=https://${embedded[1]}@github.com/`);
+  }
   if (!tokenProvider) return github;
-  const host = await gitRemoteHost(dir, remote);
+  const host = url ? extractHostFromRemoteUrl(url) : null;
   if (!host || host.toLowerCase() === "github.com") return github;
   return [...github, ...gitTokenAuthArgs(host, tokenProvider(host))];
 }
