@@ -505,6 +505,18 @@ describe("SourceControlDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save token" }));
     expect(window.hermesAPI.gitSetToken).toHaveBeenCalledWith("gitlab.com", "example-token");
   });
+  it("explains a 403 as a repository permission problem, not a sign-in problem", async () => {
+    vi.mocked(window.hermesAPI.gitFetch).mockResolvedValueOnce({
+      ok: false,
+      error: "remote: Write access to repository not granted.\nfatal: unable to access 'https://github.com/org/repo.git/': The requested URL returned error: 403",
+    });
+    renderDialog("/repo");
+    const fetch = await screen.findByRole("button", { name: /fetch/i });
+    await act(async () => fetch.click());
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("can't access this repository");
+    expect(alert).not.toHaveTextContent("couldn't authenticate");
+  });
   it("shows readable output with a keyboard-adjustable height and announces errors", async () => {
     vi.mocked(window.hermesAPI.gitFetch).mockResolvedValueOnce({ ok: true, output: "Fetched refs" }).mockResolvedValueOnce({ ok: false, error: "Fetch failed" });
     renderDialog("/repo");

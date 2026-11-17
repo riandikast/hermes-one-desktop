@@ -603,13 +603,16 @@ export function SourceControlDialog({
           // Git Credential Manager opens its own login window, but if it's
           // not installed the push can't authenticate — tell the user how.
           const errText = res.error ?? `${label} failed`;
-          if (
-            /could not read Username|authentication failed|terminal prompts disabled|401|403|403 forbidden|not authorized/i.test(
-              errText,
-            )
-          ) {
+          // 403 / "not granted" means GitHub accepted the credential but that
+          // account or token has no permission on this repository — signing in
+          // again cannot help, so don't send the user to a login prompt.
+          if (/write access to repository not granted|permission to .+ denied|\b403\b|repository not found/i.test(errText)) {
             setError(
-              `${errText}\n\nGit couldn't authenticate. If Git Credential Manager didn't open a login window, run once in a terminal: git push — it will prompt you to sign in (or set up an SSH key for the remote).`,
+              `${errText}\n\nSigned in, but this account or token can't access this repository. A fine-grained token must have the repository's owner (organization) as resource owner, be approved by that organization, and grant Contents read & write.`,
+            );
+          } else if (/could not read Username|authentication failed|terminal prompts disabled|\b401\b|not authorized/i.test(errText)) {
+            setError(
+              `${errText}\n\nGit couldn't authenticate. Select or add the account in Settings → GitHub, then retry.`,
             );
           } else {
             setError(errText);

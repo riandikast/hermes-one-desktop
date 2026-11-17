@@ -24,7 +24,7 @@ export default {
     signIn: "Sign in with browser",
     tokenLabel: "Or sign in with a personal access token",
     tokenPlaceholder: "ghp_… or github_pat_…",
-    tokenHint: "Stored in Git Credential Manager, exactly like a browser sign-in. The account is read from the token. Classic tokens need the repo scope; fine-grained tokens need Contents and Metadata read access.",
+    tokenHint: "Stored in Git Credential Manager, exactly like a browser sign-in. The account is read from the token. Classic tokens need the repo scope. Fine-grained tokens must use the repository's organization as resource owner and grant Contents read & write.",
     tokenSubmit: "Use token",
     invalidToken: "GitHub rejected that token, or it is malformed (expected a single line, 20–255 characters).",
     verify: "Verify connection",
