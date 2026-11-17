@@ -1069,7 +1069,7 @@ interface HermesAPI {
   deleteSession: (sessionId: string) => Promise<void>;
   deleteSessions: (
     sessionIds: string[],
-  ) => Promise<{ requested: number; deleted: number }>;
+  ) => Promise<{ requested: number; deleted: number; failed?: string[] }>;
 
   // Session search
   searchSessions: (

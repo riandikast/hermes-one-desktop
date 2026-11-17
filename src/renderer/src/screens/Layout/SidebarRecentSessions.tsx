@@ -17,6 +17,7 @@ import {
   Loader,
   MoreHorizontal,
   Pin,
+  Trash,
   X,
   Search,
   Bot,
@@ -540,6 +541,7 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
   // Multi-select bulk delete state.
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
   const [pendingBulkDelete, setPendingBulkDelete] = useState<
     { title: string; ids: string[] } | null
   >(null);
@@ -1458,28 +1460,40 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
         }
         return changed ? next : prev;
       });
+      // Rows the backend kept (a live turn owns them, or the request failed)
+      // stay selected with a visible error instead of silently reappearing.
+      let kept: string[] = [];
       try {
-        if (ids.length === 1) {
-          await window.hermesAPI.deleteSession(ids[0]);
-          onSessionDeleted?.(ids[0]);
-        } else {
-          await window.hermesAPI.deleteSessions(ids);
-          for (const id of ids) onSessionDeleted?.(id);
-        }
+        const result = await window.hermesAPI.deleteSessions(ids);
+        kept = result?.failed ?? [];
       } catch (err) {
         console.error("Failed to bulk delete sessions", ids, err);
-      } finally {
-        setBulkDeleting(false);
-        setPendingBulkDelete(null);
+        kept = ids;
+      }
+      const keptSet = new Set(kept);
+      for (const id of ids) if (!keptSet.has(id)) onSessionDeleted?.(id);
+      setBulkDeleting(false);
+      setPendingBulkDelete(null);
+      if (kept.length > 0) {
+        setSelectedIds(keptSet);
+        setSelectMode(true);
+        setBulkDeleteError(
+          kept.length === ids.length
+            ? "Couldn't delete"
+            : `Couldn't delete ${kept.length}`,
+        );
+      } else {
         setSelectedIds(new Set());
         setSelectMode(false);
-        void refresh(true);
+        setBulkDeleteError(null);
       }
+      void refresh(true);
     },
     [onSessionDeleted, refresh],
   );
 
   const handleToggleSelect = useCallback((id: string): void => {
+    setBulkDeleteError(null);
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -1498,6 +1512,7 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
   const exitSelection = useCallback((): void => {
     setSelectMode(false);
     setSelectedIds(new Set());
+    setBulkDeleteError(null);
   }, []);
 
   useEffect(() => {
@@ -1628,16 +1643,18 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
 
     // `div role=button` (not <button>) so the trailing "options" control can be
     // a real nested button without invalid button-in-button markup.
+    const checked = selectMode && selectedIds.has(s.id);
     return (
       <div
         key={s.id}
-        role="button"
+        role={selectMode ? "checkbox" : "button"}
+        aria-checked={selectMode ? checked : undefined}
         tabIndex={visible ? 0 : -1}
         className={`sidebar-recent-session ${project ? "project-child" : ""} ${
           active ? "active" : ""
         } ${menuOpen ? "menu-open" : ""} ${
           q !== "" && matchesQuery(s) ? "search-match" : ""
-        }`}
+        } ${checked ? "selected" : ""}`}
         onClick={(e) => {
           if (selectMode) handleToggleSelect(s.id);
           else if (e.ctrlKey || e.metaKey) addToSelection(s.id);
@@ -1656,17 +1673,14 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
         }}
         title={title}
       >
-        {selectMode && (
-          <input
-            type="checkbox"
-            className="sidebar-recent-session-select"
-            checked={selectedIds.has(s.id)}
-            onChange={() => handleToggleSelect(s.id)}
-            onClick={(e) => e.stopPropagation()}
-            aria-label={`Select ${title}`}
-          />
-        )}
-        {loading ? (
+        {selectMode ? (
+          <span
+            aria-hidden="true"
+            className={`sidebar-recent-session-check ${checked ? "is-checked" : ""}`}
+          >
+            {checked && <Check size={10} strokeWidth={3} />}
+          </span>
+        ) : loading ? (
           <>
             <Loader
               className="sidebar-recent-session-dot sidebar-recent-session-dot--loading"
@@ -1881,26 +1895,6 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
         </div>
       ) : (
         <div className="sidebar-recent-sessions">
-        {selectMode && (
-          <div className="sidebar-recent-selection-toolbar">
-            <span>{selectedIds.size} selected</span>
-            <button
-              type="button"
-              className="btn btn-danger btn-sm"
-              onClick={requestDeleteSelected}
-              disabled={selectedIds.size === 0}
-            >
-              Delete ({selectedIds.size})
-            </button>
-            <button
-              type="button"
-              className="btn-ghost btn-sm"
-              onClick={exitSelection}
-            >
-              Cancel
-            </button>
-          </div>
-        )}
         {searchOpen && (
           <div className="sidebar-recent-search">
             <Search size={13} className="sidebar-recent-search-icon" />
@@ -2160,6 +2154,36 @@ export const SidebarRecentSessions = memo(function SidebarRecentSessions({
               size={11}
             />
             <span>{t("common.loadingShort")}</span>
+          </div>
+        )}
+        {selectMode && (
+          <div className="sidebar-recent-selection-toolbar" role="toolbar" aria-label="Selection">
+            {bulkDeleteError ? (
+              <span role="alert" className="sidebar-recent-selection-error">
+                {bulkDeleteError}
+              </span>
+            ) : (
+              <span aria-live="polite">{selectedIds.size} selected</span>
+            )}
+            <button
+              type="button"
+              className="sidebar-recent-selection-action danger"
+              onClick={requestDeleteSelected}
+              disabled={selectedIds.size === 0}
+              aria-label={`Delete ${selectedIds.size} selected`}
+              title="Delete selected"
+            >
+              <Trash size={14} />
+            </button>
+            <button
+              type="button"
+              className="sidebar-recent-selection-action"
+              onClick={exitSelection}
+              aria-label="Cancel selection"
+              title="Cancel"
+            >
+              <X size={14} />
+            </button>
           </div>
         )}
         </div>

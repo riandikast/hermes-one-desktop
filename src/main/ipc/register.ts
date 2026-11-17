@@ -314,6 +314,7 @@ import {
   type ConnectionConfig,
 } from "../config";
 import { providerAuthStatuses } from "../provider-auth";
+import { deleteLocalSessions } from "../session-delete";
 import {
   getAuxiliaryConfig,
   setAuxiliaryTask,
@@ -326,8 +327,6 @@ import {
   getSessionMessagesBefore,
   searchSessionHistory,
   searchSessions,
-  deleteSession,
-  deleteSessions,
   getSubagentGcDays,
   setSubagentGcDays,
   reapSubagentSessions,
@@ -2475,7 +2474,9 @@ export function registerIpcHandlers(context: IpcContext): void {
         undefined,
         activeSshProfile(),
       );
-    return deleteSession(sessionId);
+    return deleteLocalSessions([sessionId]).then((result) => {
+      if (result.failed?.length) throw new Error("The agent kept this session (a turn may still be running).");
+    });
   });
 
   ipcMain.handle("delete-sessions", (_event, sessionIds: string[]) => {
@@ -2489,7 +2490,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         undefined,
         activeSshProfile(),
       );
-    return deleteSessions(ids);
+    return deleteLocalSessions(ids);
   });
 
   // Profiles

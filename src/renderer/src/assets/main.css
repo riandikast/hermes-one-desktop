@@ -22595,19 +22595,64 @@ body:has(.shell-vibrant),
   opacity: 0.6;
 }
 
+/* Selection bar: pinned to the bottom of the scrolling session list so the
+   actions stay in reach wherever the user is in the list. */
 .sidebar-recent-selection-toolbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  font-size: calc(11px * var(--font-scale));
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border-color);
+  gap: 2px;
+  margin: 6px 4px 4px;
+  padding: 4px 4px 4px 10px;
+  font-size: calc(12px * var(--font-scale));
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 .sidebar-recent-selection-toolbar span {
   margin-right: auto;
-  font-weight: 600;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.sidebar-recent-selection-toolbar .sidebar-recent-selection-error {
+  color: var(--color-danger);
+}
+.sidebar-recent-selection-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.sidebar-recent-selection-action:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.sidebar-recent-selection-action.danger {
+  color: var(--color-danger);
+}
+.sidebar-recent-selection-action.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 14%, transparent);
+  color: var(--color-danger);
+}
+.sidebar-recent-selection-action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.sidebar-recent-selection-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .sidebar-recent-mini-btn {
@@ -22641,10 +22686,27 @@ body:has(.shell-vibrant),
 .sidebar-recent-project:hover .sidebar-recent-project-actions {
   opacity: 1;
 }
-.sidebar-recent-session-select {
-  margin: 0 4px 0 0;
-  cursor: pointer;
+/* Selection mode: the leading dot slot becomes a checkbox, so rows in every
+   section keep the same alignment. */
+.sidebar-recent-session-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--text-muted);
+  border-radius: 4px;
+  color: #fff;
+  transition: background var(--transition), border-color var(--transition);
+}
+.sidebar-recent-session-check.is-checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.sidebar-recent-session.selected {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text-primary);
 }
 
 .chat-confirm-banner {

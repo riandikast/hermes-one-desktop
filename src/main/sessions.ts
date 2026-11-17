@@ -969,9 +969,11 @@ export function applySessionLocalOverlays(
 export interface DeleteSessionsResult {
   requested: number;
   deleted: number;
+  /** Requested ids that still exist afterwards (e.g. a live turn owns them). */
+  failed?: string[];
 }
 
-function normalizeSessionIds(sessionIds: string[]): string[] {
+export function normalizeSessionIds(sessionIds: string[]): string[] {
   const seen = new Set<string>();
   const normalized: string[] = [];
   for (const id of sessionIds) {
@@ -1002,11 +1004,16 @@ function hasParentSessionColumn(db: Database.Database): boolean {
   return sessionsHasParentColumn;
 }
 
-function deleteSessionRows(db: Database.Database, sessionId: string): number {
+/** Rows the desktop itself keeps per session (not part of the agent schema). */
+function deleteDesktopSessionData(db: Database.Database, sessionId: string): void {
   deletePromptImageAttachmentsForSession(db, sessionId);
   deleteSessionContinuationForSession(db, sessionId);
   deleteSessionContextFolderForSession(db, sessionId);
   deleteSessionModelOverrideForSession(db, sessionId);
+}
+
+function deleteSessionRows(db: Database.Database, sessionId: string): number {
+  deleteDesktopSessionData(db, sessionId);
   db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
   const result = db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
   return result.changes;
@@ -1046,41 +1053,77 @@ function cleanupDeletedSession(sessionId: string): void {
 }
 
 export function deleteSession(sessionId: string): void {
-  const id = normalizeSessionIds([sessionId])[0];
-  if (!id) return;
-
-  const db = getDb(false);
-
-  if (db) {
-    const tx = db.transaction((sessionIdToDelete: string) => {
-      deleteSessionSubtree(db, sessionIdToDelete);
-    });
-    tx(id);
-  }
-
-  cleanupDeletedSession(id);
+  deleteSessions([sessionId]);
 }
 
+/**
+ * Direct-SQL delete, used only when the agent's dashboard API is unavailable.
+ * Each conversation gets its own transaction: newer agent schemas keep
+ * `ON DELETE RESTRICT` ledgers (session_admissions, worker_executions) that
+ * only the agent may retire, and one such row used to roll back the whole
+ * batch. Blocked ids are reported instead of silently reappearing.
+ */
 export function deleteSessions(sessionIds: string[]): DeleteSessionsResult {
   const ids = normalizeSessionIds(sessionIds);
+  const failed: string[] = [];
   let deleted = 0;
 
   const db = getDb(false);
-
   if (db) {
-    const tx = db.transaction((idsToDelete: string[]) => {
-      for (const id of idsToDelete) {
-        deleted += deleteSessionSubtree(db, id);
+    const tx = db.transaction((id: string) => deleteSessionSubtree(db, id));
+    for (const id of ids) {
+      try {
+        tx(id);
+        deleted += 1;
+        cleanupDeletedSession(id);
+      } catch (err) {
+        console.error("[sessions] delete blocked", id, err);
+        failed.push(id);
       }
-    });
-    tx(ids);
+    }
+  } else {
+    for (const id of ids) cleanupDeletedSession(id);
+    deleted = ids.length;
   }
 
+  return { requested: ids.length, deleted, ...(failed.length ? { failed } : {}) };
+}
+
+/** Every id in the requested conversations' subagent subtrees. Read before
+ *  the agent deletes them, so the desktop rows of cascaded children can be
+ *  cleaned afterwards too. */
+export function sessionSubtreeIds(sessionIds: string[]): string[] {
+  const ids = normalizeSessionIds(sessionIds);
+  const db = getDb();
+  if (!db) return ids;
+  const all = new Set<string>();
   for (const id of ids) {
+    for (const member of collectSubtreeOrder(id, (child) => directChildIds(db, child))) all.add(member);
+  }
+  return [...all];
+}
+
+/**
+ * After the agent deleted sessions, drop the desktop-owned rows and caches of
+ * every id in `scope` whose session row is really gone, and report requested
+ * ids that survived (the agent skips sessions a live turn still owns).
+ */
+export function finishAgentSessionDelete(requestedIds: string[], scope: string[]): DeleteSessionsResult {
+  const ids = normalizeSessionIds(requestedIds);
+  const db = getDb(false);
+  const exists = (id: string): boolean =>
+    !!db?.prepare("SELECT 1 FROM sessions WHERE id = ?").get(id);
+  for (const id of new Set([...ids, ...scope])) {
+    if (exists(id)) continue;
+    if (db) deleteDesktopSessionData(db, id);
     cleanupDeletedSession(id);
   }
-
-  return { requested: ids.length, deleted };
+  const failed = ids.filter(exists);
+  return {
+    requested: ids.length,
+    deleted: ids.length - failed.length,
+    ...(failed.length ? { failed } : {}),
+  };
 }
 
 // ── Auto-GC of old subagent sessions ───────────────────────────────────────
