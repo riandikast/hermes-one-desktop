@@ -9,7 +9,7 @@ import {
   writeFile,
 } from "fs/promises";
 import { homedir } from "os";
-import { join } from "path";
+import { join, relative } from "path";
 
 export interface KnowledgeFile {
   name: string;
@@ -351,34 +351,76 @@ const KNOWLEDGE_INDEX_MAX_CHARS = 2000;
  *  single bundle below "enough to list its file paths". */
 const KNOWLEDGE_INDEX_MIN_BUNDLE_CHARS = 600;
 /** Per-file hint length: first line of the file, truncated. */
-const KNOWLEDGE_INDEX_HINT_CHARS = 140;
+const KNOWLEDGE_INDEX_HINT_CHARS = 100;
+
+/** Letters/digits only, lowercased: compares a heading with a file name. */
+function comparable(text: string): string {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+}
 
 /**
- * Extract a one-line content hint from a knowledge file's text for the system
- * index. The first non-empty line is the primary cue (usually a markdown
- * heading or a title). When that line is a SHORT heading, the title alone is
- * too cryptic for the model to judge relevance, so the start of the next
- * non-empty line is appended. A long first line already carries meaning, so we
- * don't pull a second line in that case (keeps the hint within budget and
- * avoids leaking content past the pointer).
+ * Extract a one-line content hint from a file's text for an index.
+ *
+ * The hint exists to tell files apart, so lines that carry nothing beyond the
+ * listed name are skipped: a heading that only repeats the file name,
+ * separator/template lines with no letters or digits (`---`, `{{--`), and a
+ * YAML front-matter block, whose `description:` (or `name:`) is preferred.
+ * When the first useful line is a SHORT heading, the start of the next useful
+ * line is appended, since a bare title is too cryptic to judge relevance. A
+ * long line already carries meaning, so no second line is pulled.
  */
-function extractKnowledgeHint(content: string): string {
+function extractKnowledgeHint(content: string, fileName = ""): string {
   const lines = content.split(/\r?\n/).map((l) => l.trim());
-  let firstIdx = 0;
-  while (firstIdx < lines.length && lines[firstIdx].length === 0) firstIdx++;
-  const first = lines[firstIdx] ?? "";
-  const hint = first.slice(0, KNOWLEDGE_INDEX_HINT_CHARS);
-  // Append the next non-empty line when the first line is a SHORT heading —
-  // a bare title is too cryptic to distinguish files (the model then guesses
-  // the wrong file when told to write to "the knowledge file").
-  if (/^#{1,6}\s+\S/.test(first) && first.length <= 60) {
-    for (let j = firstIdx + 1; j < lines.length; j++) {
-      if (lines[j].length > 0) {
-        return `${hint} — ${lines[j].slice(0, 80)}`;
+  const stem = comparable(fileName.replace(/\.[^.]+$/, ""));
+  const useful: string[] = [];
+  let frontMatter = "";
+  for (let i = 0; i < lines.length && useful.length < 2; i++) {
+    const line = lines[i];
+    if (!/[\p{L}\p{N}]/u.test(line)) {
+      // `---` opens a front-matter block only before any content.
+      if (line === "---" && useful.length === 0) {
+        const close = lines.indexOf("---", i + 1);
+        if (close > i) {
+          for (const field of lines.slice(i + 1, close)) {
+            const m = /^(description|name):\s*["']?(.*?)["']?$/i.exec(field);
+            if (m && m[2] && (!frontMatter || m[1].toLowerCase() === "description")) frontMatter = m[2];
+          }
+          i = close;
+        }
       }
+      continue;
     }
+    if (useful.length === 0 && /^#{1,6}\s/.test(line)) {
+      const heading = comparable(line);
+      // "# Notes.md" or "# Notes,md.md" over Notes.md says nothing new.
+      if (stem && heading.startsWith(stem) && /^(md|markdown|txt)*$/.test(heading.slice(stem.length))) continue;
+    }
+    useful.push(line);
+    if (useful.length === 1 && !(/^#{1,6}\s+\S/.test(line) && line.length <= 60)) break;
   }
-  return hint;
+  // A front-matter description is the author's own summary: prefer it.
+  if (frontMatter || useful.length === 0) return frontMatter.slice(0, KNOWLEDGE_INDEX_HINT_CHARS);
+  const hint = useful[0].slice(0, KNOWLEDGE_INDEX_HINT_CHARS);
+  return useful[1] ? `${hint} — ${useful[1].slice(0, 80)}` : hint;
+}
+
+/**
+ * Shared header for the Knowledge and workspace-folder indexes. Paths are
+ * listed relative to each section's folder (stated once in the section
+ * heading) instead of repeating the absolute prefix on every line.
+ */
+function indexPreamble(subject: string): string {
+  return (
+    `${subject} (snapshot; files may have changed since). ` +
+    "Each file's EXACT absolute path is its section folder joined with the listed path; never guess another. " +
+    "Read a file's current content before editing it; a hint is only a pointer, so open the file before judging it irrelevant. " +
+    "Don't paste file contents unless asked."
+  );
+}
+
+/** Index line for one file: relative path plus its hint when it fits. */
+function indexLine(relativePath: string, hint: string): string {
+  return hint ? `- ${relativePath} — ${hint}` : `- ${relativePath}`;
 }
 
 /**
@@ -435,7 +477,7 @@ export async function buildKnowledgeIndex(
       const fullPath = join(bundlePath, fileName);
       // The PATH is the load-bearing part (the agent must be able to open the
       // file); never drop a file while there is room for its path alone.
-      const pathCost = fullPath.length + 4;
+      const pathCost = fileName.length + 4;
       if (budget < pathCost) {
         lines.push(
           `- …and ${files.length - lines.length} more file(s) in this bundle (list the directory to see them all)`,
@@ -446,19 +488,19 @@ export async function buildKnowledgeIndex(
       let hint = "";
       try {
         const content = await readFile(fullPath, "utf8");
-        hint = extractKnowledgeHint(content);
+        hint = extractKnowledgeHint(content, fileName);
       } catch {
         /* hint optional */
       }
 
-      const full = hint ? `- ${fullPath} — ${hint}` : `- ${fullPath}`;
+      const full = indexLine(fileName, hint);
       // Keep the whole line when it fits; otherwise fall back to path-only so
       // the file remains addressable rather than disappearing.
       if (full.length <= budget) {
         lines.push(full);
         budget -= full.length;
       } else {
-        const pathOnly = `- ${fullPath}`;
+        const pathOnly = indexLine(fileName, "");
         if (pathOnly.length <= budget) {
           lines.push(pathOnly);
           budget -= pathOnly.length;
@@ -472,13 +514,13 @@ export async function buildKnowledgeIndex(
     }
 
     if (lines.length === 0) continue;
-    sections.push(`## ${name}\n${lines.join("\n")}`);
+    sections.push(`## ${name} (${bundlePath})\n${lines.join("\n")}`);
   }
 
   if (sections.length === 0) return "";
 
   return [
-    "The user maintains the knowledge bundles below as AUTHORITATIVE context for this conversation. This index is a SNAPSHOT taken when the conversation started — before writing to a knowledge file, use your file tools to list the knowledge directory and read the CURRENT content of the target file, and write to the EXACT absolute path listed below (never invent or guess a path or filename). The hint line is only a pointer; open the file to see its full content before deciding it is not relevant. Do not dump file contents into the conversation unless the user explicitly asks.",
+    indexPreamble("AUTHORITATIVE knowledge bundles the user maintains"),
     ...sections,
   ].join("\n\n");
 }
@@ -561,24 +603,21 @@ export async function buildFolderIndex(folders: string[]): Promise<string> {
           const st = await stat(full);
           if (!st.isFile() || st.size > 256 * 1024) continue;
           const content = await readFile(full, "utf8");
-          hint = extractKnowledgeHint(content);
+          hint = extractKnowledgeHint(content, e.name);
         } catch {
           /* hint optional — file may be unreadable/binary */
         }
-        const line = hint ? `- ${full} — ${hint}` : `- ${full}`;
+        const line = indexLine(relative(root, full), hint);
         lines.push(line);
         budget -= line.length;
       }
     }
     if (lines.length === 0) continue;
     const name = root.split(/[\\/]/).filter(Boolean).pop() || root;
-    sections.push(`## ${name}\n${lines.join("\n")}`);
+    sections.push(`## ${name} (${root})\n${lines.join("\n")}`);
   }
 
   if (sections.length === 0) return "";
 
-  return [
-    "The user attached the following workspace folders as context. This index is a SNAPSHOT taken when the conversation started — before writing to a file, use your file tools to list the folder and read the CURRENT content of the target file, and write to the EXACT absolute path listed below (never invent or guess a path or filename). The hint line is only a pointer, so open the file to see its full content before deciding it is not relevant. Do not dump file contents into the conversation unless the user explicitly asks.",
-    ...sections,
-  ].join("\n\n");
+  return [indexPreamble("Workspace folders the user attached"), ...sections].join("\n\n");
 }

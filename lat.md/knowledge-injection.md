@@ -58,7 +58,9 @@ Desktop deployment is separate; changes are not claimed to be loaded in the runn
 
 ## Index wording and hints
 
-[[src/main/knowledge.ts#buildKnowledgeIndex]] remains unchanged: selected paths and short relevance hints, not full contents.
+[[src/main/knowledge.ts#buildKnowledgeIndex]] lists selected files and short relevance hints, not full contents. Each section heading states the bundle folder once and files are listed relative to it; [[src/main/knowledge.ts#buildFolderIndex]] uses the same layout and shared preamble.
+
+Hints skip lines that add nothing to the name: a heading repeating the file name, separator or template lines without letters or digits, and YAML front matter, whose `description:` is preferred. On this machine the two-bundle index shrank from 1,376 to 1,116 characters; budget-capped indexes keep their size but carry more hints. [[src/main/knowledge.test.ts]] covers the layout and hint rules.
 
 Full contents require file tools and permissions. The model may ignore references. Delivery is not obedience; prior context persists and each delivered index consumes tokens under existing provider limits.
 

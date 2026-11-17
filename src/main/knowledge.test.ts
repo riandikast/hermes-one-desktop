@@ -124,18 +124,35 @@ describe("knowledge store", () => {
 
     const index = await buildKnowledgeIndex(["ui-rules"], tempDir);
 
-    expect(index).toContain("## ui-rules");
-    expect(index).toContain(
-      `- ${join(tempDir, "knowledge", "ui-rules", "style.md")} — # Style Guide — Colors!`,
-    );
-    expect(index).toContain(
-      `- ${join(tempDir, "knowledge", "ui-rules", "naming.md")} — Naming conventions`,
-    );
-    expect(index).toContain(
-      "use your file tools to list the knowledge directory",
-    );
+    // The bundle folder is stated once; files are listed relative to it.
+    expect(index).toContain(`## ui-rules (${join(tempDir, "knowledge", "ui-rules")})`);
+    expect(index).toContain("- style.md — # Style Guide — Colors!");
+    expect(index).toContain("- naming.md — Naming conventions");
+    expect(index.split(join(tempDir, "knowledge", "ui-rules")).length - 1).toBe(1);
     expect(index).toContain("AUTHORITATIVE");
-    expect(index).toContain("EXACT absolute path");
+    expect(index).toContain("EXACT absolute path is its section folder joined with the listed path");
+    expect(index).toContain("Read a file's current content before editing it");
+  });
+
+  it("skips hint lines that only repeat the file name or carry no text", async () => {
+    await createKnowledgeBundle("hints", tempDir);
+    await writeKnowledgeFile("hints", "Style Rules.md", "# Style Rules.md\n\n- Prefer shadcn", tempDir);
+    await writeKnowledgeFile("hints", "Picker.md", "# Picker,md.md\n\n{{--\n  =====\n  TIME PICKER — range\n", tempDir);
+    await writeKnowledgeFile(
+      "hints",
+      "Design.md",
+      '# Design.md\n\n---\nversion: "alpha"\nname: "Swiss"\ndescription: "Minimalist landing page."\n---\n## Overview\nBody',
+      tempDir,
+    );
+    await writeKnowledgeFile("hints", "Guide.md", "# Team Guide\nUse it.", tempDir);
+
+    const index = await buildKnowledgeIndex(["hints"], tempDir);
+
+    expect(index).toContain("- Style Rules.md — - Prefer shadcn");
+    expect(index).toContain("- Picker.md — TIME PICKER — range");
+    expect(index).toContain("- Design.md — Minimalist landing page.");
+    // A heading that is NOT just the file name keeps its context.
+    expect(index).toContain("- Guide.md — # Team Guide — Use it.");
   });
 
   it("lists EVERY toggled bundle even when the total exceeds the char budget", async () => {
@@ -160,7 +177,7 @@ describe("knowledge store", () => {
     for (const b of bundles) {
       expect(index, `bundle ${b} missing from index`).toContain(`## ${b}`);
       expect(index, `file path for ${b} missing`).toContain(
-        join(tempDir, "knowledge", b, "doc.md"),
+        `## ${b} (${join(tempDir, "knowledge", b)})\n- doc.md`,
       );
     }
   });
@@ -174,7 +191,7 @@ describe("knowledge store", () => {
     const index = await buildKnowledgeIndex(["many"], tempDir);
 
     // The 13th+ files must still be addressable by the agent.
-    expect(index).toContain(join(tempDir, "knowledge", "many", "f19.md"));
+    expect(index).toContain("- f19.md");
   });
 
   it("bounds the total index size even with many bundles", async () => {
@@ -229,9 +246,7 @@ describe("knowledge store", () => {
 
     const index = await buildKnowledgeIndex(["long"], tempDir);
 
-    expect(index).toContain(
-      `- ${join(tempDir, "knowledge", "long", "b.md")} — `,
-    );
+    expect(index).toContain("- b.md — ");
     expect(index).not.toContain("second line");
     expect(index.length).toBeLessThan(2000);
   });
@@ -261,9 +276,7 @@ describe("knowledge store", () => {
     // A long prose first line already carries meaning, so no second line is
     // pulled (keeps the hint a pointer, not a content dump).
     expect(index).toContain(
-      "- " +
-        join(tempDir, "knowledge", "proj", "plain.md") +
-        " — Just a prose sentence that is long enough to not be a heading.",
+      "- plain.md — Just a prose sentence that is long enough to not be a heading.",
     );
   });
 
@@ -296,11 +309,10 @@ describe("knowledge store", () => {
     it("indexes workspace files with hints, skipping vcs/deps dirs", async () => {
       const index = await buildFolderIndex([workspace]);
 
-      expect(index).toContain("## workspace");
-      expect(index).toContain(
-        `- ${join(workspace, "readme.md")} — # Workspace — Build docs.`,
-      );
-      expect(index).toContain(`- ${join(workspace, "src", "main.ts")}`);
+      expect(index).toContain(`## workspace (${workspace})`);
+      expect(index).toContain("- readme.md — # Workspace — Build docs.");
+      expect(index).toContain(`- ${join("src", "main.ts")}`);
+      expect(index).toContain("Workspace folders the user attached");
       expect(index).not.toContain("node_modules");
       expect(index).not.toContain("pkg");
       expect(index).not.toContain(".git");
